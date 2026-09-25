@@ -63,3 +63,6 @@ section { padding: 40px 0; border-bottom: 1px solid var(--line); }
 .card h3 { margin: 0 0 4px; }
 .card p { margin: 0; color: var(--muted); }
 footer { color: var(--muted); font-size: 14px; padding: 32px 16px; }
+
+main > h1 { font-size: clamp(32px, 6vw, 48px); margin: 8px 0 12px; }
+main > .kicker { padding-top: 32px; }
