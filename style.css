@@ -66,3 +66,4 @@ footer { color: var(--muted); font-size: 14px; padding: 32px 16px; }
 
 main > h1 { font-size: clamp(32px, 6vw, 48px); margin: 8px 0 12px; }
 main > .kicker { padding-top: 32px; }
+.minutes-link { margin-top: 20px; }
