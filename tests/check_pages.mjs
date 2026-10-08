@@ -62,6 +62,14 @@ for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
 }
 await page.click('[data-filter-group="schedule"] button[data-value="all"]');
 
+for (const value of ["free", "free-youth"]) {
+  await page.click(`[data-filter-group="cost"] button[data-value="${value}"]`);
+  const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  const expected = upcoming.filter((e) => (e.tags || []).includes(value)).length;
+  shown === expected ? pass(`cost ${value}: ${shown} events`) : fail(`cost ${value} shows ${shown}, expected ${expected}`);
+}
+await page.click('[data-filter-group="cost"] button[data-value="all"]');
+
 const rated = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated"));
 rated.length === 0 ? pass("every club event is tagged rated")
   : fail(`club events not tagged rated: ${[...new Set(rated.map((e) => e.title))].join(", ")}`);

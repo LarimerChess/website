@@ -192,12 +192,13 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Independent rows of filter buttons: kind of event, how often, and city. A card shows
+// Independent rows of filter buttons: kind of event, how often, cost, and city. A card shows
 // when it matches every row. The city buttons come from the events themselves. The
 // choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
 const MATCHES = {
   kind: (card, value) => card.dataset.tags.split(" ").includes(value),
   schedule: (card, value) => card.dataset.tags.split(" ").includes("weekly") === (value === "weekly"),
+  cost: (card, value) => card.dataset.tags.split(" ").includes(value),
   city: (card, value) => card.dataset.city === value,
 };
 

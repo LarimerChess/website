@@ -41,6 +41,10 @@ TITLE_TAGS = [
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
 FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
+# "Cost: free" marks an event free for everyone; a sentence saying youth or under-18 players
+# play free marks it free for youth.
+FREE = re.compile(r"\bcost: free\b", re.I)
+FREE_FOR_YOUTH = re.compile(r"(?:youth|under 18)[^.\n]*\bfree\b|\bfree\b[^.\n]*(?:youth|under 18)", re.I)
 ADDRESS = re.compile(r"^(?P<name>[^,]+), (?P<street>[^,]+(?:, Unit [^,]+)?), (?P<city>[^,]+), (?P<region>[A-Z]{2}) (?P<zip>\d{5})")
 
 
@@ -60,6 +64,10 @@ def describe(event, calendar):
         tags += ["club", "rated"]  # every club event is a US Chess rated event
     elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
         tags.append("rated")
+    if FREE.search(text):
+        tags += ["free", "free-youth"]
+    elif FREE_FOR_YOUTH.search(text):
+        tags.append("free-youth")
     links = [u for u in LINK.findall(text) if not re.search(r"calendar\.google|uschess|maps", u)]
     fee = FEE.search(text)
     return {

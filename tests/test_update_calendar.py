@@ -72,6 +72,24 @@ class Describe(unittest.TestCase):
         self.assertEqual(uc.describe(event("Monday Club Night at Peak"), "club")["price"], "")
 
 
+class Cost(unittest.TestCase):
+    def tags(self, text):
+        return uc.describe(event("Some event", text), "community")["tags"]
+
+    def test_free_for_everyone(self):
+        self.assertEqual(self.tags("Cost: free. Just show up."), ["free", "free-youth"])
+
+    def test_free_for_youth(self):
+        for text in ("Entry fee: $15. Free for players under 18.",
+                     "• Youth and college students: free",
+                     "Players under 18 play free."):
+            self.assertEqual(self.tags(text), ["free-youth"], text)
+
+    def test_not_free(self):
+        for text in ("$30 entry.", "Free parking. Entry $10.", "Youth: $5. Bring a board."):
+            self.assertEqual(self.tags(text), [], text)
+
+
 class Weekly(unittest.TestCase):
     def occurrences(self, title, days):
         return [{"title": title, "start": f"2026-10-{d:02d}T18:30:00-06:00", "tags": []} for d in days]
