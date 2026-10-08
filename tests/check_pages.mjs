@@ -18,10 +18,15 @@ const pass = (message) => console.log(`ok   ${message}`);
 
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"] });
 const page = await browser.newPage();
-// Every filter group sits in a menu, which has to be opened first.
+// Every filter group sits in a menu, which has to be opened first. The list shows a page of
+// cards at a time, so the rest are shown before anything is counted.
 async function choose(group, value) {
   await page.click(`[popovertarget="filter-${group}"]`);
   await page.click(`[data-filter-group="${group}"] button[data-value="${value}"]`);
+  await showAll();
+}
+async function showAll() {
+  while (await page.$(".events-more:not([hidden])")) await page.click(".events-more");
 }
 page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
 
@@ -45,8 +50,31 @@ const isYouth = (e) => (e.tags || []).includes("youth");
 const upcoming = allUpcoming.filter((e) => !isYouth(e));
 
 const cards = await page.$$eval(".event", (c) => c.length);
-cards === upcoming.length ? pass(`events page shows all ${cards} upcoming events`)
-  : fail(`events page shows ${cards} cards for ${upcoming.length} upcoming events`);
+cards === upcoming.length ? pass(`events page has all ${cards} upcoming events`)
+  : fail(`events page has ${cards} cards for ${upcoming.length} upcoming events`);
+
+// 30 cards at first; Show more adds the next 30 and moves focus to the first of them.
+const PAGE = 30;
+const paging = await page.evaluate(() => ({
+  shown: document.querySelectorAll(".event:not([hidden])").length,
+  more: !document.querySelector(".events-more").hidden,
+}));
+if (upcoming.length > PAGE) {
+  await page.click(".events-more");
+  const after = await page.evaluate(() => ({
+    shown: document.querySelectorAll(".event:not([hidden])").length,
+    focused: document.activeElement.closest(".event") === document.querySelectorAll(".event:not([hidden])")[30],
+    status: document.getElementById("filter-status").textContent,
+  }));
+  const next = Math.min(2 * PAGE, upcoming.length);
+  paging.shown === PAGE && paging.more && after.shown === next && after.focused
+    ? pass(`shows ${PAGE} events, then ${next} after Show more, with focus on the first new one ("${after.status}")`)
+    : fail(`paging: ${paging.shown} shown at first (button ${paging.more ? "shown" : "hidden"}), ${after.shown} after Show more, focus ${after.focused ? "on" : "not on"} the first new card`);
+  await page.reload({ waitUntil: "networkidle0" });
+  const kept = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  kept === next ? pass(`a reload keeps the ${next} shown`) : fail(`a reload shows ${kept}, not the ${next} shown before`);
+  await showAll();
+}
 
 const cities = [...new Set(upcoming.map((e) => e.city).filter(Boolean))].sort();
 const cityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));

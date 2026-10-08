@@ -357,6 +357,14 @@ function setUpFilters(container, filtersId, events) {
   }));
   for (const g of groups) g.menu.dataset.label = g.menu.textContent;
   const state = Object.fromEntries(groups.map((g) => [g.name, "all"]));
+  // At most this many matching cards show at once; laying out all of them made each filter
+  // change slow on an older laptop or phone. How many are showing is kept in the history entry,
+  // so a reload or Back comes back to the same list.
+  const PAGE = 30;
+  let shown = history.state?.shown ?? PAGE;
+  const more = el("button", "button button-secondary events-more", "Show more events");
+  more.type = "button";
+  container.append(more);
 
   const readHash = () => {
     const raw = decodeURIComponent(location.hash.slice(1));
@@ -372,7 +380,7 @@ function setUpFilters(container, filtersId, events) {
     const params = new URLSearchParams();
     for (const g of groups) if (state[g.name] !== "all") params.set(g.name, state[g.name]);
     const value = params.toString();
-    history.replaceState(null, "", value ? `#${value}` : location.pathname);
+    history.replaceState({ shown }, "", value ? `#${value}` : location.pathname);
   };
   const apply = (announce) => {
     for (const g of groups) {
@@ -383,12 +391,14 @@ function setUpFilters(container, filtersId, events) {
         ? [el("span", "visually-hidden", `${g.menu.dataset.label}: `), chosen.textContent]
         : [g.menu.dataset.label]));
     }
-    let count = 0;
+    const matches = [];
     for (const card of container.querySelectorAll(".event")) {
       const match = groups.every((g) => state[g.name] === "all" || MATCHES[g.name](card, state[g.name]));
-      card.hidden = !match;
-      if (match) count++;
+      card.hidden = !match || matches.length >= shown;
+      if (match) matches.push(card);
     }
+    const count = matches.length;
+    more.hidden = count <= shown;
     for (const group of container.querySelectorAll(".event-group")) {
       group.hidden = !group.querySelector(".event:not([hidden])");
     }
@@ -397,14 +407,24 @@ function setUpFilters(container, filtersId, events) {
       const labels = groups.filter((g) => state[g.name] !== "all")
         .map((g) => g.buttons.find((b) => b.dataset.value === state[g.name]).textContent);
       document.getElementById("filter-status").textContent =
-        `Showing ${count} ${count === 1 ? "event" : "events"}${labels.length ? `: ${labels.join(", ")}` : ""}`;
+        `Showing ${count > shown ? `${shown} of ` : ""}${count} ${count === 1 ? "event" : "events"}${labels.length ? `: ${labels.join(", ")}` : ""}`;
     }
+    return matches;
   };
+
+  more.addEventListener("click", () => {
+    const first = shown;
+    shown += PAGE;
+    writeHash();
+    // The button moves down past the new cards, so focus goes to the first of them.
+    apply(true)[first]?.querySelector(".event-open").focus();
+  });
 
   for (const g of groups) {
     for (const b of g.buttons) {
       b.addEventListener("click", () => {
         state[g.name] = b.dataset.value;
+        shown = PAGE;
         writeHash();
         apply(true);
         g.node.hidePopover();
@@ -428,7 +448,7 @@ function setUpFilters(container, filtersId, events) {
       addEventListener("scroll", place, { passive: true });
     });
   }
-  window.addEventListener("hashchange", () => { readHash(); apply(true); });
+  window.addEventListener("hashchange", () => { readHash(); shown = PAGE; apply(true); });
   panel.hidden = false;
   readHash();
   apply(false);
@@ -509,9 +529,23 @@ function restoreScroll() {
 }
 
 const list = document.querySelector("[data-events]");
+
+// A reader who scrolled past the list while it loaded would see the cards push everything
+// down, which the browser's own scroll anchoring doesn't prevent here. So whatever below the
+// list is on screen is held where it is, by scrolling as far as the cards moved it.
+function holdInView() {
+  const after = [...document.querySelectorAll("main > *, footer")].find((node) =>
+    node.id !== "events-fallback" && (list.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+    && node.getBoundingClientRect().bottom > 0 && node.getBoundingClientRect().top < innerHeight);
+  if (!after) return () => {};
+  const top = after.getBoundingClientRect().top;
+  return () => scrollBy(0, after.getBoundingClientRect().top - top);
+}
+
 fetch(list.dataset.src || "events.json", { cache: "no-cache" })
   .then((response) => response.json())
   .then((events) => {
+    const held = holdInView();
     const now = new Date();
     let upcoming = events.filter((e) => new Date(e.end) > now);
     if (list.dataset.calendar) upcoming = upcoming.filter((e) => e.calendar === list.dataset.calendar);
@@ -532,6 +566,7 @@ fetch(list.dataset.src || "events.json", { cache: "no-cache" })
       list.append(...upcoming.map(renderEvent));
     }
     document.getElementById("events-fallback").remove();
+    held();
   })
   .catch(() => {})
   .then(() => requestAnimationFrame(() => requestAnimationFrame(restoreScroll)));
