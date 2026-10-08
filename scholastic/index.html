@@ -21,7 +21,344 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="../style.css?v=0c45eb57c8">
+  <style>
+/* Fraunces and Inter, served from fonts/ (SIL Open Font License, see fonts/*-OFL.txt)
+   rather than Google Fonts, so pages don't wait on another origin. */
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/fraunces-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/fraunces-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(/fonts/inter-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(/fonts/inter-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --bg: #faf8f4;
+  --fg: #1d1b18;
+  --muted: #6b655c;
+  --accent: #2f5d50;
+  --card: #ffffff;
+  --line: #e4ded3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161513;
+    --fg: #ece8e1;
+    --muted: #a39d93;
+    --accent: #7fb8a6;
+    --card: #1f1d1a;
+    --line: #34312c;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.6 Inter, system-ui, sans-serif;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+h1, h2, h3 { font-family: Fraunces, Georgia, serif; line-height: 1.15; }
+a { color: var(--accent); }
+
+.hero {
+  padding: 96px 0 72px;
+  border-bottom: 1px solid var(--line);
+  background:
+    repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 48px 48px;
+}
+.hero .wrap { background: var(--bg); padding: 32px 16px; }
+.kicker { color: var(--muted); margin: 0; font-size: 14px; }
+.hero h1 { font-size: clamp(36px, 7vw, 60px); margin: 8px 0 12px; }
+.lede { font-size: 20px; color: var(--muted); max-width: 36em; }
+.button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+section { padding: 40px 0; border-bottom: 1px solid var(--line); }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.card h3 { margin: 0 0 4px; }
+.card p { margin: 0; color: var(--muted); }
+footer { color: var(--muted); font-size: 14px; padding: 32px 16px; }
+
+main > h1 { font-size: clamp(32px, 6vw, 48px); margin: 8px 0 12px; }
+main > .kicker { padding-top: 32px; }
+.minutes-link { margin-top: 20px; }
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 12px;
+}
+.event {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.event { position: relative; }
+.event-date {
+  flex: none;
+  width: 64px;
+  text-align: center;
+  border-right: 1px solid var(--line);
+  padding: 4px 12px 4px 0;
+}
+.event-month {
+  display: block;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.event-day {
+  display: block;
+  font: 600 30px/1.1 Fraunces, Georgia, serif;
+}
+.event-body { min-width: 0; }
+.event-body h3 { margin: 0 0 2px; font-size: 18px; }
+.event-meta { margin: 0; color: var(--muted); font-size: 15px; }
+.event-club { border-left: 4px solid var(--accent); padding-left: 13px; }
+.event-club-label {
+  margin: 0 0 2px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+address { font-style: normal; margin: 12px 0 0; line-height: 1.5; }
+
+[hidden] { display: none !important; }
+.filter-menu {
+  font: inherit;
+  font-size: 15px;
+  padding: 6px 14px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+.filter-menu:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A bar of menu chips that stays under the navigation, like the chip bars in map and
+   shopping apps, so the filters never take over the screen. */
+.filter-bar {
+  position: sticky;
+  top: var(--nav-height, 0px);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px -16px 0;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.filter-menu::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 3px 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.filter-menu-set { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.filter-options {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 180px;
+  max-width: calc(100vw - 16px);
+  max-height: 60vh;
+  padding: 6px;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.filter-options:popover-open { display: flex; flex-direction: column; }
+.filter-options button {
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.filter-options button:hover { background: var(--bg); }
+.filter-options button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.filter-options button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+.filter-options button[aria-pressed="true"]::after { content: " ✓" / ""; }
+.event-group h2 { margin: 28px 0 12px; font-size: 22px; }
+.events-empty { color: var(--muted); }
+/* Until the cards arrive, a filtered list holds a screen's height, so what follows it starts
+   off-screen and isn't seen to jump when dozens of cards push it down. */
+[data-events][data-filters]:empty { min-height: 100vh; }
+
+html { scroll-padding-top: var(--nav-height, 80px); }
+.site-nav { position: sticky; top: 0; z-index: 3; border-bottom: 1px solid var(--line); background: var(--bg); }
+.site-nav .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.site-nav a { color: var(--fg); text-decoration: none; }
+.site-nav .brand { font: 600 18px/1.2 Fraunces, Georgia, serif; }
+.site-nav ul { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
+.site-nav a:hover, .site-nav a[aria-current] { color: var(--accent); }
+.site-nav ul a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
+.site-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+main > h1:first-child { margin-top: 32px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.event-year { display: block; font-size: 12px; color: var(--muted); }
+/* The title's button stretches over the whole card, so the card opens the details;
+   links in the card sit above it. */
+.event-open {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.event-open::after { content: ""; position: absolute; inset: -1px; border-radius: 8px; }
+.event-open:focus-visible { outline: none; }
+.event-open:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
+.event:hover, .event:has(.event-open[aria-expanded="true"]) { border-color: var(--accent); }
+.event-body a { position: relative; z-index: 1; }
+.event-date { order: -1; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 10; padding: 8px 16px; background: var(--accent); color: var(--bg); border-radius: 6px; font-weight: 600; }
+.skip-link:focus { top: 8px; }
+.prices { width: auto; min-width: min(100%, 420px); margin: 20px 0 8px; border-collapse: collapse; }
+.prices caption { text-align: left; font-weight: 600; margin-bottom: 6px; }
+.prices th, .prices td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.prices thead th, .prices tbody th { font-weight: 600; }
+.prices td { white-space: nowrap; }
+.button-secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.event-dialog {
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 0;
+  overflow: auto;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.event-dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+.event-dialog-body { padding: 24px 24px 8px; overflow-wrap: anywhere; }
+.event-dialog h2 { margin: 0 0 8px; padding-right: 40px; font-size: 26px; }
+.event-dialog h2:focus { outline: none; }
+.event-dialog-date { margin: 0; font-weight: 600; }
+.event-add { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 4px 0 20px; }
+.event-dialog-place { margin: 0 0 4px; }
+.event-description { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 4px; }
+.event-description ul { padding-left: 20px; }
+.event-dialog-close {
+  display: block;
+  margin: 0 24px 24px auto;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 20px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.event-dialog-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.event-dialog-x {
+  position: sticky;
+  top: 8px;
+  z-index: 1;
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 8px 8px -52px auto;
+  padding: 0;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--fg);
+  background: var(--card);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.event-dialog-x:hover { background: var(--bg); }
+.event-dialog-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
   <script src="../calendar.js?v=de29a082e0" defer></script>
 </head>
 <body>

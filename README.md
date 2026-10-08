@@ -2,11 +2,11 @@
 
 Website for the Larimer County Chess Club, served by GitHub Pages from the main branch.
 
-Edit index.html to update content; style.css holds the styling.
+Edit index.html to update content; style.css holds the styling, copied into each page's <style>.
 
 When you add a page, such as new board minutes, add its URL to sitemap.xml.
 
-After changing calendar.js or style.css, run python scripts/stamp_assets.py. It updates the ?v= stamp on every page's links to them, so browsers don't pair a new page with a cached old file. CI fails if a stamp is stale.
+After changing calendar.js or style.css, run python scripts/sync_assets.py. It copies style.css into every page, so the first paint doesn't wait on another request, and updates the ?v= stamp on every page's link to calendar.js, so browsers don't pair a new page with a cached old script. Never edit a page's <style> by hand. CI fails if a page is out of date.
 
 ## Events
 
@@ -27,7 +27,7 @@ To run them locally:
 ```
 npm ci
 npm run check:html
-python scripts/stamp_assets.py --check
+python scripts/sync_assets.py --check
 python tests/check_sitemap.py
 python -m unittest discover -s tests
 python -m http.server 8765 --bind 127.0.0.1 &
