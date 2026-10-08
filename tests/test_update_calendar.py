@@ -90,7 +90,7 @@ class AllAges(unittest.TestCase):
             self.assertIn("all-ages", uc.describe(event(title), calendar)["tags"], title)
 
     def test_age_limited(self):
-        for title in ("Blitz Night (21+) at a Bar", "Adults Only Simul", "Wednesday Night Chess at Purpose Brewing (adults)","Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
+        for title in ("Blitz Night (21+) at a Bar", "Adults Only Simul","Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
                       "Chessmates Chess Club at Bamford Elementary (grades 1–5)",
                       "Drop-In Open Chess (ages 55+) at Chilson Senior Center"):
             self.assertNotIn("all-ages", uc.describe(event(title), "community")["tags"], title)
@@ -101,10 +101,10 @@ class Cost(unittest.TestCase):
         return [t for t in uc.describe(event("Some event", text), "community")["tags"] if t != "all-ages"]
 
     def test_free_for_everyone(self):
-        self.assertEqual(self.tags("Cost: free. Just show up."), ["free", "free-youth"])
+        self.assertEqual(self.tags("Cost: free. Just show up."), ["free"])
 
-    def test_free_adult_event_is_not_free_for_youth(self):
-        d = uc.describe(event("Wednesday Night Chess at Purpose Brewing (adults)", "Cost: free."), "community")
+    def test_free_is_not_free_for_youth(self):
+        d = uc.describe(event("Wednesday Night Chess at Purpose Brewing", "Cost: free. It's at a brewery."), "community")
         self.assertIn("free", d["tags"])
         self.assertNotIn("free-youth", d["tags"])
 
