@@ -85,7 +85,6 @@ function addToCalendar(event, start) {
     el("span", "event-month", month.format(start)),
     el("span", "event-day", day.format(start)),
     el("span", "event-year", year.format(start)),
-    el("span", "event-add", "+ Add"),
   );
 
   const menu = el("div", "add-menu");

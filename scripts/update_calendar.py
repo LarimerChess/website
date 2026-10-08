@@ -64,7 +64,8 @@ def describe(event, calendar):
         "calendar": calendar,
         "organizer": organizer,
         "tags": tags,
-        "url": links[0] if organizer != CLUB and links else "",
+        # Only the community calendar's events link out; their pages have real details.
+        "url": links[0] if calendar == "community" and links else "",
         "price": fee.group(1) if fee else "",
     }
 
