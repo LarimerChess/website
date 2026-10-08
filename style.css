@@ -106,3 +106,4 @@ main > .kicker { padding-top: 32px; }
 .event-body { min-width: 0; }
 .event-body h3 { margin: 0 0 2px; font-size: 18px; }
 .event-meta { margin: 0; color: var(--muted); font-size: 15px; }
+address { font-style: normal; margin: 12px 0 0; line-height: 1.5; }

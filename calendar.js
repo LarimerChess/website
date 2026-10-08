@@ -1,4 +1,4 @@
-const MAX_EVENTS = 4;
+const MAX_EVENTS = 6;
 const tz = { timeZone: "America/Denver" };
 const fmt = (opts) => new Intl.DateTimeFormat("en-US", { ...tz, ...opts });
 const month = fmt({ month: "short" });
