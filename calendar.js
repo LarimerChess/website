@@ -142,6 +142,9 @@ function linked(text) {
   return nodes;
 }
 
+// The lines every description starts with (see the lccc-events runbook), shown in bold.
+const LABEL = /^(?:Cost(?: for [^:]+)?|Time control):/;
+
 // A calendar description as paragraphs, with "•" lines as a list.
 function descriptionNodes(text) {
   const nodes = [];
@@ -160,7 +163,9 @@ function descriptionNodes(text) {
         if (!paragraph) nodes.push(paragraph = el("p"));
         else paragraph.append(el("br"));
         list = null;
-        paragraph.append(...linked(line));
+        const label = line.match(LABEL);
+        if (label) paragraph.append(el("strong", null, label[0]));
+        paragraph.append(...linked(label ? line.slice(label[0].length) : line));
       }
     }
   }
