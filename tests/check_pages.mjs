@@ -45,7 +45,7 @@ const cityButtons = await page.$$eval('[data-filter-group="city"] button', (b) =
 JSON.stringify(cityButtons) === JSON.stringify(["All cities", ...cities]) ? pass(`city filters: ${cityButtons.join(", ")}`)
   : fail(`city filters ${JSON.stringify(cityButtons)} don't match event cities ${JSON.stringify(cities)}`);
 
-for (const kind of ["club", "youth", "senior", "all"]) {
+for (const kind of ["club", "adults", "youth", "senior", "all"]) {
   await page.click(`[data-filter-group="kind"] button[data-value="${kind}"]`);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = kind === "all" ? upcoming.length : upcoming.filter((e) => (e.tags || []).includes(kind)).length;
