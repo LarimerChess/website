@@ -12,6 +12,7 @@ const year = fmt({ year: "numeric" });
 const weekday = fmt({ weekday: "long" });
 const timeRange = fmt({ hour: "numeric", minute: "2-digit" });
 const longDate = fmt({ weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const monthDay = fmt({ month: "long", day: "numeric", year: "numeric" });
 const EVENTS_PAGE = "https://larimerchess.org/events/";
 
 function el(tag, className, text) {
@@ -80,7 +81,7 @@ function addToCalendar(event, start) {
   button.type = "button";
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", id);
-  button.setAttribute("aria-label", `Add to calendar: ${event.title}, ${longDate.format(start)}`);
+  button.setAttribute("aria-label", `Add ${event.title}, ${monthDay.format(start)}, to calendar`);
   button.append(
     el("span", "event-month", month.format(start)),
     el("span", "event-day", day.format(start)),
@@ -125,6 +126,10 @@ document.addEventListener("keydown", (e) => {
   if (open) open.focus();
 });
 
+// Text sighted readers see but screen readers skip, and the reverse.
+const shown = (text) => { const span = el("span", null, text); span.setAttribute("aria-hidden", "true"); return span; };
+const spoken = (text) => el("span", "visually-hidden", text);
+
 function renderEvent(event) {
   const start = new Date(event.start);
   const end = new Date(event.end);
@@ -133,24 +138,40 @@ function renderEvent(event) {
 
   const [date, menu] = addToCalendar(event, start);
 
+  // The heading carries the full date, so jumping between headings says what and when.
   const body = el("div", "event-body");
-  body.append(el("h3", null, event.title));
-  const when = event.allDay
-    ? weekday.format(start)
-    : `${weekday.format(start)} · ${timeRange.formatRange(start, end)}`;
-  body.append(el("p", "event-meta", when));
+  const heading = el("h3", null, event.title);
+  heading.append(spoken(`, ${longDate.format(start)}`));
+  body.append(heading);
+  const when = el("p", "event-meta");
+  if (event.allDay) {
+    when.append(shown(weekday.format(start)), spoken("All day"));
+  } else {
+    when.append(shown(`${weekday.format(start)} · `));
+    for (const part of timeRange.formatRangeToParts(start, end)) {
+      const dash = part.source === "shared" && part.type === "literal" && part.value.match(/^(\s*)([–-])(\s*)$/);
+      if (dash) {
+        when.append(dash[1], shown(dash[2]), spoken("\u00a0to\u00a0"), dash[3]);
+      } else {
+        when.append(part.value);
+      }
+    }
+  }
+  body.append(when);
   if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
   if (event.organizer && event.organizer !== CLUB) {
     const by = el("p", "event-meta event-organizer", `Run by ${event.organizer}`);
     if (event.url) {
       const details = el("a", null, "Details");
+      details.append(spoken(` about ${event.title}`));
       details.href = event.url;
-      by.append(" · ", details);
+      by.append(shown(" · "), details);
     }
     body.append(by);
   }
 
-  item.append(date, menu, body);
+  // Card text first, then its button; CSS still shows the date on the left.
+  item.append(body, date, menu);
   return item;
 }
 
@@ -168,18 +189,23 @@ function renderByMonth(container, events) {
   }
 }
 
-function applyFilter(container, buttons, tag) {
+function applyFilter(container, buttons, tag, announce) {
   for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.filter === tag));
-  let shown = 0;
+  let count = 0;
   for (const card of container.querySelectorAll(".event")) {
     const match = card.dataset.tags.split(" ").includes(tag);
     card.hidden = !match;
-    if (match) shown++;
+    if (match) count++;
   }
   for (const group of container.querySelectorAll(".event-group")) {
     group.hidden = !group.querySelector(".event:not([hidden])");
   }
-  container.querySelector(".events-empty").hidden = shown > 0;
+  container.querySelector(".events-empty").hidden = count > 0;
+  if (announce) {
+    const label = buttons.find((b) => b.dataset.filter === tag).textContent;
+    document.getElementById("filter-status").textContent =
+      `Showing ${count} ${count === 1 ? "event" : "events"}${tag === "all" ? "" : `: ${label}`}`;
+  }
 }
 
 function setUpFilters(container, filtersId) {
@@ -190,10 +216,10 @@ function setUpFilters(container, filtersId) {
     button.addEventListener("click", () => {
       const tag = button.dataset.filter;
       history.replaceState(null, "", tag === "all" ? location.pathname : `#${tag}`);
-      applyFilter(container, buttons, tag);
+      applyFilter(container, buttons, tag, true);
     });
   }
-  window.addEventListener("hashchange", () => applyFilter(container, buttons, fromHash()));
+  window.addEventListener("hashchange", () => applyFilter(container, buttons, fromHash(), true));
   document.getElementById(filtersId).hidden = false;
   applyFilter(container, buttons, fromHash());
 }
