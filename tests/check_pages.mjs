@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const axeSource = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const base = process.argv[2] || "http://127.0.0.1:8765";
 const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
-const pages = ["/", "/events/", "/minutes/", "/minutes/2026-09-24.html"];
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html"];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
@@ -34,7 +34,9 @@ for (const path of pages) {
 await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
 await page.goto(base + "/events/", { waitUntil: "networkidle0" });
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
-const upcoming = events.filter((e) => new Date(e.end) > new Date());
+const allUpcoming = events.filter((e) => new Date(e.end) > new Date());
+const isYouth = (e) => (e.tags || []).includes("youth");
+const upcoming = allUpcoming.filter((e) => !isYouth(e));
 
 const cards = await page.$$eval(".event", (c) => c.length);
 cards === upcoming.length ? pass(`events page shows all ${cards} upcoming events`)
@@ -45,7 +47,7 @@ const cityButtons = await page.$$eval('[data-filter-group="city"] button', (b) =
 JSON.stringify(cityButtons) === JSON.stringify(["All cities", ...cities]) ? pass(`city filters: ${cityButtons.join(", ")}`)
   : fail(`city filters ${JSON.stringify(cityButtons)} don't match event cities ${JSON.stringify(cities)}`);
 
-for (const [group, kind] of [["kind", "club"], ["kind", "all"], ["age", "all-ages"], ["age", "youth"], ["age", "senior"], ["age", "all"]]) {
+for (const [group, kind] of [["kind", "club"], ["kind", "all"], ["age", "all-ages"], ["age", "senior"], ["age", "all"]]) {
   await page.click(`[data-filter-group="${group}"] button[data-value="${kind}"]`);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = kind === "all" ? upcoming.length : upcoming.filter((e) => (e.tags || []).includes(kind)).length;
@@ -93,6 +95,21 @@ const incomplete = data.filter((d) => d["@type"] === "Event" && !(d.name && d.st
 data.filter((d) => d["@type"] === "Event").length === clubEvents && incomplete.length === 0
   ? pass(`structured data for ${clubEvents} club events`)
   : fail(`structured data: ${data.length} items for ${clubEvents} club events, ${incomplete.length} incomplete`);
+
+await page.goto(base + "/scholastic/", { waitUntil: "networkidle0" });
+const youthEvents = allUpcoming.filter(isYouth);
+const youthCards = await page.$$eval(".event", (c) => c.length);
+youthCards === youthEvents.length ? pass(`scholastic page shows all ${youthCards} youth events`)
+  : fail(`scholastic page shows ${youthCards} cards for ${youthEvents.length} youth events`);
+const youthCities = [...new Set(youthEvents.map((e) => e.city).filter(Boolean))].sort();
+const youthCityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));
+JSON.stringify(youthCityButtons) === JSON.stringify(["All cities", ...youthCities]) ? pass(`scholastic city filters: ${youthCityButtons.join(", ")}`)
+  : fail(`scholastic city filters ${JSON.stringify(youthCityButtons)} don't match ${JSON.stringify(youthCities)}`);
+await page.click('[data-filter-group="kind"] button[data-value="tournament"]');
+const youthTournaments = await page.$$eval(".event:not([hidden])", (c) => c.length);
+const expectedTournaments = youthEvents.filter((e) => e.tags.includes("tournament")).length;
+youthTournaments === expectedTournaments ? pass(`scholastic tournaments: ${youthTournaments}`)
+  : fail(`scholastic tournaments show ${youthTournaments}, expected ${expectedTournaments}`);
 
 await page.goto(base + "/", { waitUntil: "networkidle0" });
 const homeCards = await page.$$eval(".event", (c) => c.length);

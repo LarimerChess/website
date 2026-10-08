@@ -33,9 +33,9 @@ ORGANIZERS = [
 ]
 # (tag, pattern in title)
 TITLE_TAGS = [
-    ("tournament", r"tournament|classic|slow|arena|sac.n saturdays"),
+    ("tournament", r"tournament|\bclassic\b|slow|arena|sac.n saturdays"),
     ("casual", r"club night|night chess|drop-in"),
-    ("youth", r"k.12|scholastic|grades? \d|elementary|kids"),
+    ("youth", r"k.12|scholastic|grades? \w|elementary|kids|\bschool\b|\(youth\)"),
     ("senior", r"55\+|senior"),
 ]
 ADULTS_ONLY = re.compile(r"\b(?:18|21)\+|adults? only", re.I)

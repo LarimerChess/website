@@ -1,5 +1,51 @@
 [
  {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-10-08T15:30:00-06:00",
+  "end": "2026-10-08T16:30:00-06:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-10-08T15:45:00-06:00",
+  "end": "2026-10-08T16:45:00-06:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Chess Club for Kids at Loveland Public Library",
   "calendar": "community",
   "organizer": "Loveland Public Library",
@@ -124,6 +170,29 @@
   "city": "Fort Collins"
  },
  {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-10-13T15:45:00-06:00",
+  "end": "2026-10-13T16:45:00-06:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
   "calendar": "community",
   "organizer": "Chilson Senior Center",
@@ -172,6 +241,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-10-14T16:00:00-06:00",
+  "end": "2026-10-14T17:00:00-06:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -191,6 +283,29 @@
   "place": {
    "name": "Purpose Brewing and Cellars",
    "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-10-15T15:30:00-06:00",
+  "end": "2026-10-15T16:30:00-06:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
@@ -296,6 +411,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-10-19T14:30:00-06:00",
+  "end": "2026-10-19T15:15:00-06:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -319,6 +457,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80524"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-10-20T15:45:00-06:00",
+  "end": "2026-10-20T16:45:00-06:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
   },
   "city": "Fort Collins"
  },
@@ -371,6 +532,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-10-21T16:00:00-06:00",
+  "end": "2026-10-21T17:00:00-06:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-10-21T16:00:00-06:00",
+  "end": "2026-10-21T17:00:00-06:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -393,6 +600,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-10-22T15:30:00-06:00",
+  "end": "2026-10-22T16:30:00-06:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-10-22T15:45:00-06:00",
+  "end": "2026-10-22T16:45:00-06:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -498,6 +751,29 @@
   "city": "Fort Collins"
  },
  {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-10-27T15:45:00-06:00",
+  "end": "2026-10-27T16:45:00-06:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
   "calendar": "community",
   "organizer": "Chilson Senior Center",
@@ -546,6 +822,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-10-28T16:00:00-06:00",
+  "end": "2026-10-28T17:00:00-06:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-10-28T16:00:00-06:00",
+  "end": "2026-10-28T17:00:00-06:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -568,6 +890,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-10-29T15:30:00-06:00",
+  "end": "2026-10-29T16:30:00-06:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-10-29T15:45:00-06:00",
+  "end": "2026-10-29T16:45:00-06:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -672,6 +1040,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-11-02T14:30:00-07:00",
+  "end": "2026-11-02T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -695,6 +1086,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80524"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-11-03T15:45:00-07:00",
+  "end": "2026-11-03T16:45:00-07:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
   },
   "city": "Fort Collins"
  },
@@ -747,6 +1161,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-11-04T16:00:00-07:00",
+  "end": "2026-11-04T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-11-04T16:00:00-07:00",
+  "end": "2026-11-04T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -769,6 +1229,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-11-05T15:30:00-07:00",
+  "end": "2026-11-05T16:30:00-07:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-11-05T15:45:00-07:00",
+  "end": "2026-11-05T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -873,6 +1379,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-11-09T14:30:00-07:00",
+  "end": "2026-11-09T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -896,6 +1425,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80524"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-11-10T15:45:00-07:00",
+  "end": "2026-11-10T16:45:00-07:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
   },
   "city": "Fort Collins"
  },
@@ -948,6 +1500,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-11-11T16:00:00-07:00",
+  "end": "2026-11-11T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-11-11T16:00:00-07:00",
+  "end": "2026-11-11T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -970,6 +1568,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-11-12T15:30:00-07:00",
+  "end": "2026-11-12T16:30:00-07:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-11-12T15:45:00-07:00",
+  "end": "2026-11-12T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -1071,6 +1715,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-11-16T14:30:00-07:00",
+  "end": "2026-11-16T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1094,6 +1761,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80524"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-11-17T15:45:00-07:00",
+  "end": "2026-11-17T16:45:00-07:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
   },
   "city": "Fort Collins"
  },
@@ -1146,6 +1836,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-11-18T16:00:00-07:00",
+  "end": "2026-11-18T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-11-18T16:00:00-07:00",
+  "end": "2026-11-18T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -1168,6 +1904,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-11-19T15:30:00-07:00",
+  "end": "2026-11-19T16:30:00-07:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-11-19T15:45:00-07:00",
+  "end": "2026-11-19T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -1424,6 +2206,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-11-30T14:30:00-07:00",
+  "end": "2026-11-30T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1447,6 +2252,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80524"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "start": "2026-12-01T15:45:00-07:00",
+  "end": "2026-12-01T16:45:00-07:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
   },
   "city": "Fort Collins"
  },
@@ -1499,6 +2327,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-12-02T16:00:00-07:00",
+  "end": "2026-12-02T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-12-02T16:00:00-07:00",
+  "end": "2026-12-02T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -1521,6 +2395,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-12-03T15:30:00-07:00",
+  "end": "2026-12-03T16:30:00-07:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-12-03T15:45:00-07:00",
+  "end": "2026-12-03T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -1649,6 +2569,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-12-07T14:30:00-07:00",
+  "end": "2026-12-07T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1724,6 +2667,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-12-09T16:00:00-07:00",
+  "end": "2026-12-09T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-12-09T16:00:00-07:00",
+  "end": "2026-12-09T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -1746,6 +2735,52 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Ridgeview Classical School (grades K–6)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/ridgeview/",
+  "price": "",
+  "start": "2026-12-10T15:30:00-07:00",
+  "end": "2026-12-10T16:30:00-07:00",
+  "allDay": false,
+  "location": "Ridgeview Classical School, 1800 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Ridgeview Classical School",
+   "street": "1800 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-12-10T15:45:00-07:00",
+  "end": "2026-12-10T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -1847,6 +2882,29 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Chess Club at McGraw Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mcgraw/",
+  "price": "",
+  "start": "2026-12-14T14:30:00-07:00",
+  "end": "2026-12-14T15:15:00-07:00",
+  "allDay": false,
+  "location": "McGraw Elementary School, 4800 Hinsdale Dr, Fort Collins, CO 80526",
+  "place": {
+   "name": "McGraw Elementary School",
+   "street": "4800 Hinsdale Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1899,6 +2957,52 @@
   "city": "Loveland"
  },
  {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-12-16T16:00:00-07:00",
+  "end": "2026-12-16T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Mountain Sage Community School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/mountain-sage/",
+  "price": "",
+  "start": "2026-12-16T16:00:00-07:00",
+  "end": "2026-12-16T17:00:00-07:00",
+  "allDay": false,
+  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
+  "place": {
+   "name": "Mountain Sage Community School",
+   "street": "2310 E Prospect Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
   "title": "Wednesday Night Chess at Purpose Brewing",
   "calendar": "community",
   "organizer": "Fort Collins Chess Meetup",
@@ -1921,6 +3025,29 @@
    "city": "Fort Collins",
    "region": "CO",
    "zip": "80525"
+  },
+  "city": "Fort Collins"
+ },
+ {
+  "title": "Chessmates Chess Club at Fort Collins Montessori School",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/fort-collins-montessori/",
+  "price": "",
+  "start": "2026-12-17T15:45:00-07:00",
+  "end": "2026-12-17T16:45:00-07:00",
+  "allDay": false,
+  "location": "Fort Collins Montessori School, 1109 W Harmony Rd, Fort Collins, CO 80526",
+  "place": {
+   "name": "Fort Collins Montessori School",
+   "street": "1109 W Harmony Rd",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
   },
   "city": "Fort Collins"
  },
@@ -2203,6 +3330,29 @@
    "zip": "80537"
   },
   "city": "Loveland"
+ },
+ {
+  "title": "Chessmates Academy Chess Club (youth)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/chessmates-academy/",
+  "price": "",
+  "start": "2026-12-30T16:00:00-07:00",
+  "end": "2026-12-30T17:00:00-07:00",
+  "allDay": false,
+  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
+  "place": {
+   "name": "Council Tree Covenant Church",
+   "street": "4825 S Lemay Ave",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins"
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",

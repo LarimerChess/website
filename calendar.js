@@ -1,5 +1,6 @@
 // Renders events.json as cards. The list's data attributes pick the variant:
-// data-src (path to events.json), data-calendar (only that calendar),
+// data-src (path to events.json), data-calendar (only that calendar), data-only and
+// data-without (only, or none, of the events with that tag),
 // data-limit (at most that many), data-filters (id of the filter buttons, which
 // also groups the cards by month).
 const CLUB = "Larimer County Chess Club";
@@ -318,6 +319,8 @@ fetch(list.dataset.src || "events.json")
     const now = new Date();
     let upcoming = events.filter((e) => new Date(e.end) > now);
     if (list.dataset.calendar) upcoming = upcoming.filter((e) => e.calendar === list.dataset.calendar);
+    if (list.dataset.only) upcoming = upcoming.filter((e) => (e.tags || []).includes(list.dataset.only));
+    if (list.dataset.without) upcoming = upcoming.filter((e) => !(e.tags || []).includes(list.dataset.without));
     if (list.dataset.limit) upcoming = upcoming.slice(0, Number(list.dataset.limit));
 
     if (upcoming.length === 0) {

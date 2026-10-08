@@ -59,6 +59,10 @@ class Describe(unittest.TestCase):
     def test_youth_and_seniors(self):
         kids = uc.describe(event("Chess Club for Kids at Loveland Public Library"), "community")
         self.assertEqual((kinds(kids["tags"]), kids["organizer"]), (["youth"], "Loveland Public Library"))
+        for title in ("Chessmates Chess Club at Mountain Sage Community School", "Chessmates Academy Chess Club (youth)",
+                      "Chessmates Chess Club at Ridgeview Classical School (grades K–6)"):
+            d = uc.describe(event(title), "community")
+            self.assertEqual((kinds(d["tags"]), d["organizer"]), (["youth"], "Chessmates"), title)
         seniors = uc.describe(event("Drop-In Open Chess (ages 55+) at Chilson Senior Center"), "community")
         self.assertEqual((kinds(seniors["tags"]), seniors["organizer"]), (["casual", "senior"], "Chilson Senior Center"))
 
