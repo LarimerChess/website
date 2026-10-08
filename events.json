@@ -732,7 +732,8 @@
   "tags": [
    "tournament",
    "all-ages",
-   "rated"
+   "rated",
+   "classical"
   ],
   "url": "https://coloradochess.com/tournament/dcc-fall-classic-2026/",
   "price": "",
@@ -1060,7 +1061,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
@@ -1412,7 +1414,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
@@ -2113,7 +2116,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
@@ -2647,7 +2651,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
@@ -3252,7 +3257,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
@@ -3567,7 +3573,8 @@
    "all-ages",
    "club",
    "rated",
-   "free-youth"
+   "free-youth",
+   "classical"
   ],
   "url": "",
   "price": "15",
