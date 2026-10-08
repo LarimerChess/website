@@ -5,6 +5,7 @@
 
 import importlib.util
 import unittest
+from unittest import mock
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -79,14 +80,25 @@ class EventData(unittest.TestCase):
 class Sitemap(unittest.TestCase):
     def test_lastmod_moves_only_for_changed_pages(self):
         pages = {"events/first-saturday-classic/": "", "events/third-saturday-slow/": ""}
-        out = bp.sitemap(SITEMAP, pages, {"events/": True}, "2026-10-08")
+        edits = {"minutes/index.html": "2026-09-24", "scholastic/index.html": "2026-09-30", "index.html": "2026-10-05"}
+        with mock.patch.object(bp, "content_changed", lambda path, today: edits[path]):
+            out = bp.sitemap(SITEMAP, pages, {"events/": True}, "2026-10-08")
         self.assertEqual(out.count("<url>"), 6)
         self.assertNotIn("old-tournament", out)
         self.assertIn("events/</loc><lastmod>2026-10-08<", out)
         self.assertIn("first-saturday-classic/</loc><lastmod>2026-10-02<", out)
         self.assertIn("third-saturday-slow/</loc><lastmod>2026-10-08<", out)
         self.assertIn("scholastic/</loc><lastmod>2026-10-01<", out)
-        self.assertIn("<loc>https://larimerchess.org/minutes/</loc></url>", out)
+        self.assertIn("minutes/</loc><lastmod>2026-09-24<", out)
+        self.assertIn("larimerchess.org/</loc><lastmod>2026-10-05<", out)
+
+    def test_page_text_changes_count_but_styles_and_whitespace_do_not(self):
+        with mock.patch.object(bp, "git_text", lambda spec: '<style>\nold</style><script src="calendar.js?v=1"></script>\n<p>Hi</p>'), \
+             mock.patch.object(bp.Path, "read_text", lambda *_, **__: '<style>new</style><script src="calendar.js?v=2"></script> <p>Hi</p>'):
+            self.assertIsNone(bp.content_changed("index.html", "2026-10-08"))
+        with mock.patch.object(bp, "git_text", lambda spec: "<p>Hi</p>"), \
+             mock.patch.object(bp.Path, "read_text", lambda *_, **__: "<p>Hello</p>"):
+            self.assertEqual(bp.content_changed("index.html", "2026-10-08"), "2026-10-08")
 
 
 if __name__ == "__main__":

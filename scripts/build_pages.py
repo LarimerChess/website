@@ -8,9 +8,13 @@
   dates, its calendar description, and its Event data. A page whose tournament has left
   events.json is deleted.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
-  the day what it shows last changed.
+  the day what it shows last changed. Every other page's lastmod is the day of the last
+  commit that changed its text, or today if the working copy changes it; the styles and
+  script stamp that sync_assets.py writes, and whitespace, don't count. That needs the
+  full git history, and --check leaves those dates as they are.
 
-The Update calendar Action runs this after scripts/update_calendar.py.
+The Update calendar Action runs this after scripts/update_calendar.py, and the Date pages
+Action after every push to main.
 """
 
 import html
@@ -269,7 +273,35 @@ def committed_events():
         return None
 
 
-def sitemap(text, pages, changed, today):
+# What sync_assets.py and this script write into hand-written pages, left out when telling whether one changed.
+NOT_CONTENT = re.compile(r'<style>.*?</style>|<link rel="stylesheet"[^>]*>|\?v=[0-9a-f]+|' + EVENT_DATA.pattern, re.S)
+
+
+def git_text(spec):
+    try:
+        return subprocess.run(["git", "show", spec], cwd=ROOT, capture_output=True, check=True).stdout.decode()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def content_changed(path, today):
+    """The day a hand-written page's text last changed; None if git can't tell."""
+    content = lambda text: text and " ".join(NOT_CONTENT.sub("", text).split())
+    if content((ROOT / path).read_text(encoding="utf-8")) != content(git_text(f"HEAD:{path}")):
+        return today
+    try:
+        log = subprocess.run(["git", "log", "--format=%H %cI", "--", path], cwd=ROOT,
+                             capture_output=True, check=True, text=True).stdout.split("\n")
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    for line in filter(None, log):
+        commit, when = line.split()
+        if content(git_text(f"{commit}:{path}")) != content(git_text(f"{commit}^:{path}")):
+            return datetime.fromisoformat(when).astimezone(TZ).date().isoformat()
+    return None
+
+
+def sitemap(text, pages, changed, today, date_pages=True):
     """sitemap.xml with the series pages listed after events/, and lastmod moved for the pages that changed."""
     entries = re.findall(r"<url><loc>([^<]+)</loc>(?:<lastmod>([^<]+)</lastmod>)?</url>", text)
     old = dict(entries)
@@ -284,10 +316,12 @@ def sitemap(text, pages, changed, today):
         path = loc.removeprefix(SITE + "/")
         if path in changed:
             lastmod = today
-        elif path in LISTINGS or path in pages:
+        elif path in pages:
             lastmod = old.get(loc) or today
         else:
-            lastmod = ""
+            file = path + "index.html" if path == "" or path.endswith("/") else path
+            edited = (date_pages and content_changed(file, today)) or old.get(loc) or today
+            lastmod = max(edited, old.get(loc) or today) if path in LISTINGS else edited
         lines.append(f"  <url><loc>{loc}</loc>" + (f"<lastmod>{lastmod}</lastmod>" if lastmod else "") + "</url>")
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(lines) + "\n</urlset>\n")
@@ -329,9 +363,12 @@ def main(check):
             if d.is_dir() and f"events/{d.name}/" not in pages and (d / "index.html").exists()
             and GENERATED in (d / "index.html").read_text(encoding="utf-8")]
 
+    shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT, capture_output=True, text=True)
+    if not check and shallow.stdout.strip() == "true":
+        sys.exit("The git history is shallow, so pages can't be dated; check out with fetch-depth: 0.")
     sitemap_text = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
     today = datetime.now(TZ).date().isoformat()
-    writes["sitemap.xml"] = sitemap(sitemap_text, pages, changed if not check else {}, today)
+    writes["sitemap.xml"] = sitemap(sitemap_text, pages, changed if not check else {}, today, date_pages=not check)
 
     stale = [path for path, text in writes.items()
              if not (ROOT / path).exists() or (ROOT / path).read_text(encoding="utf-8") != text]

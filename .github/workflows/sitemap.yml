@@ -1,44 +1,40 @@
-name: Update calendar
+name: Date pages
 
+# Moves a page's lastmod in sitemap.xml when a push changes its text, so nobody has to.
 on:
-  schedule:
-    - cron: "17 * * * *"
+  push:
+    branches: [main]
+    paths: ["**.html"]
   workflow_dispatch:
 
 permissions:
   contents: write
   pages: write
 
-# Date pages commits to main too; one at a time, so neither push is rejected.
 concurrency:
   group: commits-to-main
   cancel-in-progress: false
 
 jobs:
-  update:
+  date:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        # The sitemap dates each page by the last commit that changed it.
+        # Each page is dated by the last commit that changed it.
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      # Reads the calendars through the Google Calendar API with a read-only token, because
-      # the public feeds leave out the event metadata. The secret is the token's whole JSON.
-      - run: python scripts/update_calendar.py events.json
-        env:
-          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_READ_TOKEN }}
-      # The Event data, each club tournament's page, and the sitemap come from events.json.
       - run: python scripts/build_pages.py
       - name: Commit if changed
         run: |
-          git add -A events.json events sitemap.xml
+          git add sitemap.xml
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update calendar events"
+          git commit -m "Date pages in the sitemap"
+          git pull --rebase
           git push
           gh api -X POST repos/${{ github.repository }}/pages/builds
         env:
