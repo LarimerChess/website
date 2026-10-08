@@ -89,6 +89,16 @@ function icsLink(event) {
 const shown = (text) => { const span = el("span", null, text); span.setAttribute("aria-hidden", "true"); return span; };
 const spoken = (text) => el("span", "visually-hidden", text);
 
+// Other sites open in a new tab, so the calendar stays where the reader left it.
+function external(a, href) {
+  a.href = href;
+  if (a.hostname === "larimerchess.org") return a;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.append(spoken(" (opens in a new tab)"));
+  return a;
+}
+
 // "Saturday · 10:00 AM – 1:00 PM", read as "10:00 AM to 1:00 PM".
 function whenText(event, start, end) {
   const when = el("p", "event-meta");
@@ -120,7 +130,7 @@ function organizerLine(event) {
   if (event.url) {
     const details = el("a", null, "Details");
     details.append(spoken(` about ${event.title}`));
-    details.href = event.url;
+    external(details, event.url);
     if (runBy) by.append(shown(" · "));
     by.append(details);
   }
@@ -133,9 +143,7 @@ function linked(text) {
   let last = 0;
   for (const match of text.matchAll(/https?:\/\/[^\s<>"]*[^\s<>".,;:!?)]/g)) {
     nodes.push(text.slice(last, match.index));
-    const a = el("a", null, match[0]);
-    a.href = match[0];
-    nodes.push(a);
+    nodes.push(external(el("a", null, match[0]), match[0]));
     last = match.index + match[0].length;
   }
   nodes.push(text.slice(last));
@@ -211,10 +219,7 @@ function showDetails(event, button) {
 
   const add = el("div", "event-add");
   const google = el("a", "button", "Add to Google Calendar");
-  google.append(el("span", "visually-hidden", " (opens in a new tab)"));
-  google.href = googleLink(event);
-  google.target = "_blank";
-  google.rel = "noopener";
+  external(google, googleLink(event));
   const ics = el("a", "button button-secondary", "Add to Apple, Outlook, or other (.ics)");
   ics.href = icsLink(event);
   ics.download = `${event.title.replace(/[^\w]+/g, "-")}-${event.start.slice(0, 10)}.ics`;
