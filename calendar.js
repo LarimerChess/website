@@ -292,8 +292,8 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Independent groups of filter buttons: kind of event, age, how often, cost, time control and
-// city; all but kind sit in a menu under a chip. A card shows when it matches every group. The
+// Independent groups of filter buttons, each in a menu under a chip: kind of event, age, how
+// often, cost, time control, and city. A card shows when it matches every group. The
 // time control and city buttons come from the events themselves, so a page with no timed events
 // has no time control menu. The choice is kept in the address, e.g.
 // #kind=youth&schedule=weekly&city=loveland.
@@ -334,14 +334,14 @@ function setUpFilters(container, filtersId, events) {
     name: node.dataset.filterGroup,
     buttons: [...node.querySelectorAll("button[data-value]")],
     node,
-    menu: node.id && panel.querySelector(`[popovertarget="${node.id}"]`),
+    menu: panel.querySelector(`[popovertarget="${node.id}"]`),
   }));
-  for (const g of groups) if (g.menu) g.menu.dataset.label = g.menu.textContent;
+  for (const g of groups) g.menu.dataset.label = g.menu.textContent;
   const state = Object.fromEntries(groups.map((g) => [g.name, "all"]));
 
   const readHash = () => {
     const raw = decodeURIComponent(location.hash.slice(1));
-    // Older links name a single value, like #youth; find the row that has it.
+    // Older links name a single value, like #youth; find the group that has it.
     const bare = !raw.includes("=") && groups.find((g) => g.buttons.some((b) => b.dataset.value === raw));
     const params = new URLSearchParams(bare ? `${bare.name}=${raw}` : raw);
     for (const g of groups) {
@@ -358,13 +358,11 @@ function setUpFilters(container, filtersId, events) {
   const apply = (announce) => {
     for (const g of groups) {
       for (const b of g.buttons) b.setAttribute("aria-pressed", String(b.dataset.value === state[g.name]));
-      if (g.menu) {
-        const chosen = state[g.name] !== "all" && g.buttons.find((b) => b.dataset.value === state[g.name]);
-        g.menu.classList.toggle("filter-menu-set", Boolean(chosen));
-        g.menu.replaceChildren(...(chosen
-          ? [el("span", "visually-hidden", `${g.menu.dataset.label}: `), chosen.textContent]
-          : [g.menu.dataset.label]));
-      }
+      const chosen = state[g.name] !== "all" && g.buttons.find((b) => b.dataset.value === state[g.name]);
+      g.menu.classList.toggle("filter-menu-set", Boolean(chosen));
+      g.menu.replaceChildren(...(chosen
+        ? [el("span", "visually-hidden", `${g.menu.dataset.label}: `), chosen.textContent]
+        : [g.menu.dataset.label]));
     }
     let count = 0;
     for (const card of container.querySelectorAll(".event")) {
@@ -390,30 +388,26 @@ function setUpFilters(container, filtersId, events) {
         state[g.name] = b.dataset.value;
         writeHash();
         apply(true);
-        if (g.menu) {
-          g.node.hidePopover();
-          g.menu.focus();
-        }
-        // Once the bar is stuck to the top, bring the list's start back under it rather than
-        // leave the reader somewhere in the middle of a list that just changed.
-        const top = container.getBoundingClientRect().top + scrollY - panel.offsetHeight;
+        g.node.hidePopover();
+        g.menu.focus();
+        // Once the bar is stuck under the navigation, bring the list's start back under it
+        // rather than leave the reader somewhere in the middle of a list that just changed.
+        const top = container.getBoundingClientRect().top + scrollY - panel.getBoundingClientRect().bottom;
         if (scrollY > top) scrollTo(0, top);
       });
     }
-    // Menus open in the top layer, out of the scrolling bar that would clip them, so they
-    // are placed under their chip by hand.
-    if (g.menu) {
-      const place = () => {
-        const chip = g.menu.getBoundingClientRect();
-        g.node.style.top = `${chip.bottom + 6}px`;
-        g.node.style.left = `${Math.max(8, Math.min(chip.left, innerWidth - g.node.offsetWidth - 8))}px`;
-      };
-      g.node.addEventListener("toggle", (event) => {
-        if (event.newState !== "open") return removeEventListener("scroll", place);
-        place();
-        addEventListener("scroll", place, { passive: true });
-      });
-    }
+    // Menus open in the top layer, above the sticky bar and the cards, so they are placed
+    // under their chip by hand.
+    const place = () => {
+      const chip = g.menu.getBoundingClientRect();
+      g.node.style.top = `${chip.bottom + 6}px`;
+      g.node.style.left = `${Math.max(8, Math.min(chip.left, innerWidth - g.node.offsetWidth - 8))}px`;
+    };
+    g.node.addEventListener("toggle", (event) => {
+      if (event.newState !== "open") return removeEventListener("scroll", place);
+      place();
+      addEventListener("scroll", place, { passive: true });
+    });
   }
   window.addEventListener("hashchange", () => { readHash(); apply(true); });
   panel.hidden = false;
@@ -463,6 +457,11 @@ function structuredData(events) {
   script.textContent = JSON.stringify(data);
   document.head.append(script);
 }
+
+// The navigation sticks to the top, and it wraps on a phone, so what docks under it and what
+// in-page links scroll to need its height as it is.
+const nav = document.querySelector(".site-nav");
+new ResizeObserver(() => document.documentElement.style.setProperty("--nav-height", `${nav.offsetHeight}px`)).observe(nav);
 
 const list = document.querySelector("[data-events]");
 fetch(list.dataset.src || "events.json", { cache: "no-cache" })

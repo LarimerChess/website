@@ -20,7 +20,7 @@ LCCC_GOOGLE_TOKEN="$(cat ~/.config/lccc/google-token-calendar-read.json)" python
 
 ## Checks
 
-Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, the sitemap check, tests for the calendar import, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines, and Details links, the add-to-calendar menu, and structured data), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
+Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, the sitemap check, tests for the calendar import, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines and Details links, the add-to-calendar menu, and structured data), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
 
 To run them locally:
 

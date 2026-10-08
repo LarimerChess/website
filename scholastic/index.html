@@ -21,8 +21,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="../style.css?v=92b8cb2614">
-  <script src="../calendar.js?v=621b5d968d" defer></script>
+  <link rel="stylesheet" href="../style.css?v=814112aca3">
+  <script src="../calendar.js?v=562ba055bc" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -43,8 +43,9 @@
     <p>Kids are welcome at club events too, and play free: see <a href="/events/#age=all-ages&amp;cost=free-youth">club nights and tournaments free for youth</a>.</p>
 
     <div id="event-filters" class="filter-bar" hidden>
-      <div class="filters" role="group" aria-label="Kind of event" data-filter-group="kind">
-        <button type="button" data-value="all" aria-pressed="true">All</button>
+      <button type="button" class="filter-menu" popovertarget="filter-kind">Type</button>
+      <div class="filter-options" id="filter-kind" popover role="group" aria-label="Type of event" data-filter-group="kind">
+        <button type="button" data-value="all" aria-pressed="true">Any type</button>
         <button type="button" data-value="tournament" aria-pressed="false">Tournaments</button>
         <button type="button" data-value="rated" aria-pressed="false">Rated</button>
       </div>

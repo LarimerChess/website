@@ -18,10 +18,9 @@ const pass = (message) => console.log(`ok   ${message}`);
 
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"] });
 const page = await browser.newPage();
-// Every filter group but kind sits in a menu, which has to be opened first.
+// Every filter group sits in a menu, which has to be opened first.
 async function choose(group, value) {
-  const menu = await page.$(`[popovertarget="filter-${group}"]`);
-  if (menu) await menu.click();
+  await page.click(`[popovertarget="filter-${group}"]`);
   await page.click(`[data-filter-group="${group}"] button[data-value="${value}"]`);
 }
 page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
