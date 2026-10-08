@@ -192,11 +192,12 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Independent rows of filter buttons: kind of event, how often, cost, and city. A card shows
+// Independent rows of filter buttons: kind of event, age, how often, cost, and city. A card shows
 // when it matches every row. The city buttons come from the events themselves. The
 // choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
 const MATCHES = {
   kind: (card, value) => card.dataset.tags.split(" ").includes(value),
+  age: (card, value) => card.dataset.tags.split(" ").includes(value),
   schedule: (card, value) => card.dataset.tags.split(" ").includes("weekly") === (value === "weekly"),
   cost: (card, value) => card.dataset.tags.split(" ").includes(value),
   city: (card, value) => card.dataset.city === value,
@@ -220,7 +221,9 @@ function setUpFilters(container, filtersId, events) {
 
   const readHash = () => {
     const raw = decodeURIComponent(location.hash.slice(1));
-    const params = new URLSearchParams(raw.includes("=") ? raw : `kind=${raw}`);
+    // Older links name a single value, like #youth; find the row that has it.
+    const bare = !raw.includes("=") && groups.find((g) => g.buttons.some((b) => b.dataset.value === raw));
+    const params = new URLSearchParams(bare ? `${bare.name}=${raw}` : raw);
     for (const g of groups) {
       const value = params.get(g.name);
       state[g.name] = g.buttons.some((b) => b.dataset.value === value) ? value : "all";
