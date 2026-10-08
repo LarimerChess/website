@@ -697,6 +697,30 @@
   "city": "Loveland"
  },
  {
+  "title": "Denver Chess Club – DCC Fall Classic 2026",
+  "calendar": "club",
+  "organizer": "",
+  "tags": [
+   "tournament",
+   "all-ages",
+   "rated"
+  ],
+  "url": "https://coloradochess.com/tournament/dcc-fall-classic-2026/",
+  "price": "",
+  "start": "2026-10-24T00:00:00-06:00",
+  "end": "2026-10-26T00:00:00-06:00",
+  "allDay": true,
+  "location": "Hilton Garden Inn Denver Tech Center, 7675 E Union Ave, Denver, CO 80237",
+  "place": {
+   "name": "Hilton Garden Inn Denver Tech Center",
+   "street": "7675 E Union Ave",
+   "city": "Denver",
+   "region": "CO",
+   "zip": "80237"
+  },
+  "city": "Denver"
+ },
+ {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
   "calendar": "community",
   "organizer": "Chilson Senior Center",
