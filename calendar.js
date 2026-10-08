@@ -200,6 +200,8 @@ function showDetails(event, button) {
   const title = el("h2", null, event.title);
   title.id = "event-dialog-title";
   title.tabIndex = -1;
+  // showModal focuses it, so screen readers start at the top of the details rather than on a button.
+  title.autofocus = true;
   const date = el("p", "event-dialog-date", longDate.format(start));
   if (monthDay.format(start) !== monthDay.format(end)) {
     date.append(shown(" – "), spoken(" to "), longDate.format(end));
@@ -236,8 +238,6 @@ function showDetails(event, button) {
   opener = button;
   button.setAttribute("aria-expanded", "true");
   box.showModal();
-  // Start screen readers at the top of the details rather than on a button.
-  title.focus();
 }
 
 function renderEvent(event) {
