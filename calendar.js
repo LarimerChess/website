@@ -245,6 +245,8 @@ function renderEvent(event) {
   const end = new Date(event.end);
   const item = el("li", "event");
   item.dataset.tags = ["all", ...(event.tags || [])].join(" ");
+  const club = (event.tags || []).includes("club");
+  if (club) item.classList.add("event-club");
   item.dataset.city = event.city ? slug(event.city) : "";
 
   // The title's button stretches over the whole card, so a click anywhere opens the details.
@@ -255,9 +257,16 @@ function renderEvent(event) {
   open.type = "button";
   open.setAttribute("aria-haspopup", "dialog");
   open.setAttribute("aria-expanded", "false");
+  if (club) open.append(spoken(", club event"));
   open.append(spoken(`, ${longDate.format(start)}`));
   open.addEventListener("click", () => showDetails(event, open));
   heading.append(open);
+  if (club) {
+    // The heading already says it.
+    const label = el("p", "event-club-label", "Club event");
+    label.setAttribute("aria-hidden", "true");
+    body.append(label);
+  }
   body.append(heading, whenText(event, start, end));
   if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
   const by = organizerLine(event);
