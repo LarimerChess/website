@@ -37,6 +37,9 @@ class Describe(unittest.TestCase):
         self.assertNotIn("rated", uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"])
         self.assertIn("rated", uc.describe(event("Some Open", "A US Chess rated event."), "community")["tags"])
         self.assertNotIn("rated", uc.describe(event("Some Open", "US Chess rated? No, unrated."), "community")["tags"])
+        chessmates = ("The section for players rated 800 and above is US Chess rated and needs a current US Chess ID; "
+                      "grade-level sections don't need a US Chess membership.")
+        self.assertIn("rated", uc.describe(event("Chessmates Scholastic Tournament (K–12)", chessmates), "community")["tags"])
 
     def test_kinds(self):
         self.assertEqual(uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"],
@@ -45,6 +48,12 @@ class Describe(unittest.TestCase):
         self.assertIn("tournament", uc.describe(event("Third Saturday Slow"), "club")["tags"])
         self.assertEqual(uc.describe(event("Chessmates Chess Club at Bamford Elementary (grades 1–5)"), "community")["tags"],
                          ["youth"])
+
+    def test_youth_and_seniors(self):
+        kids = uc.describe(event("Chess Club for Kids at Loveland Public Library"), "community")
+        self.assertEqual((kids["tags"], kids["organizer"]), (["youth"], "Loveland Public Library"))
+        seniors = uc.describe(event("Drop-In Open Chess (ages 55+) at Chilson Senior Center"), "community")
+        self.assertEqual((seniors["tags"], seniors["organizer"]), (["casual", "senior"], "Chilson Senior Center"))
 
     def test_organizers(self):
         self.assertEqual(uc.describe(event("Sac’n Saturdays at Grand Slam"), "club")["organizer"],
@@ -61,6 +70,30 @@ class Describe(unittest.TestCase):
     def test_entry_fee(self):
         self.assertEqual(uc.describe(event("First Saturday Classic", "Entry fee: $15. Free under 18."), "club")["price"], "15")
         self.assertEqual(uc.describe(event("Monday Club Night at Peak"), "club")["price"], "")
+
+
+class Weekly(unittest.TestCase):
+    def occurrences(self, title, days):
+        return [{"title": title, "start": f"2026-10-{d:02d}T18:30:00-06:00", "tags": []} for d in days]
+
+    def test_weekly_and_more_often_are_weekly(self):
+        events = self.occurrences("Monday Club Night", [12, 19, 26]) + self.occurrences("Drop-In", [9, 12, 14, 16])
+        uc.tag_weekly(events)
+        self.assertTrue(all("weekly" in e["tags"] for e in events))
+
+    def test_daylight_saving_and_holiday_gaps_still_weekly(self):
+        events = [{"title": "Monday Club Night", "start": s, "tags": []} for s in (
+            "2026-10-26T18:30:00-06:00", "2026-11-02T18:30:00-07:00", "2026-11-09T18:30:00-07:00",
+            "2026-11-30T18:30:00-07:00", "2026-12-07T18:30:00-07:00")]
+        uc.tag_weekly(events)
+        self.assertTrue(all("weekly" in e["tags"] for e in events))
+
+    def test_monthly_and_one_off_are_not(self):
+        events = self.occurrences("First Saturday Classic", [3]) + [
+            {"title": "Sac'n", "start": s, "tags": []}
+            for s in ("2026-10-10T09:30:00-06:00", "2026-11-14T09:30:00-07:00", "2026-12-12T09:30:00-07:00")]
+        uc.tag_weekly(events)
+        self.assertFalse(any("weekly" in e["tags"] for e in events))
 
 
 class Places(unittest.TestCase):

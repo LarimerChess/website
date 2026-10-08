@@ -192,44 +192,52 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Two independent filters, kind of event and city; the city buttons come from the
-// events themselves. The choice is kept in the address as #kind=youth&city=loveland.
+// Independent rows of filter buttons: kind of event, how often, and city. A card shows
+// when it matches every row. The city buttons come from the events themselves. The
+// choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
+const MATCHES = {
+  kind: (card, value) => card.dataset.tags.split(" ").includes(value),
+  schedule: (card, value) => card.dataset.tags.split(" ").includes("weekly") === (value === "weekly"),
+  city: (card, value) => card.dataset.city === value,
+};
+
 function setUpFilters(container, filtersId, events) {
   const panel = document.getElementById(filtersId);
-  const kindButtons = [...panel.querySelectorAll("button[data-filter]")];
-  const cityGroup = panel.querySelector("[data-city-filters]");
+  const cityGroup = panel.querySelector('[data-filter-group="city"]');
   const cities = [...new Set(events.map((e) => e.city).filter(Boolean))].sort();
-  const cityButtons = ["all", ...cities].map((name) => {
+  for (const name of ["all", ...cities]) {
     const button = el("button", null, name === "all" ? "All cities" : name);
     button.type = "button";
-    button.dataset.city = name === "all" ? "all" : slug(name);
+    button.dataset.value = name === "all" ? "all" : slug(name);
     cityGroup.append(button);
-    return button;
-  });
-  const kinds = new Set(kindButtons.map((b) => b.dataset.filter));
-  const cityIds = new Set(cityButtons.map((b) => b.dataset.city));
-  const state = { kind: "all", city: "all" };
+  }
+  const groups = [...panel.querySelectorAll("[data-filter-group]")].map((node) => ({
+    name: node.dataset.filterGroup,
+    buttons: [...node.querySelectorAll("button[data-value]")],
+  }));
+  const state = Object.fromEntries(groups.map((g) => [g.name, "all"]));
 
   const readHash = () => {
     const raw = decodeURIComponent(location.hash.slice(1));
     const params = new URLSearchParams(raw.includes("=") ? raw : `kind=${raw}`);
-    state.kind = kinds.has(params.get("kind")) ? params.get("kind") : "all";
-    state.city = cityIds.has(params.get("city")) ? params.get("city") : "all";
+    for (const g of groups) {
+      const value = params.get(g.name);
+      state[g.name] = g.buttons.some((b) => b.dataset.value === value) ? value : "all";
+    }
   };
   const writeHash = () => {
     const params = new URLSearchParams();
-    if (state.kind !== "all") params.set("kind", state.kind);
-    if (state.city !== "all") params.set("city", state.city);
+    for (const g of groups) if (state[g.name] !== "all") params.set(g.name, state[g.name]);
     const value = params.toString();
     history.replaceState(null, "", value ? `#${value}` : location.pathname);
   };
   const apply = (announce) => {
-    for (const b of kindButtons) b.setAttribute("aria-pressed", String(b.dataset.filter === state.kind));
-    for (const b of cityButtons) b.setAttribute("aria-pressed", String(b.dataset.city === state.city));
+    for (const g of groups) {
+      for (const b of g.buttons) b.setAttribute("aria-pressed", String(b.dataset.value === state[g.name]));
+    }
     let count = 0;
     for (const card of container.querySelectorAll(".event")) {
-      const match = card.dataset.tags.split(" ").includes(state.kind)
-        && (state.city === "all" || card.dataset.city === state.city);
+      const match = groups.every((g) => state[g.name] === "all" || MATCHES[g.name](card, state[g.name]));
       card.hidden = !match;
       if (match) count++;
     }
@@ -238,17 +246,18 @@ function setUpFilters(container, filtersId, events) {
     }
     container.querySelector(".events-empty").hidden = count > 0;
     if (announce) {
-      const labels = [
-        kindButtons.find((b) => b.dataset.filter === state.kind),
-        cityButtons.find((b) => b.dataset.city === state.city),
-      ].filter((b) => (b.dataset.filter ?? b.dataset.city) !== "all").map((b) => b.textContent);
+      const labels = groups.filter((g) => state[g.name] !== "all")
+        .map((g) => g.buttons.find((b) => b.dataset.value === state[g.name]).textContent);
       document.getElementById("filter-status").textContent =
         `Showing ${count} ${count === 1 ? "event" : "events"}${labels.length ? `: ${labels.join(", ")}` : ""}`;
     }
   };
 
-  for (const b of kindButtons) b.addEventListener("click", () => { state.kind = b.dataset.filter; writeHash(); apply(true); });
-  for (const b of cityButtons) b.addEventListener("click", () => { state.city = b.dataset.city; writeHash(); apply(true); });
+  for (const g of groups) {
+    for (const b of g.buttons) {
+      b.addEventListener("click", () => { state[g.name] = b.dataset.value; writeHash(); apply(true); });
+    }
+  }
   window.addEventListener("hashchange", () => { readHash(); apply(true); });
   panel.hidden = false;
   readHash();

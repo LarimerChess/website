@@ -40,15 +40,21 @@
     <p>Upcoming chess in Fort Collins, Colorado, and around Larimer County: the club's own events, and events run by other groups. Events run by other groups say who runs them; check with them for details.</p>
 
     <div id="event-filters" hidden>
-      <div class="filters" role="group" aria-label="Kind of event">
-        <button type="button" data-filter="all" aria-pressed="true">All</button>
-        <button type="button" data-filter="club" aria-pressed="false">Club events</button>
-        <button type="button" data-filter="tournament" aria-pressed="false">Tournaments</button>
-        <button type="button" data-filter="rated" aria-pressed="false">US Chess rated</button>
-        <button type="button" data-filter="casual" aria-pressed="false">Casual play</button>
-        <button type="button" data-filter="youth" aria-pressed="false">Youth (K–12)</button>
+      <div class="filters" role="group" aria-label="Kind of event" data-filter-group="kind">
+        <button type="button" data-value="all" aria-pressed="true">All</button>
+        <button type="button" data-value="club" aria-pressed="false">Club events</button>
+        <button type="button" data-value="tournament" aria-pressed="false">Tournaments</button>
+        <button type="button" data-value="rated" aria-pressed="false">US Chess rated</button>
+        <button type="button" data-value="casual" aria-pressed="false">Casual play</button>
+        <button type="button" data-value="youth" aria-pressed="false">Youth (K–12)</button>
+        <button type="button" data-value="senior" aria-pressed="false">Seniors (55+)</button>
       </div>
-      <div class="filters filters-city" role="group" aria-label="City" data-city-filters></div>
+      <div class="filters filters-more" role="group" aria-label="How often" data-filter-group="schedule">
+        <button type="button" data-value="all" aria-pressed="true">Any schedule</button>
+        <button type="button" data-value="weekly" aria-pressed="false">Weekly</button>
+        <button type="button" data-value="not-weekly" aria-pressed="false">Not weekly</button>
+      </div>
+      <div class="filters filters-more" role="group" aria-label="City" data-filter-group="city"></div>
     </div>
 
     <p id="filter-status" class="visually-hidden" role="status"></p>

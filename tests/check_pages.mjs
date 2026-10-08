@@ -41,18 +41,26 @@ cards === upcoming.length ? pass(`events page shows all ${cards} upcoming events
   : fail(`events page shows ${cards} cards for ${upcoming.length} upcoming events`);
 
 const cities = [...new Set(upcoming.map((e) => e.city).filter(Boolean))].sort();
-const cityButtons = await page.$$eval("[data-city-filters] button", (b) => b.map((x) => x.textContent));
+const cityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));
 JSON.stringify(cityButtons) === JSON.stringify(["All cities", ...cities]) ? pass(`city filters: ${cityButtons.join(", ")}`)
   : fail(`city filters ${JSON.stringify(cityButtons)} don't match event cities ${JSON.stringify(cities)}`);
 
-for (const kind of ["club", "youth", "all"]) {
-  await page.click(`button[data-filter="${kind}"]`);
+for (const kind of ["club", "youth", "senior", "all"]) {
+  await page.click(`[data-filter-group="kind"] button[data-value="${kind}"]`);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = kind === "all" ? upcoming.length : upcoming.filter((e) => (e.tags || []).includes(kind)).length;
   const status = await page.$eval("#filter-status", (s) => s.textContent);
   shown === expected && status.startsWith(`Showing ${expected} `) ? pass(`filter ${kind}: ${status}`)
     : fail(`filter ${kind} shows ${shown}, expected ${expected}; announced "${status}"`);
 }
+
+for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
+  await page.click(`[data-filter-group="schedule"] button[data-value="${value}"]`);
+  const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  const expected = upcoming.filter((e) => (e.tags || []).includes("weekly") === keep).length;
+  shown === expected ? pass(`schedule ${value}: ${shown} events`) : fail(`schedule ${value} shows ${shown}, expected ${expected}`);
+}
+await page.click('[data-filter-group="schedule"] button[data-value="all"]');
 
 const rated = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated"));
 rated.length === 0 ? pass("every club event is tagged rated")

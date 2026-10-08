@@ -28,12 +28,15 @@ ORGANIZERS = [
     (r"grand slam", "Grand Slam Games and Comics"),
     (r"chessmates", "Chessmates"),
     (r"purpose brewing|wednesday night chess", "Fort Collins Chess Meetup"),
+    (r"loveland public library", "Loveland Public Library"),
+    (r"chilson", "Chilson Senior Center"),
 ]
 # (tag, pattern in title)
 TITLE_TAGS = [
     ("tournament", r"tournament|classic|slow|arena|sac.n saturdays"),
-    ("casual", r"club night|night chess"),
-    ("youth", r"k.12|scholastic|grades? \d|elementary"),
+    ("casual", r"club night|night chess|drop-in"),
+    ("youth", r"k.12|scholastic|grades? \d|elementary|kids"),
+    ("senior", r"55\+|senior"),
 ]
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
@@ -80,6 +83,26 @@ def city(location):
     return match.group("city").strip() if match else ""
 
 
+def tag_weekly(events):
+    """Tag events that repeat at least three times, usually a week apart or less.
+
+    Gaps are counted in calendar days, so a daylight saving change doesn't stretch a week,
+    and the median gap is used, so a skipped holiday week doesn't disqualify an event.
+    """
+    days = {}
+    for e in events:
+        days.setdefault(e["title"], set()).add(datetime.fromisoformat(e["start"]).date())
+    weekly = set()
+    for title, dates in days.items():
+        dates = sorted(dates)
+        gaps = sorted((b - a).days for a, b in zip(dates, dates[1:]))
+        if len(dates) >= 3 and gaps[len(gaps) // 2] <= 7:
+            weekly.add(title)
+    for e in events:
+        if e["title"] in weekly:
+            e["tags"].append("weekly")
+
+
 def main(out_path):
     today = datetime.now(TZ).date()
     events = []
@@ -99,6 +122,7 @@ def main(out_path):
                 "city": city(str(event.get("LOCATION", ""))),
             })
     events.sort(key=lambda e: (e["start"], e["title"]))
+    tag_weekly(events)
 
     with open(out_path, "w") as f:
         json.dump(events, f, indent=1, ensure_ascii=False)
