@@ -1,27 +1,121 @@
 [
  {
+  "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
+  "calendar": "club",
+  "organizer": "Grand Slam Games and Comics",
+  "tags": [
+   "tournament"
+  ],
+  "url": "https://www.grandslamfc.com",
+  "start": "2026-10-10T09:30:00-06:00",
+  "end": "2026-10-10T16:30:00-06:00",
+  "allDay": false,
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
+ },
+ {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-10-12T18:30:00-06:00",
   "end": "2026-10-12T21:30:00-06:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-10-14T18:00:00-06:00",
+  "end": "2026-10-14T21:00:00-06:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Chessmates Scholastic Tournament (K–12)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "tournament",
+   "youth"
+  ],
+  "url": "https://chessmatesfc.com/tournaments/",
+  "start": "2026-10-17T08:15:00-06:00",
+  "end": "2026-10-17T14:00:00-06:00",
+  "allDay": false,
+  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525"
+ },
+ {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-10-19T18:30:00-06:00",
   "end": "2026-10-19T21:30:00-06:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-10-21T18:00:00-06:00",
+  "end": "2026-10-21T21:00:00-06:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-10-26T18:30:00-06:00",
   "end": "2026-10-26T21:30:00-06:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-10-28T18:00:00-06:00",
+  "end": "2026-10-28T21:00:00-06:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
   "title": "Larimer County Chess Club Knightmare Arena Classical",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club"
+  ],
+  "url": "",
   "start": "2026-10-31T10:00:00-06:00",
   "end": "2026-10-31T19:00:00-06:00",
   "allDay": false,
@@ -29,41 +123,123 @@
  },
  {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-11-02T18:30:00-07:00",
   "end": "2026-11-02T21:30:00-07:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
-  "title": "First Saturday Classical",
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-11-04T18:00:00-07:00",
+  "end": "2026-11-04T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "First Saturday Classic",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club",
+   "rated"
+  ],
+  "url": "",
   "start": "2026-11-07T10:00:00-07:00",
   "end": "2026-11-07T19:00:00-07:00",
   "allDay": false,
-  "location": ""
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-11-09T18:30:00-07:00",
   "end": "2026-11-09T21:30:00-07:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
-  "title": "Second Satudays @ griffon",
-  "start": "2026-11-14T00:00:00-07:00",
-  "end": "2026-11-15T00:00:00-07:00",
-  "allDay": true,
-  "location": ""
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-11-11T18:00:00-07:00",
+  "end": "2026-11-11T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
+  "calendar": "club",
+  "organizer": "Grand Slam Games and Comics",
+  "tags": [
+   "tournament"
+  ],
+  "url": "https://www.grandslamfc.com",
+  "start": "2026-11-14T09:30:00-07:00",
+  "end": "2026-11-14T16:30:00-07:00",
+  "allDay": false,
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
  },
  {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-11-16T18:30:00-07:00",
   "end": "2026-11-16T21:30:00-07:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-11-18T18:00:00-07:00",
+  "end": "2026-11-18T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
   "title": "Third Saturday Slow",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club",
+   "rated"
+  ],
+  "url": "",
   "start": "2026-11-21T10:00:00-07:00",
   "end": "2026-11-21T19:00:00-07:00",
   "allDay": false,
@@ -71,23 +247,250 @@
  },
  {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-11-23T18:30:00-07:00",
   "end": "2026-11-23T21:30:00-07:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-11-25T18:00:00-07:00",
+  "end": "2026-11-25T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
   "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
   "start": "2026-11-30T18:30:00-07:00",
   "end": "2026-11-30T21:30:00-07:00",
   "allDay": false,
   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  },
  {
-  "title": "First Saturday Classical",
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-12-02T18:00:00-07:00",
+  "end": "2026-12-02T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Chessmates Scholastic Tournament (K–12)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "tournament",
+   "youth"
+  ],
+  "url": "https://chessmatesfc.com/tournaments/",
+  "start": "2026-12-05T08:15:00-07:00",
+  "end": "2026-12-05T14:00:00-07:00",
+  "allDay": false,
+  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525"
+ },
+ {
+  "title": "First Saturday Classic",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club",
+   "rated"
+  ],
+  "url": "",
   "start": "2026-12-05T10:00:00-07:00",
   "end": "2026-12-05T19:00:00-07:00",
   "allDay": false,
-  "location": ""
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
+  "start": "2026-12-07T18:30:00-07:00",
+  "end": "2026-12-07T21:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-12-09T18:00:00-07:00",
+  "end": "2026-12-09T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
+  "calendar": "club",
+  "organizer": "Grand Slam Games and Comics",
+  "tags": [
+   "tournament"
+  ],
+  "url": "https://www.grandslamfc.com",
+  "start": "2026-12-12T09:30:00-07:00",
+  "end": "2026-12-12T16:30:00-07:00",
+  "allDay": false,
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
+ },
+ {
+  "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
+  "start": "2026-12-14T18:30:00-07:00",
+  "end": "2026-12-14T21:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-12-16T18:00:00-07:00",
+  "end": "2026-12-16T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Third Saturday Slow",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club",
+   "rated"
+  ],
+  "url": "",
+  "start": "2026-12-19T10:00:00-07:00",
+  "end": "2026-12-19T19:00:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
+  "start": "2026-12-21T18:30:00-07:00",
+  "end": "2026-12-21T21:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-12-23T18:00:00-07:00",
+  "end": "2026-12-23T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
+  "start": "2026-12-28T18:30:00-07:00",
+  "end": "2026-12-28T21:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Wednesday Night Chess at Purpose Brewing",
+  "calendar": "community",
+  "organizer": "Fort Collins Chess Meetup",
+  "tags": [
+   "casual"
+  ],
+  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "start": "2026-12-30T18:00:00-07:00",
+  "end": "2026-12-30T21:00:00-07:00",
+  "allDay": false,
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "First Saturday Classic",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "club",
+   "rated"
+  ],
+  "url": "",
+  "start": "2027-01-02T10:00:00-07:00",
+  "end": "2027-01-02T19:00:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+ },
+ {
+  "title": "Monday Club Night at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "casual",
+   "club"
+  ],
+  "url": "",
+  "start": "2027-01-04T18:30:00-07:00",
+  "end": "2027-01-04T21:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
  }
 ]

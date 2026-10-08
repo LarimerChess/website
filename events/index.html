@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess in Larimer County · Larimer County Chess Club</title>
+  <meta name="description" content="Upcoming chess events in Fort Collins and across Larimer County, Colorado: club nights, US Chess rated tournaments, casual play and scholastic events.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main class="wrap">
+    <p class="kicker"><a href="../">← Larimer County Chess Club</a></p>
+    <h1>Chess in Larimer County</h1>
+    <p>Upcoming chess in Fort Collins and around Larimer County: the club's own events, and events run by other groups. Events run by other groups say who runs them; check with them for details.</p>
+
+    <div id="event-filters" class="filters" role="group" aria-label="Show events" hidden>
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="club" aria-pressed="false">Club events</button>
+      <button type="button" data-filter="tournament" aria-pressed="false">Tournaments</button>
+      <button type="button" data-filter="rated" aria-pressed="false">US Chess rated</button>
+      <button type="button" data-filter="casual" aria-pressed="false">Casual play</button>
+      <button type="button" data-filter="youth" aria-pressed="false">Youth (K–12)</button>
+    </div>
+
+    <div id="all-events" data-events data-src="../events.json" data-filters="event-filters"></div>
+    <p id="events-fallback">Loading events. If nothing appears, try reloading the page.</p>
+
+    <section id="subscribe">
+      <h2>Add club events to your calendar</h2>
+      <p><a href="https://calendar.google.com/calendar/u/0?cid=Y182OWZiZTVhNDg5OTgxOWQwNjUxNWUyOGE1ZDUxNjFiMzUwOGU5Y2FiYWQ3NDk2MWNlMjdlMzZjYzk0ZDY2ZjY3QGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20">Google Calendar</a> or <a href="webcal://calendar.google.com/calendar/ical/c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67%40group.calendar.google.com/public/basic.ics">Apple Calendar, Outlook and others</a>.</p>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>© 2026 Larimer County Chess Club · Fort Collins, Colorado</p>
+  </footer>
+  <script src="../calendar.js"></script>
+</body>
+</html>
