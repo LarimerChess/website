@@ -244,7 +244,8 @@ address { font-style: normal; margin: 12px 0 0; line-height: 1.5; }
 .filter-options button[aria-pressed="true"]::after { content: " ✓" / ""; }
 .event-group h2 { margin: 28px 0 12px; font-size: 22px; }
 .events-empty { color: var(--muted); }
-.events-more { display: block; margin: 24px auto 0; font: inherit; font-weight: 600; cursor: pointer; }
+/* Not a scroll anchor: Chrome would keep it in view as cards are added above it, and in view it shows more again. */
+.events-more { display: block; margin: 24px auto 0; font: inherit; font-weight: 600; cursor: pointer; overflow-anchor: none; }
 /* Until the cards arrive, a filtered list holds a screen's height, so what follows it starts
    off-screen and isn't seen to jump when dozens of cards push it down. If the reader is already
    past it, the browser keeps what they see in place, anchored on that rather than the empty list. */

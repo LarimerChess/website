@@ -22,14 +22,15 @@ const pass = (message) => console.log(`ok   ${message}`);
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"] });
 const page = await browser.newPage();
 // Every filter group sits in a menu, which has to be opened first. The list shows a page of
-// cards at a time, so the rest are shown before anything is counted.
+// cards at a time, so the rest are shown before anything is counted. Show more is clicked in
+// the page rather than with page.click, whose scrolling to the button would show more on its own.
 async function choose(group, value) {
   await page.click(`[popovertarget="filter-${group}"]`);
   await page.click(`[data-filter-group="${group}"] button[data-value="${value}"]`);
   await showAll();
 }
 async function showAll() {
-  while (await page.$(".events-more:not([hidden])")) await page.click(".events-more");
+  while (await page.$(".events-more:not([hidden])")) await page.$eval(".events-more", (b) => b.click());
 }
 page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
 
@@ -55,14 +56,15 @@ const cards = await page.$$eval(".event", (c) => c.length);
 cards === upcoming.length ? pass(`events page has all ${cards} upcoming events`)
   : fail(`events page has ${cards} cards for ${upcoming.length} upcoming events`);
 
-// 30 cards at first; Show more adds the next 30 and moves focus to the first of them.
+// 30 cards at first; Show more adds the next 30 and moves focus to the first of them, and so
+// does scrolling to the end of the list, without moving focus.
 const PAGE = 30;
 const paging = await page.evaluate(() => ({
   shown: document.querySelectorAll(".event:not([hidden])").length,
   more: !document.querySelector(".events-more").hidden,
 }));
 if (upcoming.length > PAGE) {
-  await page.click(".events-more");
+  await page.$eval(".events-more", (b) => b.click());
   const after = await page.evaluate(() => ({
     shown: document.querySelectorAll(".event:not([hidden])").length,
     focused: document.activeElement.closest(".event") === document.querySelectorAll(".event:not([hidden])")[30],
@@ -75,6 +77,17 @@ if (upcoming.length > PAGE) {
   await page.reload({ waitUntil: "networkidle0" });
   const kept = await page.$$eval(".event:not([hidden])", (c) => c.length);
   kept === next ? pass(`a reload keeps the ${next} shown`) : fail(`a reload shows ${kept}, not the ${next} shown before`);
+  await showAll();
+  // A reload keeps the history entry's count and the scroll position, so both are cleared for a
+  // fresh list.
+  await page.evaluate(() => { history.replaceState(null, ""); scrollTo(0, 0); });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.$eval(".events-more", (b) => b.scrollIntoView());
+  const grew = await page.waitForFunction((n) => document.querySelectorAll(".event:not([hidden])").length === n,
+    { timeout: 2000 }, next).then(() => true, () => false);
+  const focusMoved = await page.evaluate(() => Boolean(document.activeElement.closest(".event")));
+  grew && !focusMoved ? pass(`scrolling to the end shows ${next}, leaving focus alone`)
+    : fail(`scrolling to the end: ${grew ? "" : `didn't show ${next}; `}focus ${focusMoved ? "moved" : "stayed"}`);
   await showAll();
 }
 

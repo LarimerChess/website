@@ -414,13 +414,23 @@ function setUpFilters(container, filtersId, events) {
     return matches;
   };
 
-  more.addEventListener("click", () => {
+  const showMore = () => {
     const first = shown;
     shown += PAGE;
     writeHash();
-    // The button moves down past the new cards, so focus goes to the first of them.
-    apply(true)[first]?.querySelector(".event-open").focus();
-  });
+    return apply(true)[first];
+  };
+  // The button moves down past the new cards, so focus goes to the first of them.
+  more.addEventListener("click", () => showMore()?.querySelector(".event-open").focus());
+  // Scrolling near the end of the list shows more without a click. The observer only reports
+  // changes, so it is restarted after each page in case the button is still in view.
+  const nearEnd = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting) || more.hidden) return;
+    showMore();
+    nearEnd.unobserve(more);
+    nearEnd.observe(more);
+  }, { rootMargin: "0px 0px 600px 0px" });
+  nearEnd.observe(more);
 
   for (const g of groups) {
     for (const b of g.buttons) {
