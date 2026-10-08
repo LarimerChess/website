@@ -135,6 +135,7 @@ function renderEvent(event) {
   const end = new Date(event.end);
   const item = el("li", "event");
   item.dataset.tags = ["all", ...(event.tags || [])].join(" ");
+  item.dataset.city = event.city ? slug(event.city) : "";
 
   const [date, menu] = addToCalendar(event, start);
 
@@ -189,39 +190,69 @@ function renderByMonth(container, events) {
   }
 }
 
-function applyFilter(container, buttons, tag, announce) {
-  for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.filter === tag));
-  let count = 0;
-  for (const card of container.querySelectorAll(".event")) {
-    const match = card.dataset.tags.split(" ").includes(tag);
-    card.hidden = !match;
-    if (match) count++;
-  }
-  for (const group of container.querySelectorAll(".event-group")) {
-    group.hidden = !group.querySelector(".event:not([hidden])");
-  }
-  container.querySelector(".events-empty").hidden = count > 0;
-  if (announce) {
-    const label = buttons.find((b) => b.dataset.filter === tag).textContent;
-    document.getElementById("filter-status").textContent =
-      `Showing ${count} ${count === 1 ? "event" : "events"}${tag === "all" ? "" : `: ${label}`}`;
-  }
-}
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-function setUpFilters(container, filtersId) {
-  const buttons = [...document.getElementById(filtersId).querySelectorAll("button[data-filter]")];
-  const known = new Set(buttons.map((b) => b.dataset.filter));
-  const fromHash = () => (known.has(location.hash.slice(1)) ? location.hash.slice(1) : "all");
-  for (const button of buttons) {
-    button.addEventListener("click", () => {
-      const tag = button.dataset.filter;
-      history.replaceState(null, "", tag === "all" ? location.pathname : `#${tag}`);
-      applyFilter(container, buttons, tag, true);
-    });
-  }
-  window.addEventListener("hashchange", () => applyFilter(container, buttons, fromHash(), true));
-  document.getElementById(filtersId).hidden = false;
-  applyFilter(container, buttons, fromHash());
+// Two independent filters, kind of event and city; the city buttons come from the
+// events themselves. The choice is kept in the address as #kind=youth&city=loveland.
+function setUpFilters(container, filtersId, events) {
+  const panel = document.getElementById(filtersId);
+  const kindButtons = [...panel.querySelectorAll("button[data-filter]")];
+  const cityGroup = panel.querySelector("[data-city-filters]");
+  const cities = [...new Set(events.map((e) => e.city).filter(Boolean))].sort();
+  const cityButtons = ["all", ...cities].map((name) => {
+    const button = el("button", null, name === "all" ? "All cities" : name);
+    button.type = "button";
+    button.dataset.city = name === "all" ? "all" : slug(name);
+    cityGroup.append(button);
+    return button;
+  });
+  const kinds = new Set(kindButtons.map((b) => b.dataset.filter));
+  const cityIds = new Set(cityButtons.map((b) => b.dataset.city));
+  const state = { kind: "all", city: "all" };
+
+  const readHash = () => {
+    const raw = decodeURIComponent(location.hash.slice(1));
+    const params = new URLSearchParams(raw.includes("=") ? raw : `kind=${raw}`);
+    state.kind = kinds.has(params.get("kind")) ? params.get("kind") : "all";
+    state.city = cityIds.has(params.get("city")) ? params.get("city") : "all";
+  };
+  const writeHash = () => {
+    const params = new URLSearchParams();
+    if (state.kind !== "all") params.set("kind", state.kind);
+    if (state.city !== "all") params.set("city", state.city);
+    const value = params.toString();
+    history.replaceState(null, "", value ? `#${value}` : location.pathname);
+  };
+  const apply = (announce) => {
+    for (const b of kindButtons) b.setAttribute("aria-pressed", String(b.dataset.filter === state.kind));
+    for (const b of cityButtons) b.setAttribute("aria-pressed", String(b.dataset.city === state.city));
+    let count = 0;
+    for (const card of container.querySelectorAll(".event")) {
+      const match = card.dataset.tags.split(" ").includes(state.kind)
+        && (state.city === "all" || card.dataset.city === state.city);
+      card.hidden = !match;
+      if (match) count++;
+    }
+    for (const group of container.querySelectorAll(".event-group")) {
+      group.hidden = !group.querySelector(".event:not([hidden])");
+    }
+    container.querySelector(".events-empty").hidden = count > 0;
+    if (announce) {
+      const labels = [
+        kindButtons.find((b) => b.dataset.filter === state.kind),
+        cityButtons.find((b) => b.dataset.city === state.city),
+      ].filter((b) => (b.dataset.filter ?? b.dataset.city) !== "all").map((b) => b.textContent);
+      document.getElementById("filter-status").textContent =
+        `Showing ${count} ${count === 1 ? "event" : "events"}${labels.length ? `: ${labels.join(", ")}` : ""}`;
+    }
+  };
+
+  for (const b of kindButtons) b.addEventListener("click", () => { state.kind = b.dataset.filter; writeHash(); apply(true); });
+  for (const b of cityButtons) b.addEventListener("click", () => { state.city = b.dataset.city; writeHash(); apply(true); });
+  window.addEventListener("hashchange", () => { readHash(); apply(true); });
+  panel.hidden = false;
+  readHash();
+  apply(false);
 }
 
 // schema.org Event data for search engines, for the club's own events only.
@@ -283,7 +314,7 @@ fetch(list.dataset.src || "events.json")
       const empty = el("p", "events-empty", "No upcoming events of this kind right now.");
       empty.hidden = true;
       list.append(empty);
-      setUpFilters(list, list.dataset.filters);
+      setUpFilters(list, list.dataset.filters, upcoming);
       structuredData(upcoming);
     } else {
       list.append(...upcoming.map(renderEvent));

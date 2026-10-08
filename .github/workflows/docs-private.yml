@@ -1,0 +1,19 @@
+name: Docs repo is private
+
+# The docs repo holds members' phone numbers and other private records. A
+# logged-out request to it must get 404; anything else means it went public.
+on:
+  schedule:
+    - cron: "42 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' https://github.com/LarimerChess/docs)
+          echo "github.com/LarimerChess/docs answered $status to a logged-out request"
+          test "$status" = 404

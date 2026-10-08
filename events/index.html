@@ -39,13 +39,16 @@
     <h1>Chess in Fort Collins and Larimer County, Colorado</h1>
     <p>Upcoming chess in Fort Collins, Colorado, and around Larimer County: the club's own events, and events run by other groups. Events run by other groups say who runs them; check with them for details.</p>
 
-    <div id="event-filters" class="filters" role="group" aria-label="Show events" hidden>
-      <button type="button" data-filter="all" aria-pressed="true">All</button>
-      <button type="button" data-filter="club" aria-pressed="false">Club events</button>
-      <button type="button" data-filter="tournament" aria-pressed="false">Tournaments</button>
-      <button type="button" data-filter="rated" aria-pressed="false">US Chess rated</button>
-      <button type="button" data-filter="casual" aria-pressed="false">Casual play</button>
-      <button type="button" data-filter="youth" aria-pressed="false">Youth (K–12)</button>
+    <div id="event-filters" hidden>
+      <div class="filters" role="group" aria-label="Kind of event">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="club" aria-pressed="false">Club events</button>
+        <button type="button" data-filter="tournament" aria-pressed="false">Tournaments</button>
+        <button type="button" data-filter="rated" aria-pressed="false">US Chess rated</button>
+        <button type="button" data-filter="casual" aria-pressed="false">Casual play</button>
+        <button type="button" data-filter="youth" aria-pressed="false">Youth (K–12)</button>
+      </div>
+      <div class="filters filters-city" role="group" aria-label="City" data-city-filters></div>
     </div>
 
     <p id="filter-status" class="visually-hidden" role="status"></p>

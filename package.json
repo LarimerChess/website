@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "description": "Checks for larimerchess.org; see .github/workflows/checks.yml",
+  "scripts": {
+    "check:html": "html-validate index.html events minutes",
+    "check:pages": "node tests/check_pages.mjs"
+  },
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "html-validate": "11.16.2",
+    "puppeteer-core": "24.43.1"
+  }
+}

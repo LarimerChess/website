@@ -1,0 +1,62 @@
+name: Check site
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: pip install recurring-ical-events
+
+      # Each check runs even if an earlier one failed, so one run reports everything.
+      - name: HTML validation
+        run: npm run -s check:html
+      - name: JavaScript syntax
+        if: success() || failure()
+        run: node --check calendar.js
+      - name: Sitemap lists every page
+        if: success() || failure()
+        run: python tests/check_sitemap.py
+      - name: Calendar import tests
+        if: success() || failure()
+        run: python -m unittest discover -s tests -v
+      - name: Pages (accessibility, filters, add to calendar, structured data)
+        if: success() || failure()
+        run: |
+          python -m http.server 8765 --bind 127.0.0.1 &
+          until curl -s -o /dev/null http://127.0.0.1:8765/; do sleep 1; done
+          npm run -s check:pages
+      - name: Internal links
+        if: success() || failure()
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --offline --root-dir ${{ github.workspace }} --no-progress index.html events/index.html minutes/*.html
+          fail: true
+          jobSummary: false
+
+  # Other sites go down now and then, so their links are checked weekly, not on every push.
+  external-links:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --no-progress --root-dir ${{ github.workspace }} --scheme https --scheme http --max-retries 2 --accept 200..=299,403,429 index.html events/index.html minutes/*.html
+          fail: true

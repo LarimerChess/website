@@ -75,6 +75,11 @@ def place(location):
     return match.groupdict() if match else {}
 
 
+def city(location):
+    match = ADDRESS.match(location) or re.search(r",\s*(?P<city>[^,]+),\s*(?:CO|Colorado)\b", location)
+    return match.group("city").strip() if match else ""
+
+
 def main(out_path):
     today = datetime.now(TZ).date()
     events = []
@@ -91,6 +96,7 @@ def main(out_path):
                 "allDay": not isinstance(start, datetime),
                 "location": str(event.get("LOCATION", "")),
                 "place": place(str(event.get("LOCATION", ""))),
+                "city": city(str(event.get("LOCATION", ""))),
             })
     events.sort(key=lambda e: (e["start"], e["title"]))
 
