@@ -187,3 +187,8 @@ main > h1:first-child { margin-top: 32px; }
 .skip-link { position: absolute; left: 16px; top: -48px; z-index: 10; padding: 8px 16px; background: var(--accent); color: var(--bg); border-radius: 6px; font-weight: 600; }
 .skip-link:focus { top: 8px; }
 .filters-more { margin-top: 0; }
+.prices { width: auto; min-width: min(100%, 420px); margin: 20px 0 8px; border-collapse: collapse; }
+.prices caption { text-align: left; font-weight: 600; margin-bottom: 6px; }
+.prices th, .prices td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.prices thead th, .prices tbody th { font-weight: 600; }
+.prices td { white-space: nowrap; }
