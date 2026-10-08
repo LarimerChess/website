@@ -158,7 +158,10 @@ if (described >= 0) {
     { runOnly: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa", "best-practice"] }));
   inDialog.violations.length === 0 ? pass("axe on the open details dialog")
     : inDialog.violations.forEach((v) => fail(`axe dialog: ${v.id}: ${v.help} at ${v.nodes[0].target}`));
-  await page.click(".event-dialog-close");
+  await page.click(".event-dialog-x");
+  await new Promise((r) => setTimeout(r));
+  await page.evaluate(() => !document.querySelector("dialog.event-dialog").open)
+    ? pass("the corner × closes the details") : fail("the corner × didn't close the details");
 }
 
 const data = (await page.$$eval('script[type="application/ld+json"]', (s) => s.map((x) => JSON.parse(x.textContent)))).flat();

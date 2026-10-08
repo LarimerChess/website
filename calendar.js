@@ -238,8 +238,13 @@ function showDetails(event, button) {
   const close = el("button", "event-dialog-close", "Close");
   close.type = "button";
   close.addEventListener("click", () => box.close());
+  // Stays in the corner while a long description scrolls, where a thumb finds it on a phone.
+  const corner = el("button", "event-dialog-x", "×");
+  corner.type = "button";
+  corner.setAttribute("aria-label", "Close");
+  corner.addEventListener("click", () => box.close());
 
-  box.replaceChildren(content, close);
+  box.replaceChildren(corner, content, close);
   opener = button;
   button.setAttribute("aria-expanded", "true");
   box.showModal();
