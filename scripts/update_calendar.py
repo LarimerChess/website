@@ -62,8 +62,8 @@ def describe(event, calendar):
     organizer = next((name for pattern, name in ORGANIZERS if re.search(pattern, title, re.I)),
                      CLUB if calendar == "club" else "")
     tags = [tag for tag, pattern in TITLE_TAGS if re.search(pattern, title, re.I)]
-    if "youth" not in tags:
-        tags.append("adults")  # youth events are for kids only; everything else is open to adults
+    if "youth" not in tags and "senior" not in tags:
+        tags.append("adults")  # youth and senior events have age limits; everything else is open to any adult
     if organizer == CLUB:
         tags += ["club", "rated"]  # every club event is a US Chess rated event
     elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):

@@ -82,12 +82,13 @@ class Describe(unittest.TestCase):
 class Adults(unittest.TestCase):
     def test_open_to_adults(self):
         for title, calendar in (("Monday Club Night at Peak", "club"), ("Wednesday Night Chess at Purpose Brewing", "community"),
-                                ("Drop-In Open Chess (ages 55+) at Chilson Senior Center", "community")):
+                                ("Sac’n Saturdays at Grand Slam", "club")):
             self.assertIn("adults", uc.describe(event(title), calendar)["tags"], title)
 
-    def test_youth_only(self):
+    def test_youth_or_senior_only(self):
         for title in ("Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
-                      "Chessmates Chess Club at Bamford Elementary (grades 1–5)"):
+                      "Chessmates Chess Club at Bamford Elementary (grades 1–5)",
+                      "Drop-In Open Chess (ages 55+) at Chilson Senior Center"):
             self.assertNotIn("adults", uc.describe(event(title), "community")["tags"], title)
 
 
