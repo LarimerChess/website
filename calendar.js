@@ -161,13 +161,15 @@ function renderEvent(event) {
   }
   body.append(when);
   if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
-  if (event.organizer && event.organizer !== CLUB) {
-    const by = el("p", "event-meta event-organizer", `Run by ${event.organizer}`);
+  const runBy = event.organizer && event.organizer !== CLUB ? `Run by ${event.organizer}` : "";
+  if (runBy || event.url) {
+    const by = el("p", "event-meta event-organizer", runBy);
     if (event.url) {
       const details = el("a", null, "Details");
       details.append(spoken(` about ${event.title}`));
       details.href = event.url;
-      by.append(shown(" · "), details);
+      if (runBy) by.append(shown(" · "));
+      by.append(details);
     }
     body.append(by);
   }

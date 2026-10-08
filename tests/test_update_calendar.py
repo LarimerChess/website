@@ -1,4 +1,4 @@
-"""Tests for the tagging rules in scripts/update_calendar.py.
+"""Tests for scripts/update_calendar.py: metadata to tags, failing on bad metadata, weekly, places.
 
     python -m unittest discover tests
 """
@@ -7,121 +7,120 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-import icalendar
-
 spec = importlib.util.spec_from_file_location(
     "update_calendar", Path(__file__).resolve().parent.parent / "scripts" / "update_calendar.py")
 uc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(uc)
 
 PEAK = "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+CLUB_TOURNAMENT = {"organizer": uc.CLUB, "format": "tournament", "ages": "all", "rated": "yes",
+                   "cost": "free-youth", "price": "15"}
+MEETUP = {"organizer": "Fort Collins Chess Meetup", "format": "casual", "ages": "all", "rated": "no",
+          "cost": "free", "details": "https://www.meetup.com/fort-collins-chess-meetup-group/"}
 
 
-def event(title, description="", location=PEAK):
-    e = icalendar.Event()
-    e.add("SUMMARY", title)
-    e.add("DESCRIPTION", description)
-    e.add("LOCATION", location)
-    return e
+def item(title, meta, start="2026-11-07T10:00:00-07:00", end="2026-11-07T19:00:00-07:00", **extra):
+    return {"summary": title, "location": PEAK, "start": {"dateTime": start}, "end": {"dateTime": end},
+            "extendedProperties": {"private": {"source": "manual", **meta}}, **extra}
 
 
-COST_TAGS = {"free", "free-youth", "cost-unknown"}
+class Tags(unittest.TestCase):
+    def test_baseline_series(self):
+        # The tags each kind of event had when they were inferred from titles and descriptions.
+        cases = [
+            (CLUB_TOURNAMENT, ["tournament", "all-ages", "club", "rated", "free-youth"]),
+            ({**CLUB_TOURNAMENT, "format": "casual", "price": None}, ["casual", "all-ages", "club", "rated", "free-youth"]),
+            (MEETUP, ["casual", "all-ages", "free"]),
+            ({"organizer": "Grand Slam Games and Comics", "format": "tournament", "ages": "all", "rated": "no",
+              "cost": "paid"}, ["tournament", "all-ages"]),
+            ({"organizer": "Chessmates", "format": "tournament", "ages": "youth", "rated": "yes", "cost": "paid"},
+             ["tournament", "youth", "rated"]),
+            ({"organizer": "Chessmates", "format": "other", "ages": "youth", "rated": "no", "cost": "paid"}, ["youth"]),
+            ({"organizer": "Loveland Public Library", "format": "other", "ages": "youth", "rated": "no",
+              "cost": "unknown"}, ["youth", "cost-unknown"]),
+            ({"organizer": "Chilson Senior Center", "format": "casual", "ages": "senior", "rated": "no",
+              "cost": "unknown"}, ["casual", "senior", "cost-unknown"]),
+        ]
+        for meta, tags in cases:
+            meta = {k: v for k, v in meta.items() if v is not None}
+            self.assertEqual(uc.problems(meta), [], meta)
+            self.assertEqual(uc.describe(meta, "community")["tags"], tags, meta)
+
+    def test_adults_only_is_not_all_ages(self):
+        tags = uc.describe({**MEETUP, "ages": "adults"}, "community")["tags"]
+        self.assertNotIn("all-ages", tags)
+        self.assertNotIn("youth", tags)
+
+    def test_title_and_description_do_not_matter(self):
+        events = uc.build({"community": [item("Kids Blitz (youth) at a Bar, grades 1–5", MEETUP,
+                                               description="US Chess rated. Entry fee: $20. Youth play free.")]})
+        self.assertEqual(events[0]["tags"], ["casual", "all-ages", "free"])
+        self.assertEqual(events[0]["price"], "")
+
+    def test_organizer_details_and_price(self):
+        d = uc.describe(CLUB_TOURNAMENT, "club")
+        self.assertEqual((d["organizer"], d["url"], d["price"]), (uc.CLUB, "", "15"))
+        d = uc.describe(MEETUP, "community")
+        self.assertEqual((d["organizer"], d["url"]), ("Fort Collins Chess Meetup", MEETUP["details"]))
+
+    def test_details_without_run_by(self):
+        dcc = {"organizer": "Denver Chess Club", "format": "tournament", "ages": "all", "rated": "yes", "cost": "paid",
+               "details": "https://coloradochess.com/tournament/dcc-fall-classic-2026/", "run_by": "hide"}
+        self.assertEqual(uc.problems(dcc), [])
+        fall_classic = {**item("Denver Chess Club – DCC Fall Classic 2026", dcc),
+                        "start": {"date": "2026-10-24"}, "end": {"date": "2026-10-26"},
+                        "location": "Hilton Garden Inn Denver Tech Center, 7675 E Union Ave, Denver, CO 80237"}
+        [e] = uc.build({"club": [fall_classic]})
+        self.assertEqual((e["organizer"], e["url"], e["city"]), ("", dcc["details"], "Denver"))
+        self.assertEqual(e["tags"], ["tournament", "all-ages", "rated"])
 
 
-def kinds(tags):
-    return [t for t in tags if t not in COST_TAGS and t != "all-ages"]
+class BadMetadata(unittest.TestCase):
+    def test_problems(self):
+        self.assertEqual(uc.problems({**MEETUP, "cost": "fre"}),
+                         ["cost is 'fre', expected one of free, free-youth, paid, unknown"])
+        missing = {k: v for k, v in MEETUP.items() if k != "ages"}
+        self.assertEqual(uc.problems(missing), ["ages is missing"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "price": "$15"}), ["price is '$15', expected \\d+(?:\\.\\d\\d)?"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "rated": "no"}),
+                         ["rated is 'no', but every club event is US Chess rated"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "run_by": "hide"}),
+                         ["run_by is 'hide', but the site finds club events by their organizer"])
+        self.assertEqual(uc.problems({**MEETUP, "run_by": "no"}), ["run_by is 'no', expected one of hide, show"])
+        self.assertEqual(len(uc.problems({})), 5)
+
+    def test_import_stops_and_names_the_event(self):
+        good = item("First Saturday Classic", CLUB_TOURNAMENT)
+        series = [item("New Thing", {**MEETUP, "cost": "maybe"}, start=f"2026-10-{d}T18:00:00-06:00",
+                       end=f"2026-10-{d}T21:00:00-06:00", recurringEventId="abc") for d in (14, 21, 28)]
+        bare = item("Unlabeled", {})
+        with self.assertRaises(SystemExit) as stop:
+            uc.build({"club": [good], "community": series + [bare]})
+        message = str(stop.exception.code)
+        self.assertIn("2 event(s)", message)
+        self.assertIn("community calendar, 'New Thing' (2026-10-14 and 2 more date(s)): cost is 'maybe'", message)
+        self.assertIn("'Unlabeled' (2026-11-07): organizer is missing; format is missing", message)
+        self.assertNotIn("First Saturday Classic", message)
+
+    def test_private_and_cancelled_events_are_left_out_unchecked(self):
+        events = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT),
+                                    item("Board meeting", {}, visibility="private"),
+                                    item("Moved", {}, status="cancelled")]})
+        self.assertEqual([e["title"] for e in events], ["First Saturday Classic"])
 
 
-class Describe(unittest.TestCase):
-    def test_every_club_event_is_rated(self):
-        for title in ("Monday Club Night at Peak", "First Saturday Classic", "Knightmare Arena Classical"):
-            d = uc.describe(event(title, "Unrated."), "club")
-            self.assertEqual(d["organizer"], uc.CLUB, title)
-            self.assertIn("club", d["tags"], title)
-            self.assertIn("rated", d["tags"], title)
+class Build(unittest.TestCase):
+    def test_event_fields(self):
+        [e] = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT)]})
+        self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "start", "end",
+                                   "allDay", "location", "place", "city"])
+        self.assertEqual((e["start"], e["allDay"], e["city"]), ("2026-11-07T10:00:00-07:00", False, "Fort Collins"))
 
-    def test_other_groups_are_rated_only_when_they_say_so(self):
-        self.assertNotIn("rated", uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"])
-        self.assertIn("rated", uc.describe(event("Some Open", "A US Chess rated event."), "community")["tags"])
-        self.assertNotIn("rated", uc.describe(event("Some Open", "US Chess rated? No, unrated."), "community")["tags"])
-        chessmates = ("The section for players rated 800 and above is US Chess rated and needs a current US Chess ID; "
-                      "grade-level sections don't need a US Chess membership.")
-        self.assertIn("rated", uc.describe(event("Chessmates Scholastic Tournament (K–12)", chessmates), "community")["tags"])
-
-    def test_kinds(self):
-        self.assertEqual(kinds(uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"]),
-                         ["tournament", "youth"])
-        self.assertIn("casual", uc.describe(event("Wednesday Night Chess at Purpose Brewing"), "community")["tags"])
-        self.assertIn("tournament", uc.describe(event("Third Saturday Slow"), "club")["tags"])
-        self.assertEqual(kinds(uc.describe(event("Chessmates Chess Club at Bamford Elementary (grades 1–5)"), "community")["tags"]),
-                         ["youth"])
-
-    def test_youth_and_seniors(self):
-        kids = uc.describe(event("Chess Club for Kids at Loveland Public Library"), "community")
-        self.assertEqual((kinds(kids["tags"]), kids["organizer"]), (["youth"], "Loveland Public Library"))
-        for title in ("Chessmates Chess Club at Mountain Sage Community School", "Chessmates Academy Chess Club (youth)",
-                      "Chessmates Chess Club at Ridgeview Classical School (grades K–6)"):
-            d = uc.describe(event(title), "community")
-            self.assertEqual((kinds(d["tags"]), d["organizer"]), (["youth"], "Chessmates"), title)
-        seniors = uc.describe(event("Drop-In Open Chess (ages 55+) at Chilson Senior Center"), "community")
-        self.assertEqual((kinds(seniors["tags"]), seniors["organizer"]), (["casual", "senior"], "Chilson Senior Center"))
-
-    def test_organizers(self):
-        self.assertEqual(uc.describe(event("Sac’n Saturdays at Grand Slam"), "club")["organizer"],
-                         "Grand Slam Games and Comics")
-        self.assertEqual(uc.describe(event("Wednesday Night Chess at Purpose Brewing"), "community")["organizer"],
-                         "Fort Collins Chess Meetup")
-
-    def test_details_link_only_for_community_events(self):
-        text = "More at https://www.grandslamfc.com and https://new.uschess.org/join-us-chess"
-        self.assertEqual(uc.describe(event("Sac’n Saturdays at Grand Slam", text), "club")["url"], "")
-        self.assertEqual(uc.describe(event("Chessmates Tournament", "https://chessmatesfc.com/tournaments/"),
-                                     "community")["url"], "https://chessmatesfc.com/tournaments/")
-
-    def test_entry_fee(self):
-        self.assertEqual(uc.describe(event("First Saturday Classic", "Entry fee: $15. Free under 18."), "club")["price"], "15")
-        self.assertEqual(uc.describe(event("Monday Club Night at Peak"), "club")["price"], "")
-
-
-class AllAges(unittest.TestCase):
-    def test_open_to_all_ages(self):
-        for title, calendar in (("Monday Club Night at Peak", "club"), ("Wednesday Night Chess at Purpose Brewing", "community"),
-                                ("Sac’n Saturdays at Grand Slam", "club")):
-            self.assertIn("all-ages", uc.describe(event(title), calendar)["tags"], title)
-
-    def test_age_limited(self):
-        for title in ("Blitz Night (21+) at a Bar", "Adults Only Simul","Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
-                      "Chessmates Chess Club at Bamford Elementary (grades 1–5)",
-                      "Drop-In Open Chess (ages 55+) at Chilson Senior Center"):
-            self.assertNotIn("all-ages", uc.describe(event(title), "community")["tags"], title)
-
-
-class Cost(unittest.TestCase):
-    def tags(self, text):
-        return [t for t in uc.describe(event("Some event", text), "community")["tags"] if t != "all-ages"]
-
-    def test_free_for_everyone(self):
-        self.assertEqual(self.tags("Cost: free. Just show up."), ["free"])
-
-    def test_free_is_not_free_for_youth(self):
-        d = uc.describe(event("Wednesday Night Chess at Purpose Brewing", "Cost: free. It's at a brewery."), "community")
-        self.assertIn("free", d["tags"])
-        self.assertNotIn("free-youth", d["tags"])
-
-    def test_free_for_youth(self):
-        for text in ("Entry fee: $15. Free for players under 18.",
-                     "• Youth and college students: free",
-                     "Players under 18 play free."):
-            self.assertEqual(self.tags(text), ["free-youth"], text)
-
-    def test_charges(self):
-        for text in ("$30 entry.", "Free parking. Entry $10.", "Youth: $5. Bring a board.",
-                     "Grand Slam charges an entry fee; ask them for the amount and format."):
-            self.assertEqual(self.tags(text), [], text)
-
-    def test_cost_unknown(self):
-        for text in ("Chess club for kids. Check with the library for current dates.", ""):
-            self.assertEqual(self.tags(text), ["cost-unknown"], text)
+    def test_all_day(self):
+        [e] = uc.build({"community": [{**item("Drop-In", MEETUP), "start": {"date": "2026-10-09"},
+                                       "end": {"date": "2026-10-10"}}]})
+        self.assertEqual((e["start"], e["end"], e["allDay"]),
+                         ("2026-10-09T00:00:00-06:00", "2026-10-10T00:00:00-06:00", True))
 
 
 class Weekly(unittest.TestCase):

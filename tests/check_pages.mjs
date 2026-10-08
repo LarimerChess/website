@@ -1,6 +1,7 @@
 // Loads every page in Chrome against a local server and checks what HTML
 // validation can't: accessibility (axe, light and dark), the add-to-calendar
-// menu by keyboard, the filters, and the events page's structured data.
+// menu by keyboard, the filters, each card's Run by line and Details link, and
+// the events page's structured data.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -71,6 +72,19 @@ for (const value of ["free", "free-youth", "cost-unknown"]) {
   shown === expected ? pass(`cost ${value}: ${shown} events`) : fail(`cost ${value} shows ${shown}, expected ${expected}`);
 }
 await page.click('[data-filter-group="cost"] button[data-value="all"]');
+
+const lines = await page.$$eval(".event", (cards) => cards.map((c) => ({
+  title: c.querySelector("h3").firstChild.textContent,
+  runBy: (c.querySelector(".event-organizer")?.firstChild?.nodeType === 3 && c.querySelector(".event-organizer").firstChild.textContent) || "",
+  details: c.querySelector(".event-organizer a")?.getAttribute("href") || "",
+})));
+const wrongLines = lines.filter((card, i) => {
+  const e = upcoming[i];
+  const runBy = e.organizer && e.organizer !== "Larimer County Chess Club" ? `Run by ${e.organizer}` : "";
+  return card.title !== e.title || card.runBy !== runBy || card.details !== (e.url || "");
+});
+wrongLines.length === 0 ? pass("each card's Run by line and Details link match its event")
+  : fail(`Run by or Details wrong on: ${[...new Set(wrongLines.map((c) => c.title))].join(", ")}`);
 
 const rated = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated"));
 rated.length === 0 ? pass("every club event is tagged rated")

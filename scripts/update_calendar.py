@@ -1,91 +1,92 @@
 """Write upcoming events from the club and community calendars to events.json.
 
 The home page shows the club calendar's events; events/ shows both, filterable by
-the tags assigned here.
+tags made from each event's metadata: private extended properties set on the
+Google Calendar event (FIELDS below). An event whose metadata is missing or invalid
+stops the import, so nothing is guessed and events.json is left as it was.
+
+Google leaves extended properties out of a calendar's public iCal feed, so this
+reads the Calendar API with an OAuth token whose JSON is in LCCC_GOOGLE_TOKEN.
 """
 
 import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import icalendar
-import recurring_ical_events
-
-FEEDS = {
-    "club": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67",
-    "community": "c_dd8c6af0ee77c40a94474c178d25b280f0f4816c5f8b1c59fe064e2c6c92bb1f",
+CALENDARS = {
+    "club": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
+    "community": "c_dd8c6af0ee77c40a94474c178d25b280f0f4816c5f8b1c59fe064e2c6c92bb1f@group.calendar.google.com",
 }
-FEED_URL = "https://calendar.google.com/calendar/ical/{}%40group.calendar.google.com/public/basic.ics"
+EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{}/events"
 TZ = ZoneInfo("America/Denver")
 DAYS_AHEAD = 90
 CLUB = "Larimer County Chess Club"
 
-# (pattern in title, organizer); first match wins, and club calendar events default to CLUB.
-ORGANIZERS = [
-    (r"grand slam", "Grand Slam Games and Comics"),
-    (r"chessmates", "Chessmates"),
-    (r"purpose brewing|wednesday night chess", "Fort Collins Chess Meetup"),
-    (r"loveland public library", "Loveland Public Library"),
-    (r"chilson", "Chilson Senior Center"),
-]
-# (tag, pattern in title)
-TITLE_TAGS = [
-    ("tournament", r"tournament|\bclassic\b|slow|arena|sac.n saturdays"),
-    ("casual", r"club night|night chess|drop-in"),
-    ("youth", r"k.12|scholastic|grades? \w|elementary|kids|\bschool\b|\(youth\)"),
-    ("senior", r"55\+|senior"),
-]
-ADULTS_ONLY = re.compile(r"\b(?:18|21)\+|adults? only", re.I)
-RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
-LINK = re.compile(r"https?://[^\s<>\"]+")
-FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
-# "Cost: free" marks an event free; only a sentence saying youth or under-18 players play
-# free marks it free for youth, so a free event at a bar isn't promoted to kids.
-FREE = re.compile(r"\bcost: free\b", re.I)
-# A dollar amount or a mention of a fee means the event charges; with no sign either way, its cost is unknown.
-CHARGES = re.compile(r"\$\d|\bentry fee\b|\bcharges?\b", re.I)
-FREE_FOR_YOUTH = re.compile(r"(?:youth|under 18)[^.\n]*\bfree\b|\bfree\b[^.\n]*(?:youth|under 18)", re.I)
+# Each metadata field: (required, allowed values or a pattern the whole value must match).
+FIELDS = {
+    "organizer": (True, re.compile(r"\S.*")),
+    "format": (True, {"tournament", "casual", "other"}),
+    "ages": (True, {"all", "youth", "senior", "adults"}),
+    "rated": (True, {"yes", "no"}),
+    "cost": (True, {"free", "free-youth", "paid", "unknown"}),
+    "price": (False, re.compile(r"\d+(?:\.\d\d)?")),
+    "details": (False, re.compile(r"https?://\S+")),
+    # hide leaves out the card's "Run by" line; the organizer stays in the metadata.
+    "run_by": (False, {"show", "hide"}),
+}
+AGE_TAGS = {"all": "all-ages", "youth": "youth", "senior": "senior", "adults": "adults"}
+COST_TAGS = {"free": "free", "free-youth": "free-youth", "paid": None, "unknown": "cost-unknown"}
 ADDRESS = re.compile(r"^(?P<name>[^,]+), (?P<street>[^,]+(?:, Unit [^,]+)?), (?P<city>[^,]+), (?P<region>[A-Z]{2}) (?P<zip>\d{5})")
 
 
-def as_datetime(value):
-    if isinstance(value, datetime):
-        return value.astimezone(TZ)
-    return datetime.combine(value, datetime.min.time(), TZ)
+def problems(meta):
+    """What is wrong with an event's metadata, as a list of sentences; empty if nothing."""
+    found = []
+    for field, (required, allowed) in FIELDS.items():
+        value = meta.get(field)
+        if value is None:
+            if required:
+                found.append(f"{field} is missing")
+        elif isinstance(allowed, set) and value not in allowed:
+            found.append(f"{field} is {value!r}, expected one of {', '.join(sorted(allowed))}")
+        elif not isinstance(allowed, set) and not allowed.fullmatch(value):
+            found.append(f"{field} is {value!r}, expected {allowed.pattern}")
+    if meta.get("organizer") == CLUB and meta.get("rated") == "no":
+        found.append("rated is 'no', but every club event is US Chess rated")
+    if meta.get("organizer") == CLUB and meta.get("run_by") == "hide":
+        found.append("run_by is 'hide', but the site finds club events by their organizer")
+    return found
 
 
-def describe(event, calendar):
-    title = str(event.get("SUMMARY", ""))
-    text = str(event.get("DESCRIPTION", ""))
-    organizer = next((name for pattern, name in ORGANIZERS if re.search(pattern, title, re.I)),
-                     CLUB if calendar == "club" else "")
-    tags = [tag for tag, pattern in TITLE_TAGS if re.search(pattern, title, re.I)]
-    if "youth" not in tags and "senior" not in tags and not ADULTS_ONLY.search(title):
-        tags.append("all-ages")  # youth, senior and adults-only events have age limits
-    if organizer == CLUB:
-        tags += ["club", "rated"]  # every club event is a US Chess rated event
-    elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
+def describe(meta, calendar):
+    """The title-independent part of an event's card, from metadata that has no problems."""
+    tags = [meta["format"]] if meta["format"] != "other" else []
+    tags.append(AGE_TAGS[meta["ages"]])
+    if meta["organizer"] == CLUB:
+        tags.append("club")
+    if meta["rated"] == "yes":
         tags.append("rated")
-    if FREE.search(text):
-        tags.append("free")
-    if FREE_FOR_YOUTH.search(text):
-        tags.append("free-youth")
-    if not (FREE.search(text) or FREE_FOR_YOUTH.search(text) or CHARGES.search(text)):
-        tags.append("cost-unknown")
-    links = [u for u in LINK.findall(text) if not re.search(r"calendar\.google|uschess|maps", u)]
-    fee = FEE.search(text)
+    if COST_TAGS[meta["cost"]]:
+        tags.append(COST_TAGS[meta["cost"]])
     return {
-        "title": title,
         "calendar": calendar,
-        "organizer": organizer,
+        "organizer": "" if meta.get("run_by") == "hide" else meta["organizer"],
         "tags": tags,
-        # Only the community calendar's events link out; their pages have real details.
-        "url": links[0] if calendar == "community" and links else "",
-        "price": fee.group(1) if fee else "",
+        "url": meta.get("details", ""),
+        "price": meta.get("price", ""),
     }
+
+
+def as_datetime(times):
+    if "dateTime" in times:
+        return datetime.fromisoformat(times["dateTime"]).astimezone(TZ)
+    return datetime.combine(date.fromisoformat(times["date"]), datetime.min.time(), TZ)
 
 
 def place(location):
@@ -118,27 +119,93 @@ def tag_weekly(events):
             e["tags"].append("weekly")
 
 
-def main(out_path):
-    today = datetime.now(TZ).date()
-    events = []
-    for calendar, calendar_id in FEEDS.items():
-        with urllib.request.urlopen(FEED_URL.format(calendar_id), timeout=30) as response:
-            feed = icalendar.Calendar.from_ical(response.read())
-        for event in recurring_ical_events.of(feed).between(today, today + timedelta(days=DAYS_AHEAD)):
-            start = event["DTSTART"].dt
-            end = event["DTEND"].dt if "DTEND" in event else start
+def build(items_by_calendar):
+    """Turn Calendar API events into the website's events, or exit naming every event with bad metadata."""
+    events, bad = [], {}
+    for calendar, items in items_by_calendar.items():
+        for item in items:
+            # The public feed leaves these out; the API, signed in as the owner, doesn't.
+            if item.get("status") == "cancelled" or item.get("visibility") in ("private", "confidential"):
+                continue
+            title = item.get("summary", "")
+            start = as_datetime(item["start"])
+            meta = item.get("extendedProperties", {}).get("private", {})
+            found = problems(meta)
+            if found:
+                series = item.get("recurringEventId") or title
+                bad.setdefault((calendar, series, title, "; ".join(found)), []).append(start.date())
+                continue
+            location = item.get("location", "")
             events.append({
-                **describe(event, calendar),
-                "start": as_datetime(start).isoformat(),
-                "end": as_datetime(end).isoformat(),
-                "allDay": not isinstance(start, datetime),
-                "location": str(event.get("LOCATION", "")),
-                "place": place(str(event.get("LOCATION", ""))),
-                "city": city(str(event.get("LOCATION", ""))),
+                "title": title,
+                **describe(meta, calendar),
+                "start": start.isoformat(),
+                "end": as_datetime(item["end"]).isoformat(),
+                "allDay": "date" in item["start"],
+                "location": location,
+                "place": place(location),
+                "city": city(location),
             })
+    if bad:
+        lines = [f"{len(bad)} event(s) on the calendars have missing or invalid metadata; events.json is unchanged."]
+        for (calendar, _, title, found), dates in sorted(bad.items(), key=lambda b: min(b[1])):
+            when = f"{min(dates)}" + (f" and {len(dates) - 1} more date(s)" if len(dates) > 1 else "")
+            lines.append(f"  {calendar} calendar, {title!r} ({when}): {found}")
+        lines.append(f"Allowed metadata: {', '.join(FIELDS)}. Set it with the lccc-events runbook's metadata recipe.")
+        sys.exit("\n".join(lines))
     events.sort(key=lambda e: (e["start"], e["title"]))
     tag_weekly(events)
+    return events
 
+
+def access_token(raw):
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end < start:
+        sys.exit("LCCC_GOOGLE_TOKEN has no token JSON in it. Is the repository secret set?")
+    token = json.loads(raw[start:end + 1])
+    body = urllib.parse.urlencode({
+        "client_id": token["client_id"],
+        "client_secret": token["client_secret"],
+        "refresh_token": token["refresh_token"],
+        "grant_type": "refresh_token",
+    }).encode()
+    request = urllib.request.Request(token.get("token_uri", "https://oauth2.googleapis.com/token"), data=body)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)["access_token"]
+    except urllib.error.HTTPError as error:
+        sys.exit(f"Google refused the token in LCCC_GOOGLE_TOKEN ({error.code}: {error.read().decode()[:300]})")
+
+
+def fetch(calendar_id, token, today):
+    items, page = [], None
+    while True:
+        query = {
+            "singleEvents": "true",
+            "timeMin": datetime.combine(today, datetime.min.time(), TZ).isoformat(),
+            "timeMax": datetime.combine(today + timedelta(days=DAYS_AHEAD), datetime.min.time(), TZ).isoformat(),
+            "maxResults": "2500",
+            "fields": "nextPageToken,items(status,visibility,summary,location,start,end,recurringEventId,extendedProperties)",
+        }
+        if page:
+            query["pageToken"] = page
+        url = EVENTS_URL.format(urllib.parse.quote(calendar_id)) + "?" + urllib.parse.urlencode(query)
+        request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.load(response)
+        items += data.get("items", [])
+        page = data.get("nextPageToken")
+        if not page:
+            return items
+
+
+def main(out_path):
+    raw = os.environ.get("LCCC_GOOGLE_TOKEN", "")
+    if not raw.strip():
+        sys.exit("LCCC_GOOGLE_TOKEN is empty. In Actions it comes from the secret LCCC_GOOGLE_CALENDAR_READ_TOKEN.")
+    token = access_token(raw)
+    today = datetime.now(TZ).date()
+    events = build({calendar: fetch(calendar_id, token, today) for calendar, calendar_id in CALENDARS.items()})
     with open(out_path, "w") as f:
         json.dump(events, f, indent=1, ensure_ascii=False)
         f.write("\n")

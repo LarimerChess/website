@@ -22,7 +22,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: npm ci
-      - run: pip install recurring-ical-events
 
       # Each check runs even if an earlier one failed, so one run reports everything.
       - name: HTML validation

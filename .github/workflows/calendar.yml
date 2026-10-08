@@ -17,8 +17,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install recurring-ical-events
+      # Reads the calendars through the Google Calendar API with a read-only token, because
+      # the public feeds leave out the event metadata. The secret is the token's whole JSON.
       - run: python scripts/update_calendar.py events.json
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_READ_TOKEN }}
       - name: Commit if changed
         run: |
           git diff --quiet events.json && exit 0
