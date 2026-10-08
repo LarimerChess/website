@@ -18,6 +18,12 @@ const pass = (message) => console.log(`ok   ${message}`);
 
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"] });
 const page = await browser.newPage();
+// Every filter group but kind sits in a menu, which has to be opened first.
+async function choose(group, value) {
+  const menu = await page.$(`[popovertarget="filter-${group}"]`);
+  if (menu) await menu.click();
+  await page.click(`[data-filter-group="${group}"] button[data-value="${value}"]`);
+}
 page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
 
 for (const path of pages) {
@@ -49,7 +55,7 @@ JSON.stringify(cityButtons) === JSON.stringify(["All cities", ...cities]) ? pass
   : fail(`city filters ${JSON.stringify(cityButtons)} don't match event cities ${JSON.stringify(cities)}`);
 
 for (const [group, kind] of [["kind", "club"], ["kind", "all"], ["age", "all-ages"], ["age", "senior"], ["age", "all"]]) {
-  await page.click(`[data-filter-group="${group}"] button[data-value="${kind}"]`);
+  await choose(group, kind);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = kind === "all" ? upcoming.length : upcoming.filter((e) => (e.tags || []).includes(kind)).length;
   const status = await page.$eval("#filter-status", (s) => s.textContent);
@@ -58,20 +64,24 @@ for (const [group, kind] of [["kind", "club"], ["kind", "all"], ["age", "all-age
 }
 
 for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
-  await page.click(`[data-filter-group="schedule"] button[data-value="${value}"]`);
+  await choose("schedule", value);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = upcoming.filter((e) => (e.tags || []).includes("weekly") === keep).length;
   shown === expected ? pass(`schedule ${value}: ${shown} events`) : fail(`schedule ${value} shows ${shown}, expected ${expected}`);
 }
-await page.click('[data-filter-group="schedule"] button[data-value="all"]');
+await choose("schedule", "all");
 
 for (const value of ["free", "free-youth", "cost-unknown"]) {
-  await page.click(`[data-filter-group="cost"] button[data-value="${value}"]`);
+  await choose("cost", value);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = upcoming.filter((e) => (e.tags || []).includes(value)).length;
   shown === expected ? pass(`cost ${value}: ${shown} events`) : fail(`cost ${value} shows ${shown}, expected ${expected}`);
 }
-await page.click('[data-filter-group="cost"] button[data-value="all"]');
+const costMenu = await page.$eval('[popovertarget="filter-cost"]', (b) =>
+  ({ text: b.textContent, open: document.getElementById("filter-cost").matches(":popover-open") }));
+costMenu.text === "Cost: Cost unknown" && !costMenu.open ? pass(`cost menu closes and reads "${costMenu.text}"`)
+  : fail(`cost menu reads "${costMenu.text}" and is ${costMenu.open ? "still open" : "closed"}`);
+await choose("cost", "all");
 
 const SPEEDS = ["regular", "quick", "blitz"];
 async function checkSpeeds(label, events) {
@@ -82,13 +92,13 @@ async function checkSpeeds(label, events) {
     return fail(`${label} time control buttons ${JSON.stringify(buttons)}, expected ${JSON.stringify(expected)}`);
   }
   for (const value of present) {
-    await page.click(`[data-filter-group="speed"] button[data-value="${value}"]`);
+    await choose("speed", value);
     const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
     const want = events.filter((e) => (e.tags || []).includes(value)).length;
     if (shown !== want) return fail(`${label} time control ${value} shows ${shown}, expected ${want}`);
   }
-  if (present.length) await page.click('[data-filter-group="speed"] button[data-value="all"]');
-  pass(`${label} time control filters: ${present.length ? present.join(", ") : "none, row left out"}`);
+  if (present.length) await choose("speed", "all");
+  pass(`${label} time control filters: ${present.length ? present.join(", ") : "none, menu left out"}`);
 }
 await checkSpeeds("events page", upcoming);
 
@@ -169,7 +179,7 @@ const youthCityButtons = await page.$$eval('[data-filter-group="city"] button', 
 JSON.stringify(youthCityButtons) === JSON.stringify(["All cities", ...youthCities]) ? pass(`scholastic city filters: ${youthCityButtons.join(", ")}`)
   : fail(`scholastic city filters ${JSON.stringify(youthCityButtons)} don't match ${JSON.stringify(youthCities)}`);
 await checkSpeeds("scholastic page", youthEvents);
-await page.click('[data-filter-group="kind"] button[data-value="tournament"]');
+await choose("kind", "tournament");
 const youthTournaments = await page.$$eval(".event:not([hidden])", (c) => c.length);
 const expectedTournaments = youthEvents.filter((e) => e.tags.includes("tournament")).length;
 youthTournaments === expectedTournaments ? pass(`scholastic tournaments: ${youthTournaments}`)

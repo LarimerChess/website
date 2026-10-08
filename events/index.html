@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chess Events in Fort Collins, Colorado | Larimer County Chess Club</title>
-  <meta name="description" content="Upcoming chess events in Fort Collins, Colorado, and across Larimer County: club nights, US Chess rated tournaments, casual play and scholastic events.">
+  <meta name="description" content="Upcoming chess events in Fort Collins, Colorado and across Larimer County: club nights, US Chess rated tournaments, casual play, and scholastic events.">
   <link rel="canonical" href="https://larimerchess.org/events/">
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Larimer County Chess Club">
   <meta property="og:title" content="Chess Events in Fort Collins, Colorado | Larimer County Chess Club">
-  <meta property="og:description" content="Upcoming chess events in Fort Collins, Colorado, and across Larimer County: club nights, US Chess rated tournaments, casual play and scholastic events.">
+  <meta property="og:description" content="Upcoming chess events in Fort Collins, Colorado and across Larimer County: club nights, US Chess rated tournaments, casual play, and scholastic events.">
   <meta property="og:url" content="https://larimerchess.org/events/">
   <meta property="og:image" content="https://larimerchess.org/share.png">
   <meta property="og:image:width" content="1200">
@@ -21,8 +21,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="../style.css?v=6cffd743eb">
-  <script src="../calendar.js?v=e3bf8262b1" defer></script>
+  <link rel="stylesheet" href="../style.css?v=92b8cb2614">
+  <script src="../calendar.js?v=621b5d968d" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -39,9 +39,9 @@
   </nav>
   <main id="main" class="wrap">
     <h1>Chess in Fort Collins and Larimer County, Colorado</h1>
-    <p>Upcoming chess in Fort Collins, Colorado, and around Larimer County: the club's own events, and events run by other groups. Events run by other groups say who runs them; check with them for details. Kids' school clubs, classes and scholastic tournaments are on the <a href="/scholastic/">scholastic chess page</a>.</p>
+    <p>Upcoming chess in Fort Collins, Colorado and around Larimer County: the club's own events, and events run by other groups. Events run by other groups say who runs them; check with them for details. Kids' school clubs, classes, and scholastic tournaments are on the <a href="/scholastic/">scholastic chess page</a>.</p>
 
-    <div id="event-filters" hidden>
+    <div id="event-filters" class="filter-bar" hidden>
       <div class="filters" role="group" aria-label="Kind of event" data-filter-group="kind">
         <button type="button" data-value="all" aria-pressed="true">All</button>
         <button type="button" data-value="club" aria-pressed="false">Club</button>
@@ -49,24 +49,29 @@
         <button type="button" data-value="rated" aria-pressed="false">Rated</button>
         <button type="button" data-value="casual" aria-pressed="false">Casual</button>
       </div>
-      <div class="filters filters-more" role="group" aria-label="Age" data-filter-group="age">
+      <button type="button" class="filter-menu" popovertarget="filter-age">Age</button>
+      <div class="filter-options" id="filter-age" popover role="group" aria-label="Age" data-filter-group="age">
         <button type="button" data-value="all" aria-pressed="true">Any age</button>
         <button type="button" data-value="all-ages" aria-pressed="false">All ages</button>
         <button type="button" data-value="senior" aria-pressed="false">Seniors only</button>
       </div>
-      <div class="filters filters-more" role="group" aria-label="How often" data-filter-group="schedule">
+      <button type="button" class="filter-menu" popovertarget="filter-schedule">Schedule</button>
+      <div class="filter-options" id="filter-schedule" popover role="group" aria-label="How often" data-filter-group="schedule">
         <button type="button" data-value="all" aria-pressed="true">Any schedule</button>
         <button type="button" data-value="weekly" aria-pressed="false">Weekly</button>
         <button type="button" data-value="not-weekly" aria-pressed="false">Not weekly</button>
       </div>
-      <div class="filters filters-more" role="group" aria-label="Cost" data-filter-group="cost">
+      <button type="button" class="filter-menu" popovertarget="filter-cost">Cost</button>
+      <div class="filter-options" id="filter-cost" popover role="group" aria-label="Cost" data-filter-group="cost">
         <button type="button" data-value="all" aria-pressed="true">Any cost</button>
         <button type="button" data-value="free" aria-pressed="false">Free</button>
         <button type="button" data-value="free-youth" aria-pressed="false">Free for youth</button>
         <button type="button" data-value="cost-unknown" aria-pressed="false">Cost unknown</button>
       </div>
-      <div class="filters filters-more" role="group" aria-label="US Chess time control" data-filter-group="speed"></div>
-      <div class="filters filters-more" role="group" aria-label="City" data-filter-group="city"></div>
+      <button type="button" class="filter-menu" popovertarget="filter-speed">Time control</button>
+      <div class="filter-options" id="filter-speed" popover role="group" aria-label="US Chess time control" data-filter-group="speed"></div>
+      <button type="button" class="filter-menu" popovertarget="filter-city">City</button>
+      <div class="filter-options" id="filter-city" popover role="group" aria-label="City" data-filter-group="city"></div>
     </div>
 
     <p id="filter-status" class="visually-hidden" role="status"></p>
@@ -75,12 +80,12 @@
 
     <section id="subscribe">
       <h2>Add club events to your calendar</h2>
-      <p><a href="https://calendar.google.com/calendar/u/0?cid=Y182OWZiZTVhNDg5OTgxOWQwNjUxNWUyOGE1ZDUxNjFiMzUwOGU5Y2FiYWQ3NDk2MWNlMjdlMzZjYzk0ZDY2ZjY3QGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20"><span class="visually-hidden">Add the club calendar to </span>Google Calendar</a> or <a href="webcal://calendar.google.com/calendar/ical/c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67%40group.calendar.google.com/public/basic.ics"><span class="visually-hidden">Add the club calendar to </span>Apple Calendar, Outlook and others</a>.</p>
+      <p><a href="https://calendar.google.com/calendar/u/0?cid=Y182OWZiZTVhNDg5OTgxOWQwNjUxNWUyOGE1ZDUxNjFiMzUwOGU5Y2FiYWQ3NDk2MWNlMjdlMzZjYzk0ZDY2ZjY3QGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20"><span class="visually-hidden">Add the club calendar to </span>Google Calendar</a> or <a href="webcal://calendar.google.com/calendar/ical/c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67%40group.calendar.google.com/public/basic.ics"><span class="visually-hidden">Add the club calendar to </span>Apple Calendar, Outlook, and others</a>.</p>
     </section>
 
     <section id="missing">
       <h2>Missing an event?</h2>
-      <p>If you know of a chess event in Fort Collins or elsewhere in Larimer County, Colorado, that isn't listed here, <a href="mailto:president@larimerchess.org?subject=Missing%20chess%20event&amp;body=Event%20name%3A%0ADate%20and%20time%3A%0APlace%3A%0AWho%20runs%20it%3A%0ALink%20with%20details%3A%0A">email president@larimerchess.org</a> with what it is, when and where it happens, and who runs it.</p>
+      <p>If you know of a chess event in Fort Collins or elsewhere in Larimer County, Colorado that isn't listed here, <a href="mailto:president@larimerchess.org?subject=Missing%20chess%20event&amp;body=Event%20name%3A%0ADate%20and%20time%3A%0APlace%3A%0AWho%20runs%20it%3A%0ALink%20with%20details%3A%0A">email president@larimerchess.org</a> with what it is, when and where it happens, and who runs it.</p>
     </section>
   </main>
 

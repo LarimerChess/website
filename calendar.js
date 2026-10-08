@@ -215,7 +215,7 @@ function showDetails(event, button) {
   google.href = googleLink(event);
   google.target = "_blank";
   google.rel = "noopener";
-  const ics = el("a", "button button-secondary", "Add to Apple, Outlook or other (.ics)");
+  const ics = el("a", "button button-secondary", "Add to Apple, Outlook, or other (.ics)");
   ics.href = icsLink(event);
   ics.download = `${event.title.replace(/[^\w]+/g, "-")}-${event.start.slice(0, 10)}.ics`;
   add.append(google, ics);
@@ -292,10 +292,11 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Independent rows of filter buttons: kind of event, age, how often, cost, time control and city.
-// A card shows when it matches every row. The time control and city buttons come from the events
-// themselves, so a page with no timed events has no time control row. The
-// choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
+// Independent groups of filter buttons: kind of event, age, how often, cost, time control and
+// city; all but kind sit in a menu under a chip. A card shows when it matches every group. The
+// time control and city buttons come from the events themselves, so a page with no timed events
+// has no time control menu. The choice is kept in the address, e.g.
+// #kind=youth&schedule=weekly&city=loveland.
 // US Chess's rating categories, from the speed metadata in update_calendar.py.
 const SPEEDS = { regular: "Regular", quick: "Quick", blitz: "Blitz" };
 const MATCHES = {
@@ -311,7 +312,10 @@ function setUpFilters(container, filtersId, events) {
   const panel = document.getElementById(filtersId);
   const speedGroup = panel.querySelector('[data-filter-group="speed"]');
   const speeds = Object.keys(SPEEDS).filter((s) => events.some((e) => (e.tags || []).includes(s)));
-  if (speeds.length === 0) speedGroup?.remove();
+  if (speeds.length === 0) {
+    panel.querySelector('[popovertarget="filter-speed"]')?.remove();
+    speedGroup?.remove();
+  }
   for (const value of speeds.length ? ["all", ...speeds] : []) {
     const button = el("button", null, value === "all" ? "Any time control" : SPEEDS[value]);
     button.type = "button";
@@ -329,7 +333,10 @@ function setUpFilters(container, filtersId, events) {
   const groups = [...panel.querySelectorAll("[data-filter-group]")].map((node) => ({
     name: node.dataset.filterGroup,
     buttons: [...node.querySelectorAll("button[data-value]")],
+    node,
+    menu: node.id && panel.querySelector(`[popovertarget="${node.id}"]`),
   }));
+  for (const g of groups) if (g.menu) g.menu.dataset.label = g.menu.textContent;
   const state = Object.fromEntries(groups.map((g) => [g.name, "all"]));
 
   const readHash = () => {
@@ -351,6 +358,13 @@ function setUpFilters(container, filtersId, events) {
   const apply = (announce) => {
     for (const g of groups) {
       for (const b of g.buttons) b.setAttribute("aria-pressed", String(b.dataset.value === state[g.name]));
+      if (g.menu) {
+        const chosen = state[g.name] !== "all" && g.buttons.find((b) => b.dataset.value === state[g.name]);
+        g.menu.classList.toggle("filter-menu-set", Boolean(chosen));
+        g.menu.replaceChildren(...(chosen
+          ? [el("span", "visually-hidden", `${g.menu.dataset.label}: `), chosen.textContent]
+          : [g.menu.dataset.label]));
+      }
     }
     let count = 0;
     for (const card of container.querySelectorAll(".event")) {
@@ -372,7 +386,33 @@ function setUpFilters(container, filtersId, events) {
 
   for (const g of groups) {
     for (const b of g.buttons) {
-      b.addEventListener("click", () => { state[g.name] = b.dataset.value; writeHash(); apply(true); });
+      b.addEventListener("click", () => {
+        state[g.name] = b.dataset.value;
+        writeHash();
+        apply(true);
+        if (g.menu) {
+          g.node.hidePopover();
+          g.menu.focus();
+        }
+        // Once the bar is stuck to the top, bring the list's start back under it rather than
+        // leave the reader somewhere in the middle of a list that just changed.
+        const top = container.getBoundingClientRect().top + scrollY - panel.offsetHeight;
+        if (scrollY > top) scrollTo(0, top);
+      });
+    }
+    // Menus open in the top layer, out of the scrolling bar that would clip them, so they
+    // are placed under their chip by hand.
+    if (g.menu) {
+      const place = () => {
+        const chip = g.menu.getBoundingClientRect();
+        g.node.style.top = `${chip.bottom + 6}px`;
+        g.node.style.left = `${Math.max(8, Math.min(chip.left, innerWidth - g.node.offsetWidth - 8))}px`;
+      };
+      g.node.addEventListener("toggle", (event) => {
+        if (event.newState !== "open") return removeEventListener("scroll", place);
+        place();
+        addEventListener("scroll", place, { passive: true });
+      });
     }
   }
   window.addEventListener("hashchange", () => { readHash(); apply(true); });
