@@ -102,6 +102,10 @@ class BadMetadata(unittest.TestCase):
         self.assertIn("'Unlabeled' (2026-11-07): organizer is missing; format is missing", message)
         self.assertNotIn("First Saturday Classic", message)
 
+    def test_description(self):
+        [e] = uc.build({"community": [item("Library", MEETUP, description="Thursdays 4:15 PM. Questions: 970-962-2665.")]})
+        self.assertEqual(e["description"], "Thursdays 4:15 PM. Questions: 970-962-2665.")
+
     def test_private_and_cancelled_events_are_left_out_unchecked(self):
         events = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT),
                                     item("Board meeting", {}, visibility="private"),
@@ -113,7 +117,7 @@ class Build(unittest.TestCase):
     def test_event_fields(self):
         [e] = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT)]})
         self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "start", "end",
-                                   "allDay", "location", "place", "city"])
+                                   "allDay", "location", "place", "city", "description"])
         self.assertEqual((e["start"], e["allDay"], e["city"]), ("2026-11-07T10:00:00-07:00", False, "Fort Collins"))
 
     def test_all_day(self):

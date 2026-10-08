@@ -145,6 +145,7 @@ def build(items_by_calendar):
                 "location": location,
                 "place": place(location),
                 "city": city(location),
+                "description": item.get("description", ""),
             })
     if bad:
         lines = [f"{len(bad)} event(s) on the calendars have missing or invalid metadata; events.json is unchanged."]
@@ -185,7 +186,7 @@ def fetch(calendar_id, token, today):
             "timeMin": datetime.combine(today, datetime.min.time(), TZ).isoformat(),
             "timeMax": datetime.combine(today + timedelta(days=DAYS_AHEAD), datetime.min.time(), TZ).isoformat(),
             "maxResults": "2500",
-            "fields": "nextPageToken,items(status,visibility,summary,location,start,end,recurringEventId,extendedProperties)",
+            "fields": "nextPageToken,items(status,visibility,summary,description,location,start,end,recurringEventId,extendedProperties)",
         }
         if page:
             query["pageToken"] = page

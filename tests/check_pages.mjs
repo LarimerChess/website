@@ -1,6 +1,6 @@
 // Loads every page in Chrome against a local server and checks what HTML
-// validation can't: accessibility (axe, light and dark), the add-to-calendar
-// menu by keyboard, the filters, each card's Run by line and Details link, and
+// validation can't: accessibility (axe, light and dark), the event details
+// dialog by keyboard, the filters, each card's Run by line and Details link, and
 // the events page's structured data.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
@@ -74,7 +74,7 @@ for (const value of ["free", "free-youth", "cost-unknown"]) {
 await page.click('[data-filter-group="cost"] button[data-value="all"]');
 
 const lines = await page.$$eval(".event", (cards) => cards.map((c) => ({
-  title: c.querySelector("h3").firstChild.textContent,
+  title: c.querySelector("h3 button").firstChild.textContent,
   runBy: (c.querySelector(".event-organizer")?.firstChild?.nodeType === 3 && c.querySelector(".event-organizer").firstChild.textContent) || "",
   details: c.querySelector(".event-organizer a")?.getAttribute("href") || "",
 })));
@@ -90,18 +90,48 @@ const rated = upcoming.filter((e) => e.organizer === "Larimer County Chess Club"
 rated.length === 0 ? pass("every club event is tagged rated")
   : fail(`club events not tagged rated: ${[...new Set(rated.map((e) => e.title))].join(", ")}`);
 
-await page.focus(".event-date");
+const described = upcoming.findIndex((e) => e.description);
+await page.focus(`.event:nth-of-type(1) .event-open`);
+const firstTitle = await page.evaluate(() => document.activeElement.firstChild.textContent);
 await page.keyboard.press("Enter");
-const opened = await page.evaluate(() => ({
-  expanded: document.querySelector(".event-date").getAttribute("aria-expanded"),
-  focus: document.activeElement.textContent,
-}));
-opened.expanded === "true" && opened.focus.startsWith("Google Calendar") ? pass("Enter opens the add-to-calendar menu")
+const opened = await page.evaluate(() => {
+  const dialog = document.querySelector("dialog.event-dialog");
+  return {
+    open: dialog?.open,
+    modal: dialog?.matches(":modal"),
+    label: document.getElementById(dialog?.getAttribute("aria-labelledby"))?.textContent,
+    focus: document.activeElement.id,
+    // The add-to-calendar links come before the description.
+    order: [...dialog.querySelectorAll(".event-add a, .event-description")].map((n) => n.className),
+  };
+});
+opened.open && opened.modal && opened.label === firstTitle && opened.focus === "event-dialog-title"
+  && opened.order[0] === "button" && opened.order[1] === "button button-secondary"
+  ? pass("Enter opens the details dialog, labelled by the title and focused on it, add buttons first")
   : fail(`Enter on a card: ${JSON.stringify(opened)}`);
 await page.keyboard.press("Escape");
-const closed = await page.evaluate(() => document.activeElement.classList.contains("event-date")
-  && document.querySelector(".event-date").getAttribute("aria-expanded") === "false");
-closed ? pass("Escape closes the menu and returns focus") : fail("Escape didn't close the menu or return focus");
+// The dialog's close event, which resets the card's button, fires a task later.
+await page.waitForFunction(() => !document.querySelector("dialog.event-dialog").open, { timeout: 2000 }).catch(() => {});
+await new Promise((resolve) => setTimeout(resolve, 50));
+const closed = await page.evaluate(() => !document.querySelector("dialog.event-dialog").open
+  && document.activeElement.classList.contains("event-open")
+  && document.activeElement.getAttribute("aria-expanded") === "false");
+closed ? pass("Escape closes the details and returns focus to the card") : fail("Escape didn't close the details or return focus");
+
+if (described >= 0) {
+  const cardsAll = await page.$$(".event-open");
+  await cardsAll[described].click();
+  const text = await page.$eval(".event-description", (d) => d.textContent);
+  const firstLine = upcoming[described].description.trim().split("\n")[0].replace(/^\s*[•*-]\s+/, "");
+  text.includes(firstLine.replace(/https?:\/\/\S+/g, "").trim()) ? pass(`details show the description of ${upcoming[described].title}`)
+    : fail(`details of ${upcoming[described].title} lack its description`);
+  await page.evaluate(axeSource);
+  const inDialog = await page.evaluate(() => axe.run(document.querySelector("dialog"),
+    { runOnly: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa", "best-practice"] }));
+  inDialog.violations.length === 0 ? pass("axe on the open details dialog")
+    : inDialog.violations.forEach((v) => fail(`axe dialog: ${v.id}: ${v.help} at ${v.nodes[0].target}`));
+  await page.click(".event-dialog-close");
+}
 
 const data = (await page.$$eval('script[type="application/ld+json"]', (s) => s.map((x) => JSON.parse(x.textContent)))).flat();
 const clubEvents = upcoming.filter((e) => e.organizer === "Larimer County Chess Club").length;

@@ -89,30 +89,9 @@ main > .kicker { padding-top: 32px; }
   flex: none;
   width: 64px;
   text-align: center;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
   border-right: 1px solid var(--line);
   padding: 4px 12px 4px 0;
-  cursor: pointer;
 }
-.add-menu {
-  position: absolute;
-  z-index: 2;
-  top: calc(100% - 8px);
-  left: 12px;
-  display: flex;
-  flex-direction: column;
-  min-width: 200px;
-  padding: 6px 0;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
-}
-.add-menu a { padding: 8px 16px; color: var(--fg); text-decoration: none; font-size: 15px; }
-.add-menu a:hover, .add-menu a:focus-visible { background: var(--bg); color: var(--accent); outline: none; }
 .event-month {
   display: block;
   color: var(--accent);
@@ -176,12 +155,21 @@ main > h1:first-child { margin-top: 32px; }
   border: 0;
 }
 .event-year { display: block; font-size: 12px; color: var(--muted); }
-/* The date button stretches over the whole card, so the card is the add-to-calendar target;
+/* The title's button stretches over the whole card, so the card opens the details;
    links in the card sit above it. */
-.event-date::after { content: ""; position: absolute; inset: -1px; border-radius: 8px; }
-.event-date:focus-visible { outline: none; }
-.event-date:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
-.event:hover, .event:has(.event-date[aria-expanded="true"]) { border-color: var(--accent); }
+.event-open {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.event-open::after { content: ""; position: absolute; inset: -1px; border-radius: 8px; }
+.event-open:focus-visible { outline: none; }
+.event-open:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
+.event:hover, .event:has(.event-open[aria-expanded="true"]) { border-color: var(--accent); }
 .event-body a { position: relative; z-index: 1; }
 .event-date { order: -1; }
 .skip-link { position: absolute; left: 16px; top: -48px; z-index: 10; padding: 8px 16px; background: var(--accent); color: var(--bg); border-radius: 6px; font-weight: 600; }
@@ -192,3 +180,39 @@ main > h1:first-child { margin-top: 32px; }
 .prices th, .prices td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
 .prices thead th, .prices tbody th { font-weight: 600; }
 .prices td { white-space: nowrap; }
+.button-secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.event-dialog {
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 0;
+  overflow: auto;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.event-dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+.event-dialog-body { padding: 24px 24px 8px; overflow-wrap: anywhere; }
+.event-dialog h2 { margin: 0 0 8px; font-size: 26px; }
+.event-dialog h2:focus { outline: none; }
+.event-dialog-date { margin: 0; font-weight: 600; }
+.event-add { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 4px 0 20px; }
+.event-dialog-place { margin: 0 0 4px; }
+.event-description { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 4px; }
+.event-description ul { padding-left: 20px; }
+.event-dialog-close {
+  display: block;
+  margin: 0 24px 24px auto;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 20px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.event-dialog-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
