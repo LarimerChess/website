@@ -171,6 +171,20 @@ data.filter((d) => d["@type"] === "Event").length === clubEvents && incomplete.l
   ? pass(`structured data for ${clubEvents} club events`)
   : fail(`structured data: ${data.length} items for ${clubEvents} club events, ${incomplete.length} incomplete`);
 
+// A reload while scrolled down must come back to the same place without the page jumping.
+await page.evaluateOnNewDocument(() => {
+  window.layoutShift = 0;
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) if (!e.hadRecentInput) window.layoutShift += e.value; })
+    .observe({ type: "layout-shift", buffered: true });
+});
+await page.evaluate(() => scrollTo(0, document.getElementById("subscribe").offsetTop - 200));
+const scrolledTo = await page.evaluate(() => scrollY);
+await page.reload({ waitUntil: "networkidle0" });
+const afterReload = await page.evaluate(() => ({ y: scrollY, shift: window.layoutShift }));
+Math.abs(afterReload.y - scrolledTo) <= 1 && afterReload.shift < 0.1
+  ? pass(`reload while scrolled keeps the place (layout shift ${afterReload.shift.toFixed(3)})`)
+  : fail(`reload at ${scrolledTo} came back at ${afterReload.y} with layout shift ${afterReload.shift.toFixed(3)}`);
+
 await page.goto(base + "/scholastic/", { waitUntil: "networkidle0" });
 const youthEvents = allUpcoming.filter(isYouth);
 const youthCards = await page.$$eval(".event", (c) => c.length);

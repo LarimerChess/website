@@ -482,6 +482,32 @@ function structuredData(events) {
 const nav = document.querySelector(".site-nav");
 new ResizeObserver(() => document.documentElement.style.setProperty("--nav-height", `${nav.offsetHeight}px`)).observe(nav);
 
+// On a reload or Back, Chrome restores the scroll position before the cards exist, while the
+// page is still short, and the cards then push everything in view far down. So the position
+// is put back once they are drawn, unless the reader has started scrolling by then. The scroll
+// waits a frame after the cards are drawn: in the same frame, Chrome counts what scrolls into
+// view as having moved.
+history.scrollRestoration = "manual";
+const scrollKey = `scroll ${location.pathname}`;
+addEventListener("pagehide", () => { try { sessionStorage.setItem(scrollKey, String(scrollY)); } catch {} });
+let readerMoved = false;
+for (const type of ["wheel", "touchstart", "keydown"]) {
+  addEventListener(type, () => { readerMoved = true; }, { once: true, passive: true });
+}
+function restoreScroll() {
+  if (readerMoved) return;
+  const how = performance.getEntriesByType("navigation")[0]?.type;
+  let saved = null;
+  try { saved = sessionStorage.getItem(scrollKey); } catch {}
+  if ((how === "reload" || how === "back_forward") && saved !== null) {
+    scrollTo(0, Number(saved));
+    return;
+  }
+  // A link to a section below the cards, like /events/#subscribe, landed before they pushed it down.
+  const target = location.hash.length > 1 && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  if (target) target.scrollIntoView();
+}
+
 const list = document.querySelector("[data-events]");
 fetch(list.dataset.src || "events.json", { cache: "no-cache" })
   .then((response) => response.json())
@@ -507,4 +533,5 @@ fetch(list.dataset.src || "events.json", { cache: "no-cache" })
     }
     document.getElementById("events-fallback").remove();
   })
-  .catch(() => {});
+  .catch(() => {})
+  .then(() => requestAnimationFrame(() => requestAnimationFrame(restoreScroll)));
