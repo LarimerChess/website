@@ -30,6 +30,9 @@ jobs:
       - name: JavaScript syntax
         if: success() || failure()
         run: node --check calendar.js
+      - name: Asset version stamps are current
+        if: success() || failure()
+        run: python scripts/stamp_assets.py --check
       - name: Sitemap lists every page
         if: success() || failure()
         run: python tests/check_sitemap.py

@@ -313,7 +313,7 @@ function structuredData(events) {
 }
 
 const list = document.querySelector("[data-events]");
-fetch(list.dataset.src || "events.json")
+fetch(list.dataset.src || "events.json", { cache: "no-cache" })
   .then((response) => response.json())
   .then((events) => {
     const now = new Date();

@@ -6,6 +6,8 @@ Edit index.html to update content; style.css holds the styling.
 
 When you add a page, such as new board minutes, add its URL to sitemap.xml.
 
+After changing calendar.js or style.css, run python scripts/stamp_assets.py. It updates the ?v= stamp on every page's links to them, so browsers don't pair a new page with a cached old file. CI fails if a stamp is stale.
+
 ## Checks
 
 Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, the sitemap check, tests for the calendar import, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the add-to-calendar menu, and structured data), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
@@ -15,6 +17,7 @@ To run them locally:
 ```
 npm ci
 npm run check:html
+python scripts/stamp_assets.py --check
 python tests/check_sitemap.py
 python -m unittest discover -s tests
 python -m http.server 8765 --bind 127.0.0.1 &
