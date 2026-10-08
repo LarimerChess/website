@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="1.5 1 21 21"><!-- Knight from Tabler Icons (https://tabler.io/icons), MIT License, Copyright (c) 2020-2026 Paweł Kuna --><rect x="1.5" y="1" width="21" height="21" rx="3.8" fill="#2f5d50"/><path d="M8.959 1.99l-.147 .028l-.115 .029a1 1 0 0 0 -.646 1.27l.749 2.245l-2.815 1.735a2 2 0 0 0 -.655 2.751l.089 .133a2 2 0 0 0 1.614 .819l1.563 -.001l-1.614 4.674a1 1 0 0 0 .945 1.327h7.961a1 1 0 0 0 1 -.978l.112 -5c0 -3.827 -1.555 -6.878 -4.67 -7.966l-2.399 -.83l-.375 -.121l-.258 -.074l-.135 -.031l-.101 -.013l-.055 -.001l-.048 .003z" fill="#faf8f4"/><path d="M18 18h-12a1 1 0 0 0 -1 1a2 2 0 0 0 2 2h10a2 2 0 0 0 1.987 -1.768l.011 -.174a1 1 0 0 0 -.998 -1.058z" fill="#faf8f4"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="3.6 4.8 37.4 37.4"><!-- Chess knight copyright (c) Cburnett, from Wikimedia Commons (https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg), used under the 3-clause BSD license: see https://larimerchess.org/ICON-LICENSE.txt for the conditions and disclaimer. Recolored and placed on a green tile. --><rect x="3.6" y="4.8" width="37.4" height="37.4" rx="6.7" fill="#2f5d50"/><g style="opacity:1; fill:none; fill-opacity:1; fill-rule:evenodd; stroke:#faf8f4; stroke-width:1.5; stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4; stroke-dasharray:none; stroke-opacity:1;" transform="translate(0,0.3)">
+    <path
+      d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18"
+      style="fill:#faf8f4; stroke:#faf8f4;" />
+    <path
+      d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10"
+      style="fill:#faf8f4; stroke:#faf8f4;" />
+    <path
+      d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z"
+      style="fill:#2f5d50; stroke:#2f5d50;" />
+    <path
+      d="M 15 15.5 A 0.5 1.5 0 1 1  14,15.5 A 0.5 1.5 0 1 1  15 15.5 z"
+      transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)"
+      style="fill:#2f5d50; stroke:#2f5d50;" />
+    <path
+      d="M 24.55,10.4 L 24.1,11.85 L 24.6,12 C 27.75,13 30.25,14.49 32.5,18.75 C 34.75,23.01 35.75,29.06 35.25,39 L 35.2,39.5 L 37.45,39.5 L 37.5,39 C 38,28.94 36.62,22.15 34.25,17.66 C 31.88,13.17 28.46,11.02 25.06,10.5 L 24.55,10.4 z "
+      style="fill:#2f5d50; stroke:none;" />
+  </g>
+</svg>
