@@ -148,6 +148,10 @@ function renderEvent(event) {
   const when = el("p", "event-meta");
   if (event.allDay) {
     when.append(shown(weekday.format(start)), spoken("All day"));
+  } else if (longDate.format(start) !== longDate.format(end)) {
+    // formatRange would add numeric dates to both ends.
+    when.append(`${weekday.format(start)} ${timeRange.format(start)} `, shown("–"), spoken(" to "),
+      ` ${weekday.format(end)} ${timeRange.format(end)}`);
   } else {
     when.append(shown(`${weekday.format(start)} · `));
     for (const part of timeRange.formatRangeToParts(start, end)) {
