@@ -38,7 +38,7 @@ TITLE_TAGS = [
     ("youth", r"k.12|scholastic|grades? \w|elementary|kids|\bschool\b|\(youth\)"),
     ("senior", r"55\+|senior"),
 ]
-ADULTS_ONLY = re.compile(r"\b(?:18|21)\+|adults? only", re.I)
+ADULTS_ONLY = re.compile(r"\b(?:18|21)\+|adults? only|\(adults\)", re.I)
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
 FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
@@ -70,7 +70,7 @@ def describe(event, calendar):
     elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
         tags.append("rated")
     if FREE.search(text):
-        tags += ["free", "free-youth"]
+        tags += ["free"] if ADULTS_ONLY.search(title) else ["free", "free-youth"]
     elif FREE_FOR_YOUTH.search(text):
         tags.append("free-youth")
     elif not CHARGES.search(text):
