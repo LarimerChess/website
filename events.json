@@ -7,10 +7,18 @@
    "tournament"
   ],
   "url": "https://www.grandslamfc.com",
+  "price": "",
   "start": "2026-10-10T09:30:00-06:00",
   "end": "2026-10-10T16:30:00-06:00",
   "allDay": false,
-  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA",
+  "place": {
+   "name": "Grand Slam Games and Comics",
+   "street": "1119 W Drake Rd, Unit C-30",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -22,10 +30,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-10-12T18:30:00-06:00",
   "end": "2026-10-12T21:30:00-06:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -35,10 +51,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-10-14T18:00:00-06:00",
   "end": "2026-10-14T21:00:00-06:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Chessmates Scholastic Tournament (K–12)",
@@ -49,10 +73,18 @@
    "youth"
   ],
   "url": "https://chessmatesfc.com/tournaments/",
+  "price": "",
   "start": "2026-10-17T08:15:00-06:00",
   "end": "2026-10-17T14:00:00-06:00",
   "allDay": false,
-  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525"
+  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525",
+  "place": {
+   "name": "CEC High School",
+   "street": "4424 Innovation Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -64,10 +96,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-10-19T18:30:00-06:00",
   "end": "2026-10-19T21:30:00-06:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -77,10 +117,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-10-21T18:00:00-06:00",
   "end": "2026-10-21T21:00:00-06:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -92,10 +140,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-10-26T18:30:00-06:00",
   "end": "2026-10-26T21:30:00-06:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -105,10 +161,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-10-28T18:00:00-06:00",
   "end": "2026-10-28T21:00:00-06:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Larimer County Chess Club Knightmare Arena Classical",
@@ -120,10 +184,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2026-10-31T10:00:00-06:00",
   "end": "2026-10-31T19:00:00-06:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -135,10 +207,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-11-02T18:30:00-07:00",
   "end": "2026-11-02T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -148,10 +228,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-11-04T18:00:00-07:00",
   "end": "2026-11-04T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "First Saturday Classic",
@@ -163,10 +251,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2026-11-07T10:00:00-07:00",
   "end": "2026-11-07T19:00:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -178,10 +274,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-11-09T18:30:00-07:00",
   "end": "2026-11-09T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -191,10 +295,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-11-11T18:00:00-07:00",
   "end": "2026-11-11T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
@@ -204,10 +316,18 @@
    "tournament"
   ],
   "url": "https://www.grandslamfc.com",
+  "price": "",
   "start": "2026-11-14T09:30:00-07:00",
   "end": "2026-11-14T16:30:00-07:00",
   "allDay": false,
-  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA",
+  "place": {
+   "name": "Grand Slam Games and Comics",
+   "street": "1119 W Drake Rd, Unit C-30",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -219,10 +339,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-11-16T18:30:00-07:00",
   "end": "2026-11-16T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -232,10 +360,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-11-18T18:00:00-07:00",
   "end": "2026-11-18T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Third Saturday Slow",
@@ -247,10 +383,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2026-11-21T10:00:00-07:00",
   "end": "2026-11-21T19:00:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -262,10 +406,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-11-23T18:30:00-07:00",
   "end": "2026-11-23T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -275,10 +427,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-11-25T18:00:00-07:00",
   "end": "2026-11-25T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -290,10 +450,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-11-30T18:30:00-07:00",
   "end": "2026-11-30T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -303,10 +471,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-12-02T18:00:00-07:00",
   "end": "2026-12-02T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Chessmates Scholastic Tournament (K–12)",
@@ -317,10 +493,18 @@
    "youth"
   ],
   "url": "https://chessmatesfc.com/tournaments/",
+  "price": "",
   "start": "2026-12-05T08:15:00-07:00",
   "end": "2026-12-05T14:00:00-07:00",
   "allDay": false,
-  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525"
+  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525",
+  "place": {
+   "name": "CEC High School",
+   "street": "4424 Innovation Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "First Saturday Classic",
@@ -332,10 +516,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2026-12-05T10:00:00-07:00",
   "end": "2026-12-05T19:00:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -347,10 +539,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-12-07T18:30:00-07:00",
   "end": "2026-12-07T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -360,10 +560,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-12-09T18:00:00-07:00",
   "end": "2026-12-09T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
@@ -373,10 +581,18 @@
    "tournament"
   ],
   "url": "https://www.grandslamfc.com",
+  "price": "",
   "start": "2026-12-12T09:30:00-07:00",
   "end": "2026-12-12T16:30:00-07:00",
   "allDay": false,
-  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA"
+  "location": "Grand Slam Games and Comics, 1119 W Drake Rd, Unit C-30, Fort Collins, CO 80526, USA",
+  "place": {
+   "name": "Grand Slam Games and Comics",
+   "street": "1119 W Drake Rd, Unit C-30",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80526"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -388,10 +604,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-12-14T18:30:00-07:00",
   "end": "2026-12-14T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -401,10 +625,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-12-16T18:00:00-07:00",
   "end": "2026-12-16T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Third Saturday Slow",
@@ -416,10 +648,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2026-12-19T10:00:00-07:00",
   "end": "2026-12-19T19:00:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -431,10 +671,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-12-21T18:30:00-07:00",
   "end": "2026-12-21T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -444,10 +692,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-12-23T18:00:00-07:00",
   "end": "2026-12-23T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -459,10 +715,18 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2026-12-28T18:30:00-07:00",
   "end": "2026-12-28T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Wednesday Night Chess at Purpose Brewing",
@@ -472,10 +736,18 @@
    "casual"
   ],
   "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
+  "price": "",
   "start": "2026-12-30T18:00:00-07:00",
   "end": "2026-12-30T21:00:00-07:00",
   "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525"
+  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
+  "place": {
+   "name": "Purpose Brewing and Cellars",
+   "street": "4025 S Mason St, Unit C",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  }
  },
  {
   "title": "First Saturday Classic",
@@ -487,10 +759,18 @@
    "rated"
   ],
   "url": "",
+  "price": "15",
   "start": "2027-01-02T10:00:00-07:00",
   "end": "2027-01-02T19:00:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  },
  {
   "title": "Monday Club Night at Peak",
@@ -502,9 +782,17 @@
    "rated"
   ],
   "url": "",
+  "price": "",
   "start": "2027-01-04T18:30:00-07:00",
   "end": "2027-01-04T21:30:00-07:00",
   "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA"
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  }
  }
 ]

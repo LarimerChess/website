@@ -199,6 +199,49 @@ function setUpFilters(container, filtersId) {
   applyFilter(container, buttons, fromHash());
 }
 
+// schema.org Event data for search engines, for the club's own events only.
+function structuredData(events) {
+  const club = { "@type": "SportsOrganization", name: CLUB, url: "https://larimerchess.org/" };
+  const data = events.filter((e) => e.organizer === CLUB).map((e) => {
+    const item = {
+      "@context": "https://schema.org",
+      "@type": "Event",
+      name: e.title,
+      startDate: e.start,
+      endDate: e.end,
+      eventStatus: "https://schema.org/EventScheduled",
+      eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+      organizer: club,
+      url: EVENTS_PAGE,
+      image: "https://larimerchess.org/share.png",
+      description: `${e.title}, a US Chess rated event of the Larimer County Chess Club in Fort Collins, Colorado.`,
+    };
+    if (e.place && e.place.name) {
+      item.location = {
+        "@type": "Place",
+        name: e.place.name,
+        address: {
+          "@type": "PostalAddress",
+          streetAddress: e.place.street,
+          addressLocality: e.place.city,
+          addressRegion: e.place.region,
+          postalCode: e.place.zip,
+          addressCountry: "US",
+        },
+      };
+    }
+    if (e.price) {
+      item.offers = { "@type": "Offer", price: e.price, priceCurrency: "USD", url: EVENTS_PAGE, availability: "https://schema.org/InStock" };
+    }
+    return item;
+  });
+  if (data.length === 0) return;
+  const script = document.createElement("script");
+  script.type = "application/ld+json";
+  script.textContent = JSON.stringify(data);
+  document.head.append(script);
+}
+
 const list = document.querySelector("[data-events]");
 fetch(list.dataset.src || "events.json")
   .then((response) => response.json())
@@ -216,6 +259,7 @@ fetch(list.dataset.src || "events.json")
       empty.hidden = true;
       list.append(empty);
       setUpFilters(list, list.dataset.filters);
+      structuredData(upcoming);
     } else {
       list.append(...upcoming.map(renderEvent));
     }

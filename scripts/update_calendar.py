@@ -37,6 +37,8 @@ TITLE_TAGS = [
 ]
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
+FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
+ADDRESS = re.compile(r"^(?P<name>[^,]+), (?P<street>[^,]+(?:, Unit [^,]+)?), (?P<city>[^,]+), (?P<region>[A-Z]{2}) (?P<zip>\d{5})")
 
 
 def as_datetime(value):
@@ -56,13 +58,20 @@ def describe(event, calendar):
     elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
         tags.append("rated")
     links = [u for u in LINK.findall(text) if not re.search(r"calendar\.google|uschess|maps", u)]
+    fee = FEE.search(text)
     return {
         "title": title,
         "calendar": calendar,
         "organizer": organizer,
         "tags": tags,
         "url": links[0] if organizer != CLUB and links else "",
+        "price": fee.group(1) if fee else "",
     }
+
+
+def place(location):
+    match = ADDRESS.match(location)
+    return match.groupdict() if match else {}
 
 
 def main(out_path):
@@ -80,6 +89,7 @@ def main(out_path):
                 "end": as_datetime(end).isoformat(),
                 "allDay": not isinstance(start, datetime),
                 "location": str(event.get("LOCATION", "")),
+                "place": place(str(event.get("LOCATION", ""))),
             })
     events.sort(key=lambda e: (e["start"], e["title"]))
 
