@@ -8,8 +8,11 @@ const fmt = (opts) => new Intl.DateTimeFormat("en-US", { ...tz, ...opts });
 const month = fmt({ month: "short" });
 const monthHeading = fmt({ month: "long", year: "numeric" });
 const day = fmt({ day: "numeric" });
+const year = fmt({ year: "numeric" });
 const weekday = fmt({ weekday: "long" });
 const timeRange = fmt({ hour: "numeric", minute: "2-digit" });
+const longDate = fmt({ weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const EVENTS_PAGE = "https://larimerchess.org/events/";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -18,14 +21,118 @@ function el(tag, className, text) {
   return node;
 }
 
+// Calendar apps take UTC as YYYYMMDDTHHMMSSZ, or a bare YYYYMMDD for all-day events.
+function stamp(iso, allDay) {
+  if (allDay) return iso.slice(0, 10).replaceAll("-", "");
+  return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function eventDetails(event) {
+  const lines = [];
+  if (event.organizer && event.organizer !== CLUB) lines.push(`Run by ${event.organizer}.`);
+  if (event.url) lines.push(event.url);
+  lines.push(EVENTS_PAGE);
+  return lines.join("\n");
+}
+
+function googleLink(event) {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title,
+    dates: `${stamp(event.start, event.allDay)}/${stamp(event.end, event.allDay)}`,
+    details: eventDetails(event),
+    location: event.location || "",
+    ctz: "America/Denver",
+  });
+  return "https://calendar.google.com/calendar/render?" + params;
+}
+
+function icsLink(event) {
+  const escape = (s) => s.replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
+  const value = event.allDay ? ";VALUE=DATE:" : ":";
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Larimer County Chess Club//larimerchess.org//EN",
+    "BEGIN:VEVENT",
+    `UID:${stamp(event.start, event.allDay)}-${event.title.replace(/\W+/g, "-")}@larimerchess.org`,
+    `DTSTAMP:${stamp(new Date().toISOString())}`,
+    `DTSTART${value}${stamp(event.start, event.allDay)}`,
+    `DTEND${value}${stamp(event.end, event.allDay)}`,
+    `SUMMARY:${escape(event.title)}`,
+    `LOCATION:${escape(event.location || "")}`,
+    `DESCRIPTION:${escape(eventDetails(event))}`,
+    "END:VEVENT", "END:VCALENDAR",
+  ];
+  return "data:text/calendar;charset=utf-8," + encodeURIComponent(lines.join("\r\n"));
+}
+
+function closeMenus(except) {
+  for (const open of document.querySelectorAll(".event-date[aria-expanded='true']")) {
+    if (open === except) continue;
+    open.setAttribute("aria-expanded", "false");
+    document.getElementById(open.getAttribute("aria-controls")).hidden = true;
+  }
+}
+
+let menuCount = 0;
+function addToCalendar(event, start) {
+  const id = `add-menu-${++menuCount}`;
+  const button = el("button", "event-date");
+  button.type = "button";
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", id);
+  button.setAttribute("aria-label", `Add to calendar: ${event.title}, ${longDate.format(start)}`);
+  button.append(
+    el("span", "event-month", month.format(start)),
+    el("span", "event-day", day.format(start)),
+    el("span", "event-year", year.format(start)),
+    el("span", "event-add", "+ Add"),
+  );
+
+  const menu = el("div", "add-menu");
+  menu.id = id;
+  menu.hidden = true;
+  const google = el("a", null, "Google Calendar");
+  google.append(el("span", "visually-hidden", " (opens in a new tab)"));
+  google.href = googleLink(event);
+  google.target = "_blank";
+  google.rel = "noopener";
+  const ics = el("a", null, "Apple, Outlook, other (.ics file)");
+  ics.href = icsLink(event);
+  ics.download = `${event.title.replace(/[^\w]+/g, "-")}-${event.start.slice(0, 10)}.ics`;
+  menu.append(google, ics);
+  for (const link of [google, ics]) link.addEventListener("click", () => closeMenus());
+  for (const part of [button, menu]) {
+    part.addEventListener("focusout", (e) => {
+      if (!button.contains(e.relatedTarget) && !menu.contains(e.relatedTarget) && e.relatedTarget) closeMenus();
+    });
+  }
+
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opening = button.getAttribute("aria-expanded") !== "true";
+    closeMenus(button);
+    button.setAttribute("aria-expanded", String(opening));
+    menu.hidden = !opening;
+    if (opening) google.focus();
+  });
+  return [button, menu];
+}
+
+document.addEventListener("click", (e) => { if (!e.target.closest(".add-menu")) closeMenus(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const open = document.querySelector(".event-date[aria-expanded='true']");
+  closeMenus();
+  if (open) open.focus();
+});
+
 function renderEvent(event) {
   const start = new Date(event.start);
   const end = new Date(event.end);
   const item = el("li", "event");
   item.dataset.tags = ["all", ...(event.tags || [])].join(" ");
 
-  const date = el("div", "event-date");
-  date.append(el("span", "event-month", month.format(start)), el("span", "event-day", day.format(start)));
+  const [date, menu] = addToCalendar(event, start);
 
   const body = el("div", "event-body");
   body.append(el("h3", null, event.title));
@@ -33,13 +140,7 @@ function renderEvent(event) {
     ? weekday.format(start)
     : `${weekday.format(start)} · ${timeRange.formatRange(start, end)}`;
   body.append(el("p", "event-meta", when));
-  if (event.location) {
-    const where = el("p", "event-meta");
-    const link = el("a", null, event.location.split(",")[0]);
-    link.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(event.location);
-    where.append(link);
-    body.append(where);
-  }
+  if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
   if (event.organizer && event.organizer !== CLUB) {
     const by = el("p", "event-meta event-organizer", `Run by ${event.organizer}`);
     if (event.url) {
@@ -50,7 +151,7 @@ function renderEvent(event) {
     body.append(by);
   }
 
-  item.append(date, body);
+  item.append(date, menu, body);
   return item;
 }
 

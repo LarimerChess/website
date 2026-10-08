@@ -84,13 +84,38 @@ main > .kicker { padding-top: 32px; }
   border-radius: 8px;
   padding: 12px 16px;
 }
+.event { position: relative; }
 .event-date {
   flex: none;
-  width: 56px;
+  width: 64px;
   text-align: center;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
   border-right: 1px solid var(--line);
-  padding-right: 16px;
+  padding: 4px 12px 4px 0;
+  cursor: pointer;
 }
+.event-date:hover .event-add, .event-date[aria-expanded="true"] .event-add { text-decoration: underline; }
+.event-date:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.event-add { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.add-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% - 8px);
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+}
+.add-menu a { padding: 8px 16px; color: var(--fg); text-decoration: none; font-size: 15px; }
+.add-menu a:hover, .add-menu a:focus-visible { background: var(--bg); color: var(--accent); outline: none; }
 .event-month {
   display: block;
   color: var(--accent);
@@ -124,3 +149,33 @@ address { font-style: normal; margin: 12px 0 0; line-height: 1.5; }
 .filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .event-group h2 { margin: 28px 0 12px; font-size: 22px; }
 .events-empty { color: var(--muted); }
+
+.site-nav { border-bottom: 1px solid var(--line); background: var(--bg); }
+.site-nav .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.site-nav a { color: var(--fg); text-decoration: none; }
+.site-nav .brand { font: 600 18px/1.2 Fraunces, Georgia, serif; }
+.site-nav ul { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
+.site-nav a:hover, .site-nav a[aria-current] { color: var(--accent); }
+.site-nav ul a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
+.site-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+main > h1:first-child { margin-top: 32px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.event-year { display: block; font-size: 12px; color: var(--muted); }

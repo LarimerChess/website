@@ -52,8 +52,8 @@ def describe(event, calendar):
                      CLUB if calendar == "club" else "")
     tags = [tag for tag, pattern in TITLE_TAGS if re.search(pattern, title, re.I)]
     if organizer == CLUB:
-        tags.append("club")
-    if RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
+        tags += ["club", "rated"]  # every club event is a US Chess rated event
+    elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
         tags.append("rated")
     links = [u for u in LINK.findall(text) if not re.search(r"calendar\.google|uschess|maps", u)]
     return {
