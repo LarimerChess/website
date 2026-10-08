@@ -29,7 +29,7 @@ COST_TAGS = {"free", "free-youth", "cost-unknown"}
 
 
 def kinds(tags):
-    return [t for t in tags if t not in COST_TAGS and t != "adults"]
+    return [t for t in tags if t not in COST_TAGS and t != "all-ages"]
 
 
 class Describe(unittest.TestCase):
@@ -79,22 +79,22 @@ class Describe(unittest.TestCase):
         self.assertEqual(uc.describe(event("Monday Club Night at Peak"), "club")["price"], "")
 
 
-class Adults(unittest.TestCase):
-    def test_open_to_adults(self):
+class AllAges(unittest.TestCase):
+    def test_open_to_all_ages(self):
         for title, calendar in (("Monday Club Night at Peak", "club"), ("Wednesday Night Chess at Purpose Brewing", "community"),
                                 ("Sac’n Saturdays at Grand Slam", "club")):
-            self.assertIn("adults", uc.describe(event(title), calendar)["tags"], title)
+            self.assertIn("all-ages", uc.describe(event(title), calendar)["tags"], title)
 
-    def test_youth_or_senior_only(self):
-        for title in ("Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
+    def test_age_limited(self):
+        for title in ("Blitz Night (21+) at a Bar", "Adults Only Simul","Chessmates Scholastic Tournament (K–12)", "Chess Club for Kids at Loveland Public Library",
                       "Chessmates Chess Club at Bamford Elementary (grades 1–5)",
                       "Drop-In Open Chess (ages 55+) at Chilson Senior Center"):
-            self.assertNotIn("adults", uc.describe(event(title), "community")["tags"], title)
+            self.assertNotIn("all-ages", uc.describe(event(title), "community")["tags"], title)
 
 
 class Cost(unittest.TestCase):
     def tags(self, text):
-        return [t for t in uc.describe(event("Some event", text), "community")["tags"] if t != "adults"]
+        return [t for t in uc.describe(event("Some event", text), "community")["tags"] if t != "all-ages"]
 
     def test_free_for_everyone(self):
         self.assertEqual(self.tags("Cost: free. Just show up."), ["free", "free-youth"])

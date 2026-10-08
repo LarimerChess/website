@@ -38,6 +38,7 @@ TITLE_TAGS = [
     ("youth", r"k.12|scholastic|grades? \d|elementary|kids"),
     ("senior", r"55\+|senior"),
 ]
+ADULTS_ONLY = re.compile(r"\b(?:18|21)\+|adults? only", re.I)
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
 FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
@@ -62,8 +63,8 @@ def describe(event, calendar):
     organizer = next((name for pattern, name in ORGANIZERS if re.search(pattern, title, re.I)),
                      CLUB if calendar == "club" else "")
     tags = [tag for tag, pattern in TITLE_TAGS if re.search(pattern, title, re.I)]
-    if "youth" not in tags and "senior" not in tags:
-        tags.append("adults")  # youth and senior events have age limits; everything else is open to any adult
+    if "youth" not in tags and "senior" not in tags and not ADULTS_ONLY.search(title):
+        tags.append("all-ages")  # youth, senior and adults-only events have age limits
     if organizer == CLUB:
         tags += ["club", "rated"]  # every club event is a US Chess rated event
     elif RATED.search(text) and not re.search(r"\bunrated\b", text, re.I):
