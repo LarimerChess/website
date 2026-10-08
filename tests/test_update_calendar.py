@@ -43,6 +43,8 @@ class Describe(unittest.TestCase):
                          ["tournament", "youth"])
         self.assertIn("casual", uc.describe(event("Wednesday Night Chess at Purpose Brewing"), "community")["tags"])
         self.assertIn("tournament", uc.describe(event("Third Saturday Slow"), "club")["tags"])
+        self.assertEqual(uc.describe(event("Chessmates Chess Club at Bamford Elementary (grades 1–5)"), "community")["tags"],
+                         ["youth"])
 
     def test_organizers(self):
         self.assertEqual(uc.describe(event("Sac’n Saturdays at Grand Slam"), "club")["organizer"],

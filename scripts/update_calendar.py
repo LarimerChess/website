@@ -33,7 +33,7 @@ ORGANIZERS = [
 TITLE_TAGS = [
     ("tournament", r"tournament|classic|slow|arena|sac.n saturdays"),
     ("casual", r"club night|night chess"),
-    ("youth", r"k.12|scholastic"),
+    ("youth", r"k.12|scholastic|grades? \d|elementary"),
 ]
 RATED = re.compile(r"\b(?:dual|regular|quick|us chess) rated\b", re.I)
 LINK = re.compile(r"https?://[^\s<>\"]+")
