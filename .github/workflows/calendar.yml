@@ -22,12 +22,15 @@ jobs:
       - run: python scripts/update_calendar.py events.json
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_READ_TOKEN }}
+      # The Event data, each club tournament's page, and the sitemap come from events.json.
+      - run: python scripts/build_pages.py
       - name: Commit if changed
         run: |
-          git diff --quiet events.json && exit 0
+          git add -A events.json events sitemap.xml
+          git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update calendar events" events.json
+          git commit -m "Update calendar events"
           git push
           gh api -X POST repos/${{ github.repository }}/pages/builds
         env:

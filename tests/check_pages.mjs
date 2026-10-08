@@ -1,7 +1,7 @@
 // Loads every page in Chrome against a local server and checks what HTML
 // validation can't: accessibility (axe, light and dark), the event details
 // dialog by keyboard, the filters, each card's Run by line and Details link, and
-// the events page's structured data.
+// the structured data on the events page and each tournament's page.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -11,7 +11,10 @@ const require = createRequire(import.meta.url);
 const axeSource = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const base = process.argv[2] || "http://127.0.0.1:8765";
 const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html"];
+const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
+const CLUB = "Larimer County Chess Club";
+const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", ...seriesPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
@@ -44,7 +47,6 @@ for (const path of pages) {
 
 await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
 await page.goto(base + "/events/", { waitUntil: "networkidle0" });
-const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
 const allUpcoming = events.filter((e) => new Date(e.end) > new Date());
 const isYouth = (e) => (e.tags || []).includes("youth");
 const upcoming = allUpcoming.filter((e) => !isYouth(e));
@@ -137,7 +139,7 @@ const lines = await page.$$eval(".event", (cards) => cards.map((c) => ({
 const wrongLines = lines.filter((card, i) => {
   const e = upcoming[i];
   const runBy = e.organizer && e.organizer !== "Larimer County Chess Club" ? `Run by ${e.organizer}` : "";
-  return card.title !== e.title || card.runBy !== runBy || card.details !== (e.url || "");
+  return card.title !== e.title || card.runBy !== runBy || card.details !== (e.url || e.page || "");
 });
 wrongLines.length === 0 ? pass("each card's Run by line and Details link match its event")
   : fail(`Run by or Details wrong on: ${[...new Set(wrongLines.map((c) => c.title))].join(", ")}`);
@@ -192,12 +194,25 @@ if (described >= 0) {
     ? pass("the corner × closes the details") : fail("the corner × didn't close the details");
 }
 
-const data = (await page.$$eval('script[type="application/ld+json"]', (s) => s.map((x) => JSON.parse(x.textContent)))).flat();
-const clubEvents = upcoming.filter((e) => e.organizer === "Larimer County Chess Club").length;
-const incomplete = data.filter((d) => d["@type"] === "Event" && !(d.name && d.startDate && d.location?.address));
-data.filter((d) => d["@type"] === "Event").length === clubEvents && incomplete.length === 0
-  ? pass(`structured data for ${clubEvents} club events`)
-  : fail(`structured data: ${data.length} items for ${clubEvents} club events, ${incomplete.length} incomplete`);
+// The data is in the HTML, so it is read from the page as served, before any script runs.
+async function eventData(path) {
+  const served = await (await fetch(base + path)).text();
+  return [...served.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs)]
+    .flatMap((m) => [JSON.parse(m[1])].flat()).filter((d) => d["@type"] === "Event");
+}
+const complete = (d) => d.name && d.startDate && d.location?.address && d.url;
+const clubEvents = events.filter((e) => e.organizer === CLUB);
+const listed = await eventData("/events/");
+listed.length === clubEvents.length && listed.every(complete)
+  ? pass(`events page has structured data for all ${clubEvents.length} club events`)
+  : fail(`events page structured data: ${listed.length} events for ${clubEvents.length} club events, ${listed.filter((d) => !complete(d)).length} incomplete`);
+for (const path of seriesPages) {
+  const own = clubEvents.filter((e) => e.page === path);
+  const data = await eventData(path);
+  data.length === own.length && data.every((d) => complete(d) && d.url === `https://larimerchess.org${path}`)
+    ? pass(`${path} has structured data for its ${own.length} date(s)`)
+    : fail(`${path} structured data: ${data.length} events for ${own.length} dates, or a wrong url`);
+}
 
 // A reload while scrolled down must come back to the same place without the page jumping.
 await page.evaluateOnNewDocument(() => {

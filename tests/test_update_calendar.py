@@ -123,9 +123,22 @@ class BadMetadata(unittest.TestCase):
 class Build(unittest.TestCase):
     def test_event_fields(self):
         [e] = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT)]})
-        self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "start", "end",
+        self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "page", "start", "end",
                                    "allDay", "location", "place", "city", "description"])
         self.assertEqual((e["start"], e["allDay"], e["city"]), ("2026-11-07T10:00:00-07:00", False, "Fort Collins"))
+
+    def test_club_tournaments_get_a_page(self):
+        events = uc.build({"club": [
+            item("First Saturday Classic", CLUB_TOURNAMENT),
+            item("Larimer County Chess Club Knightmare Arena Classical", CLUB_TOURNAMENT),
+            item("Monday Club Night at Peak", {**CLUB_TOURNAMENT, "format": "casual"}),
+        ], "community": [item("Drop-In", MEETUP)]})
+        self.assertEqual({e["title"]: e["page"] for e in events}, {
+            "First Saturday Classic": "/events/first-saturday-classic/",
+            "Larimer County Chess Club Knightmare Arena Classical": "/events/knightmare-arena-classical/",
+            "Monday Club Night at Peak": "",
+            "Drop-In": "",
+        })
 
     def test_all_day(self):
         [e] = uc.build({"community": [{**item("Drop-In", MEETUP), "start": {"date": "2026-10-09"},

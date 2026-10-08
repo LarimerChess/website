@@ -2,7 +2,7 @@
   "private": true,
   "description": "Checks for larimerchess.org; see .github/workflows/checks.yml",
   "scripts": {
-    "check:html": "html-validate index.html events minutes",
+    "check:html": "html-validate index.html events minutes scholastic",
     "check:pages": "node tests/check_pages.mjs"
   },
   "devDependencies": {

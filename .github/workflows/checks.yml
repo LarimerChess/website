@@ -32,13 +32,16 @@ jobs:
       - name: Pages match style.css and calendar.js
         if: success() || failure()
         run: python scripts/sync_assets.py --check
+      - name: Pages match events.json
+        if: success() || failure()
+        run: python scripts/build_pages.py --check
       - name: Sitemap lists every page
         if: success() || failure()
         run: python tests/check_sitemap.py
       - name: Calendar import tests
         if: success() || failure()
         run: python -m unittest discover -s tests -v
-      - name: Pages (accessibility, filters, add to calendar, structured data)
+      - name: Pages (accessibility, filters, add to calendar, structured data, tournament pages)
         if: success() || failure()
         run: |
           python -m http.server 8765 --bind 127.0.0.1 &
@@ -48,7 +51,7 @@ jobs:
         if: success() || failure()
         uses: lycheeverse/lychee-action@v2.9.0
         with:
-          args: --offline --root-dir ${{ github.workspace }} --no-progress index.html events/index.html minutes/*.html
+          args: --offline --root-dir ${{ github.workspace }} --no-progress index.html events/index.html events/*/index.html scholastic/index.html minutes/*.html
           fail: true
           jobSummary: false
 
@@ -60,5 +63,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: lycheeverse/lychee-action@v2.9.0
         with:
-          args: --no-progress --root-dir ${{ github.workspace }} --scheme https --scheme http --max-retries 2 --accept 200..=299,403,429 index.html events/index.html minutes/*.html
+          args: --no-progress --root-dir ${{ github.workspace }} --scheme https --scheme http --max-retries 2 --accept 200..=299,403,429 index.html events/index.html events/*/index.html scholastic/index.html minutes/*.html
           fail: true

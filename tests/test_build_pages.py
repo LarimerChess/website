@@ -1,0 +1,93 @@
+"""Tests for scripts/build_pages.py: dates, descriptions, Event data, and the sitemap.
+
+    python -m unittest discover tests
+"""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location(
+    "build_pages", Path(__file__).resolve().parent.parent / "scripts" / "build_pages.py")
+bp = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bp)
+
+PEAK = {"name": "Peak Community Church", "street": "500 Mathews St", "city": "Fort Collins", "region": "CO", "zip": "80524"}
+DESCRIPTION = """Cost: $15 entry, free for players under 18. If the fee is a hardship, pay what you can.
+Time control: G/30;+30.
+
+A monthly US Chess rated tournament at classical speed in Old Town Fort Collins.
+
+Round times
+• Round 1: 10:00 AM
+• Round 2: 12:15 PM
+
+Questions: president@larimerchess.org
+larimerchess.org"""
+CLASSIC = {"title": "First Saturday Classic", "organizer": bp.CLUB, "tags": ["tournament", "club"], "price": "15",
+           "page": "/events/first-saturday-classic/", "start": "2026-11-07T10:00:00-07:00",
+           "end": "2026-11-07T19:00:00-07:00", "allDay": False, "place": PEAK, "city": "Fort Collins",
+           "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA", "description": DESCRIPTION}
+SITEMAP = """<url><loc>https://larimerchess.org/</loc></url>
+<url><loc>https://larimerchess.org/events/</loc><lastmod>2026-10-01</lastmod></url>
+<url><loc>https://larimerchess.org/events/old-tournament/</loc><lastmod>2026-09-01</lastmod></url>
+<url><loc>https://larimerchess.org/events/first-saturday-classic/</loc><lastmod>2026-10-02</lastmod></url>
+<url><loc>https://larimerchess.org/scholastic/</loc><lastmod>2026-10-01</lastmod></url>
+<url><loc>https://larimerchess.org/minutes/</loc></url>"""
+
+
+class Dates(unittest.TestCase):
+    def test_time_ranges_follow_the_style_guide(self):
+        self.assertEqual(bp.when_text(CLASSIC), "Saturday, November 7, 2026, 10:00 AM – 7:00 PM")
+        morning = {**CLASSIC, "end": "2026-11-07T11:30:00-07:00"}
+        self.assertEqual(bp.when_text(morning), "Saturday, November 7, 2026, 10:00 – 11:30 AM")
+        self.assertEqual(bp.when_text({**CLASSIC, "allDay": True}), "Saturday, November 7, 2026")
+
+
+class Description(unittest.TestCase):
+    def test_labels_lists_and_links(self):
+        out = bp.description_html(DESCRIPTION)
+        self.assertIn("<p><strong>Cost:</strong> $15 entry", out)
+        self.assertIn("<p>Round times</p>\n      <ul><li>Round 1: 10:00 AM</li><li>Round 2: 12:15 PM</li></ul>", out)
+        self.assertIn('<a href="mailto:president@larimerchess.org">president@larimerchess.org</a>', out)
+        self.assertNotIn("<br>larimerchess.org", out)
+
+    def test_outside_links_open_in_a_new_tab_and_hide_the_fragment(self):
+        out = bp.linked("Join at https://new.uschess.org/join-us-chess#:~:text=Individual")
+        self.assertIn('href="https://new.uschess.org/join-us-chess#:~:text=Individual" target="_blank"', out)
+        self.assertIn(">new.uschess.org/join-us-chess<span", out)
+
+    def test_summary_and_cost(self):
+        self.assertEqual(bp.summary(CLASSIC), "A monthly US Chess rated tournament at classical speed in Old Town Fort Collins.")
+        self.assertEqual(bp.cost(CLASSIC), "$15 entry, free for players under 18.")
+
+
+class EventData(unittest.TestCase):
+    def test_tournaments_point_to_their_page(self):
+        data = bp.event_data(CLASSIC)
+        self.assertEqual(data["url"], "https://larimerchess.org/events/first-saturday-classic/")
+        self.assertEqual(data["offers"]["url"], data["url"])
+        self.assertEqual(data["location"]["address"]["streetAddress"], "500 Mathews St")
+        club_night = bp.event_data({**CLASSIC, "page": "", "price": ""})
+        self.assertEqual(club_night["url"], bp.EVENTS_PAGE)
+        self.assertNotIn("offers", club_night)
+
+    def test_script_cannot_be_closed_by_the_data(self):
+        self.assertNotIn("</script><", bp.data_script([{**CLASSIC, "title": "</script><b>"}]))
+
+
+class Sitemap(unittest.TestCase):
+    def test_lastmod_moves_only_for_changed_pages(self):
+        pages = {"events/first-saturday-classic/": "", "events/third-saturday-slow/": ""}
+        out = bp.sitemap(SITEMAP, pages, {"events/": True}, "2026-10-08")
+        self.assertEqual(out.count("<url>"), 6)
+        self.assertNotIn("old-tournament", out)
+        self.assertIn("events/</loc><lastmod>2026-10-08<", out)
+        self.assertIn("first-saturday-classic/</loc><lastmod>2026-10-02<", out)
+        self.assertIn("third-saturday-slow/</loc><lastmod>2026-10-08<", out)
+        self.assertIn("scholastic/</loc><lastmod>2026-10-01<", out)
+        self.assertIn("<loc>https://larimerchess.org/minutes/</loc></url>", out)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -30,7 +30,7 @@ function stamp(iso, allDay) {
 }
 
 function eventDetails(event) {
-  if (event.description) return `${event.description}\n\n${EVENTS_PAGE}`;
+  if (event.description) return `${event.description}\n\n${event.page ? `https://larimerchess.org${event.page}` : EVENTS_PAGE}`;
   const lines = [];
   if (event.organizer && event.organizer !== CLUB) lines.push(`Run by ${event.organizer}.`);
   if (event.url) lines.push(event.url);
@@ -92,7 +92,7 @@ const spoken = (text) => el("span", "visually-hidden", text);
 // Other sites open in a new tab, so the calendar stays where the reader left it.
 function external(a, href) {
   a.href = href;
-  if (a.hostname === "larimerchess.org") return a;
+  if (a.hostname === "larimerchess.org" || a.origin === location.origin) return a;
   a.target = "_blank";
   a.rel = "noopener";
   a.append(spoken(" (opens in a new tab)"));
@@ -123,14 +123,16 @@ function whenText(event, start, end) {
 }
 
 // The organizer's line: "Run by X · Details", either part left out when it doesn't apply.
+// A club tournament's Details go to its own page on this site.
 function organizerLine(event) {
   const runBy = event.organizer && event.organizer !== CLUB ? `Run by ${event.organizer}` : "";
-  if (!runBy && !event.url) return null;
+  const href = event.url || event.page;
+  if (!runBy && !href) return null;
   const by = el("p", "event-meta event-organizer", runBy);
-  if (event.url) {
+  if (href) {
     const details = el("a", null, "Details");
     details.append(spoken(` about ${event.title}`));
-    external(details, event.url);
+    external(details, href);
     if (runBy) by.append(shown(" · "));
     by.append(details);
   }
@@ -454,49 +456,6 @@ function setUpFilters(container, filtersId, events) {
   apply(false);
 }
 
-// schema.org Event data for search engines, for the club's own events only.
-function structuredData(events) {
-  const club = { "@type": "SportsOrganization", name: CLUB, url: "https://larimerchess.org/" };
-  const data = events.filter((e) => e.organizer === CLUB).map((e) => {
-    const item = {
-      "@context": "https://schema.org",
-      "@type": "Event",
-      name: e.title,
-      startDate: e.start,
-      endDate: e.end,
-      eventStatus: "https://schema.org/EventScheduled",
-      eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
-      organizer: club,
-      url: EVENTS_PAGE,
-      image: "https://larimerchess.org/share.png",
-      description: `${e.title}, a US Chess rated event of the Larimer County Chess Club in Fort Collins, Colorado.`,
-    };
-    if (e.place && e.place.name) {
-      item.location = {
-        "@type": "Place",
-        name: e.place.name,
-        address: {
-          "@type": "PostalAddress",
-          streetAddress: e.place.street,
-          addressLocality: e.place.city,
-          addressRegion: e.place.region,
-          postalCode: e.place.zip,
-          addressCountry: "US",
-        },
-      };
-    }
-    if (e.price) {
-      item.offers = { "@type": "Offer", price: e.price, priceCurrency: "USD", url: EVENTS_PAGE, availability: "https://schema.org/InStock" };
-    }
-    return item;
-  });
-  if (data.length === 0) return;
-  const script = document.createElement("script");
-  script.type = "application/ld+json";
-  script.textContent = JSON.stringify(data);
-  document.head.append(script);
-}
-
 // The navigation sticks to the top, and it wraps on a phone, so what docks under it and what
 // in-page links scroll to need its height as it is.
 const nav = document.querySelector(".site-nav");
@@ -561,7 +520,6 @@ fetch(list.dataset.src || "events.json", { cache: "no-cache" })
       empty.hidden = true;
       list.append(empty);
       setUpFilters(list, list.dataset.filters, upcoming);
-      structuredData(upcoming);
     } else {
       list.append(...upcoming.map(renderEvent));
     }
