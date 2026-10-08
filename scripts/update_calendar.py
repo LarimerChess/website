@@ -44,6 +44,8 @@ FEE = re.compile(r"Entry fee: \$(\d+(?:\.\d\d)?)")
 # "Cost: free" marks an event free for everyone; a sentence saying youth or under-18 players
 # play free marks it free for youth.
 FREE = re.compile(r"\bcost: free\b", re.I)
+# A dollar amount or a mention of a fee means the event charges; with no sign either way, its cost is unknown.
+CHARGES = re.compile(r"\$\d|\bentry fee\b|\bcharges?\b", re.I)
 FREE_FOR_YOUTH = re.compile(r"(?:youth|under 18)[^.\n]*\bfree\b|\bfree\b[^.\n]*(?:youth|under 18)", re.I)
 ADDRESS = re.compile(r"^(?P<name>[^,]+), (?P<street>[^,]+(?:, Unit [^,]+)?), (?P<city>[^,]+), (?P<region>[A-Z]{2}) (?P<zip>\d{5})")
 
@@ -68,6 +70,8 @@ def describe(event, calendar):
         tags += ["free", "free-youth"]
     elif FREE_FOR_YOUTH.search(text):
         tags.append("free-youth")
+    elif not CHARGES.search(text):
+        tags.append("cost-unknown")
     links = [u for u in LINK.findall(text) if not re.search(r"calendar\.google|uschess|maps", u)]
     fee = FEE.search(text)
     return {

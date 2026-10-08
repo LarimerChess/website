@@ -25,6 +25,13 @@ def event(title, description="", location=PEAK):
     return e
 
 
+COST_TAGS = {"free", "free-youth", "cost-unknown"}
+
+
+def kinds(tags):
+    return [t for t in tags if t not in COST_TAGS]
+
+
 class Describe(unittest.TestCase):
     def test_every_club_event_is_rated(self):
         for title in ("Monday Club Night at Peak", "First Saturday Classic", "Knightmare Arena Classical"):
@@ -42,18 +49,18 @@ class Describe(unittest.TestCase):
         self.assertIn("rated", uc.describe(event("Chessmates Scholastic Tournament (K–12)", chessmates), "community")["tags"])
 
     def test_kinds(self):
-        self.assertEqual(uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"],
+        self.assertEqual(kinds(uc.describe(event("Chessmates Scholastic Tournament (K–12)"), "community")["tags"]),
                          ["tournament", "youth"])
         self.assertIn("casual", uc.describe(event("Wednesday Night Chess at Purpose Brewing"), "community")["tags"])
         self.assertIn("tournament", uc.describe(event("Third Saturday Slow"), "club")["tags"])
-        self.assertEqual(uc.describe(event("Chessmates Chess Club at Bamford Elementary (grades 1–5)"), "community")["tags"],
+        self.assertEqual(kinds(uc.describe(event("Chessmates Chess Club at Bamford Elementary (grades 1–5)"), "community")["tags"]),
                          ["youth"])
 
     def test_youth_and_seniors(self):
         kids = uc.describe(event("Chess Club for Kids at Loveland Public Library"), "community")
-        self.assertEqual((kids["tags"], kids["organizer"]), (["youth"], "Loveland Public Library"))
+        self.assertEqual((kinds(kids["tags"]), kids["organizer"]), (["youth"], "Loveland Public Library"))
         seniors = uc.describe(event("Drop-In Open Chess (ages 55+) at Chilson Senior Center"), "community")
-        self.assertEqual((seniors["tags"], seniors["organizer"]), (["casual", "senior"], "Chilson Senior Center"))
+        self.assertEqual((kinds(seniors["tags"]), seniors["organizer"]), (["casual", "senior"], "Chilson Senior Center"))
 
     def test_organizers(self):
         self.assertEqual(uc.describe(event("Sac’n Saturdays at Grand Slam"), "club")["organizer"],
@@ -85,9 +92,14 @@ class Cost(unittest.TestCase):
                      "Players under 18 play free."):
             self.assertEqual(self.tags(text), ["free-youth"], text)
 
-    def test_not_free(self):
-        for text in ("$30 entry.", "Free parking. Entry $10.", "Youth: $5. Bring a board."):
+    def test_charges(self):
+        for text in ("$30 entry.", "Free parking. Entry $10.", "Youth: $5. Bring a board.",
+                     "Grand Slam charges an entry fee; ask them for the amount and format."):
             self.assertEqual(self.tags(text), [], text)
+
+    def test_cost_unknown(self):
+        for text in ("Chess club for kids. Check with the library for current dates.", ""):
+            self.assertEqual(self.tags(text), ["cost-unknown"], text)
 
 
 class Weekly(unittest.TestCase):

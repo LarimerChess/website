@@ -62,7 +62,7 @@ for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
 }
 await page.click('[data-filter-group="schedule"] button[data-value="all"]');
 
-for (const value of ["free", "free-youth"]) {
+for (const value of ["free", "free-youth", "cost-unknown"]) {
   await page.click(`[data-filter-group="cost"] button[data-value="${value}"]`);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = upcoming.filter((e) => (e.tags || []).includes(value)).length;
