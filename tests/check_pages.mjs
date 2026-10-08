@@ -73,7 +73,7 @@ for (const value of ["free", "free-youth", "cost-unknown"]) {
 }
 await page.click('[data-filter-group="cost"] button[data-value="all"]');
 
-const SPEEDS = ["classical", "rapid", "blitz"];
+const SPEEDS = ["regular", "quick", "blitz"];
 async function checkSpeeds(label, events) {
   const present = SPEEDS.filter((s) => events.some((e) => (e.tags || []).includes(s)));
   const buttons = await page.$$eval('[data-filter-group="speed"] button', (b) => b.map((x) => x.dataset.value));

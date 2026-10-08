@@ -296,8 +296,8 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
 // A card shows when it matches every row. The time control and city buttons come from the events
 // themselves, so a page with no timed events has no time control row. The
 // choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
-// Per player, base time plus 60 moves of increment; the speed metadata in update_calendar.py.
-const SPEEDS = { classical: "Classical (60+ min)", rapid: "Rapid (10–59 min)", blitz: "Blitz (under 10 min)" };
+// US Chess's rating categories, from the speed metadata in update_calendar.py.
+const SPEEDS = { regular: "Regular", quick: "Quick", blitz: "Blitz" };
 const MATCHES = {
   kind: (card, value) => card.dataset.tags.split(" ").includes(value),
   age: (card, value) => card.dataset.tags.split(" ").includes(value),
