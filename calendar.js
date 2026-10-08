@@ -292,19 +292,32 @@ function renderByMonth(container, events) {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-// Independent rows of filter buttons: kind of event, age, how often, cost, and city. A card shows
-// when it matches every row. The city buttons come from the events themselves. The
+// Independent rows of filter buttons: kind of event, age, how often, cost, time control and city.
+// A card shows when it matches every row. The time control and city buttons come from the events
+// themselves, so a page with no timed events has no time control row. The
 // choice is kept in the address, e.g. #kind=youth&schedule=weekly&city=loveland.
+// Per player, base time plus 60 moves of increment; the speed metadata in update_calendar.py.
+const SPEEDS = { classical: "Classical (60+ min)", rapid: "Rapid (10–59 min)", blitz: "Blitz (under 10 min)" };
 const MATCHES = {
   kind: (card, value) => card.dataset.tags.split(" ").includes(value),
   age: (card, value) => card.dataset.tags.split(" ").includes(value),
   schedule: (card, value) => card.dataset.tags.split(" ").includes("weekly") === (value === "weekly"),
   cost: (card, value) => card.dataset.tags.split(" ").includes(value),
+  speed: (card, value) => card.dataset.tags.split(" ").includes(value),
   city: (card, value) => card.dataset.city === value,
 };
 
 function setUpFilters(container, filtersId, events) {
   const panel = document.getElementById(filtersId);
+  const speedGroup = panel.querySelector('[data-filter-group="speed"]');
+  const speeds = Object.keys(SPEEDS).filter((s) => events.some((e) => (e.tags || []).includes(s)));
+  if (speeds.length === 0) speedGroup?.remove();
+  for (const value of speeds.length ? ["all", ...speeds] : []) {
+    const button = el("button", null, value === "all" ? "Any time control" : SPEEDS[value]);
+    button.type = "button";
+    button.dataset.value = value;
+    speedGroup.append(button);
+  }
   const cityGroup = panel.querySelector('[data-filter-group="city"]');
   const cities = [...new Set(events.map((e) => e.city).filter(Boolean))].sort();
   for (const name of ["all", ...cities]) {

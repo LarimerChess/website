@@ -73,6 +73,25 @@ for (const value of ["free", "free-youth", "cost-unknown"]) {
 }
 await page.click('[data-filter-group="cost"] button[data-value="all"]');
 
+const SPEEDS = ["classical", "rapid", "blitz"];
+async function checkSpeeds(label, events) {
+  const present = SPEEDS.filter((s) => events.some((e) => (e.tags || []).includes(s)));
+  const buttons = await page.$$eval('[data-filter-group="speed"] button', (b) => b.map((x) => x.dataset.value));
+  const expected = present.length ? ["all", ...present] : [];
+  if (JSON.stringify(buttons) !== JSON.stringify(expected)) {
+    return fail(`${label} time control buttons ${JSON.stringify(buttons)}, expected ${JSON.stringify(expected)}`);
+  }
+  for (const value of present) {
+    await page.click(`[data-filter-group="speed"] button[data-value="${value}"]`);
+    const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+    const want = events.filter((e) => (e.tags || []).includes(value)).length;
+    if (shown !== want) return fail(`${label} time control ${value} shows ${shown}, expected ${want}`);
+  }
+  if (present.length) await page.click('[data-filter-group="speed"] button[data-value="all"]');
+  pass(`${label} time control filters: ${present.length ? present.join(", ") : "none, row left out"}`);
+}
+await checkSpeeds("events page", upcoming);
+
 const lines = await page.$$eval(".event", (cards) => cards.map((c) => ({
   title: c.querySelector("h3 button").firstChild.textContent,
   runBy: (c.querySelector(".event-organizer")?.firstChild?.nodeType === 3 && c.querySelector(".event-organizer").firstChild.textContent) || "",
@@ -149,6 +168,7 @@ const youthCities = [...new Set(youthEvents.map((e) => e.city).filter(Boolean))]
 const youthCityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));
 JSON.stringify(youthCityButtons) === JSON.stringify(["All cities", ...youthCities]) ? pass(`scholastic city filters: ${youthCityButtons.join(", ")}`)
   : fail(`scholastic city filters ${JSON.stringify(youthCityButtons)} don't match ${JSON.stringify(youthCities)}`);
+await checkSpeeds("scholastic page", youthEvents);
 await page.click('[data-filter-group="kind"] button[data-value="tournament"]');
 const youthTournaments = await page.$$eval(".event:not([hidden])", (c) => c.length);
 const expectedTournaments = youthEvents.filter((e) => e.tags.includes("tournament")).length;

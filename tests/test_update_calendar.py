@@ -63,6 +63,12 @@ class Tags(unittest.TestCase):
         d = uc.describe(MEETUP, "community")
         self.assertEqual((d["organizer"], d["url"]), ("Fort Collins Chess Meetup", MEETUP["details"]))
 
+    def test_speed(self):
+        self.assertEqual(uc.describe({**CLUB_TOURNAMENT, "speed": "classical"}, "club")["tags"],
+                         ["tournament", "all-ages", "club", "rated", "free-youth", "classical"])
+        self.assertEqual(uc.problems({**MEETUP, "speed": "bullet"}),
+                         ["speed is 'bullet', expected one of blitz, classical, rapid"])
+
     def test_details_without_run_by(self):
         dcc = {"organizer": "Denver Chess Club", "format": "tournament", "ages": "all", "rated": "yes", "cost": "paid",
                "details": "https://coloradochess.com/tournament/dcc-fall-classic-2026/", "run_by": "hide"}

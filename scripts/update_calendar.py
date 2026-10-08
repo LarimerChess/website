@@ -39,6 +39,8 @@ FIELDS = {
     "details": (False, re.compile(r"https?://\S+")),
     # hide leaves out the card's "Run by" line; the organizer stays in the metadata.
     "run_by": (False, {"show", "hide"}),
+    # Per player, base time plus 60 moves of increment: blitz under 10 minutes, rapid 10 to 59, classical 60 and up.
+    "speed": (False, {"classical", "rapid", "blitz"}),
 }
 AGE_TAGS = {"all": "all-ages", "youth": "youth", "senior": "senior", "adults": "adults"}
 COST_TAGS = {"free": "free", "free-youth": "free-youth", "paid": None, "unknown": "cost-unknown"}
@@ -74,6 +76,8 @@ def describe(meta, calendar):
         tags.append("rated")
     if COST_TAGS[meta["cost"]]:
         tags.append(COST_TAGS[meta["cost"]])
+    if meta.get("speed"):
+        tags.append(meta["speed"])
     return {
         "calendar": calendar,
         "organizer": "" if meta.get("run_by") == "hide" else meta["organizer"],
