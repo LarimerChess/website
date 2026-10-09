@@ -1,0 +1,22 @@
+name: TD expirations
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python scripts/td_expirations.py
+        env:
+          USCHESS_API_KEY: ${{ secrets.USCHESS_API_KEY }}
+          LCCC_JUNIOR_TD_IDS: ${{ secrets.LCCC_JUNIOR_TD_IDS }}

@@ -21,6 +21,10 @@ LCCC_GOOGLE_TOKEN="$(cat ~/.config/lccc/google-token-calendar-read.json)" python
 python3 scripts/build_pages.py
 ```
 
+## TD expirations
+
+The Action "TD expirations" (.github/workflows/td-expirations.yml) runs scripts/td_expirations.py every Monday. It reads the club's TDs from scripts/tds.json and asks the US Chess ratings API for each one's membership, TD certification, and SafeSport dates and for the affiliate's expiration, and fails, which emails a warning, when any is past or within 60 days. When a TD joins or leaves, change scripts/tds.json. Junior TDs are minors: their IDs go in the repository secret LCCC_JUNIOR_TD_IDS, never in the repo, and the output shows neither their names nor their dates. The API key is the secret USCHESS_API_KEY. Locally the script reads both from ~/.config/lccc/ (uschess-api-key and junior-td-ids).
+
 ## Checks
 
 Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, a check that the pages built from events.json are current, the sitemap check, tests for the calendar import and the page builder, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines and Details links, the add-to-calendar menu, structured data, and the tournament pages), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
