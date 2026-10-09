@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "0 14 * * 1"
   workflow_dispatch:
+    inputs:
+      days:
+        description: Warn this many days ahead (a large number sends a test email)
+        default: "60"
 
 permissions:
   contents: read
@@ -16,7 +20,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: python scripts/td_expirations.py
+      - run: python scripts/td_expirations.py --email --days "$DAYS"
         env:
+          DAYS: ${{ inputs.days || '60' }}
           USCHESS_API_KEY: ${{ secrets.USCHESS_API_KEY }}
           LCCC_JUNIOR_TD_IDS: ${{ secrets.LCCC_JUNIOR_TD_IDS }}
+          LCCC_GMAIL_TOKEN: ${{ secrets.LCCC_GOOGLE_GMAIL_SEND_TOKEN }}
