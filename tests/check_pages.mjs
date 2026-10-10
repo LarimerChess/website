@@ -531,11 +531,21 @@ entriesPage.on("request", async (request) => {
   }
 });
 await entriesPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
-const shownEvents = await entriesPage.evaluate(() => [...document.querySelectorAll(".entries-all section")].map((s) => ({
-  title: s.querySelector("h2").textContent, rows: s.querySelectorAll("tbody tr").length,
-  register: s.querySelector("a.button").getAttribute("href") })));
-shownEvents.length === 2 && shownEvents[0].rows === 1 && shownEvents[1].rows === 0 && shownEvents[0].register === "/events/club-night/?date=2026-10-12#register"
-  ? pass("Entries page lists each event with its players and a Register link") : fail(`Entries page: ${JSON.stringify(shownEvents)}`);
+const entriesShown = () => entriesPage.evaluate(() => ({
+  months: [...document.querySelectorAll(".entries-month > h2")].map((h) => h.textContent),
+  events: [...document.querySelectorAll(".entries-month > section")].map((s) => ({ title: s.querySelector("h3").textContent,
+    rows: s.querySelectorAll("tbody tr").length, register: s.querySelector("a.button")?.getAttribute("href") })),
+  more: document.querySelector(".events-more:not([hidden])")?.textContent || "" }));
+const entriesOpened = await entriesShown();
+JSON.stringify(entriesOpened.months) === JSON.stringify(["October 2026"]) && entriesOpened.events.length === 1 && entriesOpened.events[0].rows === 1
+  && entriesOpened.events[0].register === "/events/club-night/?date=2026-10-12#register" && entriesOpened.more === "Show November 2026"
+  ? pass("Entries page opens on the first month, with each event's players and a Register link")
+  : fail(`Entries page on open: ${JSON.stringify(entriesOpened)}`);
+await entriesPage.evaluate(() => scrollTo(0, document.body.scrollHeight));
+await entriesPage.waitForFunction(() => document.querySelectorAll(".entries-month").length === 2);
+const entriesScrolled = await entriesShown();
+JSON.stringify(entriesScrolled.months) === JSON.stringify(["October 2026", "November 2026"]) && entriesScrolled.events[1].rows === 0 && !entriesScrolled.more
+  ? pass("Entries page shows the next month as the reader scrolls to the end") : fail(`Entries page after scrolling: ${JSON.stringify(entriesScrolled)}`);
 await entriesPage.evaluate(axeSource);
 const entriesAxe = await entriesPage.evaluate(() => axe.run());
 entriesAxe.violations.length ? fail(`Entries page filled: ${entriesAxe.violations.map((v) => v.id).join(", ")}`)
