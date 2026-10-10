@@ -273,6 +273,7 @@ async function showDeskEntries() {
   }));
   tdTable.hidden = !entries.length;
   showIncidents(eventName, date);
+  document.dispatchEvent(new Event("td-choice"));
 }
 
 async function showIncidents(eventName, date) {

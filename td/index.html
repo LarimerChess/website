@@ -437,6 +437,7 @@ main > h1:first-child { margin-top: 32px; }
       <ul>
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>
+        <li><a href="/pairings/">Pairings</a></li>
         <li><a href="/scholastic/">Scholastic</a></li>
         <li><a href="/minutes/">Board minutes</a></li>
         <li><a href="/#join">Join</a></li>
@@ -496,6 +497,57 @@ main > h1:first-child { margin-top: 32px; }
         </div>
       </section>
 
+      <section class="run">
+        <h2>Run the tournament</h2>
+        <p class="run-status" role="status"></p>
+        <form class="register-form run-start" hidden>
+          <label for="run-format">Format</label>
+          <select id="run-format" name="format">
+            <option value="swiss">Swiss (US Chess rules 27 to 29)</option>
+            <option value="arena">Arena</option>
+          </select>
+          <label for="run-rounds">Rounds</label>
+          <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint">
+          <p id="run-rounds-hint" class="register-hint">For a club night's month, one round a night. Leave empty for an arena.</p>
+          <label for="run-coin">Coin toss: board one's higher-rated player has</label>
+          <select id="run-coin" name="coin">
+            <option value="white">White</option>
+            <option value="black">Black</option>
+          </select>
+          <button class="button" type="submit">Start the tournament</button>
+        </form>
+        <div class="run-round" hidden>
+          <h3 class="run-round-title">This round</h3>
+          <div class="run-checkin">
+            <p>Who is playing this round? Players not here get a zero-point bye unless they asked for a half-point bye (22C).</p>
+            <div class="td-table"><table class="entries run-attendance">
+              <thead><tr><th scope="col">No.</th><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Score</th><th scope="col">This round</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+            <p><button class="button run-pair" type="button">Pair the round</button> <button class="button button-secondary run-sync" type="button">Add new entrants</button></p>
+          </div>
+          <div class="run-pairings" hidden>
+            <p class="register-hint">Review the pairings and change any player with the menus; the director is responsible for the pairings (29E7). Save keeps them private; Post shows them on the Pairings page.</p>
+            <div class="td-table"><table class="entries run-games">
+              <thead><tr><th scope="col">Board</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+            <p class="run-byes"></p>
+            <ul class="run-notes"></ul>
+            <p class="run-edit-buttons"><button class="button run-post" type="button">Post the pairings</button> <button class="button button-secondary run-save" type="button">Save without posting</button> <button class="button button-secondary run-repair" type="button">Pair again</button></p>
+          </div>
+        </div>
+        <div class="run-standings-wrap" hidden>
+          <h3>Standings</h3>
+          <p class="register-hint">Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.</p>
+          <div class="td-table"><table class="entries run-standings">
+            <thead><tr><th scope="col">Place</th><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Score</th><th scope="col">Median</th><th scope="col">Solkoff</th><th scope="col">Cumulative</th><th scope="col">Opp. cumulative</th><th scope="col"><span class="visually-hidden">Withdraw</span></th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+          <p><button class="button button-secondary run-finish" type="button">Finish the tournament</button></p>
+        </div>
+      </section>
+
       <section>
         <h2>Incidents</h2>
         <p>Warnings, penalties, game losses, expulsions, and bars, under the Safe Play policy, §8. Log one from a player's Incident button. Expelled and removed players drop off that date's entries, so they aren't paired again; barred players can't register. Those three email the President.</p>
@@ -541,6 +593,8 @@ main > h1:first-child { margin-top: 32px; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=8a2b563af1" defer></script>
-  <script src="../td.js?v=e370bf9a3a" defer></script>
+  <script src="../td.js?v=ea08b388bb" defer></script>
+  <script src="../pairing.js?v=1546a4e68f" defer></script>
+  <script src="../td-run.js?v=76fea0b688" defer></script>
 </body>
 </html>

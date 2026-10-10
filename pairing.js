@@ -10,7 +10,7 @@
 //     byes: points 1 for the full-point bye, 0.5 for a requested half-point bye, 0 for absent
 //     out: withdrawn or expelled before this round, and in every later round
 //
-// pairRound(tournament, { halfByes, absent, coin }) returns { games: [{ board, white, black }], byes, notes }
+// pairRound(tournament, { halfByes, absent, out, coin }) returns { games: [{ board, white, black }], byes, notes }
 // for the next round. coin, for round one: "white" if the higher-rated player on board one has white.
 
 (function (root) {
@@ -351,11 +351,12 @@
     const info = histories(tournament);
     const halfByes = new Set(options.halfByes || []);
     const absent = new Set(options.absent || []);
+    const leaving = new Set(options.out || []);
     const notes = [];
     const byes = [];
     const playing = [];
     for (const p of info.values()) {
-      if (p.out) continue;
+      if (p.out || leaving.has(p.id)) continue;
       if (halfByes.has(p.id)) byes.push({ id: p.id, points: 0.5 });
       else if (absent.has(p.id)) byes.push({ id: p.id, points: 0 });
       else playing.push(p);

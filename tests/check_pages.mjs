@@ -15,7 +15,7 @@ const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
 const CLUB = "Larimer County Chess Club";
 const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", ...seriesPages];
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/", ...seriesPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
@@ -377,7 +377,8 @@ desk.on("request", async (request) => {
           remove: { message: "Test Player is withdrawn." },
           paid: { ok: true, message: "Test Player paid $15." },
           incident: { ok: true, message: "Logged: Game loss, Test Player." },
-          incidents: { incidents: [] } }[p.action];
+          incidents: { incidents: [] },
+          tournament: { tournament: null } }[p.action];
     request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
   } else {
     request.continue();
@@ -456,6 +457,98 @@ const entriesAxe = await entriesPage.evaluate(() => axe.run());
 entriesAxe.violations.length ? fail(`Entries page filled: ${entriesAxe.violations.map((v) => v.id).join(", ")}`)
   : pass("Entries page filled has no axe violations");
 await entriesPage.close();
+
+// Running a tournament on the TD desk, against a stand-in for the Apps Script that keeps the
+// tournament in memory: start it, check in, pair round one, post it, and enter a result.
+const runPage = await browser.newPage();
+runPage.on("pageerror", (error) => fail(`JavaScript error on /td/ running a tournament: ${error.message}`));
+const runCalls = [];
+let held = null;
+await runPage.setRequestInterception(true);
+runPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+    return;
+  }
+  if (url.host !== "registration.test") return request.continue();
+  const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+  runCalls.push(p);
+  const players = [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", 1300]]
+    .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, out: null }));
+  let body = { ok: true };
+  if (p.action === "login") body = { ok: true };
+  else if (p.action === "choices") body = { choices: [{ key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07" }] };
+  else if (p.action === "entries") body = { entries: [] };
+  else if (p.action === "incidents") body = { incidents: [] };
+  else if (p.action === "tournament") body = { tournament: held };
+  else if (p.action === "start") {
+    held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: p.coin, players, rounds: [] };
+    body = { ok: true, message: "Added 4 player(s)." };
+  } else if (p.action === "round") {
+    held.rounds = [{ games: JSON.parse(p.games).map((g) => ({ ...g, result: "" })), byes: JSON.parse(p.byes), out: [], posted: p.post === "yes" }];
+    body = { ok: true, message: "Round 1 is posted." };
+  } else if (p.action === "result") {
+    held.rounds[0].games.find((g) => g.board === Number(p.board)).result = p.result;
+  }
+  request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+});
+await runPage.goto(base + "/td/", { waitUntil: "networkidle0" });
+await runPage.type("#td-password", "secret");
+await runPage.click(".td-login button");
+await runPage.waitForSelector(".run-start:not([hidden])");
+await runPage.type("#run-rounds", "3");
+await runPage.click(".run-start button");
+await runPage.waitForSelector(".run-round:not([hidden]) .run-pair");
+await runPage.waitForFunction(() => document.querySelectorAll(".run-attendance tbody tr").length === 4);
+await runPage.click(".run-pair");
+await runPage.waitForSelector(".run-pairings:not([hidden])");
+await runPage.click(".run-post");
+await runPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const postedRound = runCalls.find((c) => c.action === "round") || {};
+const postedGames = JSON.parse(postedRound.games || "[]");
+postedGames.length === 2 && postedRound.post === "yes"
+  && JSON.stringify(postedGames.map((g) => [g.white, g.black])) === JSON.stringify([["11111111", "33333333"], ["44444444", "22222222"]])
+  ? pass("TD desk starts a tournament and posts round one by rule 28J") : fail(`TD desk round one: ${JSON.stringify(postedRound)}`);
+await runPage.select(".run-games tbody tr:first-child select", "1-0");
+await runPage.waitForFunction(() => document.querySelector(".run-standings tbody tr td:nth-child(2)")?.textContent === "Ann");
+pass("TD desk enters a result and updates the standings");
+await runPage.evaluate(axeSource);
+const runAxe = await runPage.evaluate(() => axe.run());
+runAxe.violations.length ? fail(`TD desk running a tournament: ${runAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("TD desk running a tournament has no axe violations");
+await runPage.close();
+
+// The Pairings page, against a stand-in for the Apps Script's ?tournaments=current.
+const pairingsPage = await browser.newPage();
+pairingsPage.on("pageerror", (error) => fail(`JavaScript error on /pairings/: ${error.message}`));
+await pairingsPage.setRequestInterception(true);
+pairingsPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.host === "registration.test") {
+    const players = [["a", "Ann", 1900], ["b", "Ben", 1700], ["c", "Cal", 1500]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
+    const tournaments = [{ name: "Classic, Saturday, November 7, 2026", plannedRounds: 3, status: "running", players,
+      rounds: [{ games: [{ board: 1, white: "a", black: "b", result: "1-0" }], byes: [{ id: "c", points: 1 }], out: [] }] }];
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify({ tournaments }) });
+  } else {
+    request.continue();
+  }
+});
+await pairingsPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const shownPairings = await pairingsPage.evaluate(() => [...document.querySelectorAll(".pairings-all tbody tr")].map((r) => r.textContent));
+shownPairings.length === 4 && shownPairings[0].includes("Ann (1900)") && shownPairings[0].includes("1–0")
+  ? pass("Pairings page shows the round and the standings") : fail(`Pairings page: ${JSON.stringify(shownPairings)}`);
+await pairingsPage.evaluate(axeSource);
+const pairingsAxe = await pairingsPage.evaluate(() => axe.run());
+pairingsAxe.violations.length ? fail(`Pairings page filled: ${pairingsAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("Pairings page filled has no axe violations");
+await pairingsPage.close();
 
 await browser.close();
 if (failures.length) {

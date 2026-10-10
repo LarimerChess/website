@@ -8,11 +8,13 @@
  *
  * GET  ?entries=<key>     the public entry list, as JSON
  * GET  ?entries=all       every upcoming tournament date's and club night's list, for /entries/
+ * GET  ?tournaments=current  the tournaments in progress, with posted pairings and results, for /pairings/
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
- *                               incident, incidents
+ *                               incident, incidents, and for running tournaments: tournament, start,
+ *                               sync, round, result, out, finish
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
  * the venue takes a player off that date's entries, so they aren't paired again; barred keeps
@@ -21,6 +23,8 @@
  *
  * Deploy as a web app that executes as the club account, with access for anyone. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
+ * TOURNAMENT_SHEET_ID, the "Tournaments in progress" spreadsheet that running tournaments
+ * keep their players, pairings, and results in until the archive Action clears it; and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
  * pay when they arrive.
@@ -41,6 +45,7 @@ const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
 
 function doGet(e) {
+  if (e.parameter.tournaments === "current") return json({ tournaments: currentTournaments() });
   if (e.parameter.entries === "all") return json({ events: allEntries() });
   if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false) });
   if (e.parameter.withdraw) return withdrawPage(e.parameter.withdraw);
@@ -63,6 +68,13 @@ function doPost(e) {
       case "paid": return json(markPaid(p.token, p.amount));
       case "incident": return json(logIncident(p));
       case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
+      case "tournament": return json({ tournament: tournament(`${p.event}/${p.date}`, true) });
+      case "start": return json(startTournament(p));
+      case "sync": return json(syncPlayers(`${p.event}/${p.date}`));
+      case "round": return json(saveRound(p));
+      case "result": return json(saveResult(p));
+      case "out": return json(setOut(p));
+      case "finish": return json(finishTournament(`${p.event}/${p.date}`));
       default: return json({ error: "Unknown action." });
     }
   } catch (err) {
@@ -362,6 +374,181 @@ function readIncidents() {
   const [header, ...rows] = sheet.getDataRange().getDisplayValues();
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
   return { sheet, col, rows: rows.map((r) => Object.fromEntries(header.map((h, i) => [h.trim().toLowerCase(), r[i] || ""]))) };
+}
+
+// Running tournaments. A tournament's key is a registration key: a tournament date, or a club
+// night's month, whose Mondays are one Swiss with a round a night. Its players are the
+// registered entrants when it starts, and later ones added with sync. The TD desk pairs each
+// round with pairing.js and posts it here; results are entered board by board.
+
+function tournamentBook() {
+  const id = PropertiesService.getScriptProperties().getProperty("TOURNAMENT_SHEET_ID");
+  if (!id) throw new Error("The script property TOURNAMENT_SHEET_ID isn't set.");
+  return SpreadsheetApp.openById(id);
+}
+
+/** A tab of the tournament spreadsheet as rows keyed by heading, with each row's sheet row number. */
+function table(name) {
+  const sheet = tournamentBook().getSheetByName(name);
+  const [header, ...rows] = sheet.getDataRange().getDisplayValues();
+  const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  return { sheet, col, rows: rows.map((r, i) => ({ ...Object.fromEntries(header.map((h, j) => [h.trim(), r[j] || ""])), row: i + 2 })) };
+}
+
+function setCell(t, row, heading, value) {
+  t.sheet.getRange(row, t.col[heading] + 1).setNumberFormat("@").setValue(value);
+}
+
+/** Everything about a tournament, in pairing.js's shape. Without td, only posted rounds. */
+function tournament(key, td) {
+  const info = table("Tournaments").rows.find((r) => r.Key === key);
+  if (!info) return null;
+  const players = table("Players").rows.filter((r) => r.Key === key)
+    .sort((a, b) => Number(a["No."]) - Number(b["No."]))
+    .map((r) => ({ id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
+      rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null }));
+  const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
+  const count = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+  const rounds = [...Array(count)].map((_, i) => {
+    const n = i + 1;
+    const here = lines.filter((r) => Number(r.Round) === n);
+    return {
+      games: here.filter((r) => r.Black).sort((a, b) => Number(a.Board) - Number(b.Board))
+        .map((r) => ({ board: Number(r.Board), white: r.White, black: r.Black, result: r.Result })),
+      byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0 })),
+      out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
+      posted: here.some((r) => r.Posted),
+    };
+  });
+  return { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
+    plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, players };
+}
+
+function startTournament(p) {
+  const key = `${p.event}/${p.date}`;
+  const event = clubEvents()[key];
+  if (!event) return { error: "That event isn't open." };
+  if (event.kind === "night") return { error: "A club night's Swiss runs for the month; choose the month." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Tournaments");
+    if (t.rows.some((r) => r.Key === key)) return { error: "That tournament has already started." };
+    const format = p.format === "arena" ? "arena" : "swiss";
+    const rounds = String(p.rounds || "").trim();
+    appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
+      Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
+      Coin: p.coin === "black" ? "black" : "white", Finished: "" });
+  } finally {
+    lock.releaseLock();
+  }
+  return syncPlayers(key);
+}
+
+/** Adds registered entrants who aren't players yet, numbered after the others (28B). */
+function syncPlayers(key) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Players");
+    const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
+    let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
+    // A month's entrants include each night's; entries() already leaves out the expelled and barred.
+    const entrants = entries(key, true).filter((e) => !e.out && !have.has(e.id));
+    entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
+    for (const e of entrants) {
+      appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
+        Rating: e.rating || "", "Out from round": "" });
+    }
+    clearTournamentCache();
+    return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).` : "No new entrants." };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Saves a round's pairings and byes; posted makes them public. Replaces the round if it was saved before. */
+function saveRound(p) {
+  const key = `${p.event}/${p.date}`;
+  const round = Number(p.number);
+  const games = JSON.parse(p.games || "[]");
+  const byes = JSON.parse(p.byes || "[]");
+  if (!round) return { error: "Which round?" };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Rounds");
+    const old = t.rows.filter((r) => r.Key === key && Number(r.Round) === round);
+    if (old.some((r) => r.Result)) return { error: "This round has results; clear them before re-pairing (29G)." };
+    for (const r of old.reverse()) t.sheet.deleteRow(r.row);
+    const posted = p.post === "yes" ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
+    const fresh = table("Rounds");
+    for (const g of games) {
+      appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: String(g.board), White: g.white,
+        Black: g.black, Result: "", "Bye points": "", Posted: posted });
+    }
+    for (const b of byes) {
+      appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: "", White: b.id, Black: "",
+        Result: "", "Bye points": String(b.points), Posted: posted });
+    }
+    clearTournamentCache();
+    return { ok: true, message: posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveResult(p) {
+  const key = `${p.event}/${p.date}`;
+  const allowed = ["", "1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
+  if (!allowed.includes(p.result)) return { error: "Not a result." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Rounds");
+    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && Number(r.Board) === Number(p.board));
+    if (!line) return { error: "No such board." };
+    setCell(t, line.row, "Result", p.result);
+    clearTournamentCache();
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Withdraws or expels a player from a round on (28P), or brings them back with an empty round. */
+function setOut(p) {
+  const key = `${p.event}/${p.date}`;
+  const t = table("Players");
+  const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+  if (!line) return { error: "Not a player in this tournament." };
+  setCell(t, line.row, "Out from round", String(p.from || ""));
+  clearTournamentCache();
+  return { ok: true, message: p.from ? `${line.Name} is out from round ${p.from}.` : `${line.Name} is back in.` };
+}
+
+function finishTournament(key) {
+  const t = table("Tournaments");
+  const line = t.rows.find((r) => r.Key === key);
+  if (!line) return { error: "No such tournament." };
+  setCell(t, line.row, "Status", "finished");
+  setCell(t, line.row, "Finished", Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"));
+  clearTournamentCache();
+  return { ok: true, message: "Finished. The archive Action saves it and clears it from the spreadsheet." };
+}
+
+/** Every tournament in the spreadsheet, with only posted rounds, for the public Pairings page. */
+function currentTournaments() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("tournaments");
+  if (cached) return JSON.parse(cached);
+  const list = table("Tournaments").rows.map((r) => tournament(r.Key, false)).filter(Boolean);
+  cache.put("tournaments", JSON.stringify(list), 30);
+  return list;
+}
+
+function clearTournamentCache() {
+  CacheService.getScriptCache().remove("tournaments");
 }
 
 /** Records what a player paid at the door, or clears it when amount is empty. */
