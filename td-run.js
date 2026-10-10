@@ -130,8 +130,8 @@ async function loadRun() {
 
 function renderRun() {
   runStart.hidden = runRound.hidden = runStandingsWrap.hidden = runArena.hidden = true;
+  const selectedChoice = choices.find((c) => c.key === choice.value);
   if (!current) {
-    const selectedChoice = choices.find((c) => c.key === choice.value);
     if (selectedChoice?.kind === "night") {
       runStatus.textContent = "A club night's Swiss runs for the whole month. Choose the month to start or run it.";
       return;
@@ -140,8 +140,19 @@ function renderRun() {
     if (selectedChoice?.kind === "month") {
       const nights = choices.filter((c) => c.key.startsWith(`${choice.value}-`)).length;
       runStart.elements.rounds.value = nights || "";
+    } else {
+      runStart.elements.rounds.value = selectedChoice?.rounds || "";
     }
-    if (selectedChoice?.format) runStart.elements.format.value = selectedChoice.format;
+    // An event whose calendar settings say how it's run starts that way; otherwise the TD chooses.
+    const formatMenu = runStart.elements.format;
+    const set = runStart.querySelector(".run-format-set");
+    const fixed = Boolean(selectedChoice?.format);
+    if (fixed) {
+      formatMenu.value = selectedChoice.format;
+      set.textContent = `Format: ${formatMenu.selectedOptions[0].textContent}, set by the event.`;
+    }
+    formatMenu.hidden = runStart.querySelector('[for="run-format"]').hidden = fixed;
+    set.hidden = !fixed;
     showFormatFields();
     runStart.hidden = false;
     return;

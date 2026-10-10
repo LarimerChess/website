@@ -44,6 +44,9 @@ FIELDS = {
     "speed": (False, re.compile(r"(?:regular|quick|blitz)(?:,(?:regular|quick|blitz))*")),
     # invitational: a club event only the TD registers players for; its entries and pairings stay public.
     "access": (False, {"open", "invitational"}),
+    # How the TD desk runs a club tournament, and for a Swiss how many rounds; the desk asks when they're missing.
+    "pairing": (False, {"swiss", "quad", "arena"}),
+    "rounds": (False, re.compile(r"[1-9]\d?")),
 }
 AGE_TAGS = {"all": "all-ages", "youth": "youth", "senior": "senior", "adults": "adults"}
 COST_TAGS = {"free": "free", "free-youth": "free-youth", "paid": None, "unknown": "cost-unknown"}
@@ -89,6 +92,8 @@ def describe(meta, calendar):
         "tags": tags,
         "url": meta.get("details", ""),
         "price": meta.get("price", ""),
+        "pairing": meta.get("pairing", ""),
+        "rounds": meta.get("rounds", ""),
     }
 
 

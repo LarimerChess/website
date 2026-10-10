@@ -4,6 +4,8 @@
 
 const login = document.querySelector(".td-login");
 const desk = document.querySelector(".td-desk");
+// The event menu is in the menu bar, since the whole desk shows that one event.
+const navEvent = document.querySelector(".td-nav-event");
 const registerForm = document.querySelector(".td-register");
 const choice = document.getElementById("td-event");
 const playerInput = document.getElementById("td-player");
@@ -48,7 +50,7 @@ async function call(action, fields = {}) {
 function signOut(message = "") {
   password = "";
   remember("");
-  desk.hidden = true;
+  desk.hidden = navEvent.hidden = true;
   login.hidden = false;
   login.querySelector(".td-login-status").textContent = message;
 }
@@ -59,7 +61,7 @@ async function signIn(value) {
   if (!result.ok) return false;
   remember(value);
   login.hidden = true;
-  desk.hidden = false;
+  desk.hidden = navEvent.hidden = false;
   const { choices: list } = await call("choices");
   choices = list || [];
   const groups = new Map();
@@ -70,7 +72,7 @@ async function signIn(value) {
   choice.replaceChildren(...[...groups].map(([name, items]) => {
     const group = document.createElement("optgroup");
     group.label = name;
-    for (const c of items) group.append(new Option(c.label[0].toUpperCase() + c.label.slice(1), c.key));
+    for (const c of items) group.append(new Option(`${c.name}, ${c.label}`, c.key));
     return group;
   }));
   showDeskEntries();

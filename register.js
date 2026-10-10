@@ -4,7 +4,7 @@
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 
-const form = document.querySelector(".register-form:not(.td-login)");
+const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");
 const entriesStatus = document.querySelector(".entries-status");
 const table = document.querySelector(".entries");

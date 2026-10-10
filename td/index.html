@@ -465,13 +465,41 @@ section.td-table td { white-space: nowrap; }
 .td-saving li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .td-save-pending { color: var(--muted); }
 .td-save-failed { font-weight: 600; }
+
+/* The TD desk: one event for the whole page, chosen in the menu bar. */
+.td-nav-event { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
+.td-nav-event label { font-weight: 600; }
+.td-nav-event select {
+  flex: 1 1 220px;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: var(--fg);
+  background: var(--card);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+}
+.td-nav-event select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.td-nav-event .button { margin-top: 0; padding: 6px 14px; }
+.td-grid { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 32px; }
+.td-grid > section { padding: 24px 0; }
+@media (min-width: 1000px) {
+  .td-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .td-span { grid-column: 1 / -1; }
+}
 </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
   <nav class="site-nav" aria-label="Main">
-    <div class="wrap">
+    <div class="wrap wrap-full">
       <a class="brand" href="/"><span aria-hidden="true">♞ </span>Larimer County Chess Club</a>
+      <div class="td-nav-event" hidden>
+        <label for="td-event">Event</label>
+        <select id="td-event" required></select>
+        <button class="button button-secondary td-sign-out" type="button">Sign out</button>
+      </div>
       <ul>
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>
@@ -484,8 +512,7 @@ section.td-table td { white-space: nowrap; }
     </div>
   </nav>
   <main id="main" class="wrap wrap-full">
-    <h1>TD desk</h1>
-    <p>Register players and manage entries for club events. For the club's tournament directors.</p>
+    <h1 class="visually-hidden">TD desk</h1>
     <noscript><p>The TD desk needs JavaScript.</p></noscript>
 
     <form class="register-form td-login" method="post" hidden>
@@ -498,49 +525,9 @@ section.td-table td { white-space: nowrap; }
     </form>
 
     <div class="td-desk" hidden>
-      <section>
-        <h2>Register a player</h2>
-        <form class="register-form td-register">
-          <label for="td-event">Event</label>
-          <select id="td-event" name="choice" required></select>
-          <label for="td-player">Player</label>
-          <div class="td-combobox">
-            <input id="td-player" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
-              aria-controls="td-players" aria-describedby="td-player-hint" autocomplete="off" spellcheck="false">
-            <!-- [html-validate-disable-next prefer-native-element -- a select can't search as you type] -->
-            <ul id="td-players" class="td-players" role="listbox" aria-label="Matching players" hidden></ul>
-          </div>
-          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Colorado players come first.</p>
-          <p class="td-chosen" role="status"></p>
-          <label for="td-category">Fee category</label>
-          <select id="td-category" name="category">
-            <option value="">From US Chess, by age on the event date</option>
-            <option>Adult</option>
-            <option>Senior (65+)</option>
-            <option>Under 18</option>
-          </select>
-          <label for="td-email">Email (optional)</label>
-          <input id="td-email" name="email" type="email" autocomplete="off" aria-describedby="td-email-hint">
-          <p id="td-email-hint" class="register-hint">With an email, the player gets the confirmation and a withdraw link. For a player under 18, a parent's or guardian's.</p>
-          <button class="button" type="submit">Register</button>
-          <p class="td-register-status" role="status"></p>
-          <ul class="td-saving" aria-label="Registrations saving and saved"></ul>
-        </form>
-      </section>
-
-      <section>
-        <h2>Entries</h2>
-        <p class="td-entries-status" role="status"></p>
-        <div class="td-table">
-          <table class="entries td-entries" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="run">
-        <h2>Run the tournament</h2>
+      <div class="td-grid">
+      <section class="td-panel run">
+        <h2 class="run-heading">Run the tournament</h2>
         <p class="run-status" role="status"></p>
         <form class="register-form run-start" hidden>
           <label for="run-format">Format</label>
@@ -549,6 +536,7 @@ section.td-table td { white-space: nowrap; }
             <option value="quad">Quads (round robins of four, 30G)</option>
             <option value="arena">Arena</option>
           </select>
+          <p class="run-format-set" hidden></p>
           <label for="run-rounds" data-format="swiss">Rounds</label>
           <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint" data-format="swiss">
           <p id="run-rounds-hint" class="register-hint" data-format="swiss">For a club night's month, one round a night.</p>
@@ -640,14 +628,52 @@ section.td-table td { white-space: nowrap; }
         </div>
       </section>
 
-      <section>
+      <section class="td-panel">
+        <h2>Register a player</h2>
+        <form class="register-form td-register">
+          <label for="td-player">Player</label>
+          <div class="td-combobox">
+            <input id="td-player" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+              aria-controls="td-players" aria-describedby="td-player-hint" autocomplete="off" spellcheck="false">
+            <!-- [html-validate-disable-next prefer-native-element -- a select can't search as you type] -->
+            <ul id="td-players" class="td-players" role="listbox" aria-label="Matching players" hidden></ul>
+          </div>
+          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Colorado players come first.</p>
+          <p class="td-chosen" role="status"></p>
+          <label for="td-category">Fee category</label>
+          <select id="td-category" name="category">
+            <option value="">From US Chess, by age on the event date</option>
+            <option>Adult</option>
+            <option>Senior (65+)</option>
+            <option>Under 18</option>
+          </select>
+          <label for="td-email">Email (optional)</label>
+          <input id="td-email" name="email" type="email" autocomplete="off" aria-describedby="td-email-hint">
+          <p id="td-email-hint" class="register-hint">With an email, the player gets the confirmation and a withdraw link. For a player under 18, a parent's or guardian's.</p>
+          <button class="button" type="submit">Register</button>
+          <p class="td-register-status" role="status"></p>
+          <ul class="td-saving" aria-label="Registrations saving and saved"></ul>
+        </form>
+      </section>
+
+      <section class="td-panel td-span">
+        <h2>Entries</h2>
+        <p class="td-entries-status" role="status"></p>
+        <div class="td-table">
+          <table class="entries td-entries" hidden>
+            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="td-panel">
         <h2>Incidents</h2>
         <p>Warnings, penalties, game losses, expulsions, and bars, under the Safe Play policy, §8. Log one from a player's Incident button. Expelled and removed players drop off that date's entries, so they aren't paired again; barred players can't register. Those three email the President.</p>
         <p class="td-incidents-status" role="status"></p>
         <ul class="td-incidents"></ul>
       </section>
-
-      <p><button class="button button-secondary td-sign-out" type="button">Sign out</button></p>
+      </div>
     </div>
 
     <dialog class="event-dialog td-incident" aria-labelledby="td-incident-title">
@@ -685,10 +711,10 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/minutes/">Board minutes</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=69a916d19b" defer></script>
-  <script src="../td.js?v=893bb7cc43" defer></script>
+  <script src="../register.js?v=c4f8a47163" defer></script>
+  <script src="../td.js?v=f0467f82ce" defer></script>
   <script src="../pairing.js?v=85166896c3" defer></script>
-  <script src="../td-run.js?v=d94ab39627" defer></script>
+  <script src="../td-run.js?v=b66a54d344" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=50315d8046" defer></script>
 </body>

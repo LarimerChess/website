@@ -476,6 +476,29 @@ section.td-table td { white-space: nowrap; }
 .td-saving li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .td-save-pending { color: var(--muted); }
 .td-save-failed { font-weight: 600; }
+
+/* The TD desk: one event for the whole page, chosen in the menu bar. */
+.td-nav-event { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
+.td-nav-event label { font-weight: 600; }
+.td-nav-event select {
+  flex: 1 1 220px;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: var(--fg);
+  background: var(--card);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+}
+.td-nav-event select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.td-nav-event .button { margin-top: 0; padding: 6px 14px; }
+.td-grid { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 32px; }
+.td-grid > section { padding: 24px 0; }
+@media (min-width: 1000px) {
+  .td-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .td-span { grid-column: 1 / -1; }
+}
 </style>
 </head>
 <body>

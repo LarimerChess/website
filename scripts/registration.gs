@@ -252,7 +252,7 @@ function choices() {
   return Object.entries(clubEvents())
     .filter(([, e]) => e.last >= today)
     .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first, format: e.format || "",
-      closed: Boolean(e.closed) }))
+      rounds: e.rounds || "", closed: Boolean(e.closed) }))
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
 }
 
@@ -989,7 +989,7 @@ function clubEvents() {
     out[key] = {
       event: key.split("/")[0], name: e.title.replace(/^Larimer County Chess Club\s*/, ""), page: e.page, kind,
       label, closes: e.start, first: out[key] ? out[key].first : e.start.slice(0, 10), last: e.start.slice(0, 10),
-      closed: e.tags.includes("invitational"),
+      closed: e.tags.includes("invitational"), format: e.pairing || "", rounds: e.rounds || "",
     };
   };
   for (const e of events.sort((a, b) => a.start.localeCompare(b.start))) {
@@ -1013,11 +1013,11 @@ function clubEvents() {
       const name = r[col.Event], start = r[col.Start];
       if (!name || !start) continue;
       const key = `${name}/${start.slice(0, 10)}`;
-      const extra = { closed: true, format: r[col.Format] || "",
-        fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]) };
+      const extra = { closed: true, fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]) };
+      if (r[col.Format]) extra.format = r[col.Format];
       // An event on the calendar too keeps its page and dates; the tab adds the format and fee.
       out[key] = out[key] ? { ...out[key], ...extra } : {
-        event: name, name: r[col.Name] || name, page: "", kind: "entry", ...extra,
+        event: name, name: r[col.Name] || name, page: "", kind: "entry", format: "", rounds: "", ...extra,
         label: Utilities.formatDate(new Date(start), TZ, "EEEE, MMMM d, yyyy"),
         closes: start, first: start.slice(0, 10), last: start.slice(0, 10),
       };

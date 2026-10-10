@@ -70,6 +70,13 @@ class Tags(unittest.TestCase):
         self.assertEqual(len(uc.problems({**MEETUP, "speed": "classical"})), 1)
         self.assertEqual(len(uc.problems({**MEETUP, "speed": "regular, quick"})), 1)
 
+    def test_pairing_and_rounds(self):
+        d = uc.describe({**CLUB_TOURNAMENT, "pairing": "swiss", "rounds": "4"}, "club")
+        self.assertEqual((d["pairing"], d["rounds"]), ("swiss", "4"))
+        self.assertEqual(uc.describe(CLUB_TOURNAMENT, "club")["pairing"], "")
+        self.assertEqual(len(uc.problems({**CLUB_TOURNAMENT, "pairing": "round robin"})), 1)
+        self.assertEqual(len(uc.problems({**CLUB_TOURNAMENT, "rounds": "0"})), 1)
+
     def test_invitational(self):
         self.assertIn("invitational", uc.describe({**CLUB_TOURNAMENT, "access": "invitational"}, "club")["tags"])
         self.assertNotIn("invitational", uc.describe({**CLUB_TOURNAMENT, "access": "open"}, "club")["tags"])
@@ -128,7 +135,7 @@ class BadMetadata(unittest.TestCase):
 class Build(unittest.TestCase):
     def test_event_fields(self):
         [e] = uc.build({"club": [item("First Saturday Classic", CLUB_TOURNAMENT)]})
-        self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "page", "start", "end",
+        self.assertEqual(list(e), ["title", "calendar", "organizer", "tags", "url", "price", "pairing", "rounds", "page", "start", "end",
                                    "allDay", "location", "place", "city", "description"])
         self.assertEqual((e["start"], e["allDay"], e["city"]), ("2026-11-07T10:00:00-07:00", False, "Fort Collins"))
 
