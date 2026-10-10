@@ -181,7 +181,7 @@ function register(p, td) {
     });
   }
   const sent = email ? ` A confirmation is on its way to ${email}.` : "";
-  return { ok: true, message: `${name} is registered for ${event.label}. ${due}${sent}${lapsed ? " " + lapsed : ""}` };
+  return { ok: true, name, message: `${name} is registered for ${event.label}. ${due}${sent}${lapsed ? " " + lapsed : ""}` };
 }
 
 /** The entry list for a key. A club night's list includes the month's registrations; a month's

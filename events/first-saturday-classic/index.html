@@ -364,7 +364,7 @@ main > h1:first-child { margin-top: 32px; }
 .event-dialog-x:hover { background: var(--bg); }
 .event-dialog-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.register-form { display: grid; gap: 4px; max-width: 28em; }
+.register-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; max-width: 28em; }
 .register-form label { font-weight: 600; margin-top: 12px; }
 .register-form input, .register-form select {
   font: inherit;
@@ -444,7 +444,9 @@ main > h1:first-child { margin-top: 32px; }
 .td-players li[aria-selected="true"], .td-players li:hover { background: var(--bg); color: var(--accent); }
 .td-players .td-none { color: var(--muted); cursor: default; }
 .td-chosen { margin: 4px 0 0; }
-.td-table { overflow-x: auto; }
+/* Positioned, so the visually hidden labels in a wide table stay inside its scrolling box
+   instead of widening the page. */
+.td-table { overflow-x: auto; position: relative; }
 .td-entries td { white-space: nowrap; }
 .td-action { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
 .td-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
