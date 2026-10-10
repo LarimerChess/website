@@ -1,4 +1,4 @@
-"""Fail if a page is missing from sitemap.xml, or the sitemap lists a page that doesn't exist."""
+"""Fail if a page is missing from sitemap.xml, or the sitemap lists a page that doesn't exist or is noindex."""
 
 import sys
 import xml.etree.ElementTree as ET
@@ -13,7 +13,9 @@ def url(page):
     return BASE + (path[: -len("index.html")] if path.endswith("index.html") else path)
 
 
-pages = {url(p) for p in ROOT.rglob("*.html") if "node_modules" not in p.parts}
+# A page marked noindex, such as the TD desk, stays out of the sitemap.
+pages = {url(p) for p in ROOT.rglob("*.html")
+         if "node_modules" not in p.parts and '<meta name="robots" content="noindex">' not in p.read_text(encoding="utf-8")}
 ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 listed = {loc.text for loc in ET.parse(ROOT / "sitemap.xml").findall("s:url/s:loc", ns)}
 missing, extra = sorted(pages - listed), sorted(listed - pages)

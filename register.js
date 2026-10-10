@@ -1,16 +1,17 @@
-// The Register form and entry list on each tournament page, which scripts/build_pages.py
+// The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
+// The TD desk (td/) loads this too, for ENDPOINT.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 
-const form = document.querySelector(".register-form");
+const form = document.querySelector(".register-form:not(.td-login)");
 const status = document.querySelector(".register-status");
 const entriesStatus = document.querySelector(".entries-status");
 const table = document.querySelector(".entries");
-const dateField = form.elements.date;
+const dateField = form?.elements.date;
 
 const wanted = new URLSearchParams(location.search).get("date");
-if (dateField.tagName === "SELECT" && [...dateField.options].some((o) => o.value === wanted)) dateField.value = wanted;
+if (dateField?.tagName === "SELECT" && [...dateField.options].some((o) => o.value === wanted)) dateField.value = wanted;
 
 function selected() {
   return dateField.tagName === "SELECT" ? dateField.selectedOptions[0] : dateField;
@@ -42,6 +43,7 @@ async function showEntries() {
       link.append(hint);
       row.insertCell().append(link);
       row.insertCell().textContent = e.rating || "Unrated";
+      if (table.tHead.rows[0].cells.length > 3) row.insertCell().textContent = e.for || "";
       return row;
     }));
     table.hidden = !entries.length;
@@ -50,7 +52,9 @@ async function showEntries() {
   }
 }
 
-if (ENDPOINT) {
+if (!dateField) {
+  // The TD desk, which has its own code in td.js.
+} else if (ENDPOINT) {
   form.hidden = false;
   if (dateField.tagName === "SELECT") dateField.addEventListener("change", showEntries);
   form.addEventListener("submit", async (event) => {

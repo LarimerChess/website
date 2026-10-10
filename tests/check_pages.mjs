@@ -2,7 +2,7 @@
 // validation can't: accessibility (axe, light and dark), the event details
 // dialog by keyboard, the filters, each card's Run by line and Details link, and
 // the structured data on the events page and each club event's page, its
-// Register form and entry list, and the home page's register cards.
+// Register form and entry list, the home page's register cards, and the TD desk.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -15,7 +15,7 @@ const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
 const CLUB = "Larimer County Chess Club";
 const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", ...seriesPages];
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", ...seriesPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
@@ -352,6 +352,54 @@ for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Reg
     : fail(`home page before ${night.start.slice(0, 10)}: ${JSON.stringify(cards)}`);
   await home.close();
 }
+
+// The TD desk, against a stand-in for the Apps Script: sign in, find a player by name,
+// register them, and remove an entry.
+const desk = await browser.newPage();
+desk.on("pageerror", (error) => fail(`JavaScript error on /td/: ${error.message}`));
+const deskCalls = [];
+await desk.setRequestInterception(true);
+desk.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.host === "registration.test") {
+    const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+    deskCalls.push(p);
+    const body = p.password !== "secret" ? { error: "Wrong password.", login: true }
+      : { login: { ok: true },
+          choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
+          search: { players: [{ id: "12345678", name: "Test Player", state: "CO", rating: "1500", expires: "2027-01-31" }] },
+          register: { ok: true, message: "Test Player is registered." },
+          entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "15", email: "", expires: "2027-01-31", token: "t1" }] },
+          remove: { message: "Test Player is withdrawn." } }[p.action];
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+  } else {
+    request.continue();
+  }
+});
+desk.on("dialog", (d) => d.accept());
+await desk.goto(base + "/td/", { waitUntil: "networkidle0" });
+await desk.type("#td-password", "secret");
+await desk.click(".td-login button");
+await desk.waitForSelector(".td-desk:not([hidden])");
+await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Fees due: $15"));
+await desk.type("#td-player", "test pl");
+await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
+await desk.keyboard.press("ArrowDown");
+await desk.keyboard.press("Enter");
+await desk.click(".td-register button");
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("registered"));
+const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
+sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk.id === "12345678"
+  ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
+await desk.click(".td-remove");
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("withdrawn"));
+deskCalls.some((c) => c.action === "remove" && c.token === "t1") ? pass("TD desk removes an entry")
+  : fail("TD desk didn't remove the entry");
+await desk.close();
 
 await browser.close();
 if (failures.length) {

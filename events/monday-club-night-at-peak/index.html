@@ -410,6 +410,32 @@ main > h1:first-child { margin-top: 32px; }
 
 .event-register { margin: 12px 0 8px; }
 .event-card-register { margin-top: 8px; padding: 6px 16px; font-size: 15px; }
+
+.td-combobox { position: relative; }
+.td-combobox input { width: 100%; }
+.td-players {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+}
+.td-players li { padding: 6px 12px; cursor: pointer; }
+.td-players li[aria-selected="true"], .td-players li:hover { background: var(--bg); color: var(--accent); }
+.td-players .td-none { color: var(--muted); cursor: default; }
+.td-chosen { margin: 4px 0 0; }
+.td-table { overflow-x: auto; }
+.td-entries td { white-space: nowrap; }
+.td-remove { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
+.td-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -446,10 +472,10 @@ main > h1:first-child { margin-top: 32px; }
       <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form" hidden>
-        <p>Register online, then pay when you arrive.</p>
+        <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
         <input type="hidden" name="event" value="monday-club-night-at-peak">
-        <label for="register-date">Month</label>
-        <select id="register-date" name="date"><option value="2026-10" data-day="Mondays in October 2026">Mondays in October 2026</option><option value="2026-11" data-day="Mondays in November 2026">Mondays in November 2026</option><option value="2026-12" data-day="Mondays in December 2026">Mondays in December 2026</option><option value="2027-01" data-day="Mondays in January 2027">Mondays in January 2027</option></select>
+        <label for="register-date">Night or month</label>
+        <select id="register-date" name="date"><optgroup label="October 2026"><option value="2026-10" data-day="all Mondays in October 2026">All Mondays in October</option><option value="2026-10-12" data-day="Monday, October 12, 2026">Monday, October 12</option><option value="2026-10-19" data-day="Monday, October 19, 2026">Monday, October 19</option><option value="2026-10-26" data-day="Monday, October 26, 2026">Monday, October 26</option></optgroup><optgroup label="November 2026"><option value="2026-11" data-day="all Mondays in November 2026">All Mondays in November</option><option value="2026-11-02" data-day="Monday, November 2, 2026">Monday, November 2</option><option value="2026-11-09" data-day="Monday, November 9, 2026">Monday, November 9</option><option value="2026-11-16" data-day="Monday, November 16, 2026">Monday, November 16</option><option value="2026-11-23" data-day="Monday, November 23, 2026">Monday, November 23</option><option value="2026-11-30" data-day="Monday, November 30, 2026">Monday, November 30</option></optgroup><optgroup label="December 2026"><option value="2026-12" data-day="all Mondays in December 2026">All Mondays in December</option><option value="2026-12-07" data-day="Monday, December 7, 2026">Monday, December 7</option><option value="2026-12-14" data-day="Monday, December 14, 2026">Monday, December 14</option><option value="2026-12-21" data-day="Monday, December 21, 2026">Monday, December 21</option><option value="2026-12-28" data-day="Monday, December 28, 2026">Monday, December 28</option></optgroup><optgroup label="January 2027"><option value="2027-01" data-day="all Mondays in January 2027">All Mondays in January</option><option value="2027-01-04" data-day="Monday, January 4, 2027">Monday, January 4</option></optgroup></select>
         <label for="register-id">US Chess ID</label>
         <input id="register-id" name="id" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required autocomplete="off" aria-describedby="register-id-hint">
         <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
@@ -471,7 +497,7 @@ main > h1:first-child { margin-top: 32px; }
       <h2>Entries</h2>
       <p class="entries-status" role="status"></p>
       <table class="entries" hidden>
-        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
+        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -489,6 +515,6 @@ main > h1:first-child { margin-top: 32px; }
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../../register.js?v=1fd3ee1d14" defer></script>
+  <script src="../../register.js?v=8a2b563af1" defer></script>
 </body>
 </html>

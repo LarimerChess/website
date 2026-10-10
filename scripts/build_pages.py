@@ -176,34 +176,41 @@ def data_script(events):
 
 
 def register_choices(events):
-    """What a player registers for, as (value, label): each date of a tournament, or each month of a club night."""
+    """What a player registers for, as (group, [(value, shown, phrase)]): a tournament's dates, or
+    each month of a club night, whole or by the night. The phrase finishes "registered for …"."""
     if "tournament" in events[0]["tags"]:
-        return [(e["start"][:10], day_text(e)) for e in events]
+        return [(None, [(e["start"][:10], day_text(e), day_text(e)) for e in events])]
     months = {}
     for e in events:
         start = datetime.fromisoformat(e["start"]).astimezone(TZ)
-        months.setdefault(e["start"][:7], f"{start:%A}s in {start:%B} {start.year}")
+        month = months.setdefault(f"{start:%B} {start.year}", [(
+            e["start"][:7], f"All {start:%A}s in {start:%B}", f"all {start:%A}s in {start:%B} {start.year}")])
+        month.append((e["start"][:10], f"{start:%A}, {start:%B} {start.day}", day_text(e)))
     return list(months.items())
 
 
 def register_html(events):
     """The Register form and entry list, which register.js brings to life; one choice or a menu of them."""
     name = events[0]["page"].strip("/").split("/")[-1]
-    choices = register_choices(events)
-    label = "Date" if "tournament" in events[0]["tags"] else "Month"
-    if len(choices) == 1:
-        value, text = choices[0]
-        date = f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(text)}">'
+    groups = register_choices(events)
+    tournament = "tournament" in events[0]["tags"]
+    option = lambda value, shown, phrase: (f'<option value="{value}" data-day="{html.escape(phrase)}">'
+                                           f"{escaped(shown)}</option>")
+    if tournament and len(groups[0][1]) == 1:
+        value, _, phrase = groups[0][1][0]
+        date = f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(phrase)}">'
     else:
-        options = "".join(f'<option value="{value}" data-day="{html.escape(text)}">{escaped(text)}</option>'
-                          for value, text in choices)
+        options = "".join(f'<optgroup label="{html.escape(group)}">{"".join(option(*c) for c in choices)}</optgroup>'
+                          if group else "".join(option(*c) for c in choices) for group, choices in groups)
+        label = "Date" if tournament else "Night or month"
         date = f'<label for="register-date">{label}</label>\n        <select id="register-date" name="date">{options}</select>'
+    for_column = "" if tournament else '<th scope="col">For</th>'
     return f"""<section id="register">
       <h2>Register</h2>
       <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form" hidden>
-        <p>Register online, then pay when you arrive.</p>
+        <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
         <input type="hidden" name="event" value="{name}">
         {date}
         <label for="register-id">US Chess ID</label>
@@ -227,7 +234,7 @@ def register_html(events):
       <h2>Entries</h2>
       <p class="entries-status" role="status"></p>
       <table class="entries" hidden>
-        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
+        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th>{for_column}</tr></thead>
         <tbody></tbody>
       </table>
     </section>"""
