@@ -15,7 +15,11 @@ const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
 const CLUB = "Larimer County Chess Club";
 const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/", ...seriesPages];
+// The results pages outlive the events, so they come from the sitemap, not events.json.
+const resultsPages = [...readFileSync(new URL("../sitemap.xml", import.meta.url), "utf8")
+  .matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/",
+  ...seriesPages, ...resultsPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);

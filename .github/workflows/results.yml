@@ -1,0 +1,45 @@
+name: Results
+
+on:
+  schedule:
+    - cron: "47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: commits-to-main
+  cancel-in-progress: false
+
+jobs:
+  results:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        # The sitemap dates each page by the last commit that changed it.
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Reads finished tournaments from the registration script's public ?tournaments=current.
+      # The docs repo's Archive tournaments Action clears a tournament from the spreadsheet only
+      # once its page here is live, and the pages are never deleted.
+      - run: python scripts/build_results.py
+      - run: python scripts/build_pages.py
+      - name: Commit if changed
+        run: |
+          git add results sitemap.xml
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Post tournament results"
+          git push
+          gh api -X POST repos/${{ github.repository }}/pages/builds
+        env:
+          GH_TOKEN: ${{ github.token }}

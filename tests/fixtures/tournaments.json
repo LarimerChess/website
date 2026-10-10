@@ -1,0 +1,128 @@
+{
+  "tournaments": [
+    {
+      "key": "first-saturday-classic/2026-11-07",
+      "event": "first-saturday-classic",
+      "name": "First Saturday Classic, Saturday, November 7, 2026",
+      "format": "swiss",
+      "plannedRounds": 4,
+      "status": "finished",
+      "coin": "white",
+      "players": [
+        {"id": "90000001", "number": 1, "name": "Ada Alder", "rating": 1800, "out": null},
+        {"id": "90000002", "number": 2, "name": "Ben Birch", "rating": 1650, "out": null},
+        {"id": "90000003", "number": 3, "name": "Cal Cedar", "rating": 1500, "out": null},
+        {"id": "90000004", "number": 4, "name": "Dee Dogwood", "rating": 1400, "out": null},
+        {"id": "90000005", "number": 5, "name": "Eli Elm", "rating": null, "out": 3}
+      ],
+      "rounds": [
+        {"games": [{"board": 1, "white": "90000001", "black": "90000003", "result": "1-0"},
+                   {"board": 2, "white": "90000005", "black": "90000002", "result": "0-1"}],
+         "byes": [{"id": "90000004", "points": 1}], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000002", "black": "90000001", "result": "1/2-1/2"},
+                   {"board": 2, "white": "90000004", "black": "90000005", "result": "1F-0F"}],
+         "byes": [{"id": "90000003", "points": 1}], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000001", "black": "90000004", "result": "1-0"},
+                   {"board": 2, "white": "90000003", "black": "90000002", "result": "0-1"}],
+         "byes": [], "out": ["90000005"], "posted": true},
+        {"games": [{"board": 1, "white": "90000004", "black": "90000003", "result": "0F-0F"}],
+         "byes": [{"id": "90000001", "points": 0.5}, {"id": "90000002", "points": 1}], "out": ["90000005"], "posted": true}
+      ]
+    },
+    {
+      "key": "monday-club-night-at-peak/2026-10",
+      "event": "monday-club-night-at-peak",
+      "name": "Monday Club Night at Peak, October 2026",
+      "format": "swiss",
+      "plannedRounds": 3,
+      "status": "finished",
+      "coin": "black",
+      "players": [
+        {"id": "90000011", "number": 1, "name": "Pat Pine", "rating": 2000, "out": null},
+        {"id": "90000012", "number": 2, "name": "Quinn Quaking", "rating": 1700, "out": null},
+        {"id": "90000013", "number": 3, "name": "Rae Redwood", "rating": 1600, "out": null},
+        {"id": "90000014", "number": 4, "name": "Sam Spruce", "rating": 1200, "out": 3},
+        {"id": "90000015", "number": 5, "name": "Tia Tamarack", "rating": 900, "out": null}
+      ],
+      "rounds": [
+        {"games": [{"board": 1, "white": "90000011", "black": "90000013", "result": "1-0"},
+                   {"board": 2, "white": "90000012", "black": "90000014", "result": "1/2-1/2"}],
+         "byes": [], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000013", "black": "90000012", "result": "0F-1F"},
+                   {"board": 2, "white": "90000014", "black": "90000015", "result": "0-1"}],
+         "byes": [{"id": "90000011", "points": 0.5}], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000011", "black": "90000012", "result": "1-0"}],
+         "byes": [{"id": "90000015", "points": 1}, {"id": "90000013", "points": 0}], "out": ["90000014"], "posted": true}
+      ]
+    },
+    {
+      "key": "knightmare-arena-classical/2026-10-31",
+      "event": "knightmare-arena-classical",
+      "name": "Knightmare Arena Classical, Saturday, October 31, 2026",
+      "format": "arena",
+      "plannedRounds": null,
+      "status": "finished",
+      "coin": "white",
+      "players": [
+        {"id": "90000021", "number": 1, "name": "Vic Vine", "rating": 1900, "out": null},
+        {"id": "90000022", "number": 2, "name": "Wren Willow", "rating": 1500, "out": null},
+        {"id": "90000023", "number": 3, "name": "Xan Yew", "rating": null, "out": null}
+      ],
+      "rounds": [],
+      "arena": [
+        {"game": 1, "white": "90000021", "black": "90000022", "whitePact": "", "blackPact": "", "result": "1-0"},
+        {"game": 2, "white": "90000023", "black": "90000021", "whitePact": "", "blackPact": "yes", "result": "0-1"},
+        {"game": 3, "white": "90000021", "black": "90000022", "whitePact": "", "blackPact": "", "result": "1-0"},
+        {"game": 4, "white": "90000022", "black": "90000023", "whitePact": "yes", "blackPact": "yes", "result": "1/2-1/2"},
+        {"game": 5, "white": "90000023", "black": "90000021", "whitePact": "", "blackPact": "", "result": "1/2-1/2"}
+      ]
+    },
+    {
+      "key": "fourth-saturday-classic/2027-01-23",
+      "event": "fourth-saturday-classic",
+      "name": "Fourth Saturday Classic, Saturday, January 23, 2027",
+      "format": "quad",
+      "plannedRounds": 3,
+      "status": "finished",
+      "coin": "white",
+      "players": [
+        {"id": "90000041", "number": 1, "name": "Ash Acacia", "rating": 1900, "out": null},
+        {"id": "90000042", "number": 2, "name": "Bay Beech", "rating": 1850, "out": null},
+        {"id": "90000043", "number": 3, "name": "Cy Cypress", "rating": 1800, "out": null},
+        {"id": "90000044", "number": 4, "name": "Dot Date", "rating": 1750, "out": null},
+        {"id": "90000045", "number": 5, "name": "Em Ebony", "rating": 1400, "out": null},
+        {"id": "90000046", "number": 6, "name": "Fay Fir", "rating": 1350, "out": null},
+        {"id": "90000047", "number": 7, "name": "Gus Gum", "rating": 1300, "out": null},
+        {"id": "90000048", "number": 8, "name": "Hal Hazel", "rating": null, "out": null}
+      ],
+      "rounds": [
+        {"games": [{"board": 1, "white": "90000041", "black": "90000044", "result": "1-0"},
+                   {"board": 2, "white": "90000042", "black": "90000043", "result": "1/2-1/2"},
+                   {"board": 3, "white": "90000045", "black": "90000048", "result": "1-0"},
+                   {"board": 4, "white": "90000046", "black": "90000047", "result": "0-1"}],
+         "byes": [], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000043", "black": "90000041", "result": "1/2-1/2"},
+                   {"board": 2, "white": "90000044", "black": "90000042", "result": "0-1"},
+                   {"board": 3, "white": "90000047", "black": "90000045", "result": "1/2-1/2"},
+                   {"board": 4, "white": "90000048", "black": "90000046", "result": "0F-1F"}],
+         "byes": [], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000041", "black": "90000042", "result": "0-1"},
+                   {"board": 2, "white": "90000043", "black": "90000044", "result": "1-0"},
+                   {"board": 3, "white": "90000045", "black": "90000046", "result": "1-0"},
+                   {"board": 4, "white": "90000047", "black": "90000048", "result": "1-0"}],
+         "byes": [], "out": [], "posted": true}
+      ]
+    },
+    {
+      "key": "third-saturday-slow/2026-11-21",
+      "event": "third-saturday-slow",
+      "name": "Third Saturday Slow, Saturday, November 21, 2026",
+      "format": "swiss",
+      "plannedRounds": 3,
+      "status": "running",
+      "coin": "white",
+      "players": [{"id": "90000031", "number": 1, "name": "Zed Zelkova", "rating": 1500, "out": null}],
+      "rounds": []
+    }
+  ]
+}

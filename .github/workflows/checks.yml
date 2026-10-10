@@ -35,10 +35,13 @@ jobs:
       - name: Pages match events.json
         if: success() || failure()
         run: python scripts/build_pages.py --check
+      - name: Results page lists every results page
+        if: success() || failure()
+        run: python scripts/build_results.py --check
       - name: Sitemap lists every page
         if: success() || failure()
         run: python tests/check_sitemap.py
-      - name: Calendar import and page builder tests
+      - name: Calendar import, page builder, and results tests
         if: success() || failure()
         run: python -m unittest discover -s tests -v
       - name: Pairing tests (US Chess rules 27 to 29 and 34E)
@@ -47,7 +50,7 @@ jobs:
       - name: Arena tests
         if: success() || failure()
         run: node --test tests/test_arena.mjs
-      - name: Pages (accessibility, filters, add to calendar, structured data, tournament pages)
+      - name: Pages (accessibility, filters, add to calendar, structured data, tournament and results pages)
         if: success() || failure()
         run: |
           python -m http.server 8765 --bind 127.0.0.1 &
@@ -57,7 +60,7 @@ jobs:
         if: success() || failure()
         uses: lycheeverse/lychee-action@v2.9.0
         with:
-          args: --offline --root-dir ${{ github.workspace }} --no-progress index.html events/index.html events/*/index.html scholastic/index.html minutes/*.html
+          args: --offline --root-dir ${{ github.workspace }} --no-progress index.html events/index.html events/*/index.html scholastic/index.html minutes/*.html results/index.html
           fail: true
           jobSummary: false
 
