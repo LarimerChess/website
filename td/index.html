@@ -561,7 +561,7 @@ section.td-table td { white-space: nowrap; }
         <div class="run-round" hidden>
           <h3 class="run-round-title">This round</h3>
           <div class="run-checkin">
-            <p class="run-checkin-hint">Who is playing this round? Players not here get a zero-point bye unless they asked for a half-point bye (22C).</p>
+            <p class="run-checkin-hint">Mark each player who is here Present; only they are paired. Everyone else gets a zero-point bye, unless they asked for a half-point bye (22C).</p>
             <div class="run-attendance-all"></div>
             <details class="run-sections-edit" hidden>
               <summary>Change the sections</summary>
@@ -575,6 +575,7 @@ section.td-table td { white-space: nowrap; }
                 <button class="button" type="submit">Save the sections</button>
               </form>
             </details>
+            <p><button class="button button-secondary run-all-present" type="button">Mark everyone present</button></p>
             <p><button class="button run-pair" type="button">Pair the round</button> <button class="button button-secondary run-sync" type="button">Add new entrants</button></p>
           </div>
           <div class="run-pairings" hidden>
@@ -675,7 +676,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../register.js?v=69a916d19b" defer></script>
   <script src="../td.js?v=ea08b388bb" defer></script>
   <script src="../pairing.js?v=f6f74df110" defer></script>
-  <script src="../td-run.js?v=a3d0f1b3b7" defer></script>
+  <script src="../td-run.js?v=bf4017e1a2" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=50315d8046" defer></script>
 </body>

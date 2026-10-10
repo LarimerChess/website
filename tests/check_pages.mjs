@@ -588,6 +588,10 @@ await press(runPage, ".run-start button[type=submit]");
 await runPage.waitForSelector(".run-round:not([hidden]) .run-pair");
 await runPage.waitForFunction(() => document.querySelectorAll(".run-attendance tbody tr").length === 4);
 await press(runPage, ".run-pair");
+await runPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Present first"));
+pass("TD desk won't pair a round before anyone is marked present");
+await press(runPage, ".run-all-present");
+await press(runPage, ".run-pair");
 await runPage.waitForSelector(".run-pairings:not([hidden])");
 await press(runPage, ".run-post");
 await runPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
@@ -892,6 +896,7 @@ moved.id === "66666666" && moved.section === "Open" ? pass("TD desk moves a play
   : fail(`TD desk section move: ${JSON.stringify(moved)}`);
 await axeBoth(sectionDesk, "TD desk checking in two sections");
 await fitsPhone(sectionDesk, "TD desk checking in two sections");
+await press(sectionDesk, ".run-all-present");
 await press(sectionDesk, ".run-pair");
 await sectionDesk.waitForSelector(".run-pairings:not([hidden])");
 const review = await sectionDesk.$$eval(".run-games-all h4", (h) => h.map((x) => x.textContent));
@@ -983,6 +988,8 @@ await quadPage.waitForSelector(".run-start:not([hidden])");
 const quadFormat = await quadPage.$eval("#run-format", (s) => s.value);
 await press(quadPage, ".run-start button[type=submit]");
 await quadPage.waitForSelector(".run-round:not([hidden]) .run-pair");
+await press(quadPage, ".run-all-present");
+await quadPage.select('.run-this-round[data-id="11111111"]', "absent");
 await press(quadPage, ".run-pair");
 await quadPage.waitForSelector(".run-pairings:not([hidden])");
 await press(quadPage, ".run-post");
@@ -990,6 +997,8 @@ await quadPage.waitForFunction(() => document.querySelector(".run-round-title").
 const quadRound = JSON.parse((quadCalls.find((c) => c.action === "round") || {}).games || "[]");
 quadFormat === "quad" && JSON.stringify(quadRound.map((g) => [g.white, g.black])) === JSON.stringify([["22222222", "33333333"], ["44444444", "11111111"]])
   ? pass("TD desk pairs a quad's first round from the table (1 v 4, 2 v 3)") : fail(`TD desk quad: format ${quadFormat}, ${JSON.stringify(quadRound)}`);
+JSON.stringify(quadRound.map((g) => g.result)) === JSON.stringify(["", "1F-0F"])
+  ? pass("a quad player not marked present loses that round's game by forfeit") : fail(`TD desk quad forfeits: ${JSON.stringify(quadRound)}`);
 await quadPage.close();
 
 // An arena: the Pairings page shows its games in progress, the queue, and recent results; the

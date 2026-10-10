@@ -564,6 +564,8 @@ function syncPlayers(key) {
 }
 
 /** Saves a round's pairings and byes; posted makes them public. Replaces the round if it was saved before. */
+const FORFEITS = ["1F-0F", "0F-1F", "0F-0F"];
+
 function saveRound(p) {
   const key = `${p.event}/${p.date}`;
   const round = Number(p.number);
@@ -575,13 +577,15 @@ function saveRound(p) {
   try {
     const t = table("Rounds");
     const old = t.rows.filter((r) => r.Key === key && Number(r.Round) === round);
-    if (old.some((r) => r.Result)) return { error: "This round has results; clear them before re-pairing (29G)." };
+    // A saved round can hold forfeits for quad players not here; only a posted round's results block re-pairing.
+    if (old.some((r) => r.Result && r.Posted)) return { error: "This round has results; clear them before re-pairing (29G)." };
     for (const r of old.reverse()) t.sheet.deleteRow(r.row);
     const posted = p.post === "yes" ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
     const fresh = table("Rounds");
     for (const g of games) {
       appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: String(g.board), White: g.white,
-        Black: g.black, Result: "", "Bye points": "", Posted: posted, Section: String(g.section || "") });
+        Black: g.black, Result: FORFEITS.includes(g.result) ? g.result : "", "Bye points": "", Posted: posted,
+        Section: String(g.section || "") });
     }
     for (const b of byes) {
       appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: "", White: b.id, Black: "",

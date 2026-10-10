@@ -180,11 +180,13 @@ function renderRun() {
 
 function renderCheckin(t, parts, next) {
   const quad = t.format === "quad";
-  runTitle.textContent = quad ? `Round ${next}` : `Round ${next}: check in`;
+  runTitle.textContent = `Round ${next}: check in`;
   runCheckin.hidden = false;
   runPairings.hidden = true;
-  // A quad's pairings come from the table, so there is no one to check in; a no-show is a forfeit.
-  runAttendance.hidden = runCheckinHint.hidden = quad;
+  // A quad's pairings come from the table, so a player not here loses that game by forfeit.
+  runCheckinHint.textContent = quad
+    ? "Mark each player who is here Present. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
+    : "Mark each player who is here Present; only they are paired. Everyone else gets a zero-point bye, unless they asked for a half-point bye (22C).";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section).
@@ -213,8 +215,10 @@ function renderCheckin(t, parts, next) {
       select.dataset.id = p.id;
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round`);
-      select.append(option("play", "Playing", true), option("half", "Half-point bye", false),
-        option("absent", "Absent, zero-point bye", false), option("withdraw", "Withdraw from the tournament", false));
+      // Nobody is paired until the TD marks them present.
+      select.append(option("absent", quad ? "Not here: loses by forfeit" : "Not here: zero-point bye", true),
+        option("play", "Present", false), ...(quad ? [] : [option("half", "Half-point bye", false)]),
+        option("withdraw", "Withdraw from the tournament", false));
       row.insertCell().append(select);
       return row;
     });
@@ -256,7 +260,7 @@ function renderDraft() {
       black.addEventListener("change", () => { g.black = black.value; });
       row.insertCell().append(white);
       row.insertCell().append(black);
-      row.insertCell().textContent = "";
+      row.insertCell().textContent = (RESULTS.find(([v]) => v === g.result) || ["", ""])[1].replace("No result", "");
       return row;
     });
     const label = (b) => `${nameOf(b.id)}, ${b.points === 1 ? "full-point bye" : b.points === 0.5 ? "half-point bye" : "zero-point bye"}`;
@@ -384,9 +388,15 @@ document.querySelector(".run-sync").addEventListener("click", async () => {
   loadRun();
 });
 
+document.querySelector(".run-all-present").addEventListener("click", () => {
+  for (const select of runAttendance.querySelectorAll(".run-this-round")) if (select.value === "absent") select.value = "play";
+  runStatus.textContent = "Everyone not on a bye or withdrawn is marked present.";
+});
+
 document.querySelector(".run-pair").addEventListener("click", async () => {
   const number = current.rounds.length + 1;
   const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value]);
+  if (!choicesMade.some(([, v]) => v === "play")) return void (runStatus.textContent = "Mark the players who are here Present first.");
   const withdrawn = choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id);
   const [event, date] = keyParts();
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
@@ -396,6 +406,16 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
     out: withdrawn,
     coin: current.coin,
   });
+  // A quad's table pairs absent players too; their games are forfeits.
+  const away = new Set(choicesMade.filter(([, v]) => v === "absent").map(([id]) => id));
+  if (current.format === "quad") {
+    for (const s of sections) {
+      for (const g of s.games) {
+        if (away.has(g.white) || away.has(g.black)) g.result = away.has(g.white) ? (away.has(g.black) ? "0F-0F" : "0F-1F") : "1F-0F";
+      }
+      s.byes = s.byes.filter((b) => !away.has(b.id));
+    }
+  }
   draft = { number, sections };
   if (withdrawn.length) current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
   renderDraft();
@@ -415,7 +435,8 @@ async function saveDraft(post) {
       seen.add(id);
     }
   }
-  const games = draft.sections.flatMap((s) => s.games.map((g) => ({ board: g.board, white: g.white, black: g.black, section: s.section })));
+  const games = draft.sections.flatMap((s) => s.games.map((g) => ({ board: g.board, white: g.white, black: g.black, section: s.section,
+    result: g.result || "" })));
   const byes = draft.sections.flatMap((s) => s.byes.map((b) => ({ id: b.id, points: b.points, section: s.section })));
   const [event, date] = keyParts();
   const result = await call("round", { event, date, number: draft.number, post: post ? "yes" : "no",
