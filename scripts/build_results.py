@@ -1,13 +1,15 @@
-"""Write a results page for each finished tournament, and the Results page that lists them.
+"""Write a results page for each tournament US Chess has rated, and the Results page that lists them.
 
     python scripts/build_results.py              # from the registration script's ?tournaments=current
     python scripts/build_results.py --from FILE  # from a saved copy of that JSON
     python scripts/build_results.py --check      # fail if results/index.html or sitemap.xml is out of date
 
-- Each finished tournament gets results/<slug>/, the slug being its key with "/" as "-"
+- Each rated tournament gets results/<slug>/, the slug being its key with "/" as "-"
   (first-saturday-classic-2026-11-07). A Swiss shows each section's final standings with the
   US Chess tiebreaks, from pairing.js run with node, and wall chart; a quad tournament, each
-  quad's standings and crosstable; an arena, its leaderboard and games.
+  quad's standings and crosstable; an arena, its leaderboard and games. A tournament is rated
+  once the docs repo's Rating reports Action finds the club's event on US Chess with these
+  results, and the page links to US Chess's crosstable.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
   kept after the docs repo's archive Action clears it from there. Nothing here deletes a page.
 - results/index.html lists every page under results/, newest first, and sitemap.xml gets an
@@ -350,10 +352,14 @@ def results_page(t):
     kind = {"arena": "arena tournament", "quad": "quad tournament"}.get(form, f"{len(t['rounds'])}-round Swiss")
     description = f"Final {shows} of the {name}, a US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado."
     body = {"arena": arena_main, "quad": quad_main}.get(form, swiss_main)(t)
+    event = t.get("usChessEvent")
+    rated = (f'<p>US Chess rated it as event <a href="https://ratings.uschess.org/event/{html.escape(event)}" target="_blank" '
+             f'rel="noopener">{escaped(event)}<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>\n\n    '
+             if event else "")
     main = f"""<h1>{escaped(name)}</h1>
     <p>A US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado, <time datetime="{date}">{date_text(date)}</time>.</p>
 
-    {body}
+    {rated}{body}
 
     <p><a href="/results/">All tournament results</a></p>"""
     return page_html(f"{name} results", description, f"{SITE}/results/{slug(t['key'])}/", main,
@@ -381,7 +387,7 @@ def index_page():
 {rows}
         </tbody>
       </table>
-      <nav class="results-pages" aria-label="Pages of results" hidden></nav>""" if pages else "<p>Results are posted here after each tournament is finished.</p>"
+      <nav class="results-pages" aria-label="Pages of results" hidden></nav>""" if pages else "<p>Results are posted here once US Chess has rated each tournament.</p>"
     main = f"""<h1>Results</h1>
     <p>Final standings and wall charts of the club's US Chess rated tournaments, newest first. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
     <section id="all-results">
@@ -416,10 +422,10 @@ def main(args):
         else:
             tournaments = fetch(endpoint()) if endpoint() else []
         for t in tournaments:
-            if t.get("status") != "finished":
+            if t.get("status") != "rated":
                 continue
             if not t["rounds"] and not arena_games(t):
-                print(f"skipped {t['key']}: finished with nothing posted")
+                print(f"skipped {t['key']}: rated with nothing posted")
                 continue
             writes[f"results/{slug(t['key'])}/index.html"] = results_page(t)
         for path, text in writes.items():

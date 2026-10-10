@@ -16,7 +16,7 @@
  *                         a player's report of their game's result, which the TD confirms on the desk
  * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, round, result, results, byeKind, out, finish, and for arenas:
+ *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
@@ -27,7 +27,8 @@
  * Deploy as a web app that executes as the club account, with access for anyone. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
  * TOURNAMENT_SHEET_ID, the "Tournaments in progress" spreadsheet that running tournaments
- * keep their players, pairings, and results in until the archive Action clears it; and
+ * keep their players, pairings, and results in until US Chess has rated them and the archive
+ * Action clears them; and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
  * pay when they arrive.
@@ -52,13 +53,17 @@ const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venu
 const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
-  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections",
+    "Reminded", "US Chess event"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
   Queue: ["Key", "US Chess ID", "Since"],
 };
+// TD desk actions that change a tournament, refused once US Chess has rated it.
+const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "arenaJoin",
+  "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
 
@@ -77,6 +82,9 @@ function doPost(e) {
     if (p.action === "report") return json(reportResult(p));
     const denied = checkPassword(p.password);
     if (denied) return json({ error: denied, login: true });
+    if (TOURNAMENT_WRITES.includes(p.action) && rated(`${p.event}/${p.date}`)) {
+      return json({ error: "US Chess has rated this tournament, so it can't change on the desk." });
+    }
     switch (p.action) {
       case "login": return json({ ok: true });
       case "choices": return json({ choices: choices() });
@@ -98,7 +106,8 @@ function doPost(e) {
       case "results": return json(saveResults(p));
       case "byeKind": return json(saveByeKind(p));
       case "out": return json(setOut(p));
-      case "finish": return json(finishTournament(`${p.event}/${p.date}`));
+      case "rounds": return json(setRounds(p));
+      case "restart": return json(restartTournament(`${p.event}/${p.date}`));
       case "arenaJoin": return json(arenaJoin(p));
       case "arenaLeave": return json(arenaLeave(p));
       case "arenaPair": return json(arenaPair(p));
@@ -530,10 +539,12 @@ function tournament(key, td) {
         kind: r["Bye kind"] || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
       posted: here.some((r) => r.Posted),
+      day: (here.find((r) => r.Posted) || { Posted: "" }).Posted.slice(0, 10),
     };
   });
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players };
+  if (info["US Chess event"]) result.usChessEvent = info["US Chess event"];
   if (info.Format === "arena") {
     result.cutoff = info.Cutoff;
     result.games = table("Arena").rows.filter((r) => r.Key === key)
@@ -543,6 +554,11 @@ function tournament(key, td) {
     result.queue = table("Queue").rows.filter((r) => r.Key === key).map((r) => ({ id: r["US Chess ID"], since: r.Since }));
   }
   return result;
+}
+
+/** The docs repo's Rating reports Action sets a tournament's Status to rated once US Chess shows these results. */
+function rated(key) {
+  return table("Tournaments").rows.some((r) => r.Key === key && r.Status === "rated");
 }
 
 function startTournament(p) {
@@ -572,6 +588,48 @@ function startTournament(p) {
   const synced = syncPlayers(key);
   if (p.format === "quad") numberQuads(key);
   return synced;
+}
+
+/** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Play ends
+ *  again when the new last round is in, so the time it ended is cleared. */
+function setRounds(p) {
+  const key = `${p.event}/${p.date}`;
+  const rounds = String(p.rounds || "").trim();
+  if (!/^[1-9]\d?$/.test(rounds)) return { error: "Rounds is a number from 1 to 99." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Tournaments");
+    const line = t.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    if (line.Format !== "swiss") return { error: "Only a Swiss can change its number of rounds." };
+    const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+    if (Number(rounds) < paired) return { error: `${paired} rounds are paired already, so it can't have fewer.` };
+    setCell(t, line.row, "Rounds", rounds);
+    setCell(t, line.row, "Finished", "");
+    clearTournamentCache();
+    return { ok: true, message: `It plays ${rounds} rounds.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Deletes everything the tournament spreadsheet has for a tournament, so it can be started again.
+ *  Its entries stay in the registration Sheet. */
+function restartTournament(key) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!table("Tournaments").rows.some((r) => r.Key === key)) return { error: "No such tournament." };
+    for (const name of Object.keys(TOURNAMENT_HEADERS)) {
+      const t = table(name);
+      for (const r of t.rows.filter((x) => x.Key === key).reverse()) t.sheet.deleteRow(r.row);
+    }
+    clearTournamentCache();
+    return { ok: true, message: "Deleted. Start it again when ready." };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** 30G and 30A: quads are groups of four by rating, and within each the table numbers are drawn by
@@ -884,16 +942,6 @@ function sectionsByKey() {
   }
 }
 
-function finishTournament(key) {
-  const t = table("Tournaments");
-  const line = t.rows.find((r) => r.Key === key);
-  if (!line) return { error: "No such tournament." };
-  setCell(t, line.row, "Status", "finished");
-  setCell(t, line.row, "Finished", Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"));
-  clearTournamentCache();
-  return { ok: true, message: "Finished. The archive Action saves it and clears it from the spreadsheet." };
-}
-
 // Arenas. Every write rereads the tabs under the lock, so two desks can't put a player in two games.
 
 const stamp = (pattern) => Utilities.formatDate(new Date(), TZ, pattern || "yyyy-MM-dd HH:mm:ss");
@@ -901,7 +949,7 @@ const stamp = (pattern) => Utilities.formatDate(new Date(), TZ, pattern || "yyyy
 function runningArena(key) {
   const info = table("Tournaments").rows.find((r) => r.Key === key);
   if (!info || info.Format !== "arena") return { error: "No arena is running for this." };
-  if (info.Status !== "running") return { error: "This arena is finished." };
+  if (info.Status !== "running") return { error: "This arena isn't running." };
   return { info };
 }
 

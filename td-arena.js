@@ -49,7 +49,7 @@ function pactCell(row, g, side) {
   const box = document.createElement("input");
   box.type = "checkbox";
   box.checked = g[`${side}Pact`];
-  box.disabled = current.status === "finished";
+  box.disabled = current.status === "rated";
   box.addEventListener("change", async () => {
     box.disabled = true;
     const result = await arenaCall("arenaPact", { game: g.game, side, on: box.checked ? "yes" : "no" });
@@ -68,12 +68,14 @@ function renderArena() {
   const busy = new Set([...t.queue.map((q) => q.id), ...playing.flatMap((g) => [g.white, g.black])]);
   const closed = Arena.pastCutoff(date, t.cutoff, new Date());
   runStatus.textContent = `${t.name}: ${t.players.length} players, ${t.games.length} games paired, ${playing.length} in progress.`
-    + (t.status === "finished" ? " Finished."
+    + (t.status === "rated" ? " Rated by US Chess."
+      : closed && !playing.length ? ` It's past ${t.cutoff} and every game is in. Enter the games in MUIR, US Chess's ratings portal; the arena is complete `
+        + "once US Chess shows it rated with these results."
       : closed ? ` It's past ${t.cutoff}: no new games start. Games in progress finish and count.`
         : t.cutoff ? ` No new games after ${t.cutoff}.` : "");
   runArena.hidden = false;
-  const running = t.status !== "finished";
-  for (const el of runArena.querySelectorAll(".run-arena-pair, .run-arena-sync, .run-arena-finish")) el.hidden = !running;
+  const running = t.status !== "rated";
+  for (const el of runArena.querySelectorAll(".run-arena-pair, .run-arena-sync")) el.hidden = !running;
   arenaPairButton.disabled = closed;
 
   const order = Arena.waiting(arena);
@@ -165,7 +167,3 @@ document.querySelector(".run-arena-refresh").addEventListener("click", loadRun);
 
 document.querySelector(".run-arena-sync").addEventListener("click", (e) => arenaCall("sync", {}, e.currentTarget));
 
-document.querySelector(".run-arena-finish").addEventListener("click", (e) => {
-  if (!confirm("Finish the arena? No more games can be paired or results entered on the desk.")) return;
-  arenaCall("finish", {}, e.currentTarget);
-});

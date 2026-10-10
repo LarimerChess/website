@@ -627,7 +627,20 @@ section.td-table td { white-space: nowrap; }
           <h3>Byes and unplayed rounds</h3>
           <p class="register-hint">Every round a player had no game in. Change one if it was classified wrongly, such as an unplayed round the TD excuses as a half-point bye; the score follows.</p>
           <div class="run-byes-all"></div>
-          <p><button class="button button-secondary run-finish" type="button">Finish the tournament</button></p>
+          <div class="register-form run-report" hidden>
+            <h3>Rating report</h3>
+            <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; from 24 hours after the last round until then, the TD and the President get a reminder each day.</p>
+            <label for="run-report-td">Chief TD</label>
+            <select id="run-report-td"></select>
+            <label for="run-report-control">Time control</label>
+            <input id="run-report-control" type="text" autocomplete="off" placeholder="G/70;d10" aria-describedby="run-report-control-hint">
+            <p id="run-report-control-hint" class="register-hint">As US Chess writes it, from the event's calendar description when it's still listed.</p>
+            <p class="register-hint run-report-folder-hint">The desk can keep the files in a folder on this computer: it rewrites them whenever the tournament loads with every result in, and deletes them when a round or result is missing, or the tournament is restarted, so a file never holds results the desk no longer has.</p>
+            <p><button class="button run-report-folder" type="button">Keep the files in a folder</button></p>
+            <p class="run-report-folder-status" role="status"></p>
+            <p class="register-hint run-report-download-hint">Or download them, which reloads the tournament first. A downloaded file stays as it was: after any change, delete it and download again.</p>
+            <p class="run-report-files"></p>
+          </div>
         </div>
         <div class="run-arena" hidden>
           <h3>Waiting for a game</h3>
@@ -663,7 +676,15 @@ section.td-table td { white-space: nowrap; }
             <thead><tr><th scope="col">Game</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
             <tbody></tbody>
           </table></div>
-          <p><button class="button button-secondary run-arena-finish" type="button">Finish the arena</button></p>
+        </div>
+        <div class="run-manage" hidden>
+          <form class="register-form run-planned" hidden>
+            <label for="run-planned-rounds">Rounds</label>
+            <input id="run-planned-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-planned-hint">
+            <p id="run-planned-hint" class="register-hint">Add rounds, or stop early with as many as are paired.</p>
+            <button class="button button-secondary" type="submit">Change the rounds</button>
+          </form>
+          <p><button class="button button-secondary run-restart" type="button">Restart the tournament</button></p>
         </div>
       </section>
 
@@ -754,8 +775,9 @@ section.td-table td { white-space: nowrap; }
   <script src="../register.js?v=9fca9e7633" defer></script>
   <script src="../td.js?v=ec4efbced4" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
-  <script src="../td-run.js?v=3619c760db" defer></script>
+  <script src="../ratingreport.js?v=dbc74a7165" defer></script>
+  <script src="../td-run.js?v=da71508aec" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
-  <script src="../td-arena.js?v=50315d8046" defer></script>
+  <script src="../td-arena.js?v=8f428b91c9" defer></script>
 </body>
 </html>

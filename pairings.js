@@ -221,17 +221,17 @@ function findForm(tournaments, render) {
 const RECENT = 12;
 
 function arenaPairings(section, t, name) {
-  if (t.cutoff && t.status !== "finished") section.append(paragraph(`No new games start after ${clock(t.cutoff)}.`));
+  if (t.cutoff && t.status !== "rated") section.append(paragraph(`No new games start after ${clock(t.cutoff)}.`));
   const playing = t.games.filter((g) => !g.result);
   const pact = (g, side) => name(g[side]) + (g[`${side}Pact`] ? ", Blood Pact" : "");
   if (playing.length) {
     section.append(heading(3, "Games in progress"),
       tableOf(["Game", "White", "Black"], playing.map((g) => [g.game, pact(g, "white"), pact(g, "black")])));
-  } else if (t.status !== "finished") {
+  } else if (t.status !== "rated") {
     section.append(paragraph("No games in progress."));
   }
   const waiting = Arena.waiting(t);
-  if (waiting.length && t.status !== "finished") section.append(paragraph(`Waiting for a game: ${waiting.map(name).join(", ")}.`));
+  if (waiting.length && t.status !== "rated") section.append(paragraph(`Waiting for a game: ${waiting.map(name).join(", ")}.`));
   const done = t.games.filter((g) => g.result).reverse().slice(0, RECENT);
   if (done.length) {
     section.append(heading(3, "Recent results"),
@@ -245,7 +245,7 @@ function arenaPairings(section, t, name) {
 
 function arenaStandings(section, t) {
   const rows = Arena.standings(t);
-  section.append(heading(3, t.status === "finished" ? "Final leaderboard" : "Leaderboard"),
+  section.append(heading(3, t.status === "rated" ? "Final leaderboard" : "Leaderboard"),
     paragraph("Players with equal points share a place."),
     tableOf(["Place", "Name", "Rating", "Points", "Games", "Wins in a row"], rows.map((r) => [
       `${r.place}${r.tied ? " (tied)" : ""}`, r.name, r.rating ?? "Unrated", r.points, r.games,

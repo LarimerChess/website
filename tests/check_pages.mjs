@@ -1342,6 +1342,95 @@ JSON.stringify(leaderboard[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1",
 await axeBoth(arenaStandings, "Standings page with an arena");
 await arenaStandings.close();
 
+// With every round in, the desk has no Finish button: it offers the rating report files for MUIR and keeps
+// them in a folder the TD picks (a stand-in here for the browser's folder picker), rewritten when a result
+// changes and deleted when one is missing, when rounds are added, or on a restart. A rated tournament
+// offers nothing to change.
+const played = (pairs) => ({ games: pairs.map(([white, black, result], i) => ({ board: i + 1, white, black, result, section: "" })),
+  byes: [], out: [], posted: true, day: "2026-11-07" });
+const doneDesk = deskState([played([["11111111", "33333333", "1-0"], ["44444444", "22222222", "0-1"]]),
+  played([["22222222", "11111111", "1/2-1/2"], ["33333333", "44444444", "1-0"]]),
+  played([["11111111", "44444444", "1-0"], ["22222222", "33333333", "0-1"]])]);
+const keptRounds = JSON.parse(JSON.stringify(doneDesk.held.rounds));
+const deskAnswer = doneDesk.answer;
+doneDesk.answer = (p) => {
+  if (p.action === "rounds") {
+    doneDesk.held.plannedRounds = Number(p.rounds);
+    return { ok: true, message: `It plays ${p.rounds} rounds.` };
+  }
+  if (p.action === "restart") {
+    doneDesk.held = null;
+    return { ok: true, message: "Deleted. Start it again when ready." };
+  }
+  return deskAnswer(p);
+};
+const donePage = await mocked("/td/ after the last round", (p) => doneDesk.answer(p));
+await donePage.evaluateOnNewDocument(() => {
+  window.keptFiles = {};
+  const folder = { name: "Rating report", queryPermission: async () => "granted", requestPermission: async () => "granted",
+    getFileHandle: async (name) => ({ createWritable: async () => {
+      let bytes = null;
+      return { write: async (b) => { bytes = Array.from(b); }, close: async () => { window.keptFiles[name] = bytes; } };
+    } }),
+    removeEntry: async (name) => {
+      if (!(name in window.keptFiles)) throw new DOMException("No such file", "NotFoundError");
+      delete window.keptFiles[name];
+    } };
+  window.showDirectoryPicker = async () => folder;
+});
+donePage.on("dialog", (dialog) => dialog.accept());
+await signIn(donePage);
+await donePage.waitForFunction(() => document.querySelectorAll(".run-report-download").length === 3);
+const kept = () => donePage.evaluate(() => Object.keys(window.keptFiles).sort().join(","));
+const keptPlayers = () => donePage.evaluate(() => JSON.stringify(window.keptFiles["TDEXPORT.DBF"]));
+const reload = async () => {
+  await press(donePage, ".run-report-download");
+  await new Promise((r) => setTimeout(r, 500));
+};
+const afterPlay = await donePage.evaluate(() => ({ status: document.querySelector(".run-status").textContent,
+  td: document.getElementById("run-report-td").selectedOptions[0]?.textContent,
+  finish: Boolean(document.querySelector(".run-finish, .run-arena-finish")), round: document.querySelector(".run-round").hidden }));
+await press(donePage, ".run-report-folder");
+await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 3);
+const first = await keptPlayers();
+const records = await donePage.evaluate(() => new DataView(new Uint8Array(window.keptFiles["TDEXPORT.DBF"]).buffer).getUint32(4, true));
+const told = await donePage.$eval(".run-report-folder-status", (p) => p.textContent);
+await axeBoth(donePage, "TD desk with the rating report");
+doneDesk.held.rounds[2].games[0].result = "0-1";
+await reload();
+const rewritten = (await kept()) === "TDEXPORT.DBF,THEXPORT.DBF,TSEXPORT.DBF" && (await keptPlayers()) !== first;
+doneDesk.held.rounds[2].games[1].result = "";
+await reload();
+const goneWhenMissing = (await kept()) === "" && await donePage.$eval(".run-report", (d) => d.hidden);
+doneDesk.held.rounds = JSON.parse(JSON.stringify(keptRounds));
+await press(donePage, ".run-restart");
+await donePage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Deleted"));
+await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 0);
+// Restarted and played again, then a round added: the files go until the new round is in.
+doneDesk.held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: "white",
+  players: fourPlayers(), rounds: JSON.parse(JSON.stringify(keptRounds)) };
+await donePage.evaluate(() => document.dispatchEvent(new Event("td-choice")));
+await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 3);
+await donePage.$eval("#run-planned-rounds", (input) => { input.value = "4"; });
+await press(donePage, ".run-planned button");
+await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 0 && document.querySelector(".run-report").hidden);
+const roundAdded = doneDesk.held.plannedRounds === 4;
+await donePage.close();
+doneDesk.held.plannedRounds = 3;
+doneDesk.held.status = "rated";
+const ratedPage = await mocked("/td/ once rated", (p) => doneDesk.answer(p));
+await signIn(ratedPage);
+await ratedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Rated by US Chess"));
+const afterRating = await ratedPage.evaluate(() => ({ round: document.querySelector(".run-round").hidden,
+  standings: !document.querySelector(".run-standings-wrap").hidden, manage: document.querySelector(".run-manage").hidden }));
+afterPlay.status.includes("The rating report is under Standings") && afterPlay.td === "Jared Hall (31847334)" && !afterPlay.finish && afterPlay.round
+  && records === 4 && told.includes("up to date in the folder Rating report") && rewritten && goneWhenMissing && roundAdded
+  && afterRating.round && afterRating.standings && afterRating.manage
+  ? pass("TD desk has no Finish: after the last round it keeps the rating report files in a folder, rewritten when a result changes "
+    + "and deleted when one is missing, rounds are added, or it restarts; a rated tournament can't change")
+  : fail(`TD desk after the last round: ${JSON.stringify({ afterPlay, records, told, rewritten, goneWhenMissing, roundAdded, afterRating })}`);
+await ratedPage.close();
+
 // The Results page pages its table 20 rows at a time; with no finished tournaments yet, it is
 // served here with 45 made-up rows.
 const resultsPage = await browser.newPage();

@@ -92,6 +92,11 @@ class Standings(unittest.TestCase):
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
+        self.assertNotIn("ratings.uschess.org", page)
+
+    def test_links_the_rated_event(self):
+        self.assertIn('US Chess rated it as event <a href="https://ratings.uschess.org/event/202611070123"',
+                      br.results_page(SATURDAY))
 
 
 class Quads(unittest.TestCase):
@@ -182,7 +187,7 @@ class Build(unittest.TestCase):
         with redirect_stdout(StringIO()):
             br.main(["--from", str(source)])
 
-    def test_finished_only_and_never_deleted(self):
+    def test_rated_only_and_never_deleted(self):
         running = TOURNAMENTS["third-saturday-slow/2026-11-21"]
         self.run_with([SATURDAY, running])
         self.assertTrue((self.root / "results/first-saturday-classic-2026-11-07/index.html").exists())

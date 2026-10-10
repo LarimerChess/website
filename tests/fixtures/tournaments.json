@@ -2,11 +2,12 @@
   "tournaments": [
     {
       "key": "first-saturday-classic/2026-11-07",
+      "usChessEvent": "202611070123",
       "event": "first-saturday-classic",
       "name": "First Saturday Classic, Saturday, November 7, 2026",
       "format": "swiss",
       "plannedRounds": 4,
-      "status": "finished",
+      "status": "rated",
       "coin": "white",
       "players": [
         {"id": "90000001", "number": 1, "name": "Ada Alder", "rating": 1800, "out": null},
@@ -35,7 +36,7 @@
       "name": "Monday Club Night at Peak, October 2026",
       "format": "swiss",
       "plannedRounds": 3,
-      "status": "finished",
+      "status": "rated",
       "coin": "black",
       "players": [
         {"id": "90000011", "number": 1, "name": "Pat Pine", "rating": 2000, "out": null},
@@ -61,7 +62,7 @@
       "name": "Knightmare Arena Classical, Saturday, October 31, 2026",
       "format": "arena",
       "plannedRounds": null,
-      "status": "finished",
+      "status": "rated",
       "coin": "white",
       "players": [
         {"id": "90000021", "number": 1, "name": "Vic Vine", "rating": 1900, "out": null},
@@ -83,7 +84,7 @@
       "name": "Fourth Saturday Classic, Saturday, January 23, 2027",
       "format": "quad",
       "plannedRounds": 3,
-      "status": "finished",
+      "status": "rated",
       "coin": "white",
       "players": [
         {"id": "90000041", "number": 1, "name": "Ash Acacia", "rating": 1900, "out": null},
@@ -130,7 +131,7 @@
       "name": "Second Saturday Sections, Saturday, December 12, 2026",
       "format": "swiss",
       "plannedRounds": 2,
-      "status": "finished",
+      "status": "rated",
       "coin": "white",
       "sections": [{"name": "Open"}, {"name": "Under 1400", "under": 1400}],
       "players": [

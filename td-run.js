@@ -26,6 +26,9 @@ const runStandingsWrap = document.querySelector(".run-standings-wrap");
 const runStandingsHint = document.querySelector(".run-standings-hint");
 const runStandings = document.querySelector(".run-standings-all");
 const runArena = document.querySelector(".run-arena");
+const runReport = document.querySelector(".run-report");
+const runManage = document.querySelector(".run-manage");
+const runPlanned = document.querySelector(".run-planned");
 const RESULTS = [["", "No result"], ["1-0", "1–0"], ["0-1", "0–1"], ["1/2-1/2", "½–½"],
   ["1F-0F", "1F–0F (black forfeits)"], ["0F-1F", "0F–1F (white forfeits)"], ["0F-0F", "0F–0F (both forfeit)"]];
 let current = null;
@@ -128,13 +131,19 @@ async function loadRun() {
     if (choice.value !== key) return;
     current = tournament;
     renderRun();
+    syncReport(key, current);
   } catch {
     runStatus.textContent = "The tournament couldn't be loaded. Try again.";
   }
 }
 
 function renderRun() {
-  runStart.hidden = runRound.hidden = runStandingsWrap.hidden = runArena.hidden = true;
+  runStart.hidden = runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
+  if (current && current.status !== "rated") {
+    runManage.hidden = false;
+    runPlanned.hidden = current.format !== "swiss";
+    runPlanned.elements.rounds.value = current.plannedRounds || "";
+  }
   const selectedChoice = choices.find((c) => c.key === choice.value);
   if (!current) {
     if (selectedChoice?.kind === "night") {
@@ -169,11 +178,12 @@ function renderRun() {
   const parts = Pairing.sections(forEngine(t));
   runStatus.textContent = `${t.name}: ${t.players.length} players, ${t.rounds.length} of ${t.plannedRounds || "?"} rounds paired.`
     + (parts.length > 1 ? ` Sections: ${parts.map((s) => `${s.name} (${s.players.length})`).join(", ")}.` : "")
-    + (t.status === "finished" ? " Finished." : "");
+    + (t.status === "rated" ? " Rated by US Chess." : "");
   runStandingsWrap.hidden = !t.rounds.length;
   renderStandings();
   if (t.rounds.length) renderByesAll();
-  if (t.status === "finished") return;
+  runReport.hidden = !reportReady(t);
+  if (t.status === "rated") return;
   runRound.hidden = false;
   if (last && !last.posted) draft = draft || draftFrom(t.rounds.length);
   if (draft) return renderDraft();
@@ -185,7 +195,7 @@ function renderRun() {
   const next = t.rounds.length + 1;
   if (t.plannedRounds && next > t.plannedRounds) {
     runRound.hidden = true;
-    runStatus.textContent += " All rounds are played; finish the tournament when prizes are settled.";
+    runStatus.textContent += " All rounds are played. The rating report is under Standings.";
     return;
   }
   renderCheckin(t, parts, next);
@@ -591,6 +601,140 @@ function renderResults(number) {
 const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
 
 /** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). */
+// The rating report's chief TD and affiliate come from scripts/tds.json; its time control and place,
+// from the event's listing in events.json while it's still there. The files are built from the
+// tournament as the desk last loaded it and are never stored anywhere but the TD's folder.
+const REPORT_FILES = ["THEXPORT.DBF", "TSEXPORT.DBF", "TDEXPORT.DBF"];
+let reportSources = null;
+// A folder the TD chose for each tournament, kept in IndexedDB so it outlasts a reload.
+const folders = {};
+
+// Ready once the planned rounds are all posted with their results; to stop early, the TD lowers the rounds.
+const reportReady = (t) => t.format !== "arena" && t.rounds.length > 0 && t.rounds.length >= (t.plannedRounds || 0)
+  && t.rounds.every((r) => r.posted && r.games.every((g) => g.result));
+
+function folderStore(mode, work) {
+  return new Promise((resolve) => {
+    try {
+      const open = indexedDB.open("lccc-td", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("folders");
+      open.onerror = () => resolve(null);
+      open.onsuccess = () => {
+        try {
+          const tx = open.result.transaction("folders", mode);
+          const request = work(tx.objectStore("folders"));
+          tx.oncomplete = () => resolve(request.result);
+          tx.onerror = tx.onabort = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      };
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function folderFor(key) {
+  if (!(key in folders)) folders[key] = (await folderStore("readonly", (store) => store.get(key))) || null;
+  return folders[key];
+}
+
+/** Writes the files to the tournament's folder, or with none deletes them from it: "written",
+ *  "removed", "permission" when the folder needs the TD's permission again, or "" without a folder. */
+async function syncFolder(key, files) {
+  const folder = await folderFor(key);
+  if (!folder) return "";
+  try {
+    if (await folder.queryPermission({ mode: "readwrite" }) !== "granted") return "permission";
+    for (const name of REPORT_FILES) {
+      if (files) {
+        const writable = await (await folder.getFileHandle(name, { create: true })).createWritable();
+        await writable.write(files[name]);
+        await writable.close();
+      } else {
+        await folder.removeEntry(name).catch(() => {});
+      }
+    }
+    return files ? "written" : "removed";
+  } catch {
+    return "permission";
+  }
+}
+
+async function reportFiles(t) {
+  reportSources ||= Promise.all(["/scripts/tds.json", "/events.json"].map((url) => fetch(url).then((r) => r.json()).catch(() => null)));
+  const [roster, events] = await reportSources;
+  const tdMenu = document.getElementById("run-report-td");
+  const control = document.getElementById("run-report-control");
+  if (!tdMenu.options.length) {
+    for (const td of roster?.tds || []) tdMenu.append(option(td.uschess_id, `${td.name} (${td.uschess_id})`, false));
+  }
+  const listing = (events || []).find((e) => e.page === `/events/${t.event}/`);
+  if (!control.value && listing) control.value = /^Time control: (\S+)/m.exec(listing.description)?.[1].replace(/\.$/, "") || "";
+  const when = t.key.split("/")[1];
+  const days = t.rounds.map((r) => r.day).filter(Boolean).sort();
+  const [begin, end] = when.length === 10 ? [when, when] : days.length ? [days[0], days.at(-1)] : [`${when}-01`, `${when}-01`];
+  return RatingReport.files({ ...forEngine(t), name: t.name }, { td: tdMenu.value, affiliate: roster?.affiliate || "",
+    timeControl: control.value.trim(), city: listing?.place?.city || "Fort Collins", state: listing?.place?.region || "CO",
+    zip: listing?.place?.zip || "80524", begin, end });
+}
+
+/** Keeps the folder, if there is one, the same as the tournament, and says so. */
+async function syncReport(key, t) {
+  const ready = t && reportReady(t);
+  const done = await syncFolder(key, ready ? await reportFiles(t) : null);
+  if (choice.value !== key) return;
+  const button = document.querySelector(".run-report-folder");
+  button.textContent = done === "permission" ? "Allow the folder again" : done ? "Choose another folder" : "Keep the files in a folder";
+  button.hidden = !window.showDirectoryPicker;
+  document.querySelector(".run-report-folder-status").textContent =
+    done === "written" ? `${REPORT_FILES.join(", ")} are up to date in the folder ${folders[key].name}.`
+      : done === "permission" ? "The browser needs permission again to keep the files in the folder."
+        : !window.showDirectoryPicker ? "This browser can't keep files in a folder; Chrome or Edge on a computer can." : "";
+  const links = document.querySelector(".run-report-files");
+  if (!links.children.length) {
+    links.append(...REPORT_FILES.flatMap((name, i) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button-secondary run-report-download";
+      button.textContent = `Download ${name}`;
+      button.addEventListener("click", () => downloadReport(name));
+      return i ? [" ", button] : [button];
+    }));
+  }
+}
+
+/** Downloads one file from the tournament as the script has it now, not as the desk last loaded it. */
+async function downloadReport(name) {
+  await loadRun();
+  if (!current || !reportReady(current)) return;
+  const files = await reportFiles(current);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([files[name]], { type: "application/octet-stream" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+document.querySelector(".run-report-folder").addEventListener("click", async () => {
+  const key = choice.value;
+  try {
+    const folder = await folderFor(key);
+    if (folder && await folder.queryPermission({ mode: "readwrite" }) !== "granted"
+      && await folder.requestPermission({ mode: "readwrite" }) === "granted") return syncReport(key, current);
+    folders[key] = await window.showDirectoryPicker({ id: "rating-report", mode: "readwrite" });
+    await folderStore("readwrite", (store) => store.put(folders[key], key));
+  } catch {
+    return;
+  }
+  syncReport(key, current);
+});
+
+for (const id of ["run-report-td", "run-report-control"]) {
+  document.getElementById(id).addEventListener("change", () => current && syncReport(choice.value, current));
+}
+
 function renderByesAll() {
   const box = document.querySelector(".run-byes-all");
   const rows = current.rounds.flatMap((r, i) => r.byes.map((b) => {
@@ -826,12 +970,24 @@ async function saveDraft(post) {
 document.querySelector(".run-post").addEventListener("click", () => saveDraft(true));
 document.querySelector(".run-save").addEventListener("click", () => saveDraft(false));
 
-document.querySelector(".run-finish").addEventListener("click", async () => {
-  if (!confirm("Finish the tournament? Results can't be changed on the desk afterward.")) return;
+runPlanned.addEventListener("submit", async (e) => {
+  e.preventDefault();
   const [event, date] = keyParts();
-  const result = await call("finish", { event, date });
+  const result = await call("rounds", { event, date, rounds: runPlanned.elements.rounds.value.trim() });
+  if (result.ok) await loadRun();
+  runStatus.textContent = `${result.message || result.error} ${result.ok ? runStatus.textContent : ""}`.trim();
+});
+
+document.querySelector(".run-restart").addEventListener("click", async () => {
+  if (!confirm("Restart the tournament? This deletes its players, pairings, and results, and the rating report files in its folder. "
+    + "Entries stay registered.")) return;
+  const [event, date] = keyParts();
+  const result = await call("restart", { event, date });
+  if (result.ok) {
+    draft = null;
+    await loadRun();
+  }
   runStatus.textContent = result.message || result.error;
-  loadRun();
 });
 
 document.addEventListener("td-choice", loadRun);
