@@ -197,21 +197,45 @@ async function showDeskEntries() {
   tdEntriesStatus.textContent = "Loading entries…";
   const { entries = [] } = await call("entries", { event: eventName, date });
   if (key !== choice.value) return;
-  const due = entries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
+  const owed = entries.filter((e) => !e.paid).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   tdEntriesStatus.textContent = entries.length
-    ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Fees due: $${due}.` : "No entries yet.";
+    ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${total("paid")}. Still owed: $${owed}.`
+    : "No entries yet.";
   const current = choices.find((c) => c.key === key);
   tdTable.tBodies[0].replaceChildren(...entries.map((e) => {
     const row = document.createElement("tr");
     const lapsed = e.expires && current && e.expires < current.first;
     for (const text of [e.name, e.id, e.rating || "Unrated", e.for, e.category || "?",
-      e.amount === "" ? "?" : `$${e.amount}`, lapsed ? `Expires ${e.expires}` : e.expires ? "Current" : "None",
-      e.email || ""]) {
+      e.amount === "" ? "?" : `$${e.amount}`]) {
+      row.insertCell().textContent = text;
+    }
+    // Marking paid asks for the amount, which can differ from the fee under the hardship waiver.
+    const paid = document.createElement("button");
+    paid.type = "button";
+    paid.className = "td-action";
+    paid.textContent = e.paid ? `$${e.paid} ✓` : "Mark paid";
+    paid.setAttribute("aria-label", e.paid ? `${e.name} paid $${e.paid}; mark unpaid` : `Mark ${e.name} paid`);
+    paid.addEventListener("click", async () => {
+      let amount = "";
+      if (!e.paid) {
+        amount = prompt(`Amount ${e.name} paid`, e.amount || "");
+        if (amount === null) return;
+      } else if (!confirm(`Mark ${e.name} unpaid?`)) {
+        return;
+      }
+      paid.disabled = true;
+      const result = await call("paid", { token: e.token, amount });
+      deskStatus.textContent = result.message || result.error;
+      showDeskEntries();
+    });
+    row.insertCell().append(paid);
+    for (const text of [lapsed ? `Expires ${e.expires}` : e.expires ? "Current" : "None", e.email || ""]) {
       row.insertCell().textContent = text;
     }
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "td-remove";
+    remove.className = "td-action";
     remove.textContent = "Remove";
     remove.setAttribute("aria-label", `Remove ${e.name}`);
     remove.addEventListener("click", async () => {

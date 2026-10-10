@@ -354,7 +354,7 @@ for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Reg
 }
 
 // The TD desk, against a stand-in for the Apps Script: sign in, find a player by name,
-// register them, and remove an entry.
+// register them, mark them paid, and remove an entry.
 const desk = await browser.newPage();
 desk.on("pageerror", (error) => fail(`JavaScript error on /td/: ${error.message}`));
 const deskCalls = [];
@@ -374,18 +374,19 @@ desk.on("request", async (request) => {
           search: { players: [{ id: "12345678", name: "Test Player", state: "CO", rating: "1500", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "15", email: "", expires: "2027-01-31", token: "t1" }] },
-          remove: { message: "Test Player is withdrawn." } }[p.action];
+          remove: { message: "Test Player is withdrawn." },
+          paid: { ok: true, message: "Test Player paid $15." } }[p.action];
     request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
   } else {
     request.continue();
   }
 });
-desk.on("dialog", (d) => d.accept());
+desk.on("dialog", (d) => d.accept(d.type() === "prompt" ? d.defaultValue() : undefined));
 await desk.goto(base + "/td/", { waitUntil: "networkidle0" });
 await desk.type("#td-password", "secret");
 await desk.click(".td-login button");
 await desk.waitForSelector(".td-desk:not([hidden])");
-await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Fees due: $15"));
+await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $15"));
 await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
@@ -395,7 +396,11 @@ await desk.waitForFunction(() => document.querySelector(".td-register-status").t
 const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
 sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk.id === "12345678"
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
-await desk.click(".td-remove");
+await desk.click(".td-entries tbody tr td:nth-child(7) button");
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
+deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "15") ? pass("TD desk marks a player paid")
+  : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
+await desk.click(".td-entries tbody tr td:last-child button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("withdrawn"));
 deskCalls.some((c) => c.action === "remove" && c.token === "t1") ? pass("TD desk removes an entry")
   : fail("TD desk didn't remove the entry");

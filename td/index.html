@@ -421,8 +421,8 @@ main > h1:first-child { margin-top: 32px; }
 .td-chosen { margin: 4px 0 0; }
 .td-table { overflow-x: auto; }
 .td-entries td { white-space: nowrap; }
-.td-remove { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
-.td-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.td-action { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
+.td-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -485,7 +485,7 @@ main > h1:first-child { margin-top: 32px; }
         <p class="td-entries-status" role="status"></p>
         <div class="td-table">
           <table class="entries td-entries" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -500,6 +500,6 @@ main > h1:first-child { margin-top: 32px; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=8a2b563af1" defer></script>
-  <script src="../td.js?v=6bd27673da" defer></script>
+  <script src="../td.js?v=2037e530fb" defer></script>
 </body>
 </html>

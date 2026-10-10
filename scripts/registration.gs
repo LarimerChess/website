@@ -10,7 +10,7 @@
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
- * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove
+ * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid
  *
  * Deploy as a web app that executes as the club account, with access for anyone. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
@@ -23,7 +23,7 @@ const SITE = "https://larimerchess.org";
 const MEMBERS = "https://ratings-api.uschess.org/api/v1/members";
 const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
-const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Regular rating",
+const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const POSTS_PER_MINUTE = 20;
@@ -48,6 +48,7 @@ function doPost(e) {
       case "register": return json(register(p, true));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
+      case "paid": return json(markPaid(p.token, p.amount));
       default: return json({ error: "Unknown action." });
     }
   } catch (err) {
@@ -150,7 +151,8 @@ function entries(key, td) {
       const entry = { name: r[col.Name], id: r[col["US Chess ID"]], rating: r[col["Regular rating"]],
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (td) {
-        Object.assign(entry, { category: r[col.Category], amount: r[col.Amount], email: r[col.Email],
+        Object.assign(entry, { category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
+          paidOn: r[col["Paid on"]], email: r[col.Email],
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
       }
       return entry;
@@ -232,6 +234,25 @@ function withdraw(token) {
     sheet.getRange(row.index + 2, col.Status + 1).setValue("withdrawn");
     clearEntriesCache(row.event, row.date);
     return `${row.name} is withdrawn.`;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Records what a player paid at the door, or clears it when amount is empty. */
+function markPaid(token, amount) {
+  amount = String(amount || "").trim().replace(/^\$/, "");
+  if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const row = findToken(token);
+    if (!row) return { error: "No registration matches this." };
+    const { sheet, col } = readEntries();
+    const when = amount ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
+    sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
+    sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
+    return { ok: true, message: amount ? `${row.name} paid $${amount}.` : `${row.name} is marked unpaid.` };
   } finally {
     lock.releaseLock();
   }
