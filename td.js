@@ -12,9 +12,21 @@ const chosen = document.querySelector(".td-chosen");
 const deskStatus = document.querySelector(".td-register-status");
 const tdEntriesStatus = document.querySelector(".td-entries-status");
 const tdTable = document.querySelector(".td-entries");
+const incidentDialog = document.querySelector(".td-incident");
+const incidentForm = incidentDialog.querySelector("form");
+const incidentList = document.querySelector(".td-incidents");
+const incidentsStatus = document.querySelector(".td-incidents-status");
 let password = "";
+let incidentPlayer = null;
 let player = null;
 let choices = [];
+
+function hidden(text) {
+  const span = document.createElement("span");
+  span.className = "visually-hidden";
+  span.textContent = text;
+  return span;
+}
 
 function remembered() {
   try { return sessionStorage.getItem("tdPassword") || ""; } catch { return ""; }
@@ -215,7 +227,7 @@ async function showDeskEntries() {
     paid.type = "button";
     paid.className = "td-action";
     paid.textContent = e.paid ? `$${e.paid} ✓` : "Mark paid";
-    paid.setAttribute("aria-label", e.paid ? `${e.name} paid $${e.paid}; mark unpaid` : `Mark ${e.name} paid`);
+    paid.append(hidden(e.paid ? ` paid by ${e.name}; mark unpaid` : ` for ${e.name}`));
     paid.addEventListener("click", async () => {
       let amount = "";
       if (!e.paid) {
@@ -233,11 +245,22 @@ async function showDeskEntries() {
     for (const text of [lapsed ? `Expires ${e.expires}` : e.expires ? "Current" : "None", e.email || ""]) {
       row.insertCell().textContent = text;
     }
+    if (e.out) {
+      row.classList.add("td-out");
+      row.cells[0].append(` (${e.out})`);
+    }
+    const report = document.createElement("button");
+    report.type = "button";
+    report.className = "td-action";
+    report.textContent = "Incident";
+    report.append(hidden(` for ${e.name}`));
+    report.addEventListener("click", () => openIncident(e));
+    row.insertCell().append(report);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "td-action";
     remove.textContent = "Remove";
-    remove.setAttribute("aria-label", `Remove ${e.name}`);
+    remove.append(hidden(` ${e.name}`));
     remove.addEventListener("click", async () => {
       if (!confirm(`Remove ${e.name}?`)) return;
       remove.disabled = true;
@@ -249,7 +272,52 @@ async function showDeskEntries() {
     return row;
   }));
   tdTable.hidden = !entries.length;
+  showIncidents(eventName, date);
 }
+
+async function showIncidents(eventName, date) {
+  const { incidents = [] } = await call("incidents", { event: eventName, date });
+  incidentsStatus.textContent = incidents.length ? "" : "Nothing logged for this.";
+  incidentList.replaceChildren(...incidents.map((i) => {
+    const item = document.createElement("li");
+    item.textContent = `${i.logged} · ${i.name} (${i.id}) · ${i.action}`
+      + (i.round ? `, round ${i.round}` : "") + (i.until ? `, until ${i.until}` : "")
+      + ` · ${i.date} · ${i.td}: ${i.reason}`;
+    return item;
+  }));
+}
+
+function openIncident(entry) {
+  incidentPlayer = entry;
+  incidentForm.reset();
+  incidentDialog.querySelector(".td-until").hidden = true;
+  incidentDialog.querySelector(".td-incident-player").textContent =
+    `${entry.name}, US Chess ID ${entry.id}. ${choice.selectedOptions[0]?.textContent || ""}`;
+  incidentDialog.querySelector(".td-incident-status").textContent = "";
+  try { incidentForm.elements.td.value = localStorage.getItem("tdName") || ""; } catch {}
+  incidentDialog.showModal();
+}
+
+incidentForm.elements.action_taken.addEventListener("change", () => {
+  incidentDialog.querySelector(".td-until").hidden = incidentForm.elements.action_taken.value !== "Barred from club events";
+});
+incidentForm.querySelector('[value="cancel"]').addEventListener("click", () => incidentDialog.close());
+incidentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const [eventName, date] = choice.value.split("/");
+  const status = incidentDialog.querySelector(".td-incident-status");
+  status.textContent = "Logging…";
+  const fields = Object.fromEntries(new FormData(incidentForm));
+  try { localStorage.setItem("tdName", fields.td); } catch {}
+  const result = await call("incident", { ...fields, event: eventName, date, id: incidentPlayer.id });
+  if (!result.ok) {
+    status.textContent = result.error;
+    return;
+  }
+  incidentDialog.close();
+  deskStatus.textContent = result.message;
+  showDeskEntries();
+});
 
 (async () => {
   const saved = remembered();

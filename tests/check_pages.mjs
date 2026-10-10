@@ -354,7 +354,7 @@ for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Reg
 }
 
 // The TD desk, against a stand-in for the Apps Script: sign in, find a player by name,
-// register them, mark them paid, and remove an entry.
+// register them, mark them paid, log an incident, and remove an entry.
 const desk = await browser.newPage();
 desk.on("pageerror", (error) => fail(`JavaScript error on /td/: ${error.message}`));
 const deskCalls = [];
@@ -375,7 +375,9 @@ desk.on("request", async (request) => {
           register: { ok: true, message: "Test Player is registered." },
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "15", email: "", expires: "2027-01-31", token: "t1" }] },
           remove: { message: "Test Player is withdrawn." },
-          paid: { ok: true, message: "Test Player paid $15." } }[p.action];
+          paid: { ok: true, message: "Test Player paid $15." },
+          incident: { ok: true, message: "Logged: Game loss, Test Player." },
+          incidents: { incidents: [] } }[p.action];
     request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
   } else {
     request.continue();
@@ -400,6 +402,21 @@ await desk.click(".td-entries tbody tr td:nth-child(7) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "15") ? pass("TD desk marks a player paid")
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
+await desk.click(".td-entries tbody tr td:nth-last-child(2) button");
+await desk.waitForSelector("dialog.td-incident[open]");
+await desk.select("#td-action", "Game loss");
+await desk.type("#td-round", "2");
+await desk.type("#td-reason", "Test reason");
+await desk.type("#td-name", "Test TD");
+await desk.click('dialog.td-incident [value="log"]');
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("Logged"));
+const logged = deskCalls.find((c) => c.action === "incident") || {};
+logged.action_taken === "Game loss" && logged.round === "2" && logged.id === "12345678" && logged.td === "Test TD"
+  ? pass("TD desk logs an incident") : fail(`TD desk incident: ${JSON.stringify(logged)}`);
+await desk.evaluate(axeSource);
+const deskAxe = await desk.evaluate(() => axe.run());
+deskAxe.violations.length ? fail(`TD desk signed in: ${deskAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("TD desk signed in has no axe violations");
 await desk.click(".td-entries tbody tr td:last-child button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("withdrawn"));
 deskCalls.some((c) => c.action === "remove" && c.token === "t1") ? pass("TD desk removes an entry")

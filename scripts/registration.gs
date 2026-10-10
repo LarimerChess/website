@@ -10,7 +10,13 @@
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
- * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid
+ * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
+ *                               incident, incidents
+ *
+ * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
+ * the venue takes a player off that date's entries, so they aren't paired again; barred keeps
+ * them from registering for any club event until the date in Until, or until the row is
+ * deleted. Those three email the President, who needs a written account within two days.
  *
  * Deploy as a web app that executes as the club account, with access for anyone. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
@@ -26,6 +32,10 @@ const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
+const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
+const ACTIONS = ["Warning", "Time penalty", "Game loss", "Expelled from the tournament", "Removed from the venue",
+  "Barred from club events"];
+const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venue"];
 const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
 
@@ -49,6 +59,8 @@ function doPost(e) {
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
       case "paid": return json(markPaid(p.token, p.amount));
+      case "incident": return json(logIncident(p));
+      case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
       default: return json({ error: "Unknown action." });
     }
   } catch (err) {
@@ -84,6 +96,11 @@ function register(p, td) {
     return { error: "That last name doesn't match the US Chess ID." };
   }
   const name = displayName(member);
+  const bar = barred(id, event.first);
+  if (bar) {
+    return { error: td ? `${name} is barred from club events${bar.until ? " until " + bar.until : ""}. See the Incidents tab.`
+      : "Online registration isn't available for this player. Questions: president@larimerchess.org" };
+  }
   const category = td && CATEGORIES.includes(p.category) ? p.category : ageCategory(id, event.first);
   const amount = category ? price(event, category) : null;
 
@@ -143,15 +160,25 @@ function entries(key, td) {
   if (cached) return JSON.parse(cached);
   const [event, date] = String(key).split("/");
   const { col, rows } = readEntries();
+  const logged = readIncidents().rows;
+  const outReason = (id) => {
+    const out = logged.find((i) => i.event === event && i.date === date && i["us chess id"] === id
+      && OUT_FOR_THE_DATE.includes(i.action));
+    if (out) return out.action;
+    const bar = barred(id, date.length === 7 ? date + "-01" : date, logged);
+    return bar ? "Barred from club events" : "";
+  };
   const list = rows
     .filter((r) => r[col.Event] === event && r[col.Status] !== "withdrawn" && (r[col.Date] === date
       || (date.length === 7 && r[col.Date].startsWith(date + "-"))
       || (date.length === 10 && r[col.Date] === date.slice(0, 7))))
-    .map((r) => {
+    .map((r) => ({ r, out: outReason(r[col["US Chess ID"]]) }))
+    .filter(({ out }) => td || !out)
+    .map(({ r, out }) => {
       const entry = { name: r[col.Name], id: r[col["US Chess ID"]], rating: r[col["Regular rating"]],
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (td) {
-        Object.assign(entry, { category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
+        Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
           paidOn: r[col["Paid on"]], email: r[col.Email],
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
       }
@@ -237,6 +264,86 @@ function withdraw(token) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Logs a TD action from the desk. Taking a player off a date needs that date, not a whole month. */
+function logIncident(p) {
+  const key = `${p.event}/${p.date}`;
+  const event = clubEvents()[key];
+  if (!event) return { error: "That event isn't open." };
+  if (!ACTIONS.includes(p.action_taken)) return { error: "Choose what happened." };
+  if (event.kind === "month" && p.action_taken !== "Barred from club events") {
+    return { error: "Choose the night it happened, not the whole month." };
+  }
+  const reason = String(p.reason || "").trim();
+  const tdName = String(p.td || "").trim();
+  if (!reason || !tdName) return { error: "Say what happened and who you are." };
+  const until = String(p.until || "").trim();
+  if (until && !/^\d{4}-\d\d-\d\d$/.test(until)) return { error: "Until is a date, such as 2027-01-31." };
+  const id = String(p.id || "").trim();
+  const member = /^\d{8}$/.test(id) && lookup(id);
+  if (!member) return { error: "Pick the player from the entries." };
+  const name = displayName(member);
+  const row = { Logged: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Event: p.event, Date: p.date,
+    "US Chess ID": id, Name: name, Action: p.action_taken, Round: String(p.round || "").trim(), Reason: reason,
+    TD: tdName, Until: p.action_taken === "Barred from club events" ? until : "" };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { sheet, col } = readIncidents();
+    appendText(sheet, col, row);
+    clearEntriesCache(p.event, p.date);
+  } finally {
+    lock.releaseLock();
+  }
+  if (OUT_FOR_THE_DATE.includes(row.Action) || row.Action === "Barred from club events") {
+    MailApp.sendEmail({
+      to: "president@larimerchess.org",
+      name: "Larimer County Chess Club",
+      subject: `${row.Action}: ${name}, ${event.name}, ${event.label}`,
+      body: [
+        `${tdName} logged on the TD desk: ${row.Action}.`,
+        `Player: ${name}, US Chess ID ${id}`,
+        `Event: ${event.name}, ${event.label}${row.Round ? ", round " + row.Round : ""}`,
+        row.Until ? `Until: ${row.Until}` : "",
+        `What happened: ${reason}`,
+        "The Safe Play policy, §8, needs the Senior Authority's written account within two days, and conduct the "
+          + "US Chess Safe Play Policy prohibits must also be reported to US Chess (§7). A bar from club events is "
+          + "the President's to impose, pending Board review.",
+      ].filter(Boolean).join("\n\n"),
+    });
+  }
+  return { ok: true, message: `Logged: ${row.Action}, ${name}.` };
+}
+
+/** The TD desk's list of what was logged for a key, newest first; a night's includes bars in force. */
+function incidentsFor(event, date) {
+  return readIncidents().rows
+    .filter((i) => (i.event === event && (i.date === date || i.date.startsWith(date + "-")))
+      || (i.action === "Barred from club events" && (!i.until || i.until >= (date.length === 7 ? date + "-01" : date))))
+    .map((i) => ({ logged: i.logged, name: i.name, id: i["us chess id"], action: i.action, round: i.round,
+      reason: i.reason, td: i.td, until: i.until, date: i.date }))
+    .reverse();
+}
+
+/** The bar in force on the date for a player, if any. */
+function barred(id, date, logged) {
+  return (logged || readIncidents().rows).find((i) => i["us chess id"] === id
+    && i.action === "Barred from club events" && (!i.until || i.until >= date)) || null;
+}
+
+/** The Incidents tab, with each row as an object keyed by its lowercased headings. */
+function readIncidents() {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = book.getSheetByName("Incidents");
+  if (!sheet) {
+    sheet = book.insertSheet("Incidents");
+    sheet.getRange(1, 1, 1, INCIDENT_HEADER.length).setNumberFormat("@").setValues([INCIDENT_HEADER]);
+    sheet.setFrozenRows(1);
+  }
+  const [header, ...rows] = sheet.getDataRange().getDisplayValues();
+  const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  return { sheet, col, rows: rows.map((r) => Object.fromEntries(header.map((h, i) => [h.trim().toLowerCase(), r[i] || ""]))) };
 }
 
 /** Records what a player paid at the door, or clears it when amount is empty. */

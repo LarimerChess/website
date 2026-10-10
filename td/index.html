@@ -423,6 +423,9 @@ main > h1:first-child { margin-top: 32px; }
 .td-entries td { white-space: nowrap; }
 .td-action { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
 .td-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.td-out td { color: var(--muted); }
+.register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.td-incidents { padding-left: 20px; }
 </style>
 </head>
 <body>
@@ -485,14 +488,50 @@ main > h1:first-child { margin-top: 32px; }
         <p class="td-entries-status" role="status"></p>
         <div class="td-table">
           <table class="entries td-entries" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </section>
 
+      <section>
+        <h2>Incidents</h2>
+        <p>Warnings, penalties, game losses, expulsions, and bars, under the Safe Play policy, §8. Log one from a player's Incident button. Expelled and removed players drop off that date's entries, so they aren't paired again; barred players can't register. Those three email the President.</p>
+        <p class="td-incidents-status" role="status"></p>
+        <ul class="td-incidents"></ul>
+      </section>
+
       <p><button class="button button-secondary td-sign-out" type="button">Sign out</button></p>
     </div>
+
+    <dialog class="event-dialog td-incident" aria-labelledby="td-incident-title">
+      <form class="register-form event-dialog-body" method="dialog">
+        <h2 id="td-incident-title">Log an incident</h2>
+        <p class="td-incident-player"></p>
+        <label for="td-action">What the TD did</label>
+        <select id="td-action" name="action_taken" required>
+          <option>Warning</option>
+          <option>Time penalty</option>
+          <option>Game loss</option>
+          <option>Expelled from the tournament</option>
+          <option>Removed from the venue</option>
+          <option>Barred from club events</option>
+        </select>
+        <label for="td-round">Round (optional)</label>
+        <input id="td-round" name="round" type="text" inputmode="numeric" maxlength="3" autocomplete="off">
+        <label for="td-reason">What happened</label>
+        <textarea id="td-reason" name="reason" rows="4" required></textarea>
+        <label for="td-name">Your name</label>
+        <input id="td-name" name="td" type="text" required autocomplete="name">
+        <div class="td-until" hidden>
+          <label for="td-until">Barred until (empty while the Board reviews it)</label>
+          <input id="td-until" name="until" type="date">
+        </div>
+        <p class="register-hint">Only the President may bar a player (§8). The Incidents tab of the registration Sheet keeps the log; reasons never appear on the website.</p>
+        <p class="td-incident-status" role="status"></p>
+        <p><button class="button" type="submit" value="log">Log it</button> <button class="button button-secondary" type="button" value="cancel">Cancel</button></p>
+      </form>
+    </dialog>
   </main>
 
   <footer class="wrap">
@@ -500,6 +539,6 @@ main > h1:first-child { margin-top: 32px; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=8a2b563af1" defer></script>
-  <script src="../td.js?v=2037e530fb" defer></script>
+  <script src="../td.js?v=e370bf9a3a" defer></script>
 </body>
 </html>
