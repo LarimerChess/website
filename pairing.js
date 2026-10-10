@@ -1,0 +1,447 @@
+// Swiss pairings by the US Chess rules, chapter 2, sections 27 to 29: the TD desk pairs each
+// round with it, and tests/test_pairing.mjs checks it against the rulebook's examples. The TD
+// reviews every round and can swap pairings before posting them (29E7: the director is still
+// responsible for the pairings).
+//
+// A tournament is { players, rounds }:
+//   players: [{ id, name, rating }]  rating null for an unrated player
+//   rounds:  [{ games: [{ white, black, result }], byes: [{ id, points }], out: [ids] }]
+//     result: "1-0", "0-1", "1/2-1/2", or a forfeit, "1F-0F", "0F-1F", "0F-0F"
+//     byes: points 1 for the full-point bye, 0.5 for a requested half-point bye, 0 for absent
+//     out: withdrawn or expelled before this round, and in every later round
+//
+// pairRound(tournament, { halfByes, absent, coin }) returns { games: [{ board, white, black }], byes, notes }
+// for the next round. coin, for round one: "white" if the higher-rated player on board one has white.
+
+(function (root) {
+  "use strict";
+
+  const POINTS = { "1-0": [1, 0], "0-1": [0, 1], "1/2-1/2": [0.5, 0.5], "1F-0F": [1, 0], "0F-1F": [0, 1], "0F-0F": [0, 0] };
+  const FORFEIT = (result) => /F/.test(result);
+
+  /** Everything the rules look at for each player, after the rounds played so far. */
+  function histories(tournament) {
+    const info = new Map(tournament.players.map((p) => [p.id, {
+      id: p.id, name: p.name, rating: p.rating == null ? null : Number(p.rating), score: 0,
+      colors: [], met: new Set(), hadFullBye: false, hadForfeitWin: false, hadHalfBye: false, out: false,
+    }]));
+    tournament.rounds.forEach((round) => {
+      for (const id of round.out || []) if (info.has(id)) info.get(id).out = true;
+      const touched = new Set();
+      for (const g of round.games) {
+        const [w, b] = POINTS[g.result] || [0, 0];
+        const white = info.get(g.white), black = info.get(g.black);
+        if (!white || !black) continue;
+        if (g.result) { white.score += w; black.score += b; }
+        if (g.result && FORFEIT(g.result)) {
+          // 27A1: a game forfeited by a no-show doesn't count as meeting; 29E1: nor for color.
+          if (g.result === "1F-0F") white.hadForfeitWin = true;
+          if (g.result === "0F-1F") black.hadForfeitWin = true;
+          white.colors.push(null);
+          black.colors.push(null);
+        } else {
+          white.met.add(black.id);
+          black.met.add(white.id);
+          white.colors.push("W");
+          black.colors.push("B");
+        }
+        touched.add(white.id).add(black.id);
+      }
+      for (const bye of round.byes || []) {
+        const p = info.get(bye.id);
+        if (!p) continue;
+        p.score += Number(bye.points) || 0;
+        if (Number(bye.points) === 1) p.hadFullBye = true;
+        if (Number(bye.points) === 0.5) p.hadHalfBye = true;
+        p.colors.push(null);
+        touched.add(p.id);
+      }
+      for (const p of info.values()) if (!touched.has(p.id)) p.colors.push(null);
+    });
+    return info;
+  }
+
+  const played = (p) => p.colors.filter(Boolean);
+  const whites = (p) => played(p).filter((c) => c === "W").length;
+  const blacks = (p) => played(p).filter((c) => c === "B").length;
+  const lastColor = (p) => played(p).at(-1) || null;
+
+  /** 29E3a: the color that equalizes, or else the opposite of the last; null if no games yet. */
+  function dueColor(p) {
+    const diff = whites(p) - blacks(p);
+    if (diff > 0) return "B";
+    if (diff < 0) return "W";
+    const last = lastColor(p);
+    return last ? (last === "W" ? "B" : "W") : null;
+  }
+
+  /** Rank (29A): score, then rating; unrated players below rated ones in their score group. */
+  function byRank(a, b) {
+    return b.score - a.score || (b.rating ?? -1) - (a.rating ?? -1) || String(a.id).localeCompare(String(b.id));
+  }
+
+  /** 29E4: which of two players gets their due color. Returns [white, black]. */
+  function assignColors(a, b) {
+    const dueA = dueColor(a), dueB = dueColor(b);
+    if (!dueA && !dueB) return byRank(a, b) <= 0 ? [a, b] : [b, a];
+    if (!dueB) return dueA === "W" ? [a, b] : [b, a];
+    if (!dueA) return dueB === "W" ? [b, a] : [a, b];
+    if (dueA !== dueB) return dueA === "W" ? [a, b] : [b, a];
+    const winner = colorPriority(a, b);
+    const due = winner === a ? dueA : dueB;
+    const loser = winner === a ? b : a;
+    return due === "W" ? [winner, loser] : [loser, winner];
+  }
+
+  /** 29E4, rules 1 to 5: the player with the stronger claim to the color both are due. */
+  function colorPriority(a, b) {
+    const imbalance = (p) => Math.abs(whites(p) - blacks(p));
+    if (imbalance(a) !== imbalance(b)) return imbalance(a) > imbalance(b) ? a : b;
+    // Rules 3 and 4: the latest round in which their colors differed; whoever had the color
+    // they are both due then has the weaker claim.
+    const due = dueColor(a);
+    for (let i = Math.min(a.colors.length, b.colors.length) - 1; i >= 0; i--) {
+      if (a.colors[i] !== b.colors[i]) {
+        if (a.colors[i] === due) return b;
+        if (b.colors[i] === due) return a;
+        return a.colors[i] ? a : b;
+      }
+    }
+    return byRank(a, b) <= 0 ? a : b;
+  }
+
+  /** How badly a pairing serves each player's colors: [equalization, three in a row, alternation]. */
+  function colorCost(white, black) {
+    let equalize = 0, series = 0, alternate = 0;
+    for (const [p, c] of [[white, "W"], [black, "B"]]) {
+      const due = dueColor(p);
+      if (!due || due === c) continue;
+      if (whites(p) !== blacks(p)) equalize++;
+      else alternate++;
+      const recent = played(p).slice(-2);
+      if (recent.length === 2 && recent.every((x) => x === c)) series++;
+    }
+    return [equalize, series, alternate];
+  }
+
+  /** Whether the players can all be paired with no one meeting twice. */
+  function pairable(players) {
+    if (players.length % 2) return false;
+    const list = [...players];
+    const seen = new Map();
+    const go = (left) => {
+      if (!left.length) return true;
+      const key = left.map((p) => p.id).join(",");
+      if (seen.has(key)) return seen.get(key);
+      const [first, ...rest] = left;
+      let ok = false;
+      for (let i = 0; i < rest.length && !ok; i++) {
+        if (!first.met.has(rest[i].id)) ok = go(rest.filter((_, j) => j !== i));
+      }
+      seen.set(key, ok);
+      return ok;
+    };
+    return go(list);
+  }
+
+  /** The permutations of [0..n), nearest the identity first, up to a limit. */
+  function permutations(n, limit = 50000) {
+    const out = [];
+    const walk = (prefix, left) => {
+      if (out.length >= limit) return;
+      if (!left.length) return out.push(prefix);
+      for (const x of left) walk([...prefix, x], left.filter((y) => y !== x));
+    };
+    walk([], [...Array(n).keys()]);
+    return out;
+  }
+
+  /** The size of a switch from the natural pairing, by 29E5c: the smaller of the two ways of
+   *  making it, each the largest rating move. Unrated players don't count (29E5g). */
+  function switchSize(upper, lower, perm) {
+    const r = (p) => p.rating ?? null;
+    const moves = (fromSlots, toSlots) => fromSlots.reduce((max, p, i) => {
+      const q = toSlots[i];
+      if (p === q || r(p) == null || r(q) == null) return max;
+      return Math.max(max, Math.abs(r(p) - r(q)));
+    }, 0);
+    // Moving the lower half: slot i gets lower[perm[i]].
+    const lowerWay = moves(perm.map((j) => lower[j]), lower);
+    // Or moving the upper half: lower[j] keeps its slot and meets upper[inverse[j]].
+    const inverse = [];
+    perm.forEach((j, i) => { inverse[j] = i; });
+    const upperWay = moves(inverse.map((i) => upper[i]), upper);
+    return Math.min(lowerWay, upperWay);
+  }
+
+  const better = (a, b) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+    return false;
+  };
+
+  /** The best pairing of an even group by halves (29C), with transpositions and at most one
+   *  interchange to avoid rematches and fix colors within the 80- and 200-point rules (29E5). */
+  function pairHalves(group) {
+    const sorted = [...group].sort(byRank);
+    const half = sorted.length / 2;
+    const options = [{ upper: sorted.slice(0, half), lower: sorted.slice(half), interchange: false, size: 0 }];
+    // 29C2: an interchange between the bottom of the upper half and the top of the lower half.
+    for (let i = half - 1; i >= Math.max(0, half - 2); i--) {
+      for (let j = half; j < Math.min(sorted.length, half + 2); j++) {
+        const s = [...sorted];
+        [s[i], s[j]] = [s[j], s[i]];
+        const r = (p) => p.rating ?? 0;
+        options.push({ upper: s.slice(0, half), lower: s.slice(half), interchange: true, size: Math.abs(r(sorted[i]) - r(sorted[j])) });
+      }
+    }
+    const candidates = [];
+    for (const option of options) {
+      for (const perm of permutations(half, half > 7 ? 5040 : 50000)) {
+        const pairs = perm.map((j, i) => [option.upper[i], option.lower[j]]);
+        if (pairs.some(([a, b]) => a.met.has(b.id))) continue;
+        const size = Math.max(option.size, switchSize(option.upper, option.lower, perm));
+        const games = pairs.map(([a, b]) => assignColors(a, b));
+        const cost = games.reduce((sum, [w, b]) => colorCost(w, b).map((x, k) => x + sum[k]), [0, 0, 0]);
+        candidates.push({ games, size, cost, interchange: option.interchange });
+      }
+    }
+    if (!candidates.length) return null;
+    // Switches to avoid rematches have no limit (29D1b); the color limits count from there.
+    const base = Math.min(...candidates.map((c) => c.size));
+    const natural = candidates.reduce((best, c) => c.size === base && (!best || better(c.cost, best.cost)) ? c : best, null);
+    let best = null;
+    for (const c of candidates) {
+      const extra = c.size - base;
+      // 29E5b: up to 200 points to reduce equalization problems or three in a row;
+      // 29E5a: up to 80 points for alternation.
+      const helpsEqualizing = c.cost[0] < natural.cost[0] || (c.cost[0] === natural.cost[0] && c.cost[1] < natural.cost[1]);
+      if (extra > 200 || (extra > 80 && !helpsEqualizing)) continue;
+      // 29E5e: a transposition within 80 points comes before any interchange; otherwise the smaller switch.
+      c.key = [...c.cost, !c.interchange && extra <= 80 ? 0 : 1, extra];
+      if (!best || better(c.key, best.key)) best = c;
+    }
+    return best ? { games: best.games, cost: best.cost } : null;
+  }
+
+  /** Pairs everyone in rank order, group by group, dropping odd players (29D). */
+  function pairGroups(players) {
+    const ranked = [...players].sort(byRank);
+    const scores = [...new Set(ranked.map((p) => p.score))];
+    const attempt = (index, carried) => {
+      if (index >= scores.length) return carried.length ? null : [];
+      const own = ranked.filter((p) => p.score === scores[index]);
+      const below = ranked.filter((p) => p.score < scores[index]);
+      // Carried players are paired first, each with the highest-rated player they can play (29D2).
+      const pairCarried = (carriedLeft, pool, games) => {
+        if (!carriedLeft.length) return [{ pool, games }];
+        const [first, ...others] = carriedLeft;
+        const results = [];
+        const choices = pool.filter((p) => !first.met.has(p.id)).sort(byRank);
+        for (const opponent of choices) {
+          const left = pool.filter((p) => p !== opponent);
+          for (const r of pairCarried(others, left, [...games, assignColors(first, opponent)])) results.push(r);
+          if (results.length > 6) break;
+        }
+        return results;
+      };
+      const tries = pairCarried(carried, own, []);
+      // Carried players who can't be paired here drop again.
+      if (!tries.length && carried.length) {
+        return attempt(index + 1, [...carried, ...own]);
+      }
+      for (const { pool, games } of tries) {
+        // 29D1: the lowest-rated, but not an unrated, player is the odd one; then the next lowest.
+        const dropOrders = [];
+        const byRating = [...pool].sort((a, b) => (a.rating == null) - (b.rating == null) || (a.rating ?? 0) - (b.rating ?? 0));
+        const needed = pool.length % 2;
+        if (needed === 0) dropOrders.push([]);
+        if (needed === 1) dropOrders.push(...oddPlayers(pool, byRating, below).map((d) => [d]));
+        for (let k = needed + 2; k <= Math.min(pool.length, needed + 4); k += 2) {
+          for (const c of combinations(byRating, k)) dropOrders.push(c);
+        }
+        for (const drop of dropOrders) {
+          const stay = pool.filter((p) => !drop.includes(p));
+          const rest = [...drop, ...below];
+          const paired = stay.length ? pairHalves(stay) : { games: [] };
+          if (paired === null) continue;
+          if (!pairable(rest)) continue;
+          const next = attempt(index + 1, [...drop].sort(byRank));
+          if (next) return [...games, ...paired.games, ...next];
+        }
+      }
+      return null;
+    };
+    return attempt(0, []);
+  }
+
+  /**
+   * The order to try odd players in (29D1): the lowest-rated first, unless another drop gives
+   * better colors within the 80- and 200-point rules (29E7, example 5), and then the next lowest
+   * (29D1b). The size of that switch is the smaller of the two ratings changes: between the odd
+   * players, or between the opponents the natural odd player would have had.
+   */
+  function oddPlayers(pool, byRating, below) {
+    const nextScore = below.length ? below.reduce((m, p) => Math.max(m, p.score), -Infinity) : null;
+    const next = below.filter((p) => p.score === nextScore).sort(byRank);
+    const natural = byRating[0];
+    const r = (p) => p?.rating ?? 0;
+    const option = (d) => {
+      const group = pairHalves(pool.filter((p) => p !== d));
+      const opponent = next.find((p) => !d.met.has(p.id));
+      if (!group || !opponent) return { d, key: [Infinity] };
+      const drop = assignColors(d, opponent);
+      const cost = colorCost(...drop).map((x, k) => x + group.cost[k]);
+      const naturalOpponent = next.find((p) => !natural.met.has(p.id));
+      const game = group.games.find(([w, b]) => w === natural || b === natural);
+      const partner = game ? (game[0] === natural ? game[1] : game[0]) : null;
+      const size = d === natural ? 0 : Math.min(Math.abs(r(d) - r(natural)),
+        partner && naturalOpponent ? Math.abs(r(partner) - r(naturalOpponent)) : Infinity);
+      return { d, cost, size };
+    };
+    const options = byRating.map(option);
+    const base = options[0];
+    options.forEach((o, i) => { o.fromBottom = i; });
+    for (const o of options) {
+      if (!o.cost) continue;
+      const helpsEqualizing = base.cost && (o.cost[0] < base.cost[0] || (o.cost[0] === base.cost[0] && o.cost[1] < base.cost[1]));
+      const allowed = o.size <= 80 || (o.size <= 200 && helpsEqualizing);
+      o.key = allowed ? [0, ...o.cost, o.fromBottom] : [1, o.fromBottom];
+    }
+    return options.sort((a, b) => better(a.key, b.key) ? -1 : better(b.key, a.key) ? 1 : 0).map((o) => o.d);
+  }
+
+  /** Subsets of size k, preferring the first elements (the lowest rated). */
+  function combinations(list, k, limit = 200) {
+    const out = [];
+    const walk = (start, chosen) => {
+      if (out.length >= limit) return;
+      if (chosen.length === k) return out.push(chosen);
+      for (let i = start; i < list.length; i++) walk(i + 1, [...chosen, list[i]]);
+    };
+    walk(0, []);
+    return out;
+  }
+
+  /** 28L2: the full-point bye, from the lowest score group up: the lowest-rated eligible player. */
+  function chooseBye(players) {
+    const eligible = (p, strict) => !p.hadFullBye && !p.hadForfeitWin && (!strict || (!p.hadHalfBye && p.rating != null));
+    const order = [...players].sort((a, b) => a.score - b.score
+      || (a.rating == null) - (b.rating == null) || (a.rating ?? 0) - (b.rating ?? 0));
+    for (const strict of [true, false]) {
+      for (const p of order) {
+        if (!eligible(p, strict)) continue;
+        if (pairable(players.filter((q) => q !== p))) return p;
+      }
+    }
+    return order.find((p) => !p.hadFullBye) || order[0];
+  }
+
+  /** 28J: round one. Upper half against lower half by rating, colors alternating down from the coin. */
+  function firstRound(players, coin) {
+    const sorted = [...players].sort(byRank);
+    const half = sorted.length / 2;
+    return sorted.slice(0, half).map((p, i) => {
+      const q = sorted[half + i];
+      const higherWhite = (i % 2 === 0) === (coin !== "black");
+      return higherWhite ? [p, q] : [q, p];
+    });
+  }
+
+  function pairRound(tournament, options = {}) {
+    const info = histories(tournament);
+    const halfByes = new Set(options.halfByes || []);
+    const absent = new Set(options.absent || []);
+    const notes = [];
+    const byes = [];
+    const playing = [];
+    for (const p of info.values()) {
+      if (p.out) continue;
+      if (halfByes.has(p.id)) byes.push({ id: p.id, points: 0.5 });
+      else if (absent.has(p.id)) byes.push({ id: p.id, points: 0 });
+      else playing.push(p);
+    }
+    if (playing.length % 2) {
+      const bye = chooseBye(playing);
+      byes.push({ id: bye.id, points: 1 });
+      playing.splice(playing.indexOf(bye), 1);
+      notes.push(`Full-point bye: ${bye.name || bye.id}.`);
+    }
+    const firstGames = tournament.rounds.every((r) => !r.games.length);
+    let pairs = firstGames ? firstRound(playing, options.coin) : pairGroups(playing);
+    if (!pairs) {
+      notes.push("These players can't all be paired without someone meeting an opponent twice; the TD pairs this round by hand.");
+      pairs = [];
+    }
+    const games = pairs
+      .map(([white, black]) => ({ white, black }))
+      .sort((a, b) => {
+        const top = (g) => [g.white, g.black].sort(byRank)[0];
+        return byRank(top(a), top(b));
+      })
+      .map((g, i) => ({ board: i + 1, white: g.white.id, black: g.black.id }));
+    return { games, byes, notes };
+  }
+
+  /** Standings: score, then the US Chess tiebreaks in their default order (34E): modified
+   *  median, Solkoff, cumulative, and cumulative of opposition. */
+  function standings(tournament) {
+    const info = histories(tournament);
+    const rounds = tournament.rounds.length;
+    const ids = [...info.keys()];
+    const each = new Map(ids.map((id) => [id, { opponents: [], perRound: [], unplayed: 0, unearned: 0 }]));
+    tournament.rounds.forEach((round) => {
+      const got = new Map();
+      for (const g of round.games) {
+        const [w, b] = POINTS[g.result] || [0, 0];
+        const forfeit = !g.result || FORFEIT(g.result);
+        got.set(g.white, { points: w, opponent: forfeit ? null : g.black });
+        got.set(g.black, { points: b, opponent: forfeit ? null : g.white });
+      }
+      for (const bye of round.byes || []) got.set(bye.id, { points: Number(bye.points) || 0, opponent: null });
+      for (const id of ids) {
+        const e = each.get(id);
+        const r = got.get(id) || { points: 0, opponent: null };
+        e.perRound.push(r.points);
+        if (r.opponent) e.opponents.push(r.opponent);
+        else {
+          e.unplayed++;
+          // 34E3: one point off for each unplayed win or full-point bye, a half for each half-point bye.
+          e.unearned += r.points;
+        }
+      }
+    });
+    // 34E1: opponents' scores adjusted so each unplayed game counts a half point.
+    const adjusted = new Map(ids.map((id) => {
+      const e = each.get(id);
+      const playedPoints = e.perRound.reduce((sum, x) => sum + x, 0) - e.unearned;
+      return [id, playedPoints + e.unplayed * 0.5];
+    }));
+    const cumulative = new Map(ids.map((id) => {
+      const e = each.get(id);
+      let running = 0, total = 0;
+      for (const x of e.perRound) { running += x; total += running; }
+      return [id, total - e.unearned];
+    }));
+    const drop = rounds >= 9 ? 2 : 1;
+    const rows = ids.map((id) => {
+      const p = info.get(id), e = each.get(id);
+      // The player's own unplayed games count as opponents with adjusted scores of 0.
+      const opp = [...e.opponents.map((o) => adjusted.get(o)), ...Array(e.unplayed).fill(0)].sort((a, b) => a - b);
+      const even = rounds / 2;
+      const median = p.score > even ? opp.slice(drop) : p.score < even ? opp.slice(0, opp.length - drop) : opp.slice(drop, opp.length - drop);
+      return {
+        id, name: p.name, rating: p.rating, score: p.score,
+        median: median.reduce((sum, x) => sum + x, 0),
+        solkoff: opp.reduce((sum, x) => sum + x, 0),
+        cumulative: cumulative.get(id),
+        opposition: e.opponents.reduce((sum, o) => sum + cumulative.get(o), 0),
+      };
+    });
+    return rows.sort((a, b) => b.score - a.score || b.median - a.median || b.solkoff - a.solkoff
+      || b.cumulative - a.cumulative || b.opposition - a.opposition || (b.rating ?? 0) - (a.rating ?? 0));
+  }
+
+  const Pairing = { pairRound, standings, dueColor, assignColors, histories, POINTS };
+  if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
+  else root.Pairing = Pairing;
+})(typeof window !== "undefined" ? window : globalThis);

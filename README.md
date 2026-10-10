@@ -33,6 +33,10 @@ The TD desk at /td/ (noindex, out of the sitemap and navigation) is for register
 
 After changing scripts/registration.gs, paste it into the Sheet's Apps Script and deploy a new version of the existing deployment (Deploy → Manage deployments → Edit → New version), which keeps the URL.
 
+## Pairings
+
+pairing.js pairs Swiss rounds by the US Chess rules (chapter 2, rules 27 to 29) and computes standings with the default tiebreaks (34E): modified median, Solkoff, cumulative, and cumulative of opposition. It runs in the browser on the TD desk, and tests/test_pairing.mjs checks it against the rulebook's examples and simulated tournaments (`npm run test:pairing`). The TD reviews each round's pairings and can change them before posting, as the rulebook expects (29E7).
+
 ## TD expirations
 
 The Action "TD expirations" (.github/workflows/td-expirations.yml) runs scripts/td_expirations.py every Monday. It reads the club's TDs from scripts/tds.json and asks the US Chess ratings API for each one's membership, TD certification, and SafeSport dates and for the affiliate's expiration, and fails, which emails a warning, when any is past or within 60 days. When a TD joins or leaves, change scripts/tds.json. Junior TDs are minors: their IDs go in the repository secret LCCC_JUNIOR_TD_IDS, never in the repo, and the output shows neither their names nor their dates. The API key is the secret USCHESS_API_KEY. When anything is due, the run also emails the list to president@larimerchess.org through Gmail, with a send-only token for that account in the secret LCCC_GOOGLE_GMAIL_SEND_TOKEN (made with docs/scripts/google_auth.py --gmail-send). To test the email, run the Action by hand with a large number of days, such as 400. Locally the script reads all three from ~/.config/lccc/ (uschess-api-key, junior-td-ids, and google-token-gmail-send.json) and emails only with --email.

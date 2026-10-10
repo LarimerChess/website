@@ -1,0 +1,183 @@
+// Tests for pairing.js against the examples in the US Chess rulebook, chapter 2, rules 27 to 29
+// and 34E, and against whole simulated tournaments.
+//   node --test tests/test_pairing.mjs
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+const Pairing = createRequire(import.meta.url)("../pairing.js");
+
+/**
+ * A tournament whose players have the color histories given, such as "BWB", against stand-in
+ * opponents who are out of the event, so the histories don't make anyone meet.
+ * x is an unplayed round. Everyone draws, so all have the same score unless score is given.
+ */
+function withHistories(list) {
+  const players = list.map(([id, rating]) => ({ id, name: id, rating }));
+  const rounds = [];
+  const length = Math.max(...list.map(([, , h]) => h.length));
+  let stand = 0;
+  for (let r = 0; r < length; r++) {
+    const round = { games: [], byes: [], out: [] };
+    for (const [id, , history, wins] of list) {
+      const c = history[r];
+      const result = wins && wins[r] === "1" ? (c === "W" ? "1-0" : "0-1") : "1/2-1/2";
+      if (c === "x" || c === undefined) {
+        round.byes.push({ id, points: 0.5 });
+        continue;
+      }
+      const other = `stand-in-${stand++}`;
+      players.push({ id: other, name: other, rating: 1000 });
+      round.out.push(other);
+      round.games.push(c === "W" ? { white: id, black: other, result } : { white: other, black: id, result });
+    }
+    rounds.push(round);
+  }
+  // Stand-ins are out from the first round on.
+  rounds[0].out.push(...players.filter((p) => p.id.startsWith("stand-in")).map((p) => p.id));
+  return { players, rounds };
+}
+
+const ratingOf = (t, id) => t.players.find((p) => p.id === id).rating;
+const asRatings = (t, games) => games.map((g) => [ratingOf(t, g.white), ratingOf(t, g.black)]);
+const sortPairs = (pairs) => [...pairs].sort((a, b) => b[0] - a[0]);
+
+test("29E4: due colors, from the TD TIP's examples", () => {
+  const t = withHistories([["a", 1800, "BWB"], ["b", 1800, "BW"], ["c", 1800, "WWB"], ["d", 1800, "Wx"]]);
+  const info = Pairing.histories(t);
+  assert.deepEqual(["a", "b", "c", "d"].map((id) => Pairing.dueColor(info.get(id))), ["W", "B", "B", "B"]);
+});
+
+test("29E4, rules 1 to 4: which player due the same color gets it", () => {
+  const cases = [
+    ["WBW", "BxW", "B"], // 1: unequal colors beat equal
+    ["WWBW", "xWBW", "B"], // 2: the greater imbalance
+    ["WWB", "WBW", "W"], // 3: opposite colors last round; first gets white
+    ["WBWB", "BWWB", "W"], // 4: the latest round their colors differed
+    ["BWxBW", "BWBxW", "W"], // 4, example 2
+  ];
+  for (const [first, second, firstGets] of cases) {
+    const t = withHistories([["first", 1800, first], ["second", 1700, second]]);
+    const info = Pairing.histories(t);
+    const [white] = Pairing.assignColors(info.get("first"), info.get("second"));
+    assert.equal(white.id === "first" ? "W" : "B", firstGets, `${first} against ${second}`);
+  }
+});
+
+test("28J: round one pairs the upper half against the lower half, colors alternating from the coin", () => {
+  const players = [2000, 1900, 1800, 1700, 1600, 1500, 1400, 1300].map((r, i) => ({ id: `p${i}`, name: `p${i}`, rating: r }));
+  const t = { players, rounds: [] };
+  const { games, byes } = Pairing.pairRound(t, { coin: "white" });
+  assert.deepEqual(asRatings(t, games), [[2000, 1600], [1500, 1900], [1800, 1400], [1300, 1700]]);
+  assert.deepEqual(byes, []);
+});
+
+test("28L2: an odd field gives the lowest-rated rated player the bye, never an unrated one", () => {
+  const players = [{ id: "a", rating: 1800 }, { id: "b", rating: 1500 }, { id: "c", rating: 1200 }, { id: "new", rating: null }]
+    .map((p) => ({ ...p, name: p.id }));
+  players.push({ id: "d", name: "d", rating: 1600 });
+  const { byes } = Pairing.pairRound({ players, rounds: [] }, { coin: "white" });
+  assert.deepEqual(byes, [{ id: "c", points: 1 }]);
+});
+
+test("29E7, examples 2 and 3: a 34-point transposition fixes the colors", () => {
+  const t = withHistories([
+    ["2320", 2320, "WBWB"], ["2278", 2278, "BWBW"], ["2212", 2212, "BWBW"], ["2199", 2199, "WBWB"], ["2178", 2178, "WBWB"],
+    ["1980", 1980, "WBWB"], ["1951", 1951, "WBWB"], ["1910", 1910, "BWBW"], ["1896", 1896, "BWBW"], ["1800", 1800, "WBWB"],
+  ]);
+  const { games } = Pairing.pairRound(t);
+  // Example 3 pairs the same group with a three-way swap, which the rulebook calls equally correct.
+  const example2 = sortPairs([[2320, 1980], [1951, 2278], [1800, 2212], [2199, 1896], [2178, 1910]]);
+  const example3 = sortPairs([[2320, 1980], [1951, 2278], [1800, 2212], [2199, 1910], [2178, 1896]]);
+  assert.ok([example2, example3].map(JSON.stringify).includes(JSON.stringify(sortPairs(asRatings(t, games)))),
+    JSON.stringify(asRatings(t, games)));
+});
+
+test("29E7, example 4: an interchange of 20 points beats a 150-point transposition", () => {
+  const t = withHistories([
+    ["2210", 2210, "B"], ["2200", 2200, "B"], ["2150", 2150, "W"], ["2120", 2120, "B"], ["2080", 2080, "B"], ["1920", 1920, "W"],
+    ["1900", 1900, "B"], ["1830", 1830, "B"], ["1820", 1820, "W"], ["1790", 1790, "B"], ["1500", 1500, "B"], ["1350", 1350, "x"],
+  ]);
+  // Make the 1350's half-point bye a full point, so everyone has the same score.
+  t.rounds[0].byes = [{ id: "1350", points: 0.5 }];
+  const { games } = Pairing.pairRound(t);
+  assert.deepEqual(sortPairs(asRatings(t, games)),
+    sortPairs([[2210, 1920], [2200, 1820], [1830, 2150], [2120, 1790], [2080, 1500], [1900, 1350]]));
+});
+
+test("29E7, example 5: a different odd player drops to fix colors", () => {
+  const t = withHistories([
+    ["2100", 2100, "BWB", "111"], ["2080", 2080, "BWB", "111"], ["1990", 1990, "WBW", "111"],
+    ["2050", 2050, "WBW", "110"], ["1980", 1980, "BWB", "110"], ["1800", 1800, "BWB", "110"],
+  ]);
+  // Wins of 1 and a draw in the third round give 3 and 2.5 points.
+  for (const id of ["2050", "1980", "1800"]) {
+    const game = t.rounds[2].games.find((g) => g.white === id || g.black === id);
+    game.result = "1/2-1/2";
+  }
+  const { games } = Pairing.pairRound(t);
+  assert.deepEqual(sortPairs(asRatings(t, games)), sortPairs([[2100, 1990], [2080, 2050], [1980, 1800]]));
+});
+
+test("34E: modified median, Solkoff, and cumulative from the rulebook's definitions", () => {
+  const players = ["a", "b", "c", "d"].map((id, i) => ({ id, name: id, rating: 2000 - i * 100 }));
+  const t = { players, rounds: [
+    { games: [{ white: "a", black: "c", result: "1-0" }, { white: "b", black: "d", result: "1-0" }], byes: [] },
+    { games: [{ white: "b", black: "a", result: "1/2-1/2" }, { white: "d", black: "c", result: "0-1" }], byes: [] },
+  ] };
+  const rows = Object.fromEntries(Pairing.standings(t).map((r) => [r.id, r]));
+  assert.equal(rows.a.score, 1.5);
+  assert.equal(rows.a.solkoff, 2.5); // c 1 + b 1.5
+  assert.equal(rows.a.median, 1.5); // plus score: the lowest (c, 1) is dropped
+  assert.equal(rows.a.cumulative, 2.5); // 1 + 1.5
+  assert.equal(rows.b.cumulative, 2.5);
+});
+
+test("34E3: a full-point bye takes a point off cumulative", () => {
+  const players = ["a", "b", "c"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100 }));
+  const t = { players, rounds: [{ games: [{ white: "a", black: "b", result: "1-0" }], byes: [{ id: "c", points: 1 }] }] };
+  const rows = Object.fromEntries(Pairing.standings(t).map((r) => [r.id, r]));
+  assert.equal(rows.c.cumulative, 0);
+  assert.equal(rows.a.cumulative, 1);
+});
+
+test("whole tournaments: no rematches, one bye each at most, and no color three times running when avoidable", () => {
+  for (const [size, roundsCount, seed] of [[9, 4, 1], [14, 5, 2], [23, 5, 3], [30, 4, 4], [7, 3, 5]]) {
+    let random = seed;
+    const rand = () => ((random = (random * 9301 + 49297) % 233280) / 233280);
+    const players = [...Array(size)].map((_, i) => ({ id: `p${i}`, name: `p${i}`, rating: i === size - 1 ? null : 2200 - i * 37 }));
+    const t = { players, rounds: [] };
+    for (let r = 0; r < roundsCount; r++) {
+      const { games, byes, notes } = Pairing.pairRound(t, { coin: "white" });
+      assert.ok(!notes.some((n) => n.includes("can't")), `round ${r + 1} of ${size}: ${notes}`);
+      const seen = new Set();
+      for (const g of games) {
+        assert.ok(!seen.has(g.white) && !seen.has(g.black), "a player is paired twice");
+        seen.add(g.white).add(g.black);
+      }
+      for (const b of byes) seen.add(b.id);
+      assert.equal(seen.size, size, `everyone is paired or has a bye in round ${r + 1}`);
+      t.rounds.push({ games: games.map((g) => {
+        const x = rand();
+        return { ...g, result: x < 0.45 ? "1-0" : x < 0.9 ? "0-1" : "1/2-1/2" };
+      }), byes });
+    }
+    const info = Pairing.histories(t);
+    const met = new Map();
+    for (const round of t.rounds) {
+      for (const g of round.games) {
+        const key = [g.white, g.black].sort().join("-");
+        assert.ok(!met.has(key), `${key} met twice in a ${size}-player event`);
+        met.set(key, true);
+      }
+    }
+    const fullByes = t.rounds.flatMap((r) => r.byes.filter((b) => b.points === 1).map((b) => b.id));
+    assert.equal(new Set(fullByes).size, fullByes.length, "no one gets two full-point byes");
+    assert.ok(!fullByes.includes(`p${size - 1}`) || size < 3, "the unrated player never gets the bye");
+    for (const p of info.values()) {
+      const colors = p.colors.filter(Boolean).join("");
+      assert.ok(Math.abs([...colors].filter((c) => c === "W").length - [...colors].filter((c) => c === "B").length) <= 2,
+        `${p.id} has ${colors}`);
+    }
+  }
+});

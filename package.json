@@ -3,7 +3,8 @@
   "description": "Checks for larimerchess.org; see .github/workflows/checks.yml",
   "scripts": {
     "check:html": "html-validate index.html events minutes scholastic td entries",
-    "check:pages": "node tests/check_pages.mjs"
+    "check:pages": "node tests/check_pages.mjs",
+    "test:pairing": "node --test tests/test_pairing.mjs"
   },
   "devDependencies": {
     "axe-core": "4.14.0",

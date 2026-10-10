@@ -28,8 +28,8 @@ jobs:
         run: npm run -s check:html
       - name: JavaScript syntax
         if: success() || failure()
-        run: node --check calendar.js
-      - name: Pages match style.css and calendar.js
+        run: for f in calendar.js register.js td.js entries.js pairing.js; do node --check "$f"; done
+      - name: Pages match style.css and the scripts
         if: success() || failure()
         run: python scripts/sync_assets.py --check
       - name: Pages match events.json
@@ -38,9 +38,12 @@ jobs:
       - name: Sitemap lists every page
         if: success() || failure()
         run: python tests/check_sitemap.py
-      - name: Calendar import tests
+      - name: Calendar import and page builder tests
         if: success() || failure()
         run: python -m unittest discover -s tests -v
+      - name: Pairing tests (US Chess rules 27 to 29 and 34E)
+        if: success() || failure()
+        run: node --test tests/test_pairing.mjs
       - name: Pages (accessibility, filters, add to calendar, structured data, tournament pages)
         if: success() || failure()
         run: |
