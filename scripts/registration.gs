@@ -14,7 +14,8 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, round, result, out, finish
+ *                               sync, round, result, out, finish, and for arenas: arenaJoin, arenaLeave,
+ *                               arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
  * the venue takes a player off that date's entries, so they aren't paired again; barred keeps
@@ -45,6 +46,13 @@ const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Acti
 const ACTIONS = ["Warning", "Time penalty", "Game loss", "Expelled from the tournament", "Removed from the venue",
   "Barred from club events"];
 const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venue"];
+const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
+// Tabs and headings the script adds to the tournament spreadsheet when they're missing.
+const TOURNAMENT_HEADERS = {
+  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff"],
+  Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
+  Queue: ["Key", "US Chess ID", "Since"],
+};
 const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
 
@@ -79,6 +87,12 @@ function doPost(e) {
       case "result": return json(saveResult(p));
       case "out": return json(setOut(p));
       case "finish": return json(finishTournament(`${p.event}/${p.date}`));
+      case "arenaJoin": return json(arenaJoin(p));
+      case "arenaLeave": return json(arenaLeave(p));
+      case "arenaPair": return json(arenaPair(p));
+      case "arenaResult": return json(arenaResult(p));
+      case "arenaPact": return json(arenaPact(p));
+      case "arenaCancel": return json(arenaCancel(p));
       default: return json({ error: "Unknown action." });
     }
   } catch (err) {
@@ -384,7 +398,9 @@ function readIncidents() {
 // Running tournaments. A tournament's key is a registration key: a tournament date, or a club
 // night's month, whose Mondays are one Swiss with a round a night. Its players are the
 // registered entrants when it starts, and later ones added with sync. The TD desk pairs each
-// round with pairing.js and posts it here; results are entered board by board.
+// round with pairing.js and posts it here; results are entered board by board. An arena has no
+// rounds: the desk pairs its games (Arena tab) with arena.js from the players waiting (Queue
+// tab), and they're public as soon as they're paired.
 
 function tournamentBook() {
   const id = PropertiesService.getScriptProperties().getProperty("TOURNAMENT_SHEET_ID");
@@ -394,8 +410,16 @@ function tournamentBook() {
 
 /** A tab of the tournament spreadsheet as rows keyed by heading, with each row's sheet row number. */
 function table(name) {
-  const sheet = tournamentBook().getSheetByName(name);
-  const [header, ...rows] = sheet.getDataRange().getDisplayValues();
+  const book = tournamentBook();
+  const sheet = book.getSheetByName(name) || (TOURNAMENT_HEADERS[name] && book.insertSheet(name));
+  let [header, ...rows] = sheet.getDataRange().getDisplayValues();
+  const missing = (TOURNAMENT_HEADERS[name] || []).filter((h) => !header.map((x) => x.trim()).includes(h));
+  if (missing.length) {
+    header = header.filter((h) => h.trim());
+    sheet.getRange(1, header.length + 1, 1, missing.length).setNumberFormat("@").setValues([missing]);
+    sheet.setFrozenRows(1);
+    header = header.concat(missing);
+  }
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
   return { sheet, col, rows: rows.map((r, i) => ({ ...Object.fromEntries(header.map((h, j) => [h.trim(), r[j] || ""])), row: i + 2 })) };
 }
@@ -425,8 +449,17 @@ function tournament(key, td) {
       posted: here.some((r) => r.Posted),
     };
   });
-  return { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
+  const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, players };
+  if (info.Format === "arena") {
+    result.cutoff = info.Cutoff;
+    result.games = table("Arena").rows.filter((r) => r.Key === key)
+      .sort((a, b) => Number(a.Game) - Number(b.Game))
+      .map((r) => ({ game: Number(r.Game), white: r.White, black: r.Black, whitePact: r["White pact"] === "yes",
+        blackPact: r["Black pact"] === "yes", result: r.Result, started: r.Started, ended: r.Ended }));
+    result.queue = table("Queue").rows.filter((r) => r.Key === key).map((r) => ({ id: r["US Chess ID"], since: r.Since }));
+  }
+  return result;
 }
 
 function startTournament(p) {
@@ -441,10 +474,12 @@ function startTournament(p) {
     if (t.rows.some((r) => r.Key === key)) return { error: "That tournament has already started." };
     const format = ["arena", "quad"].includes(p.format) ? p.format : "swiss";
     // 30G: a quad is a three-round round robin.
-    const rounds = format === "quad" ? "3" : String(p.rounds || "").trim();
+    const rounds = format === "quad" ? "3" : format === "arena" ? "" : String(p.rounds || "").trim();
+    const cutoff = format === "arena" ? String(p.cutoff || "").trim() : "";
+    if (format === "arena" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return { error: "No new games after what time? Such as 17:30." };
     appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
-      Coin: p.coin === "black" ? "black" : "white", Finished: "" });
+      Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff });
   } finally {
     lock.releaseLock();
   }
@@ -565,6 +600,156 @@ function finishTournament(key) {
   setCell(t, line.row, "Finished", Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"));
   clearTournamentCache();
   return { ok: true, message: "Finished. The archive Action saves it and clears it from the spreadsheet." };
+}
+
+// Arenas. Every write rereads the tabs under the lock, so two desks can't put a player in two games.
+
+const stamp = (pattern) => Utilities.formatDate(new Date(), TZ, pattern || "yyyy-MM-dd HH:mm:ss");
+
+function runningArena(key) {
+  const info = table("Tournaments").rows.find((r) => r.Key === key);
+  if (!info || info.Format !== "arena") return { error: "No arena is running for this." };
+  if (info.Status !== "running") return { error: "This arena is finished." };
+  return { info };
+}
+
+function arenaJoin(p) {
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { error } = runningArena(key);
+    if (error) return { error };
+    const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+    if (!player) return { error: "Not a player in this arena. Add new entrants first." };
+    const queue = table("Queue");
+    if (queue.rows.some((r) => r.Key === key && r["US Chess ID"] === p.id)) return { error: `${player.Name} is already waiting.` };
+    const playing = table("Arena").rows.some((r) => r.Key === key && !r.Result && (r.White === p.id || r.Black === p.id));
+    if (playing) return { error: `${player.Name} is in a game.` };
+    appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": p.id, Since: stamp() });
+    clearTournamentCache();
+    return { ok: true, message: `${player.Name} is waiting for a game.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function arenaLeave(p) {
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const queue = table("Queue");
+    for (const r of queue.rows.filter((x) => x.Key === key && x["US Chess ID"] === p.id).reverse()) queue.sheet.deleteRow(r.row);
+    clearTournamentCache();
+    const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+    return { ok: true, message: `${player ? player.Name : p.id} is out of the queue.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Starts the games the desk paired, [{ white, black }], skipping any whose players are no longer
+ *  waiting because another desk paired them first. */
+function arenaPair(p) {
+  const key = `${p.event}/${p.date}`;
+  const games = JSON.parse(p.games || "[]");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { info, error } = runningArena(key);
+    if (error) return { error };
+    const local = stamp("yyyy-MM-dd HH:mm");
+    if (info.Cutoff && (p.date.length === 7 ? local.slice(11) >= info.Cutoff : local >= `${p.date} ${info.Cutoff}`)) {
+      return { error: `No new games start after ${info.Cutoff}.` };
+    }
+    const queue = table("Queue");
+    const waiting = new Set(queue.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
+    const arena = table("Arena");
+    let number = arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0);
+    const started = [];
+    for (const g of games) {
+      if (g.white === g.black || !waiting.has(g.white) || !waiting.has(g.black)) continue;
+      waiting.delete(g.white);
+      waiting.delete(g.black);
+      appendText(arena.sheet, arena.col, { Key: key, Game: String(++number), White: g.white, Black: g.black,
+        "White pact": "", "Black pact": "", Result: "", Started: stamp(), Ended: "" });
+      started.push(g.white, g.black);
+    }
+    const leaving = queue.rows.filter((r) => r.Key === key && started.includes(r["US Chess ID"]));
+    for (const r of leaving.reverse()) queue.sheet.deleteRow(r.row);
+    clearTournamentCache();
+    const count = started.length / 2;
+    return { ok: true, message: count === games.length ? `Started ${count} game(s).`
+      : `Started ${count} of ${games.length} game(s); the others' players were no longer waiting.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Records a game's result. The first result puts both players back in the queue, except one who
+ *  forfeited; a later one only corrects it. */
+function arenaResult(p) {
+  const key = `${p.event}/${p.date}`;
+  if (!ARENA_RESULTS.includes(p.result)) return { error: "Not a result." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const arena = table("Arena");
+    const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
+    if (!line) return { error: "No such game." };
+    setCell(arena, line.row, "Result", p.result);
+    clearTournamentCache();
+    if (line.Result) return { ok: true, message: `Game ${p.game} is corrected.` };
+    setCell(arena, line.row, "Ended", stamp());
+    const back = [];
+    if (!/^0F/.test(p.result)) back.push(line.White);
+    if (!/0F$/.test(p.result)) back.push(line.Black);
+    const queue = table("Queue");
+    for (const id of back) appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": id, Since: stamp() });
+    return { ok: true, message: `Game ${p.game} is recorded.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Sets or clears one side's Blood Pact for a game. */
+function arenaPact(p) {
+  const key = `${p.event}/${p.date}`;
+  const heading = { white: "White pact", black: "Black pact" }[p.side];
+  if (!heading) return { error: "Which side?" };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const arena = table("Arena");
+    const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
+    if (!line) return { error: "No such game." };
+    setCell(arena, line.row, heading, p.on === "yes" ? "yes" : "");
+    clearTournamentCache();
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Takes back a pairing made by mistake, before it has a result; both players wait again. */
+function arenaCancel(p) {
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const arena = table("Arena");
+    const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
+    if (!line) return { error: "No such game." };
+    if (line.Result) return { error: "That game has a result." };
+    arena.sheet.deleteRow(line.row);
+    const queue = table("Queue");
+    for (const id of [line.White, line.Black]) appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": id, Since: stamp() });
+    clearTournamentCache();
+    return { ok: true, message: `Game ${p.game} is taken back.` };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Every tournament in the spreadsheet, with only posted rounds, for the public Pairings page. */

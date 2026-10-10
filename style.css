@@ -414,3 +414,5 @@ main > h1:first-child { margin-top: 32px; }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
 .td-incidents { padding-left: 20px; }
 .entries-all section .entries { margin-bottom: 16px; }
+.td-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.td-pact { display: block; font-size: 14px; color: var(--muted); white-space: nowrap; }

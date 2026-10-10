@@ -521,6 +521,111 @@ runAxe.violations.length ? fail(`TD desk running a tournament: ${runAxe.violatio
   : pass("TD desk running a tournament has no axe violations");
 await runPage.close();
 
+// Running an arena on the TD desk, against a stand-in for the Apps Script that keeps it in
+// memory, with the clock at 11:00 AM on the day: start it, queue four players, pair them,
+// record a win with a Blood Pact, and check that the two who just played aren't paired again.
+const arenaPage = await browser.newPage();
+arenaPage.on("pageerror", (error) => fail(`JavaScript error on /td/ running an arena: ${error.message}`));
+const arenaCalls = [];
+let arena = null;
+await arenaPage.evaluateOnNewDocument((fixed) => {
+  const RealDate = Date;
+  window.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixed])); }
+    static now() { return fixed; }
+  };
+}, new Date("2026-10-31T11:00:00-06:00").getTime());
+await arenaPage.setRequestInterception(true);
+arenaPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+    return;
+  }
+  if (url.host !== "registration.test") return request.continue();
+  const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+  arenaCalls.push(p);
+  const since = () => `2026-10-31 11:00:${String(arenaCalls.length).padStart(2, "0")}`;
+  let body = { ok: true };
+  if (p.action === "choices") {
+    body = { choices: [{ key: "knightmare-arena-classical/2026-10-31", name: "Knightmare Arena Classical",
+      label: "Saturday, October 31, 2026", kind: "entry", first: "2026-10-31" }] };
+  } else if (p.action === "entries") body = { entries: [] };
+  else if (p.action === "incidents") body = { incidents: [] };
+  else if (p.action === "tournament") body = { tournament: arena };
+  else if (p.action === "start") {
+    const players = [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", null]]
+      .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, out: null }));
+    arena = { key: "knightmare-arena-classical/2026-10-31", name: "Knightmare Arena Classical, Saturday, October 31, 2026",
+      format: p.format, cutoff: p.cutoff, status: "running", players, rounds: [], games: [], queue: [] };
+    body = { ok: true, message: "Added 4 player(s)." };
+  } else if (p.action === "arenaJoin") {
+    arena.queue.push({ id: p.id, since: since() });
+    body = { ok: true, message: "Waiting." };
+  } else if (p.action === "arenaPair") {
+    for (const g of JSON.parse(p.games)) {
+      arena.games.push({ game: arena.games.length + 1, ...g, whitePact: false, blackPact: false, result: "" });
+      arena.queue = arena.queue.filter((q) => q.id !== g.white && q.id !== g.black);
+    }
+    body = { ok: true, message: "Started." };
+  } else if (p.action === "arenaPact") {
+    arena.games[p.game - 1][`${p.side}Pact`] = p.on === "yes";
+  } else if (p.action === "arenaResult") {
+    const g = arena.games[p.game - 1];
+    g.result = p.result;
+    arena.queue.push({ id: g.white, since: since() }, { id: g.black, since: since() });
+    body = { ok: true, message: "Recorded." };
+  }
+  request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+});
+await arenaPage.goto(base + "/td/", { waitUntil: "networkidle0" });
+await arenaPage.type("#td-password", "secret");
+await arenaPage.click(".td-login button");
+await arenaPage.waitForSelector(".run-start:not([hidden])");
+await arenaPage.select("#run-format", "arena");
+const startFields = await arenaPage.evaluate(() => ({ cutoff: !document.querySelector("#run-cutoff").hidden,
+  rounds: !document.querySelector("#run-rounds").hidden, value: document.querySelector("#run-cutoff").value }));
+startFields.cutoff && !startFields.rounds && startFields.value === "17:30"
+  ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
+await arenaPage.click(".run-start button");
+await arenaPage.waitForSelector(".run-arena:not([hidden])");
+for (let n = 1; n <= 4; n++) {
+  await arenaPage.click(".run-away tbody tr:first-child button");
+  await arenaPage.waitForFunction((n) => document.querySelectorAll(".run-queue tbody tr").length === n, {}, n);
+}
+await arenaPage.click(".run-arena-pair");
+await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 2);
+const paired = JSON.parse(arenaCalls.find((c) => c.action === "arenaPair")?.games || "[]");
+JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222" }, { white: "33333333", black: "44444444" }])
+  ? pass("TD desk starts an arena, queues players, and pairs them in queue order") : fail(`TD desk arena pairing: ${JSON.stringify(paired)}`);
+await arenaPage.click(".run-arena-games tbody tr:first-child td:nth-child(2) input[type=checkbox]");
+await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(2) input:checked:not(:disabled)"));
+await arenaPage.click(".run-arena-games tbody tr:first-child .td-buttons button:first-child");
+await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
+const board = await arenaPage.$$eval(".run-leaderboard tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
+const pact = arenaCalls.find((c) => c.action === "arenaPact") || {};
+pact.game === "1" && pact.side === "white" && pact.on === "yes"
+  && JSON.stringify(board[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"])
+  && board.slice(1).every((r) => r[0] === "2 (tied)" && r[3] === "0")
+  ? pass("TD desk records a Blood Pact win and the leaderboard shows it, with ties shared")
+  : fail(`TD desk arena leaderboard: ${JSON.stringify({ pact, board })}`);
+const queued = await arenaPage.$$eval(".run-queue tbody tr td:first-child", (cells) => cells.map((c) => c.textContent));
+await arenaPage.click(".run-arena-pair");
+await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("just played each other"));
+JSON.stringify(queued) === JSON.stringify(["Ann", "Ben"]) && arenaCalls.filter((c) => c.action === "arenaPair").length === 1
+  ? pass("TD desk puts both players back in the queue and doesn't pair them again at once")
+  : fail(`TD desk arena rematch: ${JSON.stringify(queued)}`);
+for (const scheme of ["light", "dark"]) {
+  await arenaPage.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+  await arenaPage.evaluate(axeSource);
+  const result = await arenaPage.evaluate(() => axe.run());
+  result.violations.length ? fail(`TD desk running an arena (${scheme}): ${result.violations.map((v) => `${v.id} at ${v.nodes[0].target}`).join(", ")}`)
+    : pass(`TD desk running an arena has no axe violations (${scheme})`);
+}
+await arenaPage.close();
+
 // The Pairings page, against a stand-in for the Apps Script's ?tournaments=current.
 const pairingsPage = await browser.newPage();
 pairingsPage.on("pageerror", (error) => fail(`JavaScript error on /pairings/: ${error.message}`));
@@ -600,6 +705,47 @@ const quadRound = JSON.parse((quadCalls.find((c) => c.action === "round") || {})
 quadFormat === "quad" && JSON.stringify(quadRound.map((g) => [g.white, g.black])) === JSON.stringify([["22222222", "33333333"], ["44444444", "11111111"]])
   ? pass("TD desk pairs a quad's first round from the table (1 v 4, 2 v 3)") : fail(`TD desk quad: format ${quadFormat}, ${JSON.stringify(quadRound)}`);
 await quadPage.close();
+
+// The Pairings page with an arena: games in progress, the queue, the leaderboard, and recent results.
+const arenaPairings = await browser.newPage();
+arenaPairings.on("pageerror", (error) => fail(`JavaScript error on /pairings/ with an arena: ${error.message}`));
+await arenaPairings.setRequestInterception(true);
+arenaPairings.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.host === "registration.test") {
+    const players = [["a", "Ann", 1900], ["b", "Ben", 1700], ["c", "Cal", 1500], ["d", "Dee", null]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
+    const tournaments = [{ name: "Knightmare Arena Classical, Saturday, October 31, 2026", format: "arena", cutoff: "17:30", status: "running",
+      players, rounds: [], queue: [{ id: "b", since: "2026-10-31 10:52:10" }, { id: "a", since: "2026-10-31 10:52:10" }],
+      games: [{ game: 1, white: "a", black: "b", whitePact: true, blackPact: false, result: "1-0" },
+        { game: 2, white: "c", black: "d", whitePact: false, blackPact: true, result: "" }] }];
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify({ tournaments }) });
+  } else {
+    request.continue();
+  }
+});
+await arenaPairings.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const shownArena = await arenaPairings.evaluate(() => ({
+  headings: [...document.querySelectorAll(".pairings-all h3")].map((h) => h.textContent),
+  text: document.querySelector(".pairings-all").textContent,
+  tables: [...document.querySelectorAll(".pairings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))) }));
+JSON.stringify(shownArena.headings) === JSON.stringify(["Games in progress", "Leaderboard", "Recent results"])
+  && shownArena.text.includes("No new games start after 5:30 PM.") && shownArena.text.includes("Waiting for a game: Ben (1700), Ann (1900).")
+  && shownArena.tables[0][0][2] === "Dee (unrated), Blood Pact"
+  && JSON.stringify(shownArena.tables[1][0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"])
+  && shownArena.tables[2][0][3] === "1–0"
+  ? pass("Pairings page shows an arena's games, queue, leaderboard, and results") : fail(`Pairings page arena: ${JSON.stringify(shownArena)}`);
+for (const scheme of ["light", "dark"]) {
+  await arenaPairings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+  await arenaPairings.evaluate(axeSource);
+  const result = await arenaPairings.evaluate(() => axe.run());
+  result.violations.length ? fail(`Pairings page with an arena (${scheme}): ${result.violations.map((v) => v.id).join(", ")}`)
+    : pass(`Pairings page with an arena has no axe violations (${scheme})`);
+}
+await arenaPairings.close();
 
 await browser.close();
 if (failures.length) {

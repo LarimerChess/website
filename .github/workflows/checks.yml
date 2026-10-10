@@ -28,7 +28,7 @@ jobs:
         run: npm run -s check:html
       - name: JavaScript syntax
         if: success() || failure()
-        run: for f in calendar.js register.js td.js td-run.js entries.js pairings.js pairing.js; do node --check "$f"; done
+        run: for f in calendar.js register.js td.js td-run.js td-arena.js entries.js pairings.js pairing.js arena.js; do node --check "$f"; done
       - name: Pages match style.css and the scripts
         if: success() || failure()
         run: python scripts/sync_assets.py --check
@@ -44,6 +44,9 @@ jobs:
       - name: Pairing tests (US Chess rules 27 to 29 and 34E)
         if: success() || failure()
         run: node --test tests/test_pairing.mjs
+      - name: Arena tests
+        if: success() || failure()
+        run: node --test tests/test_arena.mjs
       - name: Pages (accessibility, filters, add to calendar, structured data, tournament pages)
         if: success() || failure()
         run: |

@@ -4,7 +4,8 @@
   "scripts": {
     "check:html": "html-validate index.html events minutes scholastic td entries pairings",
     "check:pages": "node tests/check_pages.mjs",
-    "test:pairing": "node --test tests/test_pairing.mjs"
+    "test:pairing": "node --test tests/test_pairing.mjs",
+    "test:arena": "node --test tests/test_arena.mjs"
   },
   "devDependencies": {
     "axe-core": "4.14.0",
