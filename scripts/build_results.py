@@ -8,7 +8,7 @@
   (first-saturday-classic-2026-11-07). A Swiss shows each section's final standings with the
   US Chess tiebreaks, from pairing.js run with node, and wall chart; a quad tournament, each
   quad's standings and crosstable; an arena, its leaderboard and games. A tournament is rated
-  once the docs repo's Rating reports Action finds the club's event on US Chess with these
+  once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
   kept after the docs repo's archive Action clears it from there. Nothing here deletes a page.
@@ -421,7 +421,10 @@ def main(args):
             tournaments = data.get("tournaments", []) if isinstance(data, dict) else data
         else:
             tournaments = fetch(endpoint()) if endpoint() else []
+        ratings = json.loads((ROOT / "ratings.json").read_text(encoding="utf-8"))
         for t in tournaments:
+            if t["key"] in ratings:
+                t = {**t, "status": "rated", "usChessEvent": t.get("usChessEvent") or ratings[t["key"]]}
             if t.get("status") != "rated":
                 continue
             if not t["rounds"] and not arena_games(t):

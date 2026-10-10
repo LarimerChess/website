@@ -588,6 +588,9 @@ section.td-table td { white-space: nowrap; }
             <div class="run-section-rows"></div>
             <p><button class="button button-secondary run-section-add" type="button">Add a section</button></p>
           </fieldset>
+          <label for="run-td">Chief TD</label>
+          <select id="run-td" name="td" aria-describedby="run-td-hint"></select>
+          <p id="run-td-hint" class="register-hint">Gets a reminder each morning, from the second morning after play ends, until US Chess has rated the tournament.</p>
           <button class="button" type="submit">Start the tournament</button>
         </form>
         <div class="run-round" hidden>
@@ -629,7 +632,7 @@ section.td-table td { white-space: nowrap; }
           <div class="run-byes-all"></div>
           <div class="register-form run-report" hidden>
             <h3>Rating report</h3>
-            <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; from 24 hours after the last round until then, the TD and the President get a reminder each day.</p>
+            <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; until then, from the second morning after play ends, the chief TD and the President get a reminder each morning.</p>
             <label for="run-report-td">Chief TD</label>
             <select id="run-report-td"></select>
             <label for="run-report-control">Time control</label>
@@ -776,7 +779,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../td.js?v=ec4efbced4" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=dbc74a7165" defer></script>
-  <script src="../td-run.js?v=da71508aec" defer></script>
+  <script src="../td-run.js?v=43224a0fe4" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=8f428b91c9" defer></script>
 </body>

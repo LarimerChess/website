@@ -53,8 +53,7 @@ const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venu
 const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
-  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections",
-    "Reminded", "US Chess event"],
+  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
@@ -539,12 +538,14 @@ function tournament(key, td) {
         kind: r["Bye kind"] || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
       posted: here.some((r) => r.Posted),
-      day: (here.find((r) => r.Posted) || { Posted: "" }).Posted.slice(0, 10),
+      postedAt: (here.find((r) => r.Posted) || { Posted: "" }).Posted,
     };
   });
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
-    plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players };
-  if (info["US Chess event"]) result.usChessEvent = info["US Chess event"];
+    plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players,
+    td: info.TD || "" };
+  const event = ratedEvents()[key];
+  if (event) Object.assign(result, { status: "rated", usChessEvent: event });
   if (info.Format === "arena") {
     result.cutoff = info.Cutoff;
     result.games = table("Arena").rows.filter((r) => r.Key === key)
@@ -556,9 +557,26 @@ function tournament(key, td) {
   return result;
 }
 
-/** The docs repo's Rating reports Action sets a tournament's Status to rated once US Chess shows these results. */
+/** { key: US Chess event ID } for each tournament US Chess has rated with the desk's results, from the
+ *  website's ratings.json, which its Results Action keeps. None when the site doesn't answer. */
+function ratedEvents() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("rated");
+  if (cached) return JSON.parse(cached);
+  try {
+    const response = UrlFetchApp.fetch(SITE + "/ratings.json", { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return {};
+    const rated = JSON.parse(response.getContentText());
+    cache.put("rated", JSON.stringify(rated), 300);
+    return rated;
+  } catch (err) {
+    console.error(err);
+    return {};
+  }
+}
+
 function rated(key) {
-  return table("Tournaments").rows.some((r) => r.Key === key && r.Status === "rated");
+  return Boolean(ratedEvents()[key]);
 }
 
 function startTournament(p) {
@@ -581,7 +599,7 @@ function startTournament(p) {
     appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
-      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "" });
+      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: /^\d{8}$/.test(p.td || "") ? p.td : "" });
   } finally {
     lock.releaseLock();
   }
@@ -590,8 +608,7 @@ function startTournament(p) {
   return synced;
 }
 
-/** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Play ends
- *  again when the new last round is in, so the time it ended is cleared. */
+/** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. */
 function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
@@ -606,7 +623,6 @@ function setRounds(p) {
     const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
     if (Number(rounds) < paired) return { error: `${paired} rounds are paired already, so it can't have fewer.` };
     setCell(t, line.row, "Rounds", rounds);
-    setCell(t, line.row, "Finished", "");
     clearTournamentCache();
     return { ok: true, message: `It plays ${rounds} rounds.` };
   } finally {
@@ -799,7 +815,7 @@ function reportResult(p) {
   lock.waitLock(20000);
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
-    if (!info || info.Format === "arena" || info.Status !== "running") return { error: "That tournament isn't taking results." };
+    if (!info || info.Format === "arena" || info.Status !== "running" || rated(key)) return { error: "That tournament isn't taking results." };
     const t = table("Rounds");
     const line = boardLine(t, key, p.number, p.board, p.section);
     if (!line || !line.Posted || (line.White !== id && line.Black !== id)) {

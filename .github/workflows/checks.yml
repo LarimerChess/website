@@ -56,6 +56,9 @@ jobs:
       - name: Rating report file tests
         if: success() || failure()
         run: node --test tests/test_ratingreport.mjs
+      - name: Rating check tests
+        if: success() || failure()
+        run: node --test tests/test_rating_check.mjs
       - name: Pages (accessibility, filters, add to calendar, structured data, tournament and results pages)
         if: success() || failure()
         run: |

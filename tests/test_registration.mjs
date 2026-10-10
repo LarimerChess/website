@@ -57,8 +57,11 @@ function load(tabs, cache = {}) {
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
   const registration = { ...book, getSheetByName: (n) => (n === "Players" ? sheets.Registry ||= makeSheet([]) : book.getSheetByName(n)) };
   const fetched = [];
+  // The website's ratings.json, the tournaments US Chess has rated.
+  const ratings = {};
   const answer = (url) => {
     fetched.push(url);
+    if (url.endsWith("/ratings.json")) return { getResponseCode: () => 200, getContentText: () => JSON.stringify(ratings) };
     const [, id, games] = url.match(/members\/(\d+)(\/games)?/);
     const m = US_CHESS[id] || { outcomes: [] };
     const body = games ? { items: m.outcomes.map((outcome) => ({ player: { outcome } })) }
@@ -79,7 +82,7 @@ function load(tabs, cache = {}) {
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
-  return { gs: context, sheets };
+  return { gs: context, sheets, ratings, cache };
 }
 
 const heading = (sheet) => sheet.data[0];
@@ -112,7 +115,7 @@ test("a quad started before sections, with none of their columns, runs as before
   const r2 = rowsOf(sheets.Rounds).filter((r) => r.Round === "2");
   eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
   eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"]);
-  eq(heading(sheets.Tournaments).slice(-4), ["Cutoff", "Sections", "Reminded", "US Chess event"]);
+  eq(heading(sheets.Tournaments).slice(-3), ["Cutoff", "Sections", "TD"]);
   // Its rows are where they were; only headings were added.
   assert.equal(rowsOf(sheets.Players)[4]["No."], "5");
   eq(gs.sectionsByKey(), {});
@@ -249,7 +252,7 @@ test("a player's report is checked against the posted round, kept apart from the
   // A board with the TD's result takes no more reports.
   assert.equal(gs.saveResult({ ...p, board: "2", result: "1/2-1/2" }).ok, true);
   assert.match(gs.reportResult({ ...p, board: "2", id: "22222222", result: "0-1" }).error, /already entered/);
-  sheets.Tournaments.data[1][5] = "rated";
+  sheets.Tournaments.data[1][5] = "finished";
   assert.match(gs.reportResult({ ...p, id: "11111111", result: "1-0" }).error, /isn't taking results/);
 });
 
@@ -261,7 +264,7 @@ test("reports are limited like public registrations", () => {
 });
 
 test("the TD confirms agreed reports together, and re-pairing a round clears its reports", () => {
-  const { gs, sheets } = reporting();
+  const { gs, sheets, ratings, cache } = reporting();
   const p = { event: "classic", date: "2026-11-07", number: "1" };
   gs.reportResult({ ...p, board: "1", section: "", id: "11111111", result: "1-0" });
   gs.reportResult({ ...p, board: "2", section: "", id: "22222222", result: "0-1" });
@@ -284,27 +287,24 @@ test("the TD confirms agreed reports together, and re-pairing a round clears its
   eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
   // Once a posted round has a confirmed result, it can't be paired again (29G).
   assert.match(gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" }).error, /has results/);
-  // Once US Chess has rated it, the desk can't change it, and the public JSON names the rated event.
-  const status = heading(sheets.Tournaments).indexOf("Status");
-  sheets.Tournaments.data[1][status] = "rated";
-  sheets.Tournaments.data[0].push("US Chess event");
-  sheets.Tournaments.data[1][sheets.Tournaments.data[0].length - 1] = "202611070123";
+  // Once ratings.json lists it, the desk can't change it, and the public JSON names the rated event.
+  ratings["classic/2026-11-07"] = "202611070123";
+  delete cache.rated;
   const late = gs.doPost({ parameter: { action: "result", password: "sheet", ...p, board: "1", section: "", result: "0-1" } });
   assert.match(late.error, /US Chess has rated/);
   eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
-  assert.equal(gs.tournament("classic/2026-11-07", false).usChessEvent, "202611070123");
+  const shown = gs.tournament("classic/2026-11-07", false);
+  eq([shown.status, shown.usChessEvent], ["rated", "202611070123"]);
 });
 
 test("a Swiss can add rounds or stop early, but not below the rounds paired, and a restart deletes its rows", () => {
   const { gs, sheets } = reporting();
   const p = { event: "classic", date: "2026-11-07" };
-  const status = heading(sheets.Tournaments);
-  sheets.Tournaments.data[1][status.indexOf("Finished")] = "2026-11-07 18:00";
   assert.match(gs.setRounds({ ...p, rounds: "1" }).error, /2 rounds are paired already/);
   assert.match(gs.setRounds({ ...p, rounds: "x" }).error, /number from 1 to 99/);
   assert.match(gs.setRounds({ event: "arena", date: "2026-11-07", rounds: "4" }).error, /Only a Swiss/);
   assert.equal(gs.setRounds({ ...p, rounds: "5" }).ok, true);
-  eq([rowsOf(sheets.Tournaments)[0].Rounds, rowsOf(sheets.Tournaments)[0].Finished], ["5", ""]);
+  assert.equal(rowsOf(sheets.Tournaments)[0].Rounds, "5");
   assert.equal(gs.setRounds({ ...p, rounds: "2" }).ok, true);
   assert.equal(gs.tournament("classic/2026-11-07", true).plannedRounds, 2);
   assert.equal(gs.restartTournament("classic/2026-11-07").ok, true);

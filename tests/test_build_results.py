@@ -177,6 +177,7 @@ class Build(unittest.TestCase):
             "  <url><loc>https://larimerchess.org/pairings/</loc></url>\n"
             "  <url><loc>https://larimerchess.org/results/</loc></url>\n"
             "  <url><loc>https://larimerchess.org/scholastic/</loc></url>\n</urlset>\n", encoding="utf-8")
+        (self.root / "ratings.json").write_text("{}\n", encoding="utf-8")
         self.saved = br.ROOT, br.RESULTS
         br.ROOT, br.RESULTS = self.root, self.root / "results"
         self.addCleanup(lambda: setattr(br, "ROOT", self.saved[0]) or setattr(br, "RESULTS", self.saved[1]))
@@ -186,6 +187,13 @@ class Build(unittest.TestCase):
         source.write_text(json.dumps({"tournaments": tournaments}), encoding="utf-8")
         with redirect_stdout(StringIO()):
             br.main(["--from", str(source)])
+
+    def test_listed_in_ratings_json_is_rated(self):
+        running = dict(TOURNAMENTS["fourth-saturday-classic/2027-01-23"], status="running")
+        (self.root / "ratings.json").write_text('{"fourth-saturday-classic/2027-01-23": "202701230042"}\n', encoding="utf-8")
+        self.run_with([running])
+        page = (self.root / "results/fourth-saturday-classic-2027-01-23/index.html").read_text(encoding="utf-8")
+        self.assertIn("https://ratings.uschess.org/event/202701230042", page)
 
     def test_rated_only_and_never_deleted(self):
         running = TOURNAMENTS["third-saturday-slow/2026-11-21"]

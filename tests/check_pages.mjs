@@ -947,7 +947,7 @@ const checkin = await sectionDesk.evaluate(() => ({
   // Dee, 1450, can't play down; Fay, 1200, can play up.
   dee: [...document.querySelector('select[aria-label="Dee\'s section"]').options].map((o) => o.value),
   fay: [...document.querySelector('select[aria-label="Fay\'s section"]').options].map((o) => o.value) }));
-started.sections === JSON.stringify([{ name: "Open" }, { name: "Under 1400", under: 1400 }])
+started.td === "31847334" && started.sections === JSON.stringify([{ name: "Open" }, { name: "Under 1400", under: 1400 }])
   && JSON.stringify(checkin) === JSON.stringify({ headings: ["Open (4)", "Under 1400 (3)"], dee: ["Open"], fay: ["Open", "Under 1400"] })
   ? pass("TD desk starts a Swiss in two sections and checks in each section, offering only sections a player may enter")
   : fail(`TD desk sections at start: ${JSON.stringify({ started, checkin })}`);
@@ -1347,7 +1347,7 @@ await arenaStandings.close();
 // changes and deleted when one is missing, when rounds are added, or on a restart. A rated tournament
 // offers nothing to change.
 const played = (pairs) => ({ games: pairs.map(([white, black, result], i) => ({ board: i + 1, white, black, result, section: "" })),
-  byes: [], out: [], posted: true, day: "2026-11-07" });
+  byes: [], out: [], posted: true, postedAt: "2026-11-07 15:05" });
 const doneDesk = deskState([played([["11111111", "33333333", "1-0"], ["44444444", "22222222", "0-1"]]),
   played([["22222222", "11111111", "1/2-1/2"], ["33333333", "44444444", "1-0"]]),
   played([["11111111", "44444444", "1-0"], ["22222222", "33333333", "0-1"]])]);

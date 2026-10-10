@@ -166,6 +166,7 @@ function renderRun() {
       set.textContent = `Format: ${formatMenu.selectedOptions[0].textContent}, set by the event.`;
     }
     formatMenu.hidden = runStart.querySelector('[for="run-format"]').hidden = fixed;
+    fillTds(runStart.elements.td, choice.value, "");
     set.hidden = !fixed;
     showFormatFields();
     runStart.hidden = false;
@@ -662,18 +663,28 @@ async function syncFolder(key, files) {
   }
 }
 
-async function reportFiles(t) {
+/** Fills a menu with the club's TDs, choosing the tournament's chief TD when the menu is new to it. */
+async function fillTds(menu, key, chosen) {
   reportSources ||= Promise.all(["/scripts/tds.json", "/events.json"].map((url) => fetch(url).then((r) => r.json()).catch(() => null)));
-  const [roster, events] = await reportSources;
-  const tdMenu = document.getElementById("run-report-td");
-  const control = document.getElementById("run-report-control");
-  if (!tdMenu.options.length) {
-    for (const td of roster?.tds || []) tdMenu.append(option(td.uschess_id, `${td.name} (${td.uschess_id})`, false));
+  const [roster] = await reportSources;
+  if (!menu.options.length) {
+    for (const td of roster?.tds || []) menu.append(option(td.uschess_id, `${td.name} (${td.uschess_id})`, false));
   }
+  if (menu.dataset.key !== key) {
+    menu.dataset.key = key;
+    if (chosen && [...menu.options].some((o) => o.value === chosen)) menu.value = chosen;
+  }
+}
+
+async function reportFiles(t) {
+  const tdMenu = document.getElementById("run-report-td");
+  await fillTds(tdMenu, t.key, t.td);
+  const [roster, events] = await reportSources;
+  const control = document.getElementById("run-report-control");
   const listing = (events || []).find((e) => e.page === `/events/${t.event}/`);
   if (!control.value && listing) control.value = /^Time control: (\S+)/m.exec(listing.description)?.[1].replace(/\.$/, "") || "";
   const when = t.key.split("/")[1];
-  const days = t.rounds.map((r) => r.day).filter(Boolean).sort();
+  const days = t.rounds.map((r) => (r.postedAt || "").slice(0, 10)).filter(Boolean).sort();
   const [begin, end] = when.length === 10 ? [when, when] : days.length ? [days[0], days.at(-1)] : [`${when}-01`, `${when}-01`];
   return RatingReport.files({ ...forEngine(t), name: t.name }, { td: tdMenu.value, affiliate: roster?.affiliate || "",
     timeControl: control.value.trim(), city: listing?.place?.city || "Fort Collins", state: listing?.place?.region || "CO",

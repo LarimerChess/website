@@ -1,0 +1,185 @@
+{
+ "events": [
+  {
+   "id": "202611070123",
+   "name": "FIRST SATURDAY CLASSIC",
+   "startDate": "2026-11-07",
+   "endDate": "2026-11-07",
+   "sectionCount": 1,
+   "playerCount": 5
+  },
+  {
+   "id": "202611070999",
+   "name": "SOMEONE ELSE'S EVENT",
+   "startDate": "2026-11-07",
+   "endDate": "2026-11-07",
+   "sectionCount": 1,
+   "playerCount": 2
+  }
+ ],
+ "standings": {
+  "202611070123/1": [
+   {
+    "ordinal": 1,
+    "pairingNumber": 1,
+    "memberId": "90000001",
+    "firstName": "Ada",
+    "lastName": "Alder",
+    "roundOutcomes": [
+     {
+      "roundNumber": 1,
+      "outcome": "Win",
+      "color": "White",
+      "opponentMemberId": "90000003"
+     },
+     {
+      "roundNumber": 2,
+      "outcome": "Draw",
+      "color": "Black",
+      "opponentMemberId": "90000002"
+     },
+     {
+      "roundNumber": 3,
+      "outcome": "Win",
+      "color": "White",
+      "opponentMemberId": "90000004"
+     },
+     {
+      "roundNumber": 4,
+      "outcome": "ByeHalf",
+      "color": "Unknown"
+     }
+    ]
+   },
+   {
+    "ordinal": 2,
+    "pairingNumber": 2,
+    "memberId": "90000002",
+    "firstName": "Ben",
+    "lastName": "Birch",
+    "roundOutcomes": [
+     {
+      "roundNumber": 1,
+      "outcome": "Win",
+      "color": "Black",
+      "opponentMemberId": "90000005"
+     },
+     {
+      "roundNumber": 2,
+      "outcome": "Draw",
+      "color": "White",
+      "opponentMemberId": "90000001"
+     },
+     {
+      "roundNumber": 3,
+      "outcome": "Win",
+      "color": "Black",
+      "opponentMemberId": "90000003"
+     },
+     {
+      "roundNumber": 4,
+      "outcome": "ByeFull",
+      "color": "Unknown"
+     }
+    ]
+   },
+   {
+    "ordinal": 3,
+    "pairingNumber": 3,
+    "memberId": "90000003",
+    "firstName": "Cal",
+    "lastName": "Cedar",
+    "roundOutcomes": [
+     {
+      "roundNumber": 1,
+      "outcome": "Loss",
+      "color": "Black",
+      "opponentMemberId": "90000001"
+     },
+     {
+      "roundNumber": 2,
+      "outcome": "ByeFull",
+      "color": "Unknown"
+     },
+     {
+      "roundNumber": 3,
+      "outcome": "Loss",
+      "color": "White",
+      "opponentMemberId": "90000002"
+     },
+     {
+      "roundNumber": 4,
+      "outcome": "Forfeit",
+      "color": "Unknown"
+     }
+    ]
+   },
+   {
+    "ordinal": 4,
+    "pairingNumber": 4,
+    "memberId": "90000004",
+    "firstName": "Dee",
+    "lastName": "Dogwood",
+    "roundOutcomes": [
+     {
+      "roundNumber": 1,
+      "outcome": "ByeFull",
+      "color": "Unknown"
+     },
+     {
+      "roundNumber": 2,
+      "outcome": "WinForfeit",
+      "color": "Unknown"
+     },
+     {
+      "roundNumber": 3,
+      "outcome": "Loss",
+      "color": "Black",
+      "opponentMemberId": "90000001"
+     },
+     {
+      "roundNumber": 4,
+      "outcome": "Forfeit",
+      "color": "Unknown"
+     }
+    ]
+   },
+   {
+    "ordinal": 5,
+    "pairingNumber": 5,
+    "memberId": "90000005",
+    "firstName": "Eli",
+    "lastName": "Elm",
+    "roundOutcomes": [
+     {
+      "roundNumber": 1,
+      "outcome": "Loss",
+      "color": "White",
+      "opponentMemberId": "90000002"
+     },
+     {
+      "roundNumber": 2,
+      "outcome": "Forfeit",
+      "color": "Unknown"
+     },
+     {
+      "roundNumber": 3,
+      "outcome": "Unpaired",
+      "color": "Unknown"
+     },
+     {
+      "roundNumber": 4,
+      "outcome": "Unpaired",
+      "color": "Unknown"
+     }
+    ]
+   }
+  ],
+  "202611070999/1": [
+   {
+    "memberId": "12345678",
+    "roundOutcomes": []
+   }
+  ]
+ }
+}

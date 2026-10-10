@@ -27,18 +27,28 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      # Reads finished tournaments from the registration script's public ?tournaments=current.
+      # Adds each tournament US Chess has rated with the desk's results to ratings.json, and sends
+      # the morning reminders for the rest. A reminder that fails to send fails the run, after the
+      # steps below.
+      - run: node scripts/rating_check.mjs --email
+        env:
+          LCCC_GMAIL_TOKEN: ${{ secrets.LCCC_GOOGLE_GMAIL_SEND_TOKEN }}
+          LCCC_TD_EMAILS: ${{ secrets.LCCC_TD_EMAILS }}
+      # Reads the rated tournaments from the registration script's public ?tournaments=current.
       # The docs repo's Archive tournaments Action clears a tournament from the spreadsheet only
       # once its page here is live, and the pages are never deleted.
       - run: python scripts/build_results.py
+        if: success() || failure()
       - run: python scripts/build_pages.py
+        if: success() || failure()
       - name: Commit if changed
+        if: success() || failure()
         run: |
-          git add results sitemap.xml
+          git add results sitemap.xml ratings.json
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Post tournament results"
+          git commit -m "Post tournament ratings and results"
           git push
           gh api -X POST repos/${{ github.repository }}/pages/builds
         env:
