@@ -15,7 +15,7 @@
  * Deploy as a web app that executes as the club account, with access for anyone. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
- * 65 or older on the event's date. Fees for each come from the Sheet's Prices tab. Players
+ * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
  * pay when they arrive.
  */
 
@@ -25,7 +25,6 @@ const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token"];
-const PRICE_HEADER = ["Event", "Applies to", "Kind", "Adult", "Senior (65+)", "Under 18"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
@@ -281,21 +280,22 @@ function clubEvents() {
   return out;
 }
 
-/** The fee from the Prices tab: the row for the event and kind whose "Applies to" is the
- *  most specific match (the date, its month, or all). null when no row applies. */
+/** The fee from the website's prices.json, cached ten minutes: the row for the event and kind
+ *  whose "applies" is the most specific match (the date, its month, or all). null when none applies. */
 function price(event, category) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Prices");
-  if (!sheet) return null;
-  const [header, ...rows] = sheet.getDataRange().getDisplayValues();
-  const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  const cache = CacheService.getScriptCache();
+  let prices = cache.get("prices");
+  if (!prices) {
+    prices = UrlFetchApp.fetch(SITE + "/prices.json").getContentText();
+    cache.put("prices", prices, 600);
+  }
   const date = event.kind === "month" ? event.first.slice(0, 7) : event.first;
   const rank = (applies) => applies === date ? 3 : applies === date.slice(0, 7) ? 2 : applies === "all" ? 1 : 0;
-  const best = rows
-    .filter((r) => r[col.Event] === event.event && r[col.Kind] === event.kind && rank(r[col["Applies to"]]))
-    .sort((a, b) => rank(b[col["Applies to"]]) - rank(a[col["Applies to"]]))[0];
-  if (!best || best[col[category]] === "") return null;
-  const amount = Number(String(best[col[category]]).replace(/[$,]/g, ""));
-  return isNaN(amount) ? null : amount;
+  const best = (JSON.parse(prices)[event.event] || [])
+    .filter((r) => r.kind === event.kind && rank(r.applies))
+    .sort((a, b) => rank(b.applies) - rank(a.applies))[0];
+  const field = { "Adult": "adult", "Senior (65+)": "senior", "Under 18": "youth" }[category];
+  return best && typeof best[field] === "number" ? best[field] : null;
 }
 
 /** The Entries tab, its columns by heading (so TDs can reorder them), and its rows. */

@@ -1,0 +1,18 @@
+{
+  "monday-club-night-at-peak": [
+    {"applies": "2026-10", "kind": "month", "adult": 15, "senior": 10, "youth": 0},
+    {"applies": "2026-10", "kind": "night", "adult": 7, "senior": 5, "youth": 0}
+  ],
+  "knightmare-arena-classical": [
+    {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
+  ],
+  "first-saturday-classic": [
+    {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
+  ],
+  "third-saturday-slow": [
+    {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
+  ],
+  "fourth-saturday-classic": [
+    {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
+  ]
+}

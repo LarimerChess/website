@@ -175,30 +175,57 @@ def data_script(events):
     return f'<script type="application/ld+json" id="club-events">{data}</script>'
 
 
-def register_choices(events):
+def fee(prices, event, kind, value):
+    """The prices.json row for an event's date or month: the most specific "applies" wins. None if none applies."""
+    rank = lambda applies: 3 if applies == value else 2 if applies == value[:7] else 1 if applies == "all" else 0
+    rows = [r for r in prices.get(event, []) if r["kind"] == kind and rank(r["applies"])]
+    return max(rows, key=lambda r: rank(r["applies"]), default=None)
+
+
+def fee_text(row):
+    """'$15, free under 18', or '$15 adults, $10 seniors (65+), free under 18'."""
+    if not row:
+        return "fee to be announced"
+    money = lambda n: "free" if n == 0 else f"${n:.0f}" if n == int(n) else f"${n:.2f}"
+    if row["adult"] == row["senior"] == row["youth"] == 0:
+        return "free"
+    youth = "free under 18" if row["youth"] == 0 else f"{money(row['youth'])} under 18"
+    if row["senior"] == row["adult"]:
+        return f"{money(row['adult'])}, {youth}"
+    return f"{money(row['adult'])} adults, {money(row['senior'])} seniors (65+), {youth}"
+
+
+def register_choices(events, prices):
     """What a player registers for, as (group, [(value, shown, phrase)]): a tournament's dates, or
-    each month of a club night, whole or by the night. The phrase finishes "registered for …"."""
+    each month of a club night, whole or by the night, each shown with its fee. The phrase
+    finishes "registered for …"."""
+    name = events[0]["page"].strip("/").split("/")[-1]
+    with_fee = lambda value, kind, shown: f"{shown} · {fee_text(fee(prices, name, kind, value))}"
     if "tournament" in events[0]["tags"]:
-        return [(None, [(e["start"][:10], day_text(e), day_text(e)) for e in events])]
+        return [(None, [(e["start"][:10], with_fee(e["start"][:10], "entry", day_text(e)), day_text(e))
+                        for e in events])]
     months = {}
     for e in events:
         start = datetime.fromisoformat(e["start"]).astimezone(TZ)
         month = months.setdefault(f"{start:%B} {start.year}", [(
-            e["start"][:7], f"All {start:%A}s in {start:%B}", f"all {start:%A}s in {start:%B} {start.year}")])
-        month.append((e["start"][:10], f"{start:%A}, {start:%B} {start.day}", day_text(e)))
+            e["start"][:7], with_fee(e["start"][:7], "month", f"All {start:%A}s in {start:%B}"),
+            f"all {start:%A}s in {start:%B} {start.year}")])
+        month.append((e["start"][:10], with_fee(e["start"][:10], "night", f"{start:%A}, {start:%B} {start.day}"),
+                      day_text(e)))
     return list(months.items())
 
 
-def register_html(events):
+def register_html(events, prices):
     """The Register form and entry list, which register.js brings to life; one choice or a menu of them."""
     name = events[0]["page"].strip("/").split("/")[-1]
-    groups = register_choices(events)
+    groups = register_choices(events, prices)
     tournament = "tournament" in events[0]["tags"]
     option = lambda value, shown, phrase: (f'<option value="{value}" data-day="{html.escape(phrase)}">'
                                            f"{escaped(shown)}</option>")
     if tournament and len(groups[0][1]) == 1:
-        value, _, phrase = groups[0][1][0]
-        date = f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(phrase)}">'
+        value, shown, phrase = groups[0][1][0]
+        date = (f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(phrase)}">'
+                f'\n        <p class="register-for"><strong>{escaped(shown)}</strong></p>')
     else:
         options = "".join(f'<optgroup label="{html.escape(group)}">{"".join(option(*c) for c in choices)}</optgroup>'
                           if group else "".join(option(*c) for c in choices) for group, choices in groups)
@@ -240,7 +267,7 @@ def register_html(events):
     </section>"""
 
 
-def series_page(events):
+def series_page(events, prices):
     """The page for one club event, from its upcoming dates; the next date's description is shown."""
     e = events[0]
     name = e["title"].removeprefix(CLUB).strip()
@@ -313,7 +340,7 @@ def series_page(events):
       {description_html(e["description"])}
     </section>
 
-    {register_html(events)}
+    {register_html(events, prices)}
 
     <section id="where">
       <h2>Where</h2>
@@ -411,7 +438,8 @@ def main(check):
     for e in club:
         if e.get("page"):
             series[e["page"].removeprefix("/")].append(e)
-    pages = {path: series_page(dated) for path, dated in series.items()}
+    prices = json.loads((ROOT / "prices.json").read_text(encoding="utf-8"))
+    pages = {path: series_page(dated, prices) for path, dated in series.items()}
     changed = {}
     for path, text in pages.items():
         file = ROOT / path / "index.html"

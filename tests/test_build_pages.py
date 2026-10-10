@@ -1,4 +1,4 @@
-"""Tests for scripts/build_pages.py: dates, descriptions, Event data, and the sitemap.
+"""Tests for scripts/build_pages.py: dates, descriptions, fees, Event data, and the sitemap.
 
     python -m unittest discover tests
 """
@@ -35,6 +35,28 @@ SITEMAP = """<url><loc>https://larimerchess.org/</loc></url>
 <url><loc>https://larimerchess.org/events/first-saturday-classic/</loc><lastmod>2026-10-02</lastmod></url>
 <url><loc>https://larimerchess.org/scholastic/</loc><lastmod>2026-10-01</lastmod></url>
 <url><loc>https://larimerchess.org/minutes/</loc></url>"""
+
+
+
+class Fees(unittest.TestCase):
+    PRICES = {"club-night": [
+        {"applies": "all", "kind": "night", "adult": 8, "senior": 8, "youth": 0},
+        {"applies": "2026-10", "kind": "night", "adult": 7, "senior": 5, "youth": 0},
+        {"applies": "2026-10-26", "kind": "night", "adult": 0, "senior": 0, "youth": 0},
+        {"applies": "2026-10", "kind": "month", "adult": 15, "senior": 10, "youth": 2.5},
+    ]}
+
+    def test_the_most_specific_row_wins(self):
+        fee = lambda value, kind="night": (bp.fee(self.PRICES, "club-night", kind, value) or {}).get("adult")
+        self.assertEqual([fee("2026-10-26"), fee("2026-10-19"), fee("2026-11-02"), fee("2026-10", "month"),
+                          fee("2026-11", "month")], [0, 7, 8, 15, None])
+
+    def test_wording(self):
+        rows = self.PRICES["club-night"]
+        self.assertEqual([bp.fee_text(rows[0]), bp.fee_text(rows[1]), bp.fee_text(rows[2]), bp.fee_text(rows[3]),
+                          bp.fee_text(None)],
+                         ["$8, free under 18", "$7 adults, $5 seniors (65+), free under 18", "free",
+                          "$15 adults, $10 seniors (65+), $2.50 under 18", "fee to be announced"])
 
 
 class Dates(unittest.TestCase):
