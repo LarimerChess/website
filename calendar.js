@@ -141,8 +141,12 @@ function organizerLine(event) {
 
 // Registering is the site's main call to action, so every club event offers it: on the card,
 // and at the top and bottom of the details. It opens the Register form on the event's page.
-function registerLink(event, className) {
+// An invitational, which only the TD registers players for, says so instead (where note is set).
+function registerLink(event, className, { note = false } = {}) {
   if (!event.page || event.organizer !== CLUB) return null;
+  if ((event.tags || []).includes("invitational")) {
+    return note ? el("p", "event-meta", "Invitational: registration is closed.") : null;
+  }
   const link = el("a", className, "Register");
   link.append(spoken(` for ${event.title}, ${longDate.format(new Date(event.start))}`));
   link.href = `${event.page}?date=${event.start.slice(0, 10)}#register`;
@@ -228,7 +232,7 @@ function showDetails(event, button) {
   }
   content.append(title, date);
   if (!event.allDay) content.append(whenText(event, start, end));
-  const registerTop = registerLink(event, "button event-register");
+  const registerTop = registerLink(event, "button event-register", { note: true });
   if (registerTop) content.append(registerTop);
 
   const add = el("div", "event-add");
@@ -297,7 +301,7 @@ function renderEvent(event) {
   if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
   const by = organizerLine(event);
   if (by) body.append(by);
-  const register = registerLink(event, "button event-card-register");
+  const register = registerLink(event, "button event-card-register", { note: true });
   if (register) body.append(register);
 
   // The heading already says the date.
@@ -533,7 +537,7 @@ function holdInView() {
 function nextUp(events, now) {
   const club = events.filter((e) => e.organizer === CLUB && e.page && new Date(e.start) > now);
   const monday = club.find((e) => !e.tags.includes("tournament"));
-  const saturday = club.find((e) => e.tags.includes("tournament"));
+  const saturday = club.find((e) => e.tags.includes("tournament") && !e.tags.includes("invitational"));
   const name = (e) => e.title.replace(CLUB, "").trim();
   const when = (e) => `${longDate.format(new Date(e.start))}, ${timeRange.format(new Date(e.start))}`
     + (e.place?.name ? ` at ${e.place.name}` : "");

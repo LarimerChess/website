@@ -42,6 +42,8 @@ FIELDS = {
     # US Chess's rating categories, comma-separated: base minutes plus increment or delay seconds is
     # blitz from 5 to 10, quick from 11 to 29, both regular and quick (dual) from 30 to 65, regular above.
     "speed": (False, re.compile(r"(?:regular|quick|blitz)(?:,(?:regular|quick|blitz))*")),
+    # invitational: a club event only the TD registers players for; its entries and pairings stay public.
+    "access": (False, {"open", "invitational"}),
 }
 AGE_TAGS = {"all": "all-ages", "youth": "youth", "senior": "senior", "adults": "adults"}
 COST_TAGS = {"free": "free", "free-youth": "free-youth", "paid": None, "unknown": "cost-unknown"}
@@ -79,6 +81,8 @@ def describe(meta, calendar):
         tags.append(COST_TAGS[meta["cost"]])
     if meta.get("speed"):
         tags += meta["speed"].split(",")
+    if meta.get("access") == "invitational":
+        tags.append("invitational")
     return {
         "calendar": calendar,
         "organizer": "" if meta.get("run_by") == "hide" else meta["organizer"],

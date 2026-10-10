@@ -70,6 +70,11 @@ class Tags(unittest.TestCase):
         self.assertEqual(len(uc.problems({**MEETUP, "speed": "classical"})), 1)
         self.assertEqual(len(uc.problems({**MEETUP, "speed": "regular, quick"})), 1)
 
+    def test_invitational(self):
+        self.assertIn("invitational", uc.describe({**CLUB_TOURNAMENT, "access": "invitational"}, "club")["tags"])
+        self.assertNotIn("invitational", uc.describe({**CLUB_TOURNAMENT, "access": "open"}, "club")["tags"])
+        self.assertEqual(len(uc.problems({**CLUB_TOURNAMENT, "access": "closed"})), 1)
+
     def test_details_without_run_by(self):
         dcc = {"organizer": "Denver Chess Club", "format": "tournament", "ages": "all", "rated": "yes", "cost": "paid",
                "details": "https://coloradochess.com/tournament/dcc-fall-classic-2026/", "run_by": "hide"}

@@ -85,6 +85,15 @@ class Description(unittest.TestCase):
         self.assertEqual(bp.cost(CLASSIC), "$15 entry, free for players under 18.")
 
 
+class Invitational(unittest.TestCase):
+    def test_registration_is_closed_but_entries_show(self):
+        page = bp.register_html([{**CLASSIC, "tags": [*CLASSIC["tags"], "invitational"]}], {})
+        self.assertIn('data-invitational="yes"', page)
+        self.assertIn('<p class="register-invitational">', page)
+        self.assertIn('id="entries"', page)
+        self.assertNotIn("data-invitational", bp.register_html([CLASSIC], {}))
+
+
 class EventData(unittest.TestCase):
     def test_tournaments_point_to_their_page(self):
         data = bp.event_data(CLASSIC)

@@ -150,6 +150,12 @@ async function showEntries() {
 
 if (!dateField) {
   // The TD desk, which has its own code in td.js.
+} else if (form.dataset.invitational) {
+  // The form stays hidden; the page shows that registration is closed, and the entries.
+  if (ENDPOINT) {
+    if (dateField.tagName === "SELECT") dateField.addEventListener("change", showEntries);
+    showEntries();
+  }
 } else if (ENDPOINT) {
   form.hidden = false;
   // An event page cached from before saved players has neither the list nor the checkbox.

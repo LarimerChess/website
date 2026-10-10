@@ -30,9 +30,10 @@
  * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
  * pay when they arrive.
  *
- * Events with closed registration are in the registration Sheet's "Closed events" tab (Event,
- * Name, Start, Format, Fee), not on the website's calendar: only the TD desk can register
- * players for them, but their entries and pairings are public like any other event's.
+ * Invitational club events (calendar metadata access=invitational) and events in the registration
+ * Sheet's "Closed events" tab (Event, Name, Start, Format, Fee) take registrations only from the TD
+ * desk; their entries and pairings are public like any other event's. The tab can also hold an
+ * event that isn't on the calendar, and gives a calendar event its format and fee.
  */
 
 const SITE = "https://larimerchess.org";
@@ -958,6 +959,7 @@ function clubEvents() {
     out[key] = {
       event: key.split("/")[0], name: e.title.replace(/^Larimer County Chess Club\s*/, ""), page: e.page, kind,
       label, closes: e.start, first: out[key] ? out[key].first : e.start.slice(0, 10), last: e.start.slice(0, 10),
+      closed: e.tags.includes("invitational"),
     };
   };
   for (const e of events.sort((a, b) => a.start.localeCompare(b.start))) {
@@ -980,9 +982,12 @@ function clubEvents() {
     for (const r of rows) {
       const name = r[col.Event], start = r[col.Start];
       if (!name || !start) continue;
-      out[`${name}/${start.slice(0, 10)}`] = {
-        event: name, name: r[col.Name] || name, page: "", kind: "entry", closed: true, format: r[col.Format] || "",
-        fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]),
+      const key = `${name}/${start.slice(0, 10)}`;
+      const extra = { closed: true, format: r[col.Format] || "",
+        fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]) };
+      // An event on the calendar too keeps its page and dates; the tab adds the format and fee.
+      out[key] = out[key] ? { ...out[key], ...extra } : {
+        event: name, name: r[col.Name] || name, page: "", kind: "entry", ...extra,
         label: Utilities.formatDate(new Date(start), TZ, "EEEE, MMMM d, yyyy"),
         closes: start, first: start.slice(0, 10), last: start.slice(0, 10),
       };
