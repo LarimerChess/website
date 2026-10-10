@@ -275,7 +275,22 @@ homeCards > 0 && homeCards <= 6 ? pass(`home page shows ${homeCards} events`) : 
 
 // Every club event's card, and its details at the top and bottom, offer Register.
 await page.goto(base + "/events/", { waitUntil: "networkidle0" });
-const clubCard = (await page.$$(".event-club")).at(0);
+const invitationalIds = new Set(events.filter((e) => (e.tags || []).includes("invitational")).map((e) => e.title));
+const clubCards = await page.$$(".event-club");
+let clubCard = null;
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!invitationalIds.has(title)) { clubCard = card; break; }
+}
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!invitationalIds.has(title)) continue;
+  const shown = await card.evaluate((c) => ({ register: !!c.querySelector(".event-card-register"), text: c.textContent }));
+  !shown.register && shown.text.includes("registration is closed")
+    ? pass(`the invitational ${title} says registration is closed instead of offering Register`)
+    : fail(`invitational card ${title}: ${JSON.stringify(shown)}`);
+  break;
+}
 if (clubCard) {
   const cardLink = await clubCard.$eval(".event-card-register", (a) => a.getAttribute("href")).catch(() => null);
   await clubCard.$eval(".event-open", (b) => b.click());

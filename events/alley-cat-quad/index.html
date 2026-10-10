@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<!-- Written by scripts/build_pages.py from events.json; don't edit by hand. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alley Cat Quad | Fort Collins Chess Tournament</title>
+  <meta name="description" content="An invitational quad: four players, three rounds, and everyone plays everyone. Next: Saturday, October 10, 2026. free.">
+  <link rel="canonical" href="https://larimerchess.org/events/alley-cat-quad/">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Larimer County Chess Club">
+  <meta property="og:title" content="Alley Cat Quad | Fort Collins Chess Tournament">
+  <meta property="og:description" content="An invitational quad: four players, three rounds, and everyone plays everyone. Next: Saturday, October 10, 2026. free.">
+  <meta property="og:url" content="https://larimerchess.org/events/alley-cat-quad/">
+  <meta property="og:image" content="https://larimerchess.org/share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json" id="club-events">[{"@context": "https://schema.org", "@type": "Event", "name": "Alley Cat Quad", "startDate": "2026-10-10T10:00:00-06:00", "endDate": "2026-10-10T17:30:00-06:00", "eventStatus": "https://schema.org/EventScheduled", "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode", "organizer": {"@type": "SportsOrganization", "name": "Larimer County Chess Club", "url": "https://larimerchess.org/"}, "url": "https://larimerchess.org/events/alley-cat-quad/", "image": "https://larimerchess.org/share.png", "description": "An invitational quad: four players, three rounds, and everyone plays everyone.", "location": {"@type": "Place", "name": "Peak Community Church", "address": {"@type": "PostalAddress", "streetAddress": "500 Mathews St", "addressLocality": "Fort Collins", "addressRegion": "CO", "postalCode": "80524", "addressCountry": "US"}}}]</script>
+  <link rel="preload" href="../../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+/* Fraunces and Inter, served from fonts/ (SIL Open Font License, see fonts/*-OFL.txt)
+   rather than Google Fonts, so pages don't wait on another origin. */
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/fraunces-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/fraunces-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(/fonts/inter-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(/fonts/inter-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --bg: #faf8f4;
+  --fg: #1d1b18;
+  --muted: #6b655c;
+  --accent: #2f5d50;
+  --card: #ffffff;
+  --line: #e4ded3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161513;
+    --fg: #ece8e1;
+    --muted: #a39d93;
+    --accent: #7fb8a6;
+    --card: #1f1d1a;
+    --line: #34312c;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.6 Inter, system-ui, sans-serif;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+h1, h2, h3 { font-family: Fraunces, Georgia, serif; line-height: 1.15; }
+a { color: var(--accent); }
+
+.hero {
+  padding: 96px 0 72px;
+  border-bottom: 1px solid var(--line);
+  background:
+    repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 48px 48px;
+}
+.hero .wrap { background: var(--bg); padding: 32px 16px; }
+.kicker { color: var(--muted); margin: 0; font-size: 14px; }
+.hero h1 { font-size: clamp(36px, 7vw, 60px); margin: 8px 0 12px; }
+.lede { font-size: 20px; color: var(--muted); max-width: 36em; }
+.button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+section { padding: 40px 0; border-bottom: 1px solid var(--line); }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.card h3 { margin: 0 0 4px; }
+.card p { margin: 0; color: var(--muted); }
+footer { color: var(--muted); font-size: 14px; padding: 32px 16px; }
+
+main > h1 { font-size: clamp(32px, 6vw, 48px); margin: 8px 0 12px; }
+main > .kicker { padding-top: 32px; }
+.minutes-link { margin-top: 20px; }
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 12px;
+}
+.event {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.event { position: relative; }
+.event-date {
+  flex: none;
+  width: 64px;
+  text-align: center;
+  border-right: 1px solid var(--line);
+  padding: 4px 12px 4px 0;
+}
+.event-month {
+  display: block;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.event-day {
+  display: block;
+  font: 600 30px/1.1 Fraunces, Georgia, serif;
+}
+.event-body { min-width: 0; }
+.event-body h3 { margin: 0 0 2px; font-size: 18px; }
+.event-meta { margin: 0; color: var(--muted); font-size: 15px; }
+.event-club { border-left: 4px solid var(--accent); padding-left: 13px; }
+.event-club-label {
+  margin: 0 0 2px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+address { font-style: normal; margin: 12px 0 0; line-height: 1.5; }
+
+[hidden] { display: none !important; }
+.filter-menu {
+  font: inherit;
+  font-size: 15px;
+  padding: 6px 14px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+.filter-menu:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A bar of menu chips that stays under the navigation, like the chip bars in map and
+   shopping apps, so the filters never take over the screen. */
+.filter-bar {
+  position: sticky;
+  top: var(--nav-height, 0px);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px -16px 0;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.filter-menu::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 3px 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.filter-menu-set { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.filter-options {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 180px;
+  max-width: calc(100vw - 16px);
+  max-height: 60vh;
+  padding: 6px;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.filter-options:popover-open { display: flex; flex-direction: column; }
+.filter-options button {
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.filter-options button:hover { background: var(--bg); }
+.filter-options button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.filter-options button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+.filter-options button[aria-pressed="true"]::after { content: " ✓" / ""; }
+.event-group h2 { margin: 28px 0 12px; font-size: 22px; }
+.events-empty { color: var(--muted); }
+/* Not a scroll anchor: Chrome would keep it in view as cards are added above it, and in view it shows more again. */
+.events-more { display: block; margin: 24px auto 0; font: inherit; font-weight: 600; cursor: pointer; overflow-anchor: none; }
+/* Until the cards arrive, a filtered list holds a screen's height, so what follows it starts
+   off-screen and isn't seen to jump when dozens of cards push it down. If the reader is already
+   past it, the browser keeps what they see in place, anchored on that rather than the empty list. */
+[data-events][data-filters]:empty { min-height: 100vh; overflow-anchor: none; }
+
+html { scroll-padding-top: var(--nav-height, 80px); }
+.site-nav { position: sticky; top: 0; z-index: 3; border-bottom: 1px solid var(--line); background: var(--bg); }
+.site-nav .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.site-nav a { color: var(--fg); text-decoration: none; }
+.site-nav .brand { font: 600 18px/1.2 Fraunces, Georgia, serif; }
+.site-nav ul { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
+.site-nav a:hover, .site-nav a[aria-current] { color: var(--accent); }
+.site-nav ul a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
+.site-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+main > h1:first-child { margin-top: 32px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.event-year { display: block; font-size: 12px; color: var(--muted); }
+/* The title's button stretches over the whole card, so the card opens the details;
+   links in the card sit above it. */
+.event-open {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.event-open::after { content: ""; position: absolute; inset: -1px; border-radius: 8px; }
+.event-open:focus-visible { outline: none; }
+.event-open:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
+.event:hover, .event:has(.event-open[aria-expanded="true"]) { border-color: var(--accent); }
+.event-body a { position: relative; z-index: 1; }
+.event-date { order: -1; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 10; padding: 8px 16px; background: var(--accent); color: var(--bg); border-radius: 6px; font-weight: 600; }
+.skip-link:focus { top: 8px; }
+.prices { width: auto; min-width: min(100%, 420px); margin: 20px 0 8px; border-collapse: collapse; }
+.prices caption { text-align: left; font-weight: 600; margin-bottom: 6px; }
+.prices th, .prices td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.prices thead th, .prices tbody th { font-weight: 600; }
+.prices td { white-space: nowrap; }
+.button-secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.event-dialog {
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 0;
+  overflow: auto;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.event-dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+.event-dialog-body { padding: 24px 24px 8px; overflow-wrap: anywhere; }
+.event-dialog h2 { margin: 0 0 8px; padding-right: 40px; font-size: 26px; }
+.event-dialog h2:focus { outline: none; }
+.event-dialog-date { margin: 0; font-weight: 600; }
+.event-add { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 4px 0 20px; }
+.event-dialog-place { margin: 0 0 4px; }
+.event-description { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 4px; }
+.event-description ul { padding-left: 20px; }
+.event-dialog-close {
+  display: block;
+  margin: 0 24px 24px auto;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 20px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.event-dialog-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.event-dialog-x {
+  position: sticky;
+  top: 8px;
+  z-index: 1;
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 8px 8px -52px auto;
+  padding: 0;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--fg);
+  background: var(--card);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.event-dialog-x:hover { background: var(--bg); }
+.event-dialog-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.register-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; max-width: 28em; }
+.register-form label { font-weight: 600; margin-top: 12px; }
+.register-form input, .register-form select {
+  font: inherit;
+  padding: 8px 10px;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+}
+.register-form input:focus-visible, .register-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.register-form .button { justify-self: start; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+.register-form .button:disabled { opacity: 0.6; cursor: wait; }
+.register-hint { margin: 0; font-size: 14px; color: var(--muted); }
+.register-saved { margin: 4px 0 8px; padding: 0; border: 0; }
+.register-saved legend { padding: 0; font-weight: 600; }
+.register-saved ul { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.register-saved li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.register-saved button { font: inherit; padding: 6px 12px; color: var(--accent); background: var(--card); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; text-align: left; }
+.register-saved .register-pick { font-weight: 600; }
+.register-saved .register-forget { font-size: 14px; padding: 4px 10px; border-color: var(--muted); color: var(--fg); }
+.register-saved button:focus-visible, .register-remember input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.register-remember { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin-top: 12px; }
+.register-form .register-remember label { margin-top: 0; font-weight: 400; }
+.register-remember input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.register-remember .register-hint { grid-column: 2; }
+/* A field for bots only: off screen rather than display: none, which some bots skip. */
+.register-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.entries { border-collapse: collapse; }
+.entries th, .entries td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--line); text-align: left; }
+.entries td:last-child { font-variant-numeric: tabular-nums; }
+
+.next-up {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.next-card:hover { border-color: var(--accent); }
+.next-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.next-kicker { color: var(--muted); font-size: 14px; }
+.next-title { font: 600 24px/1.2 Fraunces, Georgia, serif; }
+.next-when { color: var(--muted); margin-bottom: 12px; }
+.next-button { align-self: flex-start; margin-top: auto; }
+
+.event-register { margin: 12px 0 8px; }
+.event-card-register { margin-top: 8px; padding: 6px 16px; font-size: 15px; }
+
+.td-combobox { position: relative; }
+.td-combobox input { width: 100%; }
+.td-players {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+}
+.td-players li { padding: 6px 12px; cursor: pointer; }
+.td-players li[aria-selected="true"], .td-players li:hover { background: var(--bg); color: var(--accent); }
+.td-players .td-none { color: var(--muted); cursor: default; }
+.td-chosen { margin: 4px 0 0; }
+/* Positioned, so the visually hidden labels in a wide table stay inside its scrolling box
+   instead of widening the page. */
+.td-table { overflow-x: auto; position: relative; }
+.td-entries td { white-space: nowrap; }
+.td-action { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
+.td-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.td-out td { color: var(--muted); }
+.register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.td-incidents { padding-left: 20px; }
+.entries-all section .entries { margin-bottom: 16px; }
+.td-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.td-pact { display: block; font-size: 14px; color: var(--muted); white-space: nowrap; }
+section.td-table { padding: 0; border-bottom: 0; }
+section.td-table:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+section.td-table td { white-space: nowrap; }
+.wallchart td { vertical-align: top; }
+.wallchart td small { display: block; font-size: 14px; color: var(--muted); }
+.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
+.run-sections legend { padding: 0; font-weight: 600; }
+.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
+.register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
+.run-section-row input { width: 100%; box-sizing: border-box; }
+.run-sections-edit { margin: 16px 0; }
+.run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.round-menu { margin: 12px 0 8px; }
+.round-menu label { font-weight: 600; }
+.round-menu select { font: inherit; padding: 6px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.round-menu select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a class="brand" href="/"><span aria-hidden="true">♞ </span>Larimer County Chess Club</a>
+      <ul>
+        <li><a href="/events/">Events</a></li>
+        <li><a href="/entries/">Entries</a></li>
+        <li><a href="/pairings/">Pairings</a></li>
+        <li><a href="/standings/">Standings</a></li>
+        <li><a href="/results/">Results</a></li>
+        <li><a href="/scholastic/">Scholastic</a></li>
+        <li><a href="/#join">Join</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main id="main" class="wrap">
+    <h1>Alley Cat Quad</h1>
+    <p>A US Chess rated tournament of the Larimer County Chess Club in Fort Collins, Colorado.
+      Next: <time datetime="2026-10-10T10:00:00-06:00">Saturday, October 10, 2026, 10:00 AM – 5:30 PM</time>.</p>
+
+    <section id="details">
+      <h2>Details</h2>
+      <p><strong>Cost:</strong> free.<br><strong>Time control:</strong> G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.</p>
+      <p>An invitational quad: four players, three rounds, and everyone plays everyone. Registration is closed; the tournament director invites the players.</p>
+      <p>Round times</p>
+      <ul><li>Round 1: 10:00 AM</li><li>Round 2: 12:30 PM</li><li>Round 3: 3:00 PM</li></ul>
+      <p>A current US Chess membership is required. Join or renew at <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">new.uschess.org/join-us-chess<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+      <p>Players under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.</p>
+      <p>Meet on the main floor at Peak Community Church in Old Town Fort Collins.</p>
+      <p>Questions: <a href="mailto:president@larimerchess.org">president@larimerchess.org</a></p>
+    </section>
+
+    <section id="register">
+      <h2>Register</h2>
+      <p class="register-invitational">This is an invitational: registration is closed, and the tournament director registers the players. The entries below are public.</p>
+      <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
+      <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
+      <form class="register-form" data-invitational="yes" hidden>
+        <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
+        <fieldset class="register-saved" hidden>
+          <legend>Players saved on this device</legend>
+          <ul></ul>
+        </fieldset>
+        <input type="hidden" name="event" value="alley-cat-quad">
+        <input type="hidden" name="date" value="2026-10-10" data-day="Saturday, October 10, 2026">
+        <p class="register-for"><strong>Saturday, October 10, 2026 · fee to be announced</strong></p>
+        <label for="register-id">US Chess ID</label>
+        <input id="register-id" name="uschess-id" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required autocomplete="on" aria-describedby="register-id-hint">
+        <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
+        <label for="register-last">Last name</label>
+        <input id="register-last" name="last" type="text" required autocomplete="family-name">
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
+        <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <div class="register-remember" hidden>
+          <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
+          <label for="register-remember">Remember this player on this device</label>
+          <p id="register-remember-hint" class="register-hint">Kept only in this browser, for next time. Uncheck it on a shared computer.</p>
+        </div>
+        <div class="register-trap" aria-hidden="true">
+          <label for="register-website">Leave this empty</label>
+          <input id="register-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <button class="button" type="submit">Register</button>
+        <p class="register-status" role="status"></p>
+      </form>
+    </section>
+
+    <section id="entries">
+      <h2>Entries</h2>
+      <p class="entries-status" role="status"></p>
+      <table class="entries" hidden>
+        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="where">
+      <h2>Where</h2>
+      <address><a href="https://www.google.com/maps/search/?api=1&amp;query=Peak%20Community%20Church%2C%20500%20Mathews%20St%2C%20Fort%20Collins%2C%20CO%2080524" target="_blank" rel="noopener"><span class="visually-hidden">Map: </span>Peak Community Church<br>500 Mathews St.<br>Fort Collins, CO 80524<span class="visually-hidden"> (opens in a new tab)</span></a></address>
+    </section>
+
+    <p><a href="/events/">All chess events in Fort Collins and Larimer County</a></p>
+  </main>
+
+  <footer class="wrap">
+    <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
+    <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    <p><a href="/minutes/">Board minutes</a></p>
+    <p>© 2026 Larimer County Chess Club</p>
+  </footer>
+  <script src="../../register.js?v=f3cfe3845d" defer></script>
+</body>
+</html>
