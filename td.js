@@ -77,12 +77,24 @@ async function signIn(value) {
   return true;
 }
 
+// The sign-in never leaves the page, so the browser may not notice it succeeded; handing it the
+// password once it has worked lets Chrome and others offer to save it.
+function offerToSave(value) {
+  if (!window.PasswordCredential || !navigator.credentials?.store) return;
+  navigator.credentials.store(new PasswordCredential({ id: "TD desk", password: value, name: "Larimer County Chess Club TD desk" }))
+    .catch(() => {});
+}
+
 login.addEventListener("submit", async (event) => {
   event.preventDefault();
   const status = login.querySelector(".td-login-status");
   status.textContent = "Signing in…";
   try {
-    if (await signIn(login.elements.password.value)) login.reset();
+    const value = login.elements.password.value;
+    if (await signIn(value)) {
+      offerToSave(value);
+      login.reset();
+    }
   } catch {
     status.textContent = "Couldn't reach the registration service. Try again.";
   }

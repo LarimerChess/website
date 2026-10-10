@@ -440,6 +440,12 @@ for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Reg
 // The TD desk, against a stand-in for the Apps Script: sign in, find a player by name,
 // register them, mark them paid, log an incident, and remove an entry.
 const desk = await browser.newPage();
+// A stand-in for the browser's password manager, to see what the desk offers it.
+await desk.evaluateOnNewDocument(() => {
+  window.stored = [];
+  window.PasswordCredential = class { constructor(data) { Object.assign(this, data); } };
+  Object.defineProperty(navigator, "credentials", { value: { store: async (c) => { window.stored.push(c); } } });
+});
 desk.on("pageerror", (error) => fail(`JavaScript error on /td/: ${error.message}`));
 const deskCalls = [];
 await desk.setRequestInterception(true);
@@ -473,6 +479,11 @@ await desk.goto(base + "/td/", { waitUntil: "networkidle0" });
 await desk.type("#td-password", "secret");
 await desk.click(".td-login button");
 await desk.waitForSelector(".td-desk:not([hidden])");
+const offered = await desk.evaluate(() => window.stored.map((c) => [c.id, c.password]));
+const usernameField = await desk.$eval('.td-login input[autocomplete="username"]', (i) => i.value).catch(() => null);
+JSON.stringify(offered) === JSON.stringify([["TD desk", "secret"]]) && usernameField === "TD desk"
+  ? pass("TD desk offers the password to the browser's password manager after signing in")
+  : fail(`TD desk password saving: ${JSON.stringify({ offered, usernameField })}`);
 await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $15"));
 await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
