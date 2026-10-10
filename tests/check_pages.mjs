@@ -296,8 +296,10 @@ registration.on("request", async (request) => {
   } else if (url.host === "registration.test") {
     const headers = { "Access-Control-Allow-Origin": "*" };
     if (request.method() === "POST") {
-      posted.push(Object.fromEntries(new URLSearchParams(request.postData())));
-      request.respond({ headers, contentType: "application/json", body: JSON.stringify({ ok: true, message: "Test Player is registered." }) });
+      const sent = Object.fromEntries(new URLSearchParams(request.postData()));
+      posted.push(sent);
+      const message = `Test ${sent.last} is registered for Saturday, November 7, 2026. Due when you arrive: $15 (adult).`;
+      request.respond({ headers, contentType: "application/json", body: JSON.stringify({ ok: true, message }) });
     } else {
       const entries = [{ name: "Test Player", id: "12345678", rating: "1500" }, { name: "New Player", id: "87654321", rating: "" }];
       request.respond({ headers, contentType: "application/json", body: JSON.stringify({ entries }) });
@@ -315,19 +317,59 @@ if (registerPath) {
   await registration.type("#register-id", "12345678");
   await registration.type("#register-last", "Player");
   await registration.type("#register-email", "test@example.com");
-  await registration.click(".register-form button");
+  await registration.click(".register-form button[type=submit]");
   await registration.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
   const sent = posted[0] || {};
   sent.event === registerPath.split("/").filter(Boolean).pop() && /^\d{4}-\d\d(-\d\d)?$/.test(sent.date)
     && sent.id === "12345678" && sent.last === "Player" && sent.email === "test@example.com" && !sent.website
-    ? pass(`${registerPath} sends the registration`) : fail(`${registerPath} sent ${JSON.stringify(sent)}`);
+    && !("uschess-id" in sent) ? pass(`${registerPath} sends the registration`) : fail(`${registerPath} sent ${JSON.stringify(sent)}`);
+
+  // Remembered players: a second registration goes first in the list, and after a reload
+  // each fills the form in one tap and can be forgotten.
+  await registration.type("#register-id", "87654321");
+  await registration.type("#register-last", "Kid");
+  await registration.click(".register-form button[type=submit]");
+  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.startsWith("Test Kid"));
+  await registration.reload({ waitUntil: "networkidle0" });
+  const saved = () => registration.$$eval(".register-saved:not([hidden]) .register-pick", (b) => b.map((x) => x.textContent));
+  const shown = await saved();
+  JSON.stringify(shown) === JSON.stringify(["Test Kid (87654321)", "Test Player (12345678)"])
+    ? pass(`${registerPath} offers the players registered here, most recent first`) : fail(`${registerPath} saved players: ${JSON.stringify(shown)}`);
+  await registration.click(".register-saved li:nth-child(2) .register-pick");
+  const filled = await registration.evaluate(() => ({ id: document.querySelector("#register-id").value,
+    last: document.querySelector("#register-last").value, email: document.querySelector("#register-email").value,
+    website: document.querySelector("#register-website").value, focus: document.activeElement.matches("#register-date, button[type=submit]") }));
+  filled.id === "12345678" && filled.last === "Player" && filled.email === "test@example.com" && !filled.website && filled.focus
+    && posted.length === 2 ? pass(`${registerPath} fills in a saved player without registering`) : fail(`${registerPath} filled ${JSON.stringify(filled)}`);
   for (const scheme of ["light", "dark"]) {
     await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
     await registration.evaluate(axeSource);
     const result = await registration.evaluate(() => axe.run({ include: ["#register", "#entries"] }));
     result.violations.length ? fail(`${registerPath} form (${scheme}): ${result.violations.map((v) => v.id).join(", ")}`)
-      : pass(`${registerPath} form has no axe violations (${scheme})`);
+      : pass(`${registerPath} form with saved players has no axe violations (${scheme})`);
   }
+  await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+  await registration.click(".register-saved li:first-child .register-forget");
+  const afterForget = await registration.evaluate(() => ({ stored: localStorage.getItem("lccc-register-players"),
+    focus: document.activeElement.textContent, said: document.querySelector(".register-status").textContent }));
+  JSON.stringify(await saved()) === JSON.stringify(["Test Player (12345678)"]) && !afterForget.stored.includes("87654321")
+    && afterForget.focus === "Test Player (12345678)" && afterForget.said.includes("no longer saved")
+    ? pass(`${registerPath} forgets a saved player`) : fail(`${registerPath} after Forget: ${JSON.stringify(afterForget)}`);
+  await registration.click(".register-saved li:first-child .register-forget");
+  const empty = await registration.evaluate(() => ({ hidden: document.querySelector(".register-saved").hidden,
+    stored: localStorage.getItem("lccc-register-players"), focus: document.activeElement.id }));
+  empty.hidden && empty.stored === null && empty.focus === "register-id"
+    ? pass(`${registerPath} hides the list when the last saved player is forgotten`) : fail(`${registerPath} after the last Forget: ${JSON.stringify(empty)}`);
+  // The fields still hold the player filled in above.
+  await registration.click("#register-remember");
+  await registration.click(".register-form button[type=submit]");
+  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.startsWith("Test Player is registered"));
+  await registration.reload({ waitUntil: "networkidle0" });
+  const unremembered = await registration.evaluate(() => ({ hidden: document.querySelector(".register-saved").hidden,
+    stored: localStorage.getItem("lccc-register-players"), checked: document.querySelector("#register-remember").checked }));
+  posted.length === 3 && unremembered.hidden && unremembered.stored === null && unremembered.checked
+    ? pass(`${registerPath} doesn't save a player when Remember is unchecked`) : fail(`${registerPath} unchecked Remember: ${JSON.stringify(unremembered)}`);
+  await registration.evaluate(() => localStorage.clear());
 }
 
 // The home page's register cards. Through a month's second Monday the club night card asks

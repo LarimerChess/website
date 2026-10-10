@@ -377,6 +377,18 @@ main > h1:first-child { margin-top: 32px; }
 .register-form .button { justify-self: start; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
 .register-form .button:disabled { opacity: 0.6; cursor: wait; }
 .register-hint { margin: 0; font-size: 14px; color: var(--muted); }
+.register-saved { margin: 4px 0 8px; padding: 0; border: 0; }
+.register-saved legend { padding: 0; font-weight: 600; }
+.register-saved ul { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.register-saved li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.register-saved button { font: inherit; padding: 6px 12px; color: var(--accent); background: var(--card); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; text-align: left; }
+.register-saved .register-pick { font-weight: 600; }
+.register-saved .register-forget { font-size: 14px; padding: 4px 10px; border-color: var(--muted); color: var(--fg); }
+.register-saved button:focus-visible, .register-remember input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.register-remember { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin-top: 12px; }
+.register-form .register-remember label { margin-top: 0; font-weight: 400; }
+.register-remember input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.register-remember .register-hint { grid-column: 2; }
 /* A field for bots only: off screen rather than display: none, which some bots skip. */
 .register-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .entries { border-collapse: collapse; }

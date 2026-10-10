@@ -378,6 +378,18 @@ main > h1:first-child { margin-top: 32px; }
 .register-form .button { justify-self: start; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
 .register-form .button:disabled { opacity: 0.6; cursor: wait; }
 .register-hint { margin: 0; font-size: 14px; color: var(--muted); }
+.register-saved { margin: 4px 0 8px; padding: 0; border: 0; }
+.register-saved legend { padding: 0; font-weight: 600; }
+.register-saved ul { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.register-saved li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.register-saved button { font: inherit; padding: 6px 12px; color: var(--accent); background: var(--card); border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; text-align: left; }
+.register-saved .register-pick { font-weight: 600; }
+.register-saved .register-forget { font-size: 14px; padding: 4px 10px; border-color: var(--muted); color: var(--fg); }
+.register-saved button:focus-visible, .register-remember input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.register-remember { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin-top: 12px; }
+.register-form .register-remember label { margin-top: 0; font-weight: 400; }
+.register-remember input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.register-remember .register-hint { grid-column: 2; }
 /* A field for bots only: off screen rather than display: none, which some bots skip. */
 .register-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .entries { border-collapse: collapse; }
@@ -489,17 +501,26 @@ section.td-table td { white-space: nowrap; }
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form" hidden>
         <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
+        <fieldset class="register-saved" hidden>
+          <legend>Fill in a player saved on this device</legend>
+          <ul></ul>
+        </fieldset>
         <input type="hidden" name="event" value="knightmare-arena-classical">
         <input type="hidden" name="date" value="2026-10-31" data-day="Saturday, October 31, 2026">
         <p class="register-for"><strong>Saturday, October 31, 2026 · $15, free under 18</strong></p>
         <label for="register-id">US Chess ID</label>
-        <input id="register-id" name="id" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required autocomplete="off" aria-describedby="register-id-hint">
+        <input id="register-id" name="uschess-id" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required autocomplete="on" aria-describedby="register-id-hint">
         <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
         <label for="register-last">Last name</label>
         <input id="register-last" name="last" type="text" required autocomplete="family-name">
         <label for="register-email">Email</label>
         <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
         <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <div class="register-remember" hidden>
+          <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
+          <label for="register-remember">Remember this player on this device</label>
+          <p id="register-remember-hint" class="register-hint">Kept only in this browser, for next time. Uncheck it on a shared computer.</p>
+        </div>
         <div class="register-trap" aria-hidden="true">
           <label for="register-website">Leave this empty</label>
           <input id="register-website" name="website" type="text" tabindex="-1" autocomplete="off">
@@ -531,6 +552,6 @@ section.td-table td { white-space: nowrap; }
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../../register.js?v=8a2b563af1" defer></script>
+  <script src="../../register.js?v=1317c676ce" defer></script>
 </body>
 </html>
