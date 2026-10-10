@@ -123,7 +123,7 @@ function whenText(event, start, end) {
 }
 
 // The organizer's line: "Run by X · Details", either part left out when it doesn't apply.
-// A club tournament's Details go to its own page on this site.
+// A club event's Details go to its own page on this site.
 function organizerLine(event) {
   const runBy = event.organizer && event.organizer !== CLUB ? `Run by ${event.organizer}` : "";
   const href = event.url || event.page;
@@ -511,11 +511,44 @@ function holdInView() {
   return () => scrollBy(0, after.getBoundingClientRect().top - top);
 }
 
+// The home page's two calls to action: the next Monday Club Night and the next Saturday
+// tournament. Through a month's second Monday, the club night card asks players to register
+// for the month; after it, to drop in.
+function nextUp(events, now) {
+  const club = events.filter((e) => e.organizer === CLUB && e.page && new Date(e.start) > now);
+  const monday = club.find((e) => !e.tags.includes("tournament"));
+  const saturday = club.find((e) => e.tags.includes("tournament"));
+  const name = (e) => e.title.replace(CLUB, "").trim();
+  const when = (e) => `${longDate.format(new Date(e.start))}, ${timeRange.format(new Date(e.start))}`
+    + (e.place?.name ? ` at ${e.place.name}` : "");
+  const fill = (id, card) => {
+    const link = document.getElementById(id);
+    if (!link) return;
+    if (!card) { link.hidden = true; return; }
+    for (const part of ["kicker", "title", "when", "button"]) link.querySelector(`.next-${part}`).textContent = card[part];
+    link.href = card.href;
+  };
+  let mondayCard = null;
+  if (monday) {
+    const start = new Date(monday.start);
+    const monthName = fmt({ month: "long" }).format(start);
+    mondayCard = Math.ceil(Number(day.format(start)) / 7) <= 2
+      ? { kicker: name(monday), title: `Register for ${monthName}`, when: `Starts ${when(monday)}`,
+          button: `Register for ${monthName}`, href: `${monday.page}?date=${monday.start.slice(0, 7)}#register` }
+      : { kicker: name(monday), title: `Drop in ${weekday.format(start)}`, when: when(monday),
+          button: "Club night details", href: monday.page };
+  }
+  fill("next-monday", mondayCard);
+  fill("next-saturday", saturday && { kicker: "Next tournament", title: name(saturday), when: when(saturday),
+    button: "Register", href: `${saturday.page}?date=${saturday.start.slice(0, 10)}#register` });
+}
+
 fetch(list.dataset.src || "events.json", { cache: "no-cache" })
   .then((response) => response.json())
   .then((events) => {
     const held = holdInView();
     const now = new Date();
+    nextUp(events, now);
     let upcoming = events.filter((e) => new Date(e.end) > now);
     if (list.dataset.calendar) upcoming = upcoming.filter((e) => e.calendar === list.dataset.calendar);
     if (list.dataset.only) upcoming = upcoming.filter((e) => (e.tags || []).includes(list.dataset.only));

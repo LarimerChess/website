@@ -1,7 +1,8 @@
 // Loads every page in Chrome against a local server and checks what HTML
 // validation can't: accessibility (axe, light and dark), the event details
 // dialog by keyboard, the filters, each card's Run by line and Details link, and
-// the structured data on the events page and each tournament's page.
+// the structured data on the events page and each club event's page, its
+// Register form and entry list, and the home page's register cards.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -260,6 +261,82 @@ youthTournaments === expectedTournaments ? pass(`scholastic tournaments: ${youth
 await page.goto(base + "/", { waitUntil: "networkidle0" });
 const homeCards = await page.$$eval(".event", (c) => c.length);
 homeCards > 0 && homeCards <= 6 ? pass(`home page shows ${homeCards} events`) : fail(`home page shows ${homeCards} events`);
+
+// Registration, against a stand-in for the Apps Script: register.js is served with its
+// ENDPOINT pointed at it, whatever the real one is.
+const registration = await browser.newPage();
+registration.on("pageerror", (error) => fail(`JavaScript error on ${registration.url()}: ${error.message}`));
+const posted = [];
+await registration.setRequestInterception(true);
+registration.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.host === "registration.test") {
+    const headers = { "Access-Control-Allow-Origin": "*" };
+    if (request.method() === "POST") {
+      posted.push(Object.fromEntries(new URLSearchParams(request.postData())));
+      request.respond({ headers, contentType: "application/json", body: JSON.stringify({ ok: true, message: "Test Player is registered." }) });
+    } else {
+      const entries = [{ name: "Test Player", id: "12345678", rating: "1500" }, { name: "New Player", id: "87654321", rating: "" }];
+      request.respond({ headers, contentType: "application/json", body: JSON.stringify({ entries }) });
+    }
+  } else {
+    request.continue();
+  }
+});
+const registerPath = seriesPages.find((p) => clubEvents.filter((e) => e.page === p).length > 1) || seriesPages[0];
+if (registerPath) {
+  await registration.goto(base + registerPath, { waitUntil: "networkidle0" });
+  const rows = await registration.$$eval(".entries tbody tr", (r) => r.map((x) => x.textContent));
+  rows.length === 2 && rows[1].includes("Unrated") ? pass(`${registerPath} lists the entries`)
+    : fail(`${registerPath} entries: ${JSON.stringify(rows)}`);
+  await registration.type("#register-id", "12345678");
+  await registration.type("#register-last", "Player");
+  await registration.type("#register-email", "test@example.com");
+  await registration.click(".register-form button");
+  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  const sent = posted[0] || {};
+  sent.event === registerPath.split("/").filter(Boolean).pop() && /^\d{4}-\d\d(-\d\d)?$/.test(sent.date)
+    && sent.id === "12345678" && sent.last === "Player" && sent.email === "test@example.com" && !sent.website
+    ? pass(`${registerPath} sends the registration`) : fail(`${registerPath} sent ${JSON.stringify(sent)}`);
+  for (const scheme of ["light", "dark"]) {
+    await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await registration.evaluate(axeSource);
+    const result = await registration.evaluate(() => axe.run({ include: ["#register", "#entries"] }));
+    result.violations.length ? fail(`${registerPath} form (${scheme}): ${result.violations.map((v) => v.id).join(", ")}`)
+      : pass(`${registerPath} form has no axe violations (${scheme})`);
+  }
+}
+
+// The home page's register cards. Through a month's second Monday the club night card asks
+// players to register for the month, then to drop in; the clock is set an hour before each case.
+const clubNights = clubEvents.filter((e) => !e.tags.includes("tournament"));
+const ordinal = (e) => Math.ceil(Number(e.start.slice(8, 10)) / 7);
+for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Register for /],
+                                 [clubNights.find((e) => ordinal(e) > 2), /^Drop in /]]) {
+  if (!night) continue;
+  const home = await browser.newPage();
+  const clock = new Date(night.start).getTime() - 3600000;
+  await home.evaluateOnNewDocument((fixed) => {
+    const RealDate = Date;
+    window.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : [fixed])); }
+      static now() { return fixed; }
+    };
+  }, clock);
+  await home.goto(base + "/", { waitUntil: "networkidle0" });
+  const cards = await home.evaluate(() => [...document.querySelectorAll(".next-card")]
+    .map((c) => ({ hidden: c.hidden, title: c.querySelector(".next-title").textContent, href: c.getAttribute("href") })));
+  const saturday = clubEvents.find((e) => e.tags.includes("tournament") && new Date(e.start) > clock);
+  expected.test(cards[0].title) && cards[0].href.startsWith(night.page)
+    && (!saturday || cards[1].href === `${saturday.page}?date=${saturday.start.slice(0, 10)}#register`)
+    ? pass(`home page before ${night.start.slice(0, 10)}: "${cards[0].title}", "${cards[1].title}"`)
+    : fail(`home page before ${night.start.slice(0, 10)}: ${JSON.stringify(cards)}`);
+  await home.close();
+}
 
 await browser.close();
 if (failures.length) {

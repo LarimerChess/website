@@ -4,8 +4,9 @@
     python scripts/build_pages.py --check  # fail if any is out of date with events.json
 
 - events/index.html gets schema.org Event data for every club event.
-- Each club tournament gets its own page at its "page" path (events/<name>/), with its
-  dates, its calendar description, and its Event data. A page whose tournament has left
+- Each club event gets its own page at its "page" path (events/<name>/), with its
+  dates, its calendar description, a Register form and entry list (register.js), and its
+  Event data. A page whose event has left
   events.json is deleted.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
   the day what it shows last changed. Every other page's lastmod is the day of the last
@@ -17,6 +18,7 @@ The Update calendar Action runs this after scripts/update_calendar.py, and the D
 Action after every push to main.
 """
 
+import hashlib
 import html
 import json
 import re
@@ -50,10 +52,16 @@ def time_text(t):
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
 
+def day_text(e):
+    """'Saturday, November 7, 2026'"""
+    start = datetime.fromisoformat(e["start"]).astimezone(TZ)
+    return f"{start:%A}, {start:%B} {start.day}, {start.year}"
+
+
 def when_text(e):
     """'Saturday, November 7, 2026, 10:00 AM – 7:00 PM', by docs/style.md's rules for dates and times."""
     start, end = datetime.fromisoformat(e["start"]).astimezone(TZ), datetime.fromisoformat(e["end"]).astimezone(TZ)
-    day = f"{start:%A}, {start:%B} {start.day}, {start.year}"
+    day = day_text(e)
     if e["allDay"]:
         return day
     if start.date() != end.date():
@@ -167,14 +175,73 @@ def data_script(events):
     return f'<script type="application/ld+json" id="club-events">{data}</script>'
 
 
+def register_choices(events):
+    """What a player registers for, as (value, label): each date of a tournament, or each month of a club night."""
+    if "tournament" in events[0]["tags"]:
+        return [(e["start"][:10], day_text(e)) for e in events]
+    months = {}
+    for e in events:
+        start = datetime.fromisoformat(e["start"]).astimezone(TZ)
+        months.setdefault(e["start"][:7], f"{start:%A}s in {start:%B} {start.year}")
+    return list(months.items())
+
+
+def register_html(events):
+    """The Register form and entry list, which register.js brings to life; one choice or a menu of them."""
+    name = events[0]["page"].strip("/").split("/")[-1]
+    choices = register_choices(events)
+    label = "Date" if "tournament" in events[0]["tags"] else "Month"
+    if len(choices) == 1:
+        value, text = choices[0]
+        date = f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(text)}">'
+    else:
+        options = "".join(f'<option value="{value}" data-day="{html.escape(text)}">{escaped(text)}</option>'
+                          for value, text in choices)
+        date = f'<label for="register-date">{label}</label>\n        <select id="register-date" name="date">{options}</select>'
+    return f"""<section id="register">
+      <h2>Register</h2>
+      <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
+      <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
+      <form class="register-form" hidden>
+        <p>Register online, then pay when you arrive.</p>
+        <input type="hidden" name="event" value="{name}">
+        {date}
+        <label for="register-id">US Chess ID</label>
+        <input id="register-id" name="id" type="text" inputmode="numeric" pattern="[0-9]{{8}}" maxlength="8" required autocomplete="off" aria-describedby="register-id-hint">
+        <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
+        <label for="register-last">Last name</label>
+        <input id="register-last" name="last" type="text" required autocomplete="family-name">
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
+        <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <div class="register-trap" aria-hidden="true">
+          <label for="register-website">Leave this empty</label>
+          <input id="register-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <button class="button" type="submit">Register</button>
+        <p class="register-status" role="status"></p>
+      </form>
+    </section>
+
+    <section id="entries">
+      <h2>Entries</h2>
+      <p class="entries-status" role="status"></p>
+      <table class="entries" hidden>
+        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>"""
+
+
 def series_page(events):
-    """The page for one club tournament, from its upcoming dates; the next date's description is shown."""
+    """The page for one club event, from its upcoming dates; the next date's description is shown."""
     e = events[0]
     name = e["title"].removeprefix(CLUB).strip()
     p = e["place"]
     city = p.get("city") or e["city"] or "Fort Collins"
     url = SITE + e["page"]
-    title = f"{name} | {city} Chess Tournament"
+    kind = "tournament" if "tournament" in e["tags"] else "club night"
+    title = f"{name} | {city} Chess {kind.title()}"
     if len(title) > 70:
         title = name
     what = summary(e)
@@ -233,7 +300,7 @@ def series_page(events):
   </nav>
   <main id="main" class="wrap">
     <h1>{escaped(name)}</h1>
-    <p>A US Chess rated tournament of the {CLUB} in {escaped(city)}, Colorado.</p>
+    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.</p>
 
     <section id="dates">
       <h2>Dates</h2>
@@ -246,6 +313,8 @@ def series_page(events):
       <h2>Details</h2>
       {description_html(e["description"])}
     </section>
+
+    {register_html(events)}
 
     <section id="where">
       <h2>Where</h2>
@@ -260,6 +329,7 @@ def series_page(events):
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
+  <script src="../../register.js?v={hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]}" defer></script>
 </body>
 </html>
 """
@@ -358,7 +428,7 @@ def main(check):
             continue
         for link in re.findall(r'href="/(events/[^/"#]+/)', page.read_text(encoding="utf-8")):
             if link not in pages:
-                sys.exit(f"{page.relative_to(ROOT)} links to /{link}, but events.json has no club tournament there. "
+                sys.exit(f"{page.relative_to(ROOT)} links to /{link}, but events.json has no club event there. "
                          "Fix the link, or the event's title in Google Calendar.")
     gone = [d for d in (ROOT / "events").iterdir()
             if d.is_dir() and f"events/{d.name}/" not in pages and (d / "index.html").exists()
@@ -379,7 +449,7 @@ def main(check):
             print(f"FAIL {path}: out of date with events.json; run python scripts/build_pages.py")
         if stale:
             sys.exit(1)
-        print(f"ok   pages match events.json ({len(club)} club events, {len(pages)} tournament pages)")
+        print(f"ok   pages match events.json ({len(club)} club events, {len(pages)} event pages)")
         return
     for path in stale:
         if path.endswith("/"):

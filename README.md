@@ -12,7 +12,7 @@ After changing calendar.js or style.css, run python scripts/sync_assets.py. It c
 
 The event cards come from events.json, which the Action "Update calendar" (.github/workflows/calendar.yml) rebuilds hourly with scripts/update_calendar.py. Don't edit events.json by hand. The script reads the club and community Google Calendars through the Calendar API, with a read-only OAuth token in the repository secret LCCC_GOOGLE_CALENDAR_READ_TOKEN, because the public iCal feeds leave out each event's metadata: private extended properties that say who runs it, its format, ages, rating, cost, and Details link. The filters use only that metadata, never titles or descriptions. FIELDS in the script lists the fields. If an event has missing or invalid metadata, the run fails, names the event, and leaves events.json alone.
 
-Then scripts/build_pages.py writes what search engines should read without running JavaScript, all from events.json: the schema.org Event data in events/index.html, a page for each club tournament at events/<name>/ (named from its calendar title), and the sitemap's tournament entries and lastmod dates. Every other page's lastmod is the day of the last commit that changed its text; the Date pages Action moves it after each push. Never edit those pages by hand; a page whose tournament has left events.json is deleted. Renaming a tournament in Google Calendar moves its page, and the run fails if a hand-written page still links to the old one.
+Then scripts/build_pages.py writes what search engines should read without running JavaScript, all from events.json: the schema.org Event data in events/index.html, a page for each club event at events/<name>/ (named from its calendar title), and the sitemap's entries for them and lastmod dates. Every other page's lastmod is the day of the last commit that changed its text; the Date pages Action moves it after each push. Never edit those pages by hand; a page whose event has left events.json is deleted. Renaming a club event in Google Calendar moves its page, and the run fails if a hand-written page still links to the old one.
 
 To run it locally, with a token JSON from ~/.config/lccc/:
 
@@ -20,6 +20,14 @@ To run it locally, with a token JSON from ~/.config/lccc/:
 LCCC_GOOGLE_TOKEN="$(cat ~/.config/lccc/google-token-calendar-read.json)" python3 scripts/update_calendar.py
 python3 scripts/build_pages.py
 ```
+
+## Registration
+
+Registering for club events is the site's main call to action. Each club event's page has a Register form and the list of players registered, from register.js: a tournament takes entries by date, Monday Club Night by month. Players pay when they arrive. The home page's two cards, filled by calendar.js, point to the next Monday Club Night and the next tournament; through a month's second Monday the club night card asks players to register for the month, and after it to drop in. Entries are kept in a private Google Sheet, through the Apps Script in scripts/registration.gs, which runs in that Sheet as president@larimerchess.org and is deployed as a web app anyone can call. ENDPOINT in register.js is its URL; while it is empty, the pages say registration isn't open yet.
+
+The script accepts a registration only for a club event in the live events.json until its date, or its month's last date, starts, checks the US Chess ID and last name against the public US Chess member lookup, refuses a second entry for the same player and date or month, and emails a confirmation with a withdraw link. The entry list shows name, US Chess ID, and regular rating; emails stay in the Sheet. Anyone can register any member, so the TD checks the list before the event and removes entries in the Sheet by setting Status to withdrawn.
+
+After changing scripts/registration.gs, paste it into the Sheet's Apps Script and deploy a new version of the existing deployment (Deploy → Manage deployments → Edit → New version), which keeps the URL.
 
 ## TD expirations
 

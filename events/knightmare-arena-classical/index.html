@@ -363,6 +363,50 @@ main > h1:first-child { margin-top: 32px; }
 }
 .event-dialog-x:hover { background: var(--bg); }
 .event-dialog-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.register-form { display: grid; gap: 4px; max-width: 28em; }
+.register-form label { font-weight: 600; margin-top: 12px; }
+.register-form input, .register-form select {
+  font: inherit;
+  padding: 8px 10px;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+}
+.register-form input:focus-visible, .register-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.register-form .button { justify-self: start; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+.register-form .button:disabled { opacity: 0.6; cursor: wait; }
+.register-hint { margin: 0; font-size: 14px; color: var(--muted); }
+/* A field for bots only: off screen rather than display: none, which some bots skip. */
+.register-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.entries { border-collapse: collapse; }
+.entries th, .entries td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--line); text-align: left; }
+.entries td:last-child { font-variant-numeric: tabular-nums; }
+
+.next-up {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.next-card:hover { border-color: var(--accent); }
+.next-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.next-kicker { color: var(--muted); font-size: 14px; }
+.next-title { font: 600 24px/1.2 Fraunces, Georgia, serif; }
+.next-when { color: var(--muted); margin-bottom: 12px; }
+.next-button { align-self: flex-start; margin-top: auto; }
 </style>
 </head>
 <body>
@@ -403,6 +447,40 @@ main > h1:first-child { margin-top: 32px; }
       <p>Questions: <a href="mailto:president@larimerchess.org">president@larimerchess.org</a></p>
     </section>
 
+    <section id="register">
+      <h2>Register</h2>
+      <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
+      <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
+      <form class="register-form" hidden>
+        <p>Register online, then pay when you arrive.</p>
+        <input type="hidden" name="event" value="knightmare-arena-classical">
+        <input type="hidden" name="date" value="2026-10-31" data-day="Saturday, October 31, 2026">
+        <label for="register-id">US Chess ID</label>
+        <input id="register-id" name="id" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required autocomplete="off" aria-describedby="register-id-hint">
+        <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
+        <label for="register-last">Last name</label>
+        <input id="register-last" name="last" type="text" required autocomplete="family-name">
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
+        <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <div class="register-trap" aria-hidden="true">
+          <label for="register-website">Leave this empty</label>
+          <input id="register-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <button class="button" type="submit">Register</button>
+        <p class="register-status" role="status"></p>
+      </form>
+    </section>
+
+    <section id="entries">
+      <h2>Entries</h2>
+      <p class="entries-status" role="status"></p>
+      <table class="entries" hidden>
+        <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
     <section id="where">
       <h2>Where</h2>
       <address><a href="https://www.google.com/maps/search/?api=1&amp;query=Peak%20Community%20Church%2C%20500%20Mathews%20St%2C%20Fort%20Collins%2C%20CO%2080524" target="_blank" rel="noopener"><span class="visually-hidden">Map: </span>Peak Community Church<br>500 Mathews St.<br>Fort Collins, CO 80524<span class="visually-hidden"> (opens in a new tab)</span></a></address>
@@ -416,5 +494,6 @@ main > h1:first-child { margin-top: 32px; }
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
+  <script src="../../register.js?v=1fd3ee1d14" defer></script>
 </body>
 </html>

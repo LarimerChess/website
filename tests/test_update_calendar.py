@@ -127,7 +127,7 @@ class Build(unittest.TestCase):
                                    "allDay", "location", "place", "city", "description"])
         self.assertEqual((e["start"], e["allDay"], e["city"]), ("2026-11-07T10:00:00-07:00", False, "Fort Collins"))
 
-    def test_club_tournaments_get_a_page(self):
+    def test_club_events_get_a_page(self):
         events = uc.build({"club": [
             item("First Saturday Classic", CLUB_TOURNAMENT),
             item("Larimer County Chess Club Knightmare Arena Classical", CLUB_TOURNAMENT),
@@ -136,7 +136,7 @@ class Build(unittest.TestCase):
         self.assertEqual({e["title"]: e["page"] for e in events}, {
             "First Saturday Classic": "/events/first-saturday-classic/",
             "Larimer County Chess Club Knightmare Arena Classical": "/events/knightmare-arena-classical/",
-            "Monday Club Night at Peak": "",
+            "Monday Club Night at Peak": "/events/monday-club-night-at-peak/",
             "Drop-In": "",
         })
 

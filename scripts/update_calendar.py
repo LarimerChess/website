@@ -89,7 +89,7 @@ def describe(meta, calendar):
 
 
 def series_page(title):
-    """The path of a club tournament's own page, which scripts/build_pages.py writes."""
+    """The path of a club event's own page, which scripts/build_pages.py writes."""
     name = title.removeprefix(CLUB).strip()
     return "/events/" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") + "/"
 
@@ -150,7 +150,7 @@ def build(items_by_calendar):
             events.append({
                 "title": title,
                 **describe(meta, calendar),
-                "page": series_page(title) if meta["organizer"] == CLUB and meta["format"] == "tournament" else "",
+                "page": series_page(title) if meta["organizer"] == CLUB else "",
                 "start": start.isoformat(),
                 "end": as_datetime(item["end"]).isoformat(),
                 "allDay": "date" in item["start"],
