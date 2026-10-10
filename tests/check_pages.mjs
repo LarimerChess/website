@@ -2,7 +2,8 @@
 // validation can't: accessibility (axe, light and dark), the event details
 // dialog by keyboard, the filters, each card's Run by line and Details link, and
 // the structured data on the events page and each club event's page, its
-// Register form and entry list, the home page's register cards, and the TD desk.
+// Register form and entry list, the home page's register cards, the TD desk, the Pairings
+// and Standings pages with sections, and the menu at desktop and phone widths.
 //   node tests/check_pages.mjs [base URL, default http://127.0.0.1:8765]
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -18,13 +19,14 @@ const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
 // The results pages outlive the events, so they come from the sitemap, not events.json.
 const resultsPages = [...readFileSync(new URL("../sitemap.xml", import.meta.url), "utf8")
   .matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/",
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/", "/standings/",
   ...seriesPages, ...resultsPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
 
-const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"] });
+// Wide enough for the menu to fit on one line, so the sticky menu covers nothing the checks click.
+const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"], defaultViewport: { width: 1100, height: 800 } });
 const page = await browser.newPage();
 // Every filter group sits in a menu, which has to be opened first. The list shows a page of
 // cards at a time, so the rest are shown before anything is counted. Show more is clicked in
@@ -38,6 +40,11 @@ async function showAll() {
   while (await page.$(".events-more:not([hidden])")) await page.$eval(".events-more", (b) => b.click());
 }
 page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
+// Clicks an element in the middle of the screen, since one at the edge can be under the sticky menu.
+async function press(tab, selector) {
+  await tab.$eval(selector, (el) => el.scrollIntoView({ block: "center" }));
+  await tab.click(selector);
+}
 
 for (const path of pages) {
   for (const scheme of ["light", "dark"]) {
@@ -546,12 +553,12 @@ await runPage.type("#td-password", "secret");
 await runPage.click(".td-login button");
 await runPage.waitForSelector(".run-start:not([hidden])");
 await runPage.type("#run-rounds", "3");
-await runPage.click(".run-start button");
+await press(runPage, ".run-start button[type=submit]");
 await runPage.waitForSelector(".run-round:not([hidden]) .run-pair");
 await runPage.waitForFunction(() => document.querySelectorAll(".run-attendance tbody tr").length === 4);
-await runPage.click(".run-pair");
+await press(runPage, ".run-pair");
 await runPage.waitForSelector(".run-pairings:not([hidden])");
-await runPage.click(".run-post");
+await press(runPage, ".run-post");
 await runPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
 const postedRound = runCalls.find((c) => c.action === "round") || {};
 const postedGames = JSON.parse(postedRound.games || "[]");
@@ -635,20 +642,20 @@ const startFields = await arenaPage.evaluate(() => ({ cutoff: !document.querySel
   rounds: !document.querySelector("#run-rounds").hidden, value: document.querySelector("#run-cutoff").value }));
 startFields.cutoff && !startFields.rounds && startFields.value === "17:30"
   ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
-await arenaPage.click(".run-start button");
+await press(arenaPage, ".run-start button[type=submit]");
 await arenaPage.waitForSelector(".run-arena:not([hidden])");
 for (let n = 1; n <= 4; n++) {
-  await arenaPage.click(".run-away tbody tr:first-child button");
+  await press(arenaPage, ".run-away tbody tr:first-child button");
   await arenaPage.waitForFunction((n) => document.querySelectorAll(".run-queue tbody tr").length === n, {}, n);
 }
-await arenaPage.click(".run-arena-pair");
+await press(arenaPage, ".run-arena-pair");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 2);
 const paired = JSON.parse(arenaCalls.find((c) => c.action === "arenaPair")?.games || "[]");
 JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222" }, { white: "33333333", black: "44444444" }])
   ? pass("TD desk starts an arena, queues players, and pairs them in queue order") : fail(`TD desk arena pairing: ${JSON.stringify(paired)}`);
-await arenaPage.click(".run-arena-games tbody tr:first-child td:nth-child(2) input[type=checkbox]");
+await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(2) input[type=checkbox]");
 await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(2) input:checked:not(:disabled)"));
-await arenaPage.click(".run-arena-games tbody tr:first-child .td-buttons button:first-child");
+await press(arenaPage, ".run-arena-games tbody tr:first-child .td-buttons button:first-child");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
 const board = await arenaPage.$$eval(".run-leaderboard tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
 const pact = arenaCalls.find((c) => c.action === "arenaPact") || {};
@@ -658,7 +665,7 @@ pact.game === "1" && pact.side === "white" && pact.on === "yes"
   ? pass("TD desk records a Blood Pact win and the leaderboard shows it, with ties shared")
   : fail(`TD desk arena leaderboard: ${JSON.stringify({ pact, board })}`);
 const queued = await arenaPage.$$eval(".run-queue tbody tr td:first-child", (cells) => cells.map((c) => c.textContent));
-await arenaPage.click(".run-arena-pair");
+await press(arenaPage, ".run-arena-pair");
 await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("just played each other"));
 JSON.stringify(queued) === JSON.stringify(["Ann", "Ben"]) && arenaCalls.filter((c) => c.action === "arenaPair").length === 1
   ? pass("TD desk puts both players back in the queue and doesn't pair them again at once")
@@ -672,34 +679,236 @@ for (const scheme of ["light", "dark"]) {
 }
 await arenaPage.close();
 
-// The Pairings page, against a stand-in for the Apps Script's ?tournaments=current.
-const pairingsPage = await browser.newPage();
-pairingsPage.on("pageerror", (error) => fail(`JavaScript error on /pairings/: ${error.message}`));
-await pairingsPage.setRequestInterception(true);
-pairingsPage.on("request", async (request) => {
-  const url = new URL(request.url());
-  if (url.pathname === "/register.js") {
-    const source = await (await fetch(base + "/register.js")).text();
-    request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
-  } else if (url.host === "registration.test") {
-    const players = [["a", "Ann", 1900], ["b", "Ben", 1700], ["c", "Cal", 1500]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
-    const tournaments = [{ name: "Classic, Saturday, November 7, 2026", plannedRounds: 3, status: "running", players,
-      rounds: [{ games: [{ board: 1, white: "a", black: "b", result: "1-0" }], byes: [{ id: "c", points: 1 }], out: [] }] }];
-    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify({ tournaments }) });
-  } else {
-    request.continue();
+// A page whose register.js points at a stand-in for the Apps Script; answer(fields) gives each call's JSON.
+async function mocked(label, answer, viewport) {
+  const tab = await browser.newPage();
+  tab.on("pageerror", (error) => fail(`JavaScript error on ${label}: ${error.message}`));
+  if (viewport) await tab.setViewport(viewport);
+  await tab.setRequestInterception(true);
+  tab.on("request", async (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/register.js") {
+      const source = await (await fetch(base + "/register.js")).text();
+      request.respond({ contentType: "text/javascript",
+        body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+    } else if (url.host === "registration.test") {
+      const fields = Object.fromEntries(new URLSearchParams(request.postData() || url.search));
+      request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(answer(fields)) });
+    } else {
+      request.continue();
+    }
+  });
+  return tab;
+}
+
+async function axeBoth(tab, label) {
+  for (const scheme of ["light", "dark"]) {
+    await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await tab.evaluate(axeSource);
+    const result = await tab.evaluate(() => axe.run());
+    result.violations.length ? fail(`${label} (${scheme}): ${result.violations.map((v) => `${v.id} at ${v.nodes[0].target}`).join(", ")}`)
+      : pass(`${label} has no axe violations (${scheme})`);
   }
-});
+  await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+}
+
+async function fitsPhone(tab, label) {
+  const { page: wide, view } = await tab.evaluate(() => ({ page: document.documentElement.scrollWidth, view: innerWidth }));
+  wide <= view ? pass(`${label} fits a ${view}px screen without scrolling sideways`) : fail(`${label} is ${wide}px wide on a ${view}px screen`);
+}
+
+const PHONE = { width: 390, height: 844 };
+
+// A tournament in two sections for the Pairings and Standings pages: round 1 done, round 2 under way.
+const twoSections = () => {
+  const players = [["a", "Ann", 2000, "Open"], ["b", "Ben", 1800, "Open"], ["c", "Cal", 1600, "Open"], ["d", "Dee", 1500, "Open"],
+    ["e", "Eve", 1300, "Under 1400"], ["f", "Fay", 1200, "Under 1400"], ["g", "Gus", null, "Under 1400"]]
+    .map(([id, name, rating, section], i) => ({ id, number: i + 1, name, rating, section, out: null }));
+  const rounds = [
+    { games: [{ board: 1, white: "a", black: "c", result: "1-0", section: "Open" }, { board: 2, white: "d", black: "b", result: "0-1", section: "Open" },
+      { board: 1, white: "e", black: "f", result: "1/2-1/2", section: "Under 1400" }],
+      byes: [{ id: "g", points: 1, section: "Under 1400" }], out: [], posted: true },
+    { games: [{ board: 1, white: "b", black: "a", result: "1/2-1/2", section: "Open" }, { board: 2, white: "c", black: "d", result: "", section: "Open" },
+      { board: 1, white: "g", black: "e", result: "", section: "Under 1400" }],
+      byes: [{ id: "f", points: 1, section: "Under 1400" }], out: [], posted: true },
+  ];
+  return [{ key: "classic/2026-11-07", name: "Classic, Saturday, November 7, 2026", format: "swiss", plannedRounds: 3, status: "running",
+    sections: [{ name: "Open" }, { name: "Under 1400", under: 1400 }], players, rounds }];
+};
+
+// The Pairings page: each section in its own table, with a round menu that starts at the latest round.
+const pairingsPage = await mocked("/pairings/", () => ({ tournaments: twoSections() }));
 await pairingsPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });
-const shownPairings = await pairingsPage.evaluate(() => [...document.querySelectorAll(".pairings-all tbody tr")].map((r) => r.textContent));
-shownPairings.length === 4 && shownPairings[0].includes("Ann (1900)") && shownPairings[0].includes("1–0")
-  ? pass("Pairings page shows the round and the standings") : fail(`Pairings page: ${JSON.stringify(shownPairings)}`);
-await pairingsPage.evaluate(axeSource);
-const pairingsAxe = await pairingsPage.evaluate(() => axe.run());
-pairingsAxe.violations.length ? fail(`Pairings page filled: ${pairingsAxe.violations.map((v) => v.id).join(", ")}`)
-  : pass("Pairings page filled has no axe violations");
+const sectionTables = () => pairingsPage.evaluate(() => [...document.querySelectorAll(".pairings-all h3")].map((h) => {
+  const menu = h.nextElementSibling;
+  const shown = menu.nextElementSibling;
+  return { name: h.textContent, round: menu.querySelector("select").value, label: menu.querySelector("label").textContent,
+    rows: [...shown.querySelectorAll("tbody tr")].map((r) => [...r.cells].map((c) => c.textContent)),
+    byes: shown.querySelector("p")?.textContent || "" };
+}));
+const latest = await sectionTables();
+JSON.stringify(latest.map((s) => [s.name, s.round, s.rows.length])) === JSON.stringify([["Open", "2", 2], ["Under 1400", "2", 1]])
+  && latest[0].rows[0].join("|") === "1|Ben (1800)|Ann (2000)|½–½" && latest[1].byes === "Byes: Fay (1200), full-point bye."
+  && latest[0].label === "Round, Open"
+  ? pass("Pairings page shows each section's latest round in its own table") : fail(`Pairings page sections: ${JSON.stringify(latest)}`);
+await pairingsPage.select(".pairings-all select", "1");
+const earlier = await sectionTables();
+earlier[0].round === "1" && earlier[0].rows[0].join("|") === "1|Ann (2000)|Cal (1600)|1–0" && earlier[1].round === "2"
+  ? pass("Pairings page's round menu shows an earlier round of one section") : fail(`Pairings page round menu: ${JSON.stringify(earlier)}`);
+await axeBoth(pairingsPage, "Pairings page with two sections");
+await pairingsPage.setViewport(PHONE);
+await fitsPhone(pairingsPage, "Pairings page with two sections");
 await pairingsPage.close();
+
+// The Standings page: each section's standings, after the latest round with results unless another is chosen.
+const standingsPage = await mocked("/standings/", () => ({ tournaments: twoSections() }));
+await standingsPage.goto(base + "/standings/", { waitUntil: "networkidle0" });
+const standingsTables = () => standingsPage.evaluate(() => [...document.querySelectorAll(".standings-all h3")].map((h) => {
+  const menu = h.nextElementSibling;
+  return { name: h.textContent, after: menu.querySelector("select").value,
+    options: [...menu.querySelectorAll("option")].map((o) => o.textContent),
+    head: [...menu.nextElementSibling.querySelectorAll("th")].map((c) => c.textContent),
+    rows: [...menu.nextElementSibling.querySelectorAll("tbody tr")].map((r) => [...r.cells].map((c) => c.textContent)) };
+}));
+const now = await standingsTables();
+JSON.stringify(now.map((s) => [s.name, s.after, s.options, s.rows.length])) === JSON.stringify([
+  ["Open", "2", ["1", "2 (in progress)"], 4], ["Under 1400", "1", ["1"], 3]])
+  && now[0].head.join("|") === "Place|Name|Rating|Score|Median|Solkoff|Cumulative|Opp. cumulative"
+  && now[0].rows.slice(0, 2).every((r) => r[3] === "1.5")
+  ? pass("Standings page shows each section after its latest round with results, with the 34E tiebreaks")
+  : fail(`Standings page: ${JSON.stringify(now)}`);
+await standingsPage.select(".standings-all select", "1");
+const afterOne = await standingsTables();
+afterOne[0].after === "1" && afterOne[0].rows[0][1] === "Ann" && afterOne[0].rows[0][3] === "1"
+  ? pass("Standings page's menu shows the standings after an earlier round") : fail(`Standings page after round 1: ${JSON.stringify(afterOne)}`);
+await axeBoth(standingsPage, "Standings page with two sections");
+await standingsPage.setViewport(PHONE);
+await fitsPhone(standingsPage, "Standings page with two sections");
+await standingsPage.close();
+
+// A quad on the Standings page: Sonneborn-Berger and head-to-head.
+const quadStandingsPage = await mocked("/standings/ with quads", () => {
+  const players = [["a", "Ann", 1900], ["b", "Ben", 1800], ["c", "Cal", 1700], ["d", "Dee", 1600]]
+    .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, section: "Quad 1", out: null }));
+  const rounds = [{ games: [{ board: 1, white: "a", black: "d", result: "1-0", section: "Quad 1" }, { board: 2, white: "b", black: "c", result: "1-0", section: "Quad 1" }], byes: [], out: [], posted: true }];
+  return { tournaments: [{ name: "Alley Cat Quad, Saturday, October 10, 2026", format: "quad", plannedRounds: 3, status: "running",
+    sections: [{ name: "Quad 1" }], players, rounds }] };
+});
+await quadStandingsPage.goto(base + "/standings/", { waitUntil: "networkidle0" });
+const quadHead = await quadStandingsPage.$$eval(".standings-all th", (cells) => cells.map((c) => c.textContent));
+quadHead.join("|") === "Place|Name|Rating|Score|Sonneborn-Berger|Head-to-head"
+  ? pass("Standings page ranks a quad by score, Sonneborn-Berger, and head-to-head (34F)") : fail(`Standings page quad: ${JSON.stringify(quadHead)}`);
+await quadStandingsPage.close();
+
+// Starting a Swiss in two sections on the TD desk, on a phone: the TD adds a section, moves a
+// player up, pairs round one in each section, posts it, and enters a result.
+let sectioned = null;
+const sectionCalls = [];
+const sectionDesk = await mocked("/td/ running a Swiss in two sections", (p) => {
+  sectionCalls.push(p);
+  if (p.action === "choices") return { choices: [{ key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07" }] };
+  if (p.action === "entries") return { entries: [] };
+  if (p.action === "incidents") return { incidents: [] };
+  if (p.action === "tournament") return { tournament: sectioned };
+  if (p.action === "start") {
+    const sections = JSON.parse(p.sections);
+    const players = [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", 1450],
+      ["55555555", "Eve", 1300], ["66666666", "Fay", 1200], ["77777777", "Gus", null]]
+      .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, out: null,
+        section: rating != null && rating >= 1400 ? "Open" : "Under 1400" }));
+    sectioned = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: Number(p.rounds), status: "running",
+      coin: p.coin, sections, players, rounds: [] };
+    return { ok: true, message: "Added 7 player(s)." };
+  }
+  if (p.action === "section") {
+    sectioned.players.find((x) => x.id === p.id).section = p.section;
+    return { ok: true, message: "Moved." };
+  }
+  if (p.action === "round") {
+    sectioned.rounds = [{ games: JSON.parse(p.games).map((g) => ({ ...g, result: "" })), byes: JSON.parse(p.byes), out: [], posted: p.post === "yes" }];
+    return { ok: true, message: "Round 1 is posted." };
+  }
+  if (p.action === "result") {
+    sectioned.rounds[0].games.find((g) => g.board === Number(p.board) && g.section === p.section).result = p.result;
+  }
+  return { ok: true };
+}, PHONE);
+await sectionDesk.goto(base + "/td/", { waitUntil: "networkidle0" });
+await sectionDesk.type("#td-password", "secret");
+await sectionDesk.click(".td-login button");
+await sectionDesk.waitForSelector(".run-start:not([hidden])");
+await sectionDesk.type("#run-rounds", "3");
+await press(sectionDesk, ".run-start .run-section-add");
+await sectionDesk.type(".run-start .run-section-row:last-child .run-section-name", "Under 1400");
+await sectionDesk.type(".run-start .run-section-row:last-child .run-section-under", "1400");
+await fitsPhone(sectionDesk, "TD desk's start form with two sections");
+await press(sectionDesk, ".run-start button[type=submit]");
+await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-attendance").length === 2);
+const started = sectionCalls.find((c) => c.action === "start") || {};
+const checkin = await sectionDesk.evaluate(() => ({
+  headings: [...document.querySelectorAll(".run-attendance-all h4")].map((h) => h.textContent),
+  // Dee, 1450, can't play down; Fay, 1200, can play up.
+  dee: [...document.querySelector('select[aria-label="Dee\'s section"]').options].map((o) => o.value),
+  fay: [...document.querySelector('select[aria-label="Fay\'s section"]').options].map((o) => o.value) }));
+started.sections === JSON.stringify([{ name: "Open" }, { name: "Under 1400", under: 1400 }])
+  && JSON.stringify(checkin) === JSON.stringify({ headings: ["Open (4)", "Under 1400 (3)"], dee: ["Open"], fay: ["Open", "Under 1400"] })
+  ? pass("TD desk starts a Swiss in two sections and checks in each section, offering only sections a player may enter")
+  : fail(`TD desk sections at start: ${JSON.stringify({ started, checkin })}`);
+await sectionDesk.select('select[aria-label="Fay\'s section"]', "Open");
+await sectionDesk.waitForFunction(() => document.querySelector(".run-attendance-all h4")?.textContent === "Open (5)");
+const moved = sectionCalls.find((c) => c.action === "section") || {};
+moved.id === "66666666" && moved.section === "Open" ? pass("TD desk moves a player up a section before round 1")
+  : fail(`TD desk section move: ${JSON.stringify(moved)}`);
+await axeBoth(sectionDesk, "TD desk checking in two sections");
+await fitsPhone(sectionDesk, "TD desk checking in two sections");
+await press(sectionDesk, ".run-pair");
+await sectionDesk.waitForSelector(".run-pairings:not([hidden])");
+const review = await sectionDesk.$$eval(".run-games-all h4", (h) => h.map((x) => x.textContent));
+await press(sectionDesk, ".run-post");
+await sectionDesk.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const firstRound = sectionCalls.find((c) => c.action === "round") || {};
+const sectionGames = JSON.parse(firstRound.games || "[]").map((g) => [g.section, g.board, g.white, g.black]);
+const sectionByes = JSON.parse(firstRound.byes || "[]");
+// Open: Ann, Ben, Cal, Dee, and Fay playing up, the lowest rated, with the bye (28L2); Under 1400: Eve and Gus.
+JSON.stringify(review) === JSON.stringify(["Open", "Under 1400"])
+  && JSON.stringify(sectionGames) === JSON.stringify([["Open", 1, "11111111", "33333333"], ["Open", 2, "44444444", "22222222"],
+    ["Under 1400", 1, "55555555", "77777777"]])
+  && JSON.stringify(sectionByes) === JSON.stringify([{ id: "66666666", points: 1, section: "Open" }])
+  ? pass("TD desk pairs round one in each section on its own, boards numbered within each")
+  : fail(`TD desk two-section round one: ${JSON.stringify({ review, sectionGames, sectionByes })}`);
+await sectionDesk.select('select[aria-label="Under 1400 board 1 result"]', "1-0");
+await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standings").length === 2);
+const resulted = sectionCalls.find((c) => c.action === "result") || {};
+resulted.section === "Under 1400" && resulted.board === "1" && resulted.result === "1-0"
+  ? pass("TD desk enters a result by section and board, with each section's standings") : fail(`TD desk result: ${JSON.stringify(resulted)}`);
+await axeBoth(sectionDesk, "TD desk entering results in two sections");
+await fitsPhone(sectionDesk, "TD desk entering results in two sections");
+await sectionDesk.close();
+
+// The menu: on one line at 1100px; on a phone it wraps, without covering the page or scrolling sideways.
+const layout = await browser.newPage();
+const failedBefore = failures.length;
+for (const path of pages) {
+  await layout.setViewport({ width: 1100, height: 800 });
+  await layout.goto(base + path, { waitUntil: "networkidle0" });
+  const wide = await layout.evaluate(() => {
+    const tops = [...document.querySelectorAll(".site-nav li")].map((li) => Math.round(li.getBoundingClientRect().top));
+    const brand = document.querySelector(".site-nav .brand").getBoundingClientRect();
+    const list = document.querySelector(".site-nav ul").getBoundingClientRect();
+    return { lines: new Set(tops).size, besideBrand: list.top < brand.bottom, footer: Boolean(document.querySelector('footer a[href="/minutes/"]')),
+      menu: [...document.querySelectorAll(".site-nav li")].map((li) => li.textContent).join(", ") };
+  });
+  if (wide.lines !== 1 || !wide.besideBrand || !wide.footer || wide.menu !== "Events, Entries, Pairings, Standings, Results, Scholastic, Join") {
+    fail(`menu at 1100px on ${path}: ${JSON.stringify(wide)}`);
+  }
+  await layout.setViewport(PHONE);
+  await layout.goto(base + path, { waitUntil: "networkidle0" });
+  const narrow = await layout.evaluate(() => ({ nav: document.querySelector(".site-nav").getBoundingClientRect().bottom,
+    content: document.querySelector("main").getBoundingClientRect().top, wide: document.documentElement.scrollWidth, view: innerWidth }));
+  if (narrow.content < narrow.nav || narrow.wide > narrow.view) fail(`${path} on a phone: ${JSON.stringify(narrow)}`);
+}
+if (failures.length === failedBefore) pass(`the menu fits one line at 1100px, and on a phone covers none of the ${pages.length} pages or makes them scroll sideways`);
+await layout.close();
 
 // A quad on the TD desk: round one comes from the round robin table (30G), with no check-in.
 const quadPage = await browser.newPage();
@@ -741,57 +950,46 @@ await quadPage.type("#td-password", "secret");
 await quadPage.click(".td-login button");
 await quadPage.waitForSelector(".run-start:not([hidden])");
 const quadFormat = await quadPage.$eval("#run-format", (s) => s.value);
-await quadPage.click(".run-start button");
+await press(quadPage, ".run-start button[type=submit]");
 await quadPage.waitForSelector(".run-round:not([hidden]) .run-pair");
-await quadPage.click(".run-pair");
+await press(quadPage, ".run-pair");
 await quadPage.waitForSelector(".run-pairings:not([hidden])");
-await quadPage.click(".run-post");
+await press(quadPage, ".run-post");
 await quadPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
 const quadRound = JSON.parse((quadCalls.find((c) => c.action === "round") || {}).games || "[]");
 quadFormat === "quad" && JSON.stringify(quadRound.map((g) => [g.white, g.black])) === JSON.stringify([["22222222", "33333333"], ["44444444", "11111111"]])
   ? pass("TD desk pairs a quad's first round from the table (1 v 4, 2 v 3)") : fail(`TD desk quad: format ${quadFormat}, ${JSON.stringify(quadRound)}`);
 await quadPage.close();
 
-// The Pairings page with an arena: games in progress, the queue, the leaderboard, and recent results.
-const arenaPairings = await browser.newPage();
-arenaPairings.on("pageerror", (error) => fail(`JavaScript error on /pairings/ with an arena: ${error.message}`));
-await arenaPairings.setRequestInterception(true);
-arenaPairings.on("request", async (request) => {
-  const url = new URL(request.url());
-  if (url.pathname === "/register.js") {
-    const source = await (await fetch(base + "/register.js")).text();
-    request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
-  } else if (url.host === "registration.test") {
-    const players = [["a", "Ann", 1900], ["b", "Ben", 1700], ["c", "Cal", 1500], ["d", "Dee", null]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
-    const tournaments = [{ name: "Knightmare Arena Classical, Saturday, October 31, 2026", format: "arena", cutoff: "17:30", status: "running",
-      players, rounds: [], queue: [{ id: "b", since: "2026-10-31 10:52:10" }, { id: "a", since: "2026-10-31 10:52:10" }],
-      games: [{ game: 1, white: "a", black: "b", whitePact: true, blackPact: false, result: "1-0" },
-        { game: 2, white: "c", black: "d", whitePact: false, blackPact: true, result: "" }] }];
-    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify({ tournaments }) });
-  } else {
-    request.continue();
-  }
-});
+// An arena: the Pairings page shows its games in progress, the queue, and recent results; the
+// Standings page, its leaderboard.
+const arenaData = () => {
+  const players = [["a", "Ann", 1900], ["b", "Ben", 1700], ["c", "Cal", 1500], ["d", "Dee", null]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
+  return { tournaments: [{ name: "Knightmare Arena Classical, Saturday, October 31, 2026", format: "arena", cutoff: "17:30", status: "running",
+    players, rounds: [], queue: [{ id: "b", since: "2026-10-31 10:52:10" }, { id: "a", since: "2026-10-31 10:52:10" }],
+    games: [{ game: 1, white: "a", black: "b", whitePact: true, blackPact: false, result: "1-0" },
+      { game: 2, white: "c", black: "d", whitePact: false, blackPact: true, result: "" }] }] };
+};
+const arenaPairings = await mocked("/pairings/ with an arena", arenaData);
 await arenaPairings.goto(base + "/pairings/", { waitUntil: "networkidle0" });
 const shownArena = await arenaPairings.evaluate(() => ({
   headings: [...document.querySelectorAll(".pairings-all h3")].map((h) => h.textContent),
   text: document.querySelector(".pairings-all").textContent,
+  standings: Boolean(document.querySelector('.pairings-all a[href="/standings/"]')),
   tables: [...document.querySelectorAll(".pairings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))) }));
-JSON.stringify(shownArena.headings) === JSON.stringify(["Games in progress", "Leaderboard", "Recent results"])
+JSON.stringify(shownArena.headings) === JSON.stringify(["Games in progress", "Recent results"])
   && shownArena.text.includes("No new games start after 5:30 PM.") && shownArena.text.includes("Waiting for a game: Ben (1700), Ann (1900).")
-  && shownArena.tables[0][0][2] === "Dee (unrated), Blood Pact"
-  && JSON.stringify(shownArena.tables[1][0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"])
-  && shownArena.tables[2][0][3] === "1–0"
-  ? pass("Pairings page shows an arena's games, queue, leaderboard, and results") : fail(`Pairings page arena: ${JSON.stringify(shownArena)}`);
-for (const scheme of ["light", "dark"]) {
-  await arenaPairings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-  await arenaPairings.evaluate(axeSource);
-  const result = await arenaPairings.evaluate(() => axe.run());
-  result.violations.length ? fail(`Pairings page with an arena (${scheme}): ${result.violations.map((v) => v.id).join(", ")}`)
-    : pass(`Pairings page with an arena has no axe violations (${scheme})`);
-}
+  && shownArena.tables[0][0][2] === "Dee (unrated), Blood Pact" && shownArena.tables[1][0][3] === "1–0" && shownArena.standings
+  ? pass("Pairings page shows an arena's games, queue, and results, and links to its leaderboard") : fail(`Pairings page arena: ${JSON.stringify(shownArena)}`);
+await axeBoth(arenaPairings, "Pairings page with an arena");
 await arenaPairings.close();
+const arenaStandings = await mocked("/standings/ with an arena", arenaData);
+await arenaStandings.goto(base + "/standings/", { waitUntil: "networkidle0" });
+const leaderboard = await arenaStandings.$$eval(".standings-all tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
+JSON.stringify(leaderboard[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"]) && leaderboard.length === 4
+  ? pass("Standings page shows an arena's leaderboard") : fail(`Standings page arena: ${JSON.stringify(leaderboard)}`);
+await axeBoth(arenaStandings, "Standings page with an arena");
+await arenaStandings.close();
 
 await browser.close();
 if (failures.length) {

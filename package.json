@@ -2,10 +2,11 @@
   "private": true,
   "description": "Checks for larimerchess.org; see .github/workflows/checks.yml",
   "scripts": {
-    "check:html": "html-validate index.html events minutes scholastic td entries pairings results",
+    "check:html": "html-validate index.html events minutes scholastic td entries pairings standings results",
     "check:pages": "node tests/check_pages.mjs",
     "test:pairing": "node --test tests/test_pairing.mjs",
-    "test:arena": "node --test tests/test_arena.mjs"
+    "test:arena": "node --test tests/test_arena.mjs",
+    "test:registration": "node --test tests/test_registration.mjs"
   },
   "devDependencies": {
     "axe-core": "4.14.0",

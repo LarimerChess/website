@@ -50,6 +50,9 @@ jobs:
       - name: Arena tests
         if: success() || failure()
         run: node --test tests/test_arena.mjs
+      - name: Registration script tests (running tournaments and sections)
+        if: success() || failure()
+        run: node --test tests/test_registration.mjs
       - name: Pages (accessibility, filters, add to calendar, structured data, tournament and results pages)
         if: success() || failure()
         run: |

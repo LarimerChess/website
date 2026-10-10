@@ -123,6 +123,35 @@
       "coin": "white",
       "players": [{"id": "90000031", "number": 1, "name": "Zed Zelkova", "rating": 1500, "out": null}],
       "rounds": []
+    },
+    {
+      "key": "second-saturday-sections/2026-12-12",
+      "event": "second-saturday-sections",
+      "name": "Second Saturday Sections, Saturday, December 12, 2026",
+      "format": "swiss",
+      "plannedRounds": 2,
+      "status": "finished",
+      "coin": "white",
+      "sections": [{"name": "Open"}, {"name": "Under 1400", "under": 1400}],
+      "players": [
+        {"id": "90000061", "number": 1, "name": "Ivy Ironwood", "rating": 2000, "out": null, "section": "Open"},
+        {"id": "90000062", "number": 2, "name": "Jo Juniper", "rating": 1800, "out": null, "section": "Open"},
+        {"id": "90000063", "number": 3, "name": "Kit Kapok", "rating": 1600, "out": null, "section": "Open"},
+        {"id": "90000064", "number": 4, "name": "Lu Larch", "rating": 1350, "out": null, "section": "Under 1400"},
+        {"id": "90000065", "number": 5, "name": "Max Maple", "rating": 1300, "out": null, "section": "Open"},
+        {"id": "90000066", "number": 6, "name": "Ned Nutmeg", "rating": 1100, "out": null, "section": "Under 1400"},
+        {"id": "90000067", "number": 7, "name": "Oz Olive", "rating": null, "out": null, "section": "Under 1400"}
+      ],
+      "rounds": [
+        {"games": [{"board": 1, "white": "90000061", "black": "90000063", "result": "1-0", "section": "Open"},
+                   {"board": 2, "white": "90000065", "black": "90000062", "result": "0-1", "section": "Open"},
+                   {"board": 1, "white": "90000064", "black": "90000067", "result": "1-0", "section": "Under 1400"}],
+         "byes": [{"id": "90000066", "points": 1, "section": "Under 1400"}], "out": [], "posted": true},
+        {"games": [{"board": 1, "white": "90000062", "black": "90000061", "result": "1/2-1/2", "section": "Open"},
+                   {"board": 2, "white": "90000063", "black": "90000065", "result": "0-1", "section": "Open"},
+                   {"board": 1, "white": "90000066", "black": "90000064", "result": "0-1", "section": "Under 1400"}],
+         "byes": [{"id": "90000067", "points": 1, "section": "Under 1400"}], "out": [], "posted": true}
+      ]
     }
   ]
 }

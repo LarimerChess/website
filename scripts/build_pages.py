@@ -46,8 +46,8 @@ LISTINGS = {
 LABEL = re.compile(r"^(?:Cost(?: for [^:]+)?|Time control):")
 LINK = re.compile(r"https?://[^\s<>\"]*[^\s<>\".,;:!?)]|[\w.+-]+@[\w-]+\.[\w.-]*\w")
 STREET_ABBREVIATIONS = {"St", "Ave", "Rd", "Dr", "Blvd", "Ln", "Ct", "Pl", "Pkwy"}
-NAV = [("/events/", "Events"), ("/entries/", "Entries"), ("/pairings/", "Pairings"),
-       ("/scholastic/", "Scholastic"), ("/minutes/", "Board minutes"), ("/#join", "Join")]
+NAV = [("/events/", "Events"), ("/entries/", "Entries"), ("/pairings/", "Pairings"), ("/standings/", "Standings"),
+       ("/results/", "Results"), ("/scholastic/", "Scholastic"), ("/#join", "Join")]
 
 
 def time_text(t):
@@ -375,6 +375,7 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
   <footer class="wrap">
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    <p><a href="/minutes/"{' aria-current="page"' if current == "/minutes/" else ''}>Board minutes</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>{scripts}
 </body>

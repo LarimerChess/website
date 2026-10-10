@@ -219,3 +219,78 @@ test("34F: quad standings by score, then Sonneborn-Berger, then the game between
   rounds[2].games[0].result = "1/2-1/2";
   assert.equal(Pairing.quadStandings({ players, rounds })[0].id, "b");
 });
+
+/** Players [id, rating, section] numbered by rating across the whole tournament, as the desk starts them. */
+function field(list) {
+  return [...list].sort((a, b) => (b[1] ?? -1) - (a[1] ?? -1))
+    .map(([id, rating, section], i) => ({ id, name: id, rating, number: i + 1, section }));
+}
+const OPEN_U1400 = [{ name: "Open" }, { name: "Under 1400", under: 1400 }];
+
+test("sections: the lowest limit a rating is under, unrated players too, and no playing down", () => {
+  assert.equal(Pairing.placeIn(OPEN_U1400, 1900), "Open");
+  assert.equal(Pairing.placeIn(OPEN_U1400, 1400), "Open");
+  assert.equal(Pairing.placeIn(OPEN_U1400, "1399P"), "Under 1400");
+  assert.equal(Pairing.placeIn(OPEN_U1400, null), "Under 1400");
+  assert.equal(Pairing.placeIn([{ name: "U1000", under: 1000 }, { name: "U1600", under: 1600 }], 1200), "U1600");
+  assert.ok(Pairing.mayEnter(OPEN_U1400[0], 1200), "a player may play up");
+  assert.ok(!Pairing.mayEnter(OPEN_U1400[1], 1500), "but not down");
+});
+
+test("sections are paired independently (28A, 29), with boards numbered within each", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1800, "Open"], ["c", 1600, "Open"], ["d", 1500, "Open"],
+    ["e", 1300, "Under 1400"], ["f", 1200, "Under 1400"], ["g", 1100, "Under 1400"]]);
+  const t = { format: "swiss", sections: OPEN_U1400, players, rounds: [] };
+  const [open, under] = Pairing.pairSections(t, { coin: "white" });
+  assert.deepEqual([open.section, under.section], ["Open", "Under 1400"]);
+  assert.deepEqual(open.games.map((g) => [g.board, g.white, g.black]), [[1, "a", "c"], [2, "d", "b"]]);
+  // The odd player out in the Under 1400 gets the bye, not a game against the Open.
+  assert.deepEqual(under.games.map((g) => [g.board, g.white, g.black]), [[1, "e", "f"]]);
+  assert.deepEqual(under.byes, [{ id: "g", points: 1 }]);
+  const split = Pairing.sections(t);
+  assert.deepEqual(split.map((s) => s.players.map((p) => [p.id, p.number])),
+    [[["a", 1], ["b", 2], ["c", 3], ["d", 4]], [["e", 1], ["f", 2], ["g", 3]]]);
+});
+
+test("a player who plays up is paired and ranked in the higher section only", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1800, "Open"], ["c", 1300, "Open"],
+    ["d", 1350, "Under 1400"], ["e", 1250, "Under 1400"], ["f", 1000, "Under 1400"], ["g", 900, "Under 1400"]]);
+  const t = { format: "swiss", sections: OPEN_U1400, players, rounds: [] };
+  const [open, under] = Pairing.pairSections(t, { coin: "white" });
+  assert.ok(open.games.some((g) => [g.white, g.black].includes("c")) || open.byes.some((b) => b.id === "c"));
+  assert.ok(!under.games.some((g) => [g.white, g.black].includes("c")));
+  t.rounds.push({ games: [...open.games, ...under.games].map((g) => ({ ...g, result: "1-0" })), byes: [...open.byes, ...under.byes], out: [] });
+  const tables = Pairing.sections(t).map((s) => Pairing.standings(s).map((r) => r.id).sort());
+  assert.deepEqual(tables, [["a", "b", "c"], ["d", "e", "f", "g"]]);
+});
+
+test("a player with no section yet goes where their rating puts them", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1300, ""], ["c", 1200, "Under 1400"]]);
+  const split = Pairing.sections({ format: "swiss", sections: OPEN_U1400, players, rounds: [] });
+  assert.deepEqual(split.map((s) => s.players.map((p) => p.id)), [["a"], ["b", "c"]]);
+});
+
+test("quads as sections: each quad pairs from the table with its own numbers 1 to 4", () => {
+  const players = [...Array(8)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1,
+    section: `Quad ${Math.ceil((i + 1) / 4)}` }));
+  const t = { format: "quad", sections: [{ name: "Quad 1" }, { name: "Quad 2" }], players, rounds: [] };
+  const rounds = Pairing.pairSections(t);
+  assert.deepEqual(rounds.map((r) => [r.section, r.games.map((g) => [g.board, g.white, g.black])]),
+    [["Quad 1", [[1, "p1", "p4"], [2, "p2", "p3"]]], ["Quad 2", [[1, "p5", "p8"], [2, "p6", "p7"]]]]);
+});
+
+test("no sections: one section, paired exactly as before, and old quads keep their boards", () => {
+  const players = field([["a", 2000], ["b", 1800], ["c", 1600], ["d", 1500], ["e", 1300]]);
+  const t = { players, rounds: [] };
+  const split = Pairing.sections(t);
+  assert.equal(split.length, 1);
+  assert.equal(split[0].key, "");
+  const [only] = Pairing.pairSections(t, { coin: "black" });
+  const plain = Pairing.pairRound(t, { coin: "black" });
+  assert.deepEqual({ games: only.games, byes: only.byes }, { games: plain.games, byes: plain.byes });
+
+  const quads = [...Array(8)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1 }));
+  const old = { format: "quad", players: quads, rounds: [] };
+  assert.deepEqual(Pairing.sections(old).map((s) => [s.name, s.key]), [["Quad 1", ""], ["Quad 2", ""]]);
+  assert.deepEqual(Pairing.pairSections(old).flatMap((r) => r.games), Pairing.pairQuadRound(quads, 1).games);
+});
