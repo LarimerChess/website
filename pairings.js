@@ -125,7 +125,7 @@ function pairingsSection(t, ti) {
     return section;
   }
   const { parts, several } = partsOf(t);
-  const kind = (points) => points === 1 ? "full-point bye" : points === 0.5 ? "half-point bye" : "not playing";
+  const kind = (b) => ({ bye: "full-point bye", half: "half-point bye", zero: "zero-point bye", unplayed: "unplayed" })[Pairing.byeKind(b)];
   const of = t.plannedRounds ? ` of ${t.plannedRounds}` : "";
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
@@ -134,7 +134,7 @@ function pairingsSection(t, ti) {
       const round = s.rounds[n - 1];
       const shown = [tableOf(["Board", "White", "Black", "Result"],
         round.games.map((g) => [g.board, name(g.white), name(g.black), SHOWN[g.result] || ""]))];
-      if (round.byes.length) shown.push(paragraph(`Byes: ${round.byes.map((b) => `${name(b.id)}, ${kind(b.points)}`).join("; ")}.`));
+      if (round.byes.length) shown.push(paragraph(`Without a game: ${round.byes.map((b) => `${name(b.id)}, ${kind(b)}`).join("; ")}.`));
       return shown;
     };
     section.append(...roundMenu(`round-${ti}-${si}`, "Round", several ? s.name : "", rounds, rounds.length, draw));

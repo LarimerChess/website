@@ -5,12 +5,12 @@
 //
 // A tournament is { players, rounds }:
 //   players: [{ id, name, rating }]  rating null for an unrated player
-//   rounds:  [{ games: [{ white, black, result }], byes: [{ id, points }], out: [ids] }]
+//   rounds:  [{ games: [{ white, black, result }], byes: [{ id, points, kind }], out: [ids] }]
 //     result: "1-0", "0-1", "1/2-1/2", or a forfeit, "1F-0F", "0F-1F", "0F-0F"
-//     byes: points 1 for the full-point bye, 0.5 for a requested half-point bye, 0 for absent
+//     byes: the rounds players have no game in; kind is bye (1 point), half (0.5), zero, or unplayed (0)
 //     out: withdrawn or expelled before this round, and in every later round
 //
-// pairRound(tournament, { halfByes, absent, out, coin }) returns { games: [{ board, white, black }], byes, notes }
+// pairRound(tournament, { halfByes, zeroByes, absent, out, coin }) returns { games: [{ board, white, black }], byes, notes }
 // for the next round. coin, for round one: "white" if the higher-rated player on board one has white.
 //
 // A tournament with sections also has sections: [{ name, under }] and each player's section;
@@ -21,6 +21,12 @@
 
   const POINTS = { "1-0": [1, 0], "0-1": [0, 1], "1/2-1/2": [0.5, 0.5], "1F-0F": [1, 0], "0F-1F": [0, 1], "0F-0F": [0, 0] };
   const FORFEIT = (result) => /F/.test(result);
+  // A round a player has no game in: a full-point bye (28L), a half-point bye (22C), a zero-point
+  // bye asked for in advance, or unplayed, such as a no-show. The TD can reclassify one afterward,
+  // so a row may carry its kind; one without falls back on its points.
+  const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
+  const byeKind = (b) => (BYE_KINDS[b.kind] !== undefined ? b.kind
+    : Number(b.points) === 1 ? "bye" : Number(b.points) === 0.5 ? "half" : "unplayed");
 
   /** Everything the rules look at for each player, after the rounds played so far. */
   function histories(tournament) {
@@ -54,8 +60,8 @@
         const p = info.get(bye.id);
         if (!p) continue;
         p.score += Number(bye.points) || 0;
-        if (Number(bye.points) === 1) p.hadFullBye = true;
-        if (Number(bye.points) === 0.5) p.hadHalfBye = true;
+        if (byeKind(bye) === "bye") p.hadFullBye = true;
+        if (byeKind(bye) === "half") p.hadHalfBye = true;
         p.colors.push(null);
         touched.add(p.id);
       }
@@ -354,19 +360,21 @@
     const info = histories(tournament);
     const halfByes = new Set(options.halfByes || []);
     const absent = new Set(options.absent || []);
+    const zeroByes = new Set(options.zeroByes || []);
     const leaving = new Set(options.out || []);
     const notes = [];
     const byes = [];
     const playing = [];
     for (const p of info.values()) {
       if (p.out || leaving.has(p.id)) continue;
-      if (halfByes.has(p.id)) byes.push({ id: p.id, points: 0.5 });
-      else if (absent.has(p.id)) byes.push({ id: p.id, points: 0 });
+      if (halfByes.has(p.id)) byes.push({ id: p.id, points: 0.5, kind: "half" });
+      else if (zeroByes.has(p.id)) byes.push({ id: p.id, points: 0, kind: "zero" });
+      else if (absent.has(p.id)) byes.push({ id: p.id, points: 0, kind: "unplayed" });
       else playing.push(p);
     }
     if (playing.length % 2) {
       const bye = chooseBye(playing);
-      byes.push({ id: bye.id, points: 1 });
+      byes.push({ id: bye.id, points: 1, kind: "bye" });
       playing.splice(playing.indexOf(bye), 1);
       notes.push(`Full-point bye: ${bye.name || bye.id}.`);
     }
@@ -568,7 +576,7 @@
     });
   }
 
-  const Pairing = { pairRound, standings, pairQuadRound, quadStandings, sections, pairSections, placeIn, mayEnter,
+  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, pairQuadRound, quadStandings, sections, pairSections, placeIn, mayEnter,
     QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;

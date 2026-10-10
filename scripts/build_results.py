@@ -91,13 +91,22 @@ def in_section(item):
     return f" {item['section']}" if item.get("section") else ""
 
 
+def bye_kind(b):
+    """A round without a game: bye, half, zero, or unplayed, as pairing.js's byeKind; a row from before
+    kinds were stored falls back on its points."""
+    if b.get("kind") in ("bye", "half", "zero", "unplayed"):
+        return b["kind"]
+    return {1: "bye", 0.5: "half"}.get(float(b.get("points") or 0), "unplayed")
+
+
 def fingerprint(t):
     """What the page shows, as a hash. docs/scripts/archive_tournaments.py computes the same from the
     spreadsheet's rows and clears a tournament only when the published page carries it."""
     lines = [f"P {p['id']} {p.get('out') or ''}{in_section(p)}" for p in t["players"]]
     for n, r in enumerate(t["rounds"], 1):
         lines += [f"G {n} {g['board']} {g['white']} {g['black']} {g.get('result') or ''}{in_section(g)}" for g in r["games"]]
-        lines += [f"B {n} {b['id']} {float(b.get('points') or 0):g}{in_section(b)}" for b in r.get("byes", [])]
+        lines += [f"B {n} {b['id']} {float(b.get('points') or 0):g}{in_section(b)}{' ' + b['kind'] if b.get('kind') else ''}"
+                  for b in r.get("byes", [])]
     lines += [f"A {g.get('game')} {g['white']} {g['black']} {g.get('result') or ''} "
               f"{pact(g.get('whitePact'))} {pact(g.get('blackPact'))}" for g in arena_games(t)]
     return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()[:16]
@@ -151,7 +160,8 @@ def wall_chart(t):
                 got[me] = (code, number.get(them), "" if forfeit or not result else color, points)
         for b in r.get("byes", []):
             points = float(b.get("points") or 0)
-            got[b["id"]] = ({1: "B", 0.5: "H"}.get(points, "U"), None, "", points)
+            # A zero-point bye and an unplayed round are both U, as on the rating report.
+            got[b["id"]] = ({"bye": "B", "half": "H"}.get(bye_kind(b), "U"), None, "", points)
         for pid in rows:
             code, opponent, color, points = got.get(pid, ("U", None, "", 0))
             running[pid] += points

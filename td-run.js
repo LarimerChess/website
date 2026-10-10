@@ -156,6 +156,7 @@ function renderRun() {
     + (t.status === "finished" ? " Finished." : "");
   runStandingsWrap.hidden = !t.rounds.length;
   renderStandings();
+  if (t.rounds.length) renderByesAll();
   if (t.status === "finished") return;
   runRound.hidden = false;
   if (last && !last.posted) {
@@ -186,7 +187,7 @@ function renderCheckin(t, parts, next) {
   // A quad's pairings come from the table, so a player not here loses that game by forfeit.
   runCheckinHint.textContent = quad
     ? "Mark each player who is here Present. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
-    : "Mark each player who is here Present; only they are paired. Everyone else gets a zero-point bye, unless they asked for a half-point bye (22C).";
+    : "Mark each player who is here Present; only they are paired. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section).
@@ -216,8 +217,9 @@ function renderCheckin(t, parts, next) {
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round`);
       // Nobody is paired until the TD marks them present.
-      select.append(option("absent", quad ? "Not here: loses by forfeit" : "Not here: zero-point bye", true),
-        option("play", "Present", false), ...(quad ? [] : [option("half", "Half-point bye", false)]),
+      select.append(option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", true),
+        option("play", "Present", false),
+        ...(quad ? [] : [option("half", "Half-point bye (asked for)", false), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
       row.insertCell().append(select);
       return row;
@@ -263,8 +265,9 @@ function renderDraft() {
       row.insertCell().textContent = (RESULTS.find(([v]) => v === g.result) || ["", ""])[1].replace("No result", "");
       return row;
     });
-    const label = (b) => `${nameOf(b.id)}, ${b.points === 1 ? "full-point bye" : b.points === 0.5 ? "half-point bye" : "zero-point bye"}`;
-    const byes = Object.assign(document.createElement("p"), { textContent: s.byes.length ? `Byes: ${s.byes.map(label).join("; ")}.` : "No byes." });
+    const label = (b) => `${nameOf(b.id)}, ${BYE_LABELS[Pairing.byeKind(b)].toLowerCase()}`;
+    const byes = Object.assign(document.createElement("p"), { textContent: s.byes.length
+      ? `Without a game: ${s.byes.map(label).join("; ")}.` : "Everyone has a game." });
     const notes = document.createElement("ul");
     notes.append(...(s.notes || []).map((n) => Object.assign(document.createElement("li"), { textContent: n })));
     return [...sectionTable("run-games", ["Board", "White", "Black", "Result"], rows, s.name, several), byes, ...(notes.children.length ? [notes] : [])];
@@ -301,9 +304,44 @@ function renderResults(number) {
       return row;
     });
     const byes = Object.assign(document.createElement("p"), { textContent: here.byes.length
-      ? `Byes: ${here.byes.map((b) => `${nameOf(b.id)} (${b.points})`).join("; ")}.` : "No byes." });
+      ? `Without a game: ${here.byes.map((b) => `${nameOf(b.id)}, ${BYE_LABELS[Pairing.byeKind(b)].toLowerCase()}`).join("; ")}.`
+      : "Everyone has a game." });
     return [...sectionTable("run-games", ["Board", "White", "Black", "Result"], rows, s.name, several), byes];
   }));
+}
+
+const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
+
+/** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). */
+function renderByesAll() {
+  const box = document.querySelector(".run-byes-all");
+  const rows = current.rounds.flatMap((r, i) => r.byes.map((b) => {
+    const row = document.createElement("tr");
+    row.insertCell().textContent = i + 1;
+    row.insertCell().textContent = nameOf(b.id);
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `${nameOf(b.id)}, round ${i + 1}`);
+    const kind = Pairing.byeKind(b);
+    for (const [value, text] of Object.entries(BYE_LABELS)) select.append(option(value, text, value === kind));
+    select.addEventListener("change", async () => {
+      const [event, date] = keyParts();
+      select.disabled = true;
+      const result = await call("byeKind", { event, date, number: i + 1, id: b.id, kind: select.value });
+      select.disabled = false;
+      if (!result.ok) {
+        select.value = kind;
+        return void (runStatus.textContent = result.error);
+      }
+      b.kind = select.value;
+      b.points = Pairing.BYE_KINDS[select.value];
+      runStatus.textContent = `${nameOf(b.id)}, round ${i + 1}: ${BYE_LABELS[select.value]}.`;
+      renderStandings();
+    });
+    row.insertCell().append(select);
+    return row;
+  }));
+  box.replaceChildren(...(rows.length ? sectionTable("run-byes-table", ["Round", "Player", "Kind"], rows, "Byes and unplayed rounds", false)
+    : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
 }
 
 const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative"];
@@ -402,6 +440,7 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
   const sections = Pairing.pairSections(forEngine(current), {
     halfByes: choicesMade.filter(([, v]) => v === "half").map(([id]) => id),
+    zeroByes: choicesMade.filter(([, v]) => v === "zero").map(([id]) => id),
     absent: choicesMade.filter(([, v]) => v === "absent").map(([id]) => id),
     out: withdrawn,
     coin: current.coin,
@@ -437,7 +476,8 @@ async function saveDraft(post) {
   }
   const games = draft.sections.flatMap((s) => s.games.map((g) => ({ board: g.board, white: g.white, black: g.black, section: s.section,
     result: g.result || "" })));
-  const byes = draft.sections.flatMap((s) => s.byes.map((b) => ({ id: b.id, points: b.points, section: s.section })));
+  const byes = draft.sections.flatMap((s) => s.byes.map((b) => ({ id: b.id, points: b.points, kind: Pairing.byeKind(b),
+    section: s.section })));
   const [event, date] = keyParts();
   const result = await call("round", { event, date, number: draft.number, post: post ? "yes" : "no",
     games: JSON.stringify(games), byes: JSON.stringify(byes) });

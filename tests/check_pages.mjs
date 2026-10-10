@@ -783,7 +783,7 @@ const sectionTables = () => pairingsPage.evaluate(() => [...document.querySelect
 }));
 const latest = await sectionTables();
 JSON.stringify(latest.map((s) => [s.name, s.round, s.rows.length])) === JSON.stringify([["Open", "2", 2], ["Under 1400", "2", 1]])
-  && latest[0].rows[0].join("|") === "1|Ben (1800)|Ann (2000)|½–½" && latest[1].byes === "Byes: Fay (1200), full-point bye."
+  && latest[0].rows[0].join("|") === "1|Ben (1800)|Ann (2000)|½–½" && latest[1].byes === "Without a game: Fay (1200), full-point bye."
   && latest[0].label === "Round, Open"
   ? pass("Pairings page shows each section's latest round in its own table") : fail(`Pairings page sections: ${JSON.stringify(latest)}`);
 await pairingsPage.select(".pairings-all select", "1");
@@ -909,7 +909,7 @@ const sectionByes = JSON.parse(firstRound.byes || "[]");
 JSON.stringify(review) === JSON.stringify(["Open", "Under 1400"])
   && JSON.stringify(sectionGames) === JSON.stringify([["Open", 1, "11111111", "33333333"], ["Open", 2, "44444444", "22222222"],
     ["Under 1400", 1, "55555555", "77777777"]])
-  && JSON.stringify(sectionByes) === JSON.stringify([{ id: "66666666", points: 1, section: "Open" }])
+  && JSON.stringify(sectionByes) === JSON.stringify([{ id: "66666666", points: 1, kind: "bye", section: "Open" }])
   ? pass("TD desk pairs round one in each section on its own, boards numbered within each")
   : fail(`TD desk two-section round one: ${JSON.stringify({ review, sectionGames, sectionByes })}`);
 await sectionDesk.select('select[aria-label="Under 1400 board 1 result"]', "1-0");
@@ -917,6 +917,12 @@ await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standing
 const resulted = sectionCalls.find((c) => c.action === "result") || {};
 resulted.section === "Under 1400" && resulted.board === "1" && resulted.result === "1-0"
   ? pass("TD desk enters a result by section and board, with each section's standings") : fail(`TD desk result: ${JSON.stringify(resulted)}`);
+// The round without a game can be reclassified afterward; the change saves at once.
+await sectionDesk.select('.run-byes-all select[aria-label$="round 1"]', "half");
+await sectionDesk.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Half-point bye"));
+const reclassified = sectionCalls.find((c) => c.action === "byeKind") || {};
+reclassified.id === "66666666" && reclassified.number === "1" && reclassified.kind === "half"
+  ? pass("TD desk reclassifies a full-point bye as a half-point bye afterward") : fail(`TD desk reclassify: ${JSON.stringify(reclassified)}`);
 await axeBoth(sectionDesk, "TD desk entering results in two sections");
 await fitsPhone(sectionDesk, "TD desk entering results in two sections");
 await sectionDesk.close();

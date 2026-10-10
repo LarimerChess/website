@@ -77,7 +77,7 @@ test("28L2: an odd field gives the lowest-rated rated player the bye, never an u
     .map((p) => ({ ...p, name: p.id }));
   players.push({ id: "d", name: "d", rating: 1600 });
   const { byes } = Pairing.pairRound({ players, rounds: [] }, { coin: "white" });
-  assert.deepEqual(byes, [{ id: "c", points: 1 }]);
+  assert.deepEqual(byes, [{ id: "c", points: 1, kind: "bye" }]);
 });
 
 test("29E7, examples 2 and 3: a 34-point transposition fixes the colors", () => {
@@ -246,7 +246,7 @@ test("sections are paired independently (28A, 29), with boards numbered within e
   assert.deepEqual(open.games.map((g) => [g.board, g.white, g.black]), [[1, "a", "c"], [2, "d", "b"]]);
   // The odd player out in the Under 1400 gets the bye, not a game against the Open.
   assert.deepEqual(under.games.map((g) => [g.board, g.white, g.black]), [[1, "e", "f"]]);
-  assert.deepEqual(under.byes, [{ id: "g", points: 1 }]);
+  assert.deepEqual(under.byes, [{ id: "g", points: 1, kind: "bye" }]);
   const split = Pairing.sections(t);
   assert.deepEqual(split.map((s) => s.players.map((p) => [p.id, p.number])),
     [[["a", 1], ["b", 2], ["c", 3], ["d", 4]], [["e", 1], ["f", 2], ["g", 3]]]);
@@ -293,4 +293,19 @@ test("no sections: one section, paired exactly as before, and old quads keep the
   const old = { format: "quad", players: quads, rounds: [] };
   assert.deepEqual(Pairing.sections(old).map((s) => [s.name, s.key]), [["Quad 1", ""], ["Quad 2", ""]]);
   assert.deepEqual(Pairing.pairSections(old).flatMap((r) => r.games), Pairing.pairQuadRound(quads, 1).games);
+});
+
+test("byes and unplayed rounds are classified, and a reclassified round counts as its new kind", () => {
+  const players = ["a", "b", "c", "d", "e"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100 }));
+  const { byes } = Pairing.pairRound({ players, rounds: [] }, { coin: "white", halfByes: ["a"], zeroByes: ["b"], absent: ["c"] });
+  assert.deepEqual(byes.map((b) => [b.id, b.kind, b.points]).sort(),
+    [["a", "half", 0.5], ["b", "zero", 0], ["c", "unplayed", 0]]);
+  // A row from before kinds were stored falls back on its points.
+  assert.deepEqual([{ points: 1 }, { points: 0.5 }, { points: 0 }].map(Pairing.byeKind), ["bye", "half", "unplayed"]);
+  // An unplayed round the TD later makes a full-point bye counts as one: no second full-point bye (28L3).
+  const t = { players, rounds: [{ games: [{ white: "d", black: "e", result: "1-0" }],
+    byes: [{ id: "a", points: 1, kind: "bye" }, { id: "b", points: 0, kind: "unplayed" }, { id: "c", points: 0, kind: "zero" }] }] };
+  assert.equal(Pairing.histories(t).get("a").hadFullBye, true);
+  assert.equal(Pairing.histories(t).get("b").hadFullBye, false);
+  assert.equal(Pairing.standings(t).find((r) => r.id === "a").score, 1);
 });

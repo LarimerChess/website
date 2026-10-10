@@ -14,7 +14,7 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, round, result, out, finish, and for arenas:
+ *                               sync, sections, section, round, result, byeKind, out, finish, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
@@ -52,7 +52,7 @@ const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"],
-  Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section"],
+  Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
   Queue: ["Key", "US Chess ID", "Since"],
 };
@@ -90,6 +90,7 @@ function doPost(e) {
       case "section": return json(setSection(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
+      case "byeKind": return json(saveByeKind(p));
       case "out": return json(setOut(p));
       case "finish": return json(finishTournament(`${p.event}/${p.date}`));
       case "arenaJoin": return json(arenaJoin(p));
@@ -459,7 +460,8 @@ function tournament(key, td) {
     return {
       games: here.filter((r) => r.Black).sort((a, b) => Number(a.Board) - Number(b.Board))
         .map((r) => ({ board: Number(r.Board), white: r.White, black: r.Black, result: r.Result, section: r.Section || "" })),
-      byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0, section: r.Section || "" })),
+      byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0, section: r.Section || "",
+        kind: r["Bye kind"] || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
       posted: here.some((r) => r.Posted),
     };
@@ -565,6 +567,29 @@ function syncPlayers(key) {
 
 /** Saves a round's pairings and byes; posted makes them public. Replaces the round if it was saved before. */
 const FORFEITS = ["1F-0F", "0F-1F", "0F-0F"];
+// A round without a game: a full-point bye, a half-point bye, a zero-point bye asked for in
+// advance, or unplayed (such as a no-show), with the points each scores. pairing.js has the same.
+const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
+
+/** Reclassifies a player's round without a game, such as an unplayed round the TD later excuses
+ *  as a half-point bye; the points follow the kind. */
+function saveByeKind(p) {
+  if (BYE_KINDS[p.kind] === undefined) return { error: "Not a kind of bye." };
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Rounds");
+    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && r.White === p.id && !r.Black);
+    if (!line) return { error: "That player has a game that round, not a bye." };
+    setCell(t, line.row, "Bye kind", p.kind);
+    setCell(t, line.row, "Bye points", String(BYE_KINDS[p.kind]));
+    clearTournamentCache();
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function saveRound(p) {
   const key = `${p.event}/${p.date}`;
@@ -589,7 +614,8 @@ function saveRound(p) {
     }
     for (const b of byes) {
       appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: "", White: b.id, Black: "",
-        Result: "", "Bye points": String(b.points), Posted: posted, Section: String(b.section || "") });
+        Result: "", "Bye points": String(b.points), Posted: posted, Section: String(b.section || ""),
+        "Bye kind": BYE_KINDS[b.kind] !== undefined ? b.kind : "" });
     }
     clearTournamentCache();
     return { ok: true, message: posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.` };
