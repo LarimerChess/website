@@ -981,6 +981,236 @@ await axeBoth(sectionDesk, "TD desk entering results in two sections");
 await fitsPhone(sectionDesk, "TD desk entering results in two sections");
 await sectionDesk.close();
 
+// Players reporting results on the Pairings page: Ben is saved on this device by the Register
+// form, so his board gets buttons; board 1 already has White's report, which shows as awaiting the TD.
+const fourPlayers = () => [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", 1300]]
+  .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, section: "", out: null }));
+const reportable = () => [{ key: "classic/2026-11-07", name: "Classic, Saturday, November 7, 2026", format: "swiss", plannedRounds: 3,
+  status: "running", sections: [], players: fourPlayers(), rounds: [{ games: [
+    { board: 1, white: "11111111", black: "33333333", result: "", section: "", reports: { white: "1-0", black: "" } },
+    { board: 2, white: "44444444", black: "22222222", result: "", section: "" }], byes: [], out: [], posted: true }] }];
+const reports = [];
+const reportAnswer = (p) => {
+  if (p.action !== "report") return { tournaments: reportable() };
+  reports.push(p);
+  return { ok: true, message: `Board ${p.board}: 0–1 is reported. The TD will confirm it.` };
+};
+const reportPage = await mocked("/pairings/ reporting a result", reportAnswer, PHONE);
+await reportPage.evaluateOnNewDocument(() => {
+  if (!sessionStorage.getItem("seeded")) {
+    localStorage.setItem("lccc-register-players", JSON.stringify([{ id: "22222222", last: "Ben", email: "ben@example.com", name: "Ben" }]));
+    sessionStorage.setItem("seeded", "1");
+  }
+});
+await reportPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const reportShown = () => reportPage.evaluate(() => ({
+  results: [...document.querySelectorAll(".pairings-all tbody tr")].map((r) => r.cells[3].textContent),
+  boxes: [...document.querySelectorAll(".report")].map((b) => b.querySelector("p").textContent),
+  buttons: [...document.querySelectorAll(".report button")].map((b) => `${b.textContent}${b.getAttribute("aria-pressed") === "true" ? " (pressed)" : ""}`),
+  status: document.querySelector(".report [role=status]")?.textContent, focused: document.activeElement?.textContent }));
+const beforeReport = await reportShown();
+JSON.stringify(beforeReport.results) === JSON.stringify(["1–0, reported, awaiting the TD", ""])
+  && beforeReport.boxes.length === 1 && beforeReport.boxes[0].startsWith("Board 2: Dee (1300) with white, Ben (1700) with black")
+  && JSON.stringify(beforeReport.buttons) === JSON.stringify(["1–0, Dee won", "0–1, Ben won", "½–½, a draw"])
+  ? pass("Pairings page shows a report awaiting the TD, and report buttons only for the board of a player saved here")
+  : fail(`Pairings page reports: ${JSON.stringify(beforeReport)}`);
+await axeBoth(reportPage, "Pairings page with a result to report");
+await fitsPhone(reportPage, "Pairings page with a result to report");
+await press(reportPage, ".report button:nth-child(2)");
+await reportPage.waitForFunction(() => document.querySelector(".report [role=status]")?.textContent.includes("reported"));
+const afterReport = await reportShown();
+const sentReport = reports[0] || {};
+JSON.stringify(sentReport) === JSON.stringify({ action: "report", event: "classic", date: "2026-11-07", number: "1", board: "2", section: "",
+  id: "22222222", result: "0-1" }) && afterReport.results[1] === "0–1, reported, awaiting the TD"
+  && afterReport.buttons[1] === "0–1, Ben won (pressed)" && afterReport.focused === "0–1, Ben won"
+  ? pass("a saved player reports their result, which shows as awaiting the TD") : fail(`Pairings page report: ${JSON.stringify({ sentReport, afterReport })}`);
+// A player who hasn't saved anyone finds their board by US Chess ID, which saves them the same way.
+await reportPage.evaluate(() => localStorage.clear());
+await reportPage.reload({ waitUntil: "networkidle0" });
+const unsaved = await reportShown();
+await reportPage.type("#report-id", "99999999");
+await press(reportPage, ".report-find button");
+const nobody = await reportPage.$eval(".report-find [role=status]", (p) => p.textContent);
+await reportPage.$eval("#report-id", (i) => { i.value = ""; });
+await reportPage.type("#report-id", "33333333");
+await press(reportPage, ".report-find button");
+await reportPage.waitForSelector(".report");
+const foundBoard = await reportShown();
+const savedNow = await reportPage.evaluate(() => JSON.parse(localStorage.getItem("lccc-register-players")));
+unsaved.boxes.length === 0 && nobody.startsWith("Nobody with that US Chess ID") && foundBoard.boxes[0]?.startsWith("Board 1: Ann (1900)")
+  && JSON.stringify(savedNow) === JSON.stringify([{ id: "33333333", last: "", email: "", name: "Cal" }]) && foundBoard.focused === "1–0, Ann won"
+  ? pass("a player finds their board by US Chess ID on the Pairings page, and is saved on this device")
+  : fail(`Pairings page find by ID: ${JSON.stringify({ unsaved, nobody, foundBoard, savedNow })}`);
+await axeBoth(reportPage, "Pairings page after finding a board by US Chess ID");
+await reportPage.close();
+
+// A desk that keeps a Swiss of four in memory, for the checks below. rounds, if given, starts it with them.
+function deskState(rounds) {
+  const state = { calls: [], held: rounds ? { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running",
+    coin: "white", players: fourPlayers(), rounds } : null };
+  state.answer = (p) => {
+    state.calls.push(p);
+    const held = state.held;
+    if (p.action === "choices") return { choices: [{ key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07" }] };
+    if (p.action === "entries") return { entries: [] };
+    if (p.action === "incidents") return { incidents: [] };
+    if (p.action === "tournament") return { tournament: held && JSON.parse(JSON.stringify(held)) };
+    if (p.action === "start") {
+      state.held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: p.coin, players: fourPlayers(), rounds: [] };
+      return { ok: true, message: "Added 4 player(s)." };
+    }
+    if (p.action === "round") {
+      held.rounds[Number(p.number) - 1] = { games: JSON.parse(p.games).map((g) => ({ ...g, result: "" })), byes: JSON.parse(p.byes), out: [], posted: p.post === "yes" };
+      return { ok: true, message: `Round ${p.number} is posted.` };
+    }
+    const board = (n) => held.rounds[Number(p.number) - 1].games.find((g) => g.board === Number(n));
+    if (p.action === "result") board(p.board).result = p.result;
+    if (p.action === "results") for (const r of JSON.parse(p.results)) board(r.board).result = r.result;
+    return { ok: true };
+  };
+  return state;
+}
+
+async function signIn(tab) {
+  await tab.goto(base + "/td/", { waitUntil: "networkidle0" });
+  await tab.type("#td-password", "secret");
+  await tab.click(".td-login button");
+}
+
+const draftShown = (tab) => tab.evaluate(() => ({
+  games: [...document.querySelectorAll(".run-games tbody tr")].map((r) => [r.cells[0].textContent, ...[...r.querySelectorAll("select")].map((s) => s.value)]),
+  off: [...document.querySelectorAll(".run-off tbody tr")].map((r) => [r.cells[0].textContent, r.querySelector("select").value]),
+  problems: document.querySelector(".run-problems").hidden ? [] : [...document.querySelectorAll(".run-problems li")].map((li) => li.textContent),
+  status: document.querySelector(".run-status").textContent, title: document.querySelector(".run-round-title").textContent,
+  cancel: !document.querySelector(".run-cancel").hidden }));
+
+// The desk's results view with players' reports: Confirm one, then Confirm agreed results; a conflict is flagged.
+const reportDesk = deskState([{ games: [
+  { board: 1, white: "11111111", black: "33333333", result: "", section: "", reports: { white: "1-0", black: "1-0" } },
+  { board: 2, white: "44444444", black: "22222222", result: "", section: "", reports: { white: "", black: "0-1" } }], byes: [], out: [], posted: true }]);
+const sixPlayers = [...fourPlayers(), { id: "55555555", number: 5, name: "Eve", rating: 1200, section: "", out: null },
+  { id: "66666666", number: 6, name: "Fay", rating: 1100, section: "", out: null }];
+reportDesk.held.players = sixPlayers;
+reportDesk.held.rounds[0].games.push({ board: 3, white: "55555555", black: "66666666", result: "", section: "", reports: { white: "1-0", black: "0-1" } });
+const confirmPage = await mocked("/td/ confirming reported results", reportDesk.answer);
+await signIn(confirmPage);
+await confirmPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const reportedCells = () => confirmPage.evaluate(() => [...document.querySelectorAll(".run-games tbody tr")].map((r) => ({
+  text: r.cells[3].childNodes[0]?.textContent || "", confirm: Boolean(r.cells[3].querySelector("button")), conflict: r.cells[3].className === "run-conflict",
+  result: r.querySelector("select").value })));
+const onArrival = await reportedCells();
+const agreedButton = () => confirmPage.$eval(".run-confirm-agreed", (b) => (b.hidden ? "" : b.textContent));
+JSON.stringify(onArrival) === JSON.stringify([
+  { text: "1–0, both reported", confirm: true, conflict: false, result: "" }, { text: "0–1, Black reported", confirm: true, conflict: false, result: "" },
+  { text: "Conflict: White reported 1–0, Black 0–1", confirm: false, conflict: true, result: "" }]) && await agreedButton() === "Confirm agreed results (1)"
+  ? pass("TD desk shows each board's reports, flags a conflict, and offers to confirm the agreed ones")
+  : fail(`TD desk reports: ${JSON.stringify(onArrival)}, ${await agreedButton()}`);
+await axeBoth(confirmPage, "TD desk with reported results");
+await press(confirmPage, ".run-games tbody tr:nth-child(2) td:nth-child(4) button");
+await confirmPage.waitForFunction(() => document.querySelector(".run-games tbody tr:nth-child(2) select").value === "0-1");
+await press(confirmPage, ".run-confirm-agreed");
+await confirmPage.waitForFunction(() => document.querySelector(".run-games tbody tr:nth-child(1) select").value === "1-0");
+const confirmed = await reportedCells();
+const one = reportDesk.calls.find((c) => c.action === "result") || {};
+const together = reportDesk.calls.find((c) => c.action === "results") || {};
+one.board === "2" && one.result === "0-1" && one.section === "" && together.number === "1"
+  && together.results === JSON.stringify([{ board: 1, section: "", result: "1-0" }])
+  && !confirmed[0].confirm && !confirmed[1].confirm && confirmed[2].result === "" && await agreedButton() === ""
+  && await confirmPage.$eval(".run-edit", (b) => b.hidden)
+  ? pass("TD desk confirms one report, then the agreed results together; the conflict waits for the TD")
+  : fail(`TD desk confirming: ${JSON.stringify({ one, together, confirmed })}`);
+await confirmPage.close();
+
+// Editing a draft on a phone: swap colors, remove a board, refuse to save with players not yet
+// paired, add a board, take a player out of a game for a bye, and seat a player from a bye.
+const editDesk = deskState();
+const editPage = await mocked("/td/ editing a draft", editDesk.answer, PHONE);
+await signIn(editPage);
+await editPage.waitForSelector(".run-start:not([hidden])");
+await editPage.type("#run-rounds", "3");
+await press(editPage, ".run-start button[type=submit]");
+await editPage.waitForFunction(() => document.querySelectorAll(".run-attendance tbody tr").length === 4);
+await press(editPage, ".run-pair");
+await editPage.waitForSelector(".run-pairings:not([hidden])");
+await press(editPage, ".run-games tbody tr:nth-child(1) .td-buttons button:nth-child(1)");
+const swapped = await draftShown(editPage);
+await press(editPage, ".run-games tbody tr:nth-child(2) .td-buttons button:nth-child(2)");
+const removed = await draftShown(editPage);
+await press(editPage, ".run-post");
+const refused = await draftShown(editPage);
+JSON.stringify(swapped.games) === JSON.stringify([["1", "33333333", "11111111", ""], ["2", "44444444", "22222222", ""]])
+  && JSON.stringify(removed.games) === JSON.stringify([["1", "33333333", "11111111", ""]])
+  && JSON.stringify(removed.off) === JSON.stringify([["Ben (1700)", "waiting"], ["Dee (1300)", "waiting"]])
+  && removed.problems.length === 2 && removed.problems[0].startsWith("Ben (1700) isn't paired yet")
+  && refused.status.startsWith("Not saved yet. Ben (1700) isn't paired yet") && !editDesk.calls.some((c) => c.action === "round")
+  ? pass("TD desk swaps a board's colors, removes a board, and won't save with players not yet paired")
+  : fail(`TD desk draft edits: ${JSON.stringify({ swapped, removed, refused })}`);
+await editPage.select("#run-add-white-0", "44444444");
+await editPage.select("#run-add-black-0", "22222222");
+await press(editPage, ".run-tools p:nth-child(1) button");
+const added = await draftShown(editPage);
+await editPage.select("#run-move-0", "44444444");
+await editPage.select("#run-move-kind-0", "bye");
+await press(editPage, ".run-tools p:last-child button");
+await editPage.select('select[aria-label="Ben (1700) this round"]', "half");
+await editPage.select('select[aria-label="Board 1 white"]', "22222222");
+const edited = await draftShown(editPage);
+JSON.stringify(added.games) === JSON.stringify([["1", "33333333", "11111111", ""], ["2", "44444444", "22222222", ""]]) && added.problems.length === 0
+  && JSON.stringify(edited.games) === JSON.stringify([["1", "22222222", "11111111", ""]])
+  && JSON.stringify(edited.off) === JSON.stringify([["Cal (1500)", "half"], ["Dee (1300)", "bye"]]) && edited.problems.length === 0
+  ? pass("TD desk adds a board, moves a player out of a game to a bye, and seats a player from a bye in another's place")
+  : fail(`TD desk draft edits: ${JSON.stringify({ added, edited })}`);
+await axeBoth(editPage, "TD desk editing a draft");
+await fitsPhone(editPage, "TD desk editing a draft");
+await press(editPage, ".run-post");
+await editPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const editedRound = editDesk.calls.find((c) => c.action === "round") || {};
+editedRound.games === JSON.stringify([{ board: 1, white: "22222222", black: "11111111", section: "", result: "" }])
+  && editedRound.byes === JSON.stringify([{ id: "44444444", points: 1, kind: "bye", section: "" }, { id: "33333333", points: 0.5, kind: "half", section: "" }])
+  ? pass("TD desk posts the edited pairings") : fail(`TD desk edited round: ${JSON.stringify(editedRound)}`);
+await editPage.close();
+
+// Pairing by hand, then changing the posted round once a player has reported.
+const handDesk = deskState();
+const handPage = await mocked("/td/ pairing by hand", handDesk.answer);
+handPage.on("dialog", (d) => d.accept());
+await signIn(handPage);
+await handPage.waitForSelector(".run-start:not([hidden])");
+await handPage.type("#run-rounds", "3");
+await press(handPage, ".run-start button[type=submit]");
+await handPage.waitForFunction(() => document.querySelectorAll(".run-attendance tbody tr").length === 4);
+await press(handPage, ".run-by-hand");
+await handPage.waitForSelector(".run-pairings:not([hidden])");
+const empty = await draftShown(handPage);
+await press(handPage, ".run-tools p:nth-child(1) button");
+await press(handPage, ".run-tools p:nth-child(1) button");
+const byHand = await draftShown(handPage);
+empty.games.length === 0 && empty.off.every(([, kind]) => kind === "waiting") && empty.off.length === 4 && empty.problems.length === 4
+  && JSON.stringify(byHand.games) === JSON.stringify([["1", "11111111", "22222222", ""], ["2", "33333333", "44444444", ""]])
+  && byHand.off.length === 0 && byHand.problems.length === 0
+  ? pass("TD desk pairs a round by hand, starting with everyone not yet paired")
+  : fail(`TD desk pairing by hand: ${JSON.stringify({ empty, byHand })}`);
+await press(handPage, ".run-post");
+await handPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+handDesk.held.rounds[0].games[0].reports = { white: "1-0", black: "" };
+await press(handPage, ".run-refresh");
+await handPage.waitForFunction(() => document.querySelector(".run-games tbody tr td:nth-child(4)").textContent.startsWith("1–0, White reported"));
+await press(handPage, ".run-edit");
+await handPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("change the posted"));
+const reopened = await draftShown(handPage);
+await press(handPage, ".run-games tbody tr:nth-child(2) .td-buttons button:nth-child(1)");
+await axeBoth(handPage, "TD desk changing a posted round");
+await press(handPage, ".run-post");
+await handPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const reposted = handDesk.calls.filter((c) => c.action === "round");
+reopened.cancel && JSON.stringify(reopened.games) === JSON.stringify(byHand.games) && reposted.length === 2
+  && reposted[1].number === "1" && reposted[1].post === "yes"
+  && JSON.parse(reposted[1].games).map((g) => [g.board, g.white, g.black]).join("|") === "1,11111111,22222222|2,44444444,33333333"
+  && !(await handPage.$eval(".run-games tbody tr td:nth-child(4)", (c) => c.textContent))
+  ? pass("TD desk changes a posted round without results and posts it again, which clears its reports")
+  : fail(`TD desk editing a posted round: ${JSON.stringify({ reopened, reposted })}`);
+await handPage.close();
+
 // The menu: on one line at 1100px; on a phone it wraps, without covering the page or scrolling sideways.
 const layout = await browser.newPage();
 const failedBefore = failures.length;

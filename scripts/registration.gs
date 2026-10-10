@@ -12,9 +12,11 @@
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
+ * POST action=report, event, date, number, board, section, id, result
+ *                         a player's report of their game's result, which the TD confirms on the desk
  * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, round, result, byeKind, out, finish, and for arenas:
+ *                               sync, sections, section, round, result, results, byeKind, out, finish, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
@@ -52,7 +54,8 @@ const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"],
-  Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind"],
+  Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
+    "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
   Queue: ["Key", "US Chess ID", "Since"],
 };
@@ -71,6 +74,7 @@ function doPost(e) {
   try {
     const p = e.parameter;
     if (!p.action) return json(register(p, false));
+    if (p.action === "report") return json(reportResult(p));
     const denied = checkPassword(p.password);
     if (denied) return json({ error: denied, login: true });
     switch (p.action) {
@@ -91,6 +95,7 @@ function doPost(e) {
       case "section": return json(setSection(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
+      case "results": return json(saveResults(p));
       case "byeKind": return json(saveByeKind(p));
       case "out": return json(setOut(p));
       case "finish": return json(finishTournament(`${p.event}/${p.date}`));
@@ -515,7 +520,11 @@ function tournament(key, td) {
     const here = lines.filter((r) => Number(r.Round) === n);
     return {
       games: here.filter((r) => r.Black).sort((a, b) => Number(a.Board) - Number(b.Board))
-        .map((r) => ({ board: Number(r.Board), white: r.White, black: r.Black, result: r.Result, section: r.Section || "" })),
+        .map((r) => {
+          const game = { board: Number(r.Board), white: r.White, black: r.Black, result: r.Result, section: r.Section || "" };
+          if (r["White report"] || r["Black report"]) game.reports = { white: r["White report"], black: r["Black report"] };
+          return game;
+        }),
       byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0, section: r.Section || "",
         kind: r["Bye kind"] || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
@@ -680,21 +689,61 @@ function saveRound(p) {
   }
 }
 
+/** A board's Rounds row. A desk from before sections sends no section and saves rounds without
+ *  one, with boards unique in the round. */
+function boardLine(t, key, number, board, section) {
+  const here = t.rows.filter((r) => r.Key === key && Number(r.Round) === Number(number) && r.Black && Number(r.Board) === Number(board));
+  return here.find((r) => section === undefined || r.Section === section) || here.find((r) => !r.Section);
+}
+
 function saveResult(p) {
+  return saveResults({ ...p, results: JSON.stringify([{ board: p.board, section: p.section, result: p.result }]) });
+}
+
+/** Enters results for boards of a round, [{ board, section, result }], such as every result both players reported alike. */
+function saveResults(p) {
   const key = `${p.event}/${p.date}`;
   const allowed = ["", "1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
-  if (!allowed.includes(p.result)) return { error: "Not a result." };
+  const list = JSON.parse(p.results || "[]");
+  if (!list.length || list.some((x) => !allowed.includes(x.result))) return { error: "Not a result." };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const t = table("Rounds");
-    // A desk from before sections sends none and saves rounds without one, with boards unique in the round.
-    const board = t.rows.filter((r) => r.Key === key && Number(r.Round) === Number(p.number) && Number(r.Board) === Number(p.board));
-    const line = board.find((r) => p.section === undefined || r.Section === p.section) || board.find((r) => !r.Section);
-    if (!line) return { error: "No such board." };
-    setCell(t, line.row, "Result", p.result);
+    const lines = list.map((x) => boardLine(t, key, p.number, x.board, x.section));
+    if (lines.some((line) => !line)) return { error: "No such board." };
+    lines.forEach((line, i) => setCell(t, line.row, "Result", list[i].result));
     clearTournamentCache();
-    return { ok: true };
+    return { ok: true, message: list.length > 1 ? `${list.length} results are entered.` : "" };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+const REPORTS = { "1-0": "1–0", "0-1": "0–1", "1/2-1/2": "½–½" };
+
+/** A player's report of their game's result, from the Pairings page. Anyone can send one for any
+ *  player, so it never sets Result: the TD confirms it on the desk. Re-pairing the round clears it. */
+function reportResult(p) {
+  if (!underLimit()) return { error: "Too many reports right now. Try again in a minute." };
+  const id = String(p.id || "").trim();
+  if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
+  if (!REPORTS[p.result]) return { error: "Report 1–0, 0–1, or ½–½." };
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (!info || info.Format === "arena" || info.Status !== "running") return { error: "That tournament isn't taking results." };
+    const t = table("Rounds");
+    const line = boardLine(t, key, p.number, p.board, p.section);
+    if (!line || !line.Posted || (line.White !== id && line.Black !== id)) {
+      return { error: `That player isn't on board ${p.board} in round ${p.number}. Reload the pairings.` };
+    }
+    if (line.Result) return { error: "The TD has already entered this game's result." };
+    setCell(t, line.row, line.White === id ? "White report" : "Black report", p.result);
+    clearTournamentCache();
+    return { ok: true, message: `Board ${line.Board}: ${REPORTS[p.result]} is reported. The TD will confirm it.` };
   } finally {
     lock.releaseLock();
   }

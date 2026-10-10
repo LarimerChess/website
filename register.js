@@ -1,6 +1,7 @@
 // The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
-// The TD desk (td/) loads this too, for ENDPOINT.
+// The TD desk (td/) loads this too, for ENDPOINT, and the Pairings page, for ENDPOINT and the
+// saved players.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 
@@ -94,7 +95,9 @@ function fillIn(p) {
   form.elements.last.value = p.last;
   form.elements.email.value = p.email;
   const menu = dateField.tagName === "SELECT";
-  status.textContent = `${playerName(p)} is filled in. ${menu ? "Choose the date, then press" : "Press"} Register.`;
+  // A player saved on the Pairings page, to report results, has only an ID and name.
+  status.textContent = p.last ? `${playerName(p)} is filled in. ${menu ? "Choose the date, then press" : "Press"} Register.`
+    : `${playerName(p)}'s US Chess ID is filled in. Add the last name and email, ${menu ? "choose the date, " : ""}then press Register.`;
 }
 
 function savePlayer(player) {
