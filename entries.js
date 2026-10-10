@@ -1,6 +1,6 @@
-// The Entries page (entries/): every upcoming club event's entry list, from the registration
-// script's ?entries=all, a month at a time: this month first, then each next month as the reader
-// scrolls to the end or presses Show next month, as on the events page. ENDPOINT comes from register.js.
+// The Entries page (entries/): the entry list of the upcoming club event the reader picks, from the
+// registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
+// and the address keeps the choice, so a link can open on one event. ENDPOINT comes from register.js.
 
 const allStatus = document.querySelector(".entries-all-status");
 const all = document.querySelector(".entries-all");
@@ -16,7 +16,7 @@ function cell(row, text, tag = "td") {
 
 function eventSection(event) {
   const section = document.createElement("section");
-  const heading = document.createElement("h3");
+  const heading = document.createElement("h2");
   heading.textContent = event.name;
   const when = document.createElement("p");
   when.textContent = `${dateFormat.format(new Date(event.start))}. `
@@ -68,55 +68,29 @@ function eventSection(event) {
   return section;
 }
 
-function showByMonth(events) {
-  const months = [];
+function showPicker(events) {
+  const picker = document.createElement("div");
+  picker.className = "register-form entries-pick";
+  const label = Object.assign(document.createElement("label"), { htmlFor: "entries-event", textContent: "Event" });
+  const select = Object.assign(document.createElement("select"), { id: "entries-event" });
+  const groups = new Map();
   for (const e of events) {
-    const name = monthFormat.format(new Date(e.start));
-    if (months.at(-1)?.name !== name) months.push({ name, events: [] });
-    months.at(-1).events.push(e);
+    const month = monthFormat.format(new Date(e.start));
+    if (!groups.has(month)) groups.set(month, Object.assign(document.createElement("optgroup"), { label: month }));
+    groups.get(month).append(new Option(`${e.name}, ${dateFormat.format(new Date(e.start))}`, e.key));
   }
-  // How many months are showing is kept in the history entry, so a reload or Back comes back to them.
-  let shown = Math.min(history.state?.months ?? 1, months.length);
-  const more = Object.assign(document.createElement("button"), { type: "button", className: "button button-secondary events-more" });
-  const monthSection = (m) => {
-    const section = document.createElement("section");
-    section.className = "entries-month";
-    const heading = Object.assign(document.createElement("h2"), { textContent: m.name, tabIndex: -1 });
-    section.append(heading, ...m.events.map(eventSection));
-    return section;
+  select.append(...groups.values());
+  picker.append(label, select);
+  const shown = document.createElement("div");
+  const wanted = new URLSearchParams(location.search).get("event");
+  select.value = events.some((e) => e.key === wanted) ? wanted : events[0].key;
+  const show = () => {
+    shown.replaceChildren(eventSection(events.find((e) => e.key === select.value)));
+    history.replaceState(history.state, "", `?event=${encodeURIComponent(select.value)}`);
   };
-  const update = () => {
-    more.hidden = shown >= months.length;
-    if (!more.hidden) more.textContent = `Show ${months[shown].name}`;
-  };
-  const showNext = () => {
-    if (shown >= months.length) return null;
-    const section = monthSection(months[shown++]);
-    more.before(section);
-    history.replaceState({ ...history.state, months: shown }, "");
-    update();
-    return section;
-  };
-  all.replaceChildren(...months.slice(0, shown).map(monthSection), more);
-  update();
-  // The button moves down past the new month, so focus goes to its heading.
-  more.addEventListener("click", () => showNext()?.querySelector("h2").focus());
-  // Scrolling near the end shows the next month without a click, but only once the reader scrolls:
-  // a short month leaves the button in view from the start, and the page opens on this month alone.
-  // The observer only reports changes, so it is restarted after each month and on the first scroll.
-  let scrolled = false;
-  const nearEnd = new IntersectionObserver((seen) => {
-    if (!scrolled || !seen.some((e) => e.isIntersecting) || more.hidden) return;
-    showNext();
-    nearEnd.unobserve(more);
-    nearEnd.observe(more);
-  }, { rootMargin: "0px 0px 600px 0px" });
-  nearEnd.observe(more);
-  addEventListener("scroll", () => {
-    scrolled = true;
-    nearEnd.unobserve(more);
-    nearEnd.observe(more);
-  }, { once: true, passive: true });
+  select.addEventListener("change", show);
+  all.replaceChildren(picker, shown);
+  show();
 }
 
 if (!ENDPOINT) {
@@ -126,7 +100,7 @@ if (!ENDPOINT) {
     .then((response) => response.json())
     .then(({ events = [] }) => {
       allStatus.textContent = events.length ? "" : "No club events are coming up.";
-      showByMonth(events);
+      if (events.length) showPicker(events);
     })
     .catch(() => { allStatus.textContent = "The entry lists couldn't be loaded. Try again later."; });
 }
