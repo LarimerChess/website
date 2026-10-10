@@ -238,16 +238,25 @@ def register_html(events, prices):
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form" hidden>
         <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
+        <fieldset class="register-saved" hidden>
+          <legend>Fill in a player saved on this device</legend>
+          <ul></ul>
+        </fieldset>
         <input type="hidden" name="event" value="{name}">
         {date}
         <label for="register-id">US Chess ID</label>
-        <input id="register-id" name="id" type="text" inputmode="numeric" pattern="[0-9]{{8}}" maxlength="8" required autocomplete="off" aria-describedby="register-id-hint">
+        <input id="register-id" name="uschess-id" type="text" inputmode="numeric" pattern="[0-9]{{8}}" maxlength="8" required autocomplete="on" aria-describedby="register-id-hint">
         <p id="register-id-hint" class="register-hint">Eight digits. Every player needs a current US Chess membership; <a href="https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options" target="_blank" rel="noopener">join or renew<span class="visually-hidden"> (opens in a new tab)</span></a> first.</p>
         <label for="register-last">Last name</label>
         <input id="register-last" name="last" type="text" required autocomplete="family-name">
         <label for="register-email">Email</label>
         <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
         <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <div class="register-remember" hidden>
+          <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
+          <label for="register-remember">Remember this player on this device</label>
+          <p id="register-remember-hint" class="register-hint">Kept only in this browser, for next time. Uncheck it on a shared computer.</p>
+        </div>
         <div class="register-trap" aria-hidden="true">
           <label for="register-website">Leave this empty</label>
           <input id="register-website" name="website" type="text" tabindex="-1" autocomplete="off">
