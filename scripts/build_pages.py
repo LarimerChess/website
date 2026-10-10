@@ -453,7 +453,8 @@ def main(check):
         if before is None or [e for e in before if shows(e)] != [e for e in events if shows(e)]:
             changed[path] = True
     for page in ROOT.rglob("*.html"):
-        if "node_modules" in page.parts or GENERATED in page.read_text(encoding="utf-8"):
+        if ("node_modules" in page.parts or any(part.startswith(".") for part in page.relative_to(ROOT).parts)
+                or GENERATED in page.read_text(encoding="utf-8")):
             continue
         for link in re.findall(r'href="/(events/[^/"#]+/)', page.read_text(encoding="utf-8")):
             if link not in pages:

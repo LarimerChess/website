@@ -15,7 +15,8 @@ def url(page):
 
 # A page marked noindex, such as the TD desk, stays out of the sitemap.
 pages = {url(p) for p in ROOT.rglob("*.html")
-         if "node_modules" not in p.parts and '<meta name="robots" content="noindex">' not in p.read_text(encoding="utf-8")}
+         if "node_modules" not in p.parts and not any(part.startswith(".") for part in p.relative_to(ROOT).parts)
+         and '<meta name="robots" content="noindex">' not in p.read_text(encoding="utf-8")}
 ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 listed = {loc.text for loc in ET.parse(ROOT / "sitemap.xml").findall("s:url/s:loc", ns)}
 missing, extra = sorted(pages - listed), sorted(listed - pages)

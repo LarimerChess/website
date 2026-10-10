@@ -442,7 +442,64 @@
       || b.cumulative - a.cumulative || b.opposition - a.opposition || (b.rating ?? 0) - (a.rating ?? 0));
   }
 
-  const Pairing = { pairRound, standings, dueColor, assignColors, histories, POINTS };
+  // 30G: quads. Players numbered 1 to 4 in each group of four by rating (numbers 5 to 8 are
+  // the second group, and so on) play a three-round round robin from this table, white first.
+  const QUAD_TABLE = [[[1, 4], [2, 3]], [[3, 1], [4, 2]], [[1, 2], [3, 4]]];
+
+  /** A quad round's games, from players' numbers; boards run through the groups in order. */
+  function pairQuadRound(players, round) {
+    const byNumber = new Map(players.map((p) => [Number(p.number), p]));
+    const groups = Math.ceil(players.length / 4);
+    const games = [];
+    for (let g = 0; g < groups; g++) {
+      for (const [w, b] of QUAD_TABLE[round - 1] || []) {
+        const white = byNumber.get(g * 4 + w), black = byNumber.get(g * 4 + b);
+        if (white && black) games.push({ board: games.length + 1, white: white.id, black: black.id });
+      }
+    }
+    const notes = players.length % 4 ? [`${players.length} players don't make whole quads of four; pair the last group by hand.`] : [];
+    return { games, byes: [], notes };
+  }
+
+  /** Quad standings, group by group: score, then Sonneborn-Berger, then the games between the
+   *  tied players (34F). Players with equal scores and tiebreaks share a place. */
+  function quadStandings(tournament) {
+    const info = histories(tournament);
+    const numbers = new Map(tournament.players.map((p) => [p.id, Number(p.number)]));
+    const results = new Map([...info.keys()].map((id) => [id, []]));
+    for (const round of tournament.rounds) {
+      for (const g of round.games) {
+        const [w, b] = POINTS[g.result] || [null, null];
+        if (w == null || FORFEIT(g.result)) continue;
+        results.get(g.white)?.push({ opponent: g.black, points: w });
+        results.get(g.black)?.push({ opponent: g.white, points: b });
+      }
+    }
+    const rows = [...info.values()].map((p) => ({
+      id: p.id, name: p.name, rating: p.rating, number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
+      // Nothing is added for losses or unplayed games.
+      sonnebornBerger: results.get(p.id).reduce((sum, r) => sum + r.points * info.get(r.opponent).score, 0),
+    }));
+    const headToHead = (a, tied) => results.get(a.id).filter((r) => tied.some((t) => t.id === r.opponent)).reduce((sum, r) => sum + r.points, 0);
+    const out = [];
+    for (const group of [...new Set(rows.map((r) => r.group))].sort((a, b) => a - b)) {
+      const mine = rows.filter((r) => r.group === group);
+      for (const r of mine) {
+        const tied = mine.filter((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger);
+        r.headToHead = headToHead(r, tied);
+      }
+      mine.sort((a, b) => b.score - a.score || b.sonnebornBerger - a.sonnebornBerger || b.headToHead - a.headToHead);
+      mine.forEach((r, i) => {
+        const prev = mine[i - 1];
+        r.place = prev && prev.score === r.score && prev.sonnebornBerger === r.sonnebornBerger && prev.headToHead === r.headToHead
+          ? prev.place : i + 1;
+      });
+      out.push(...mine);
+    }
+    return out;
+  }
+
+  const Pairing = { pairRound, standings, pairQuadRound, quadStandings, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;
 })(typeof window !== "undefined" ? window : globalThis);

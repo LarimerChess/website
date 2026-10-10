@@ -23,7 +23,7 @@ styles = re.compile(r'<link rel="stylesheet" href="(?:\.\./)*style\.css[^"]*">|<
 
 stale = []
 for page in sorted(ROOT.rglob("*.html")):
-    if "node_modules" in page.parts:
+    if "node_modules" in page.parts or any(part.startswith(".") for part in page.relative_to(ROOT).parts):
         continue
     text = page.read_text(encoding="utf-8")
     synced = script.sub(lambda m: f'{m.group(1)}?v={stamps[m.group(2)]}"', text)

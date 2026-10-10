@@ -54,7 +54,11 @@ function eventSection(event) {
     }
     section.append(table);
   }
-  section.append(register);
+  if (event.closed || !event.page) {
+    section.append(Object.assign(document.createElement("p"), { textContent: "Registration is closed." }));
+  } else {
+    section.append(register);
+  }
   return section;
 }
 

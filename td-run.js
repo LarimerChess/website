@@ -29,7 +29,7 @@ const nameOf = (id) => {
 
 function forEngine(t) {
   return {
-    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating })),
+    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
   };
 }
@@ -70,6 +70,8 @@ function renderRun() {
       const nights = choices.filter((c) => c.key.startsWith(`${choice.value}-`)).length;
       runStart.elements.rounds.value = nights || "";
     }
+    if (selectedChoice?.format) runStart.elements.format.value = selectedChoice.format;
+    showRoundsField();
     runStart.hidden = false;
     return;
   }
@@ -103,9 +105,13 @@ function renderRun() {
     runStatus.textContent += " All rounds are played; finish the tournament when prizes are settled.";
     return;
   }
-  runTitle.textContent = `Round ${next}: check in`;
+  runTitle.textContent = t.format === "quad" ? `Round ${next}` : `Round ${next}: check in`;
   runCheckin.hidden = false;
   runPairings.hidden = true;
+  // A quad's pairings come from the table, so there is no one to check in; a no-show is a forfeit.
+  runAttendance.closest(".td-table").hidden = runCheckin.querySelector("p").hidden = t.format === "quad";
+  // Quads are numbered once, at the start, so later entrants can't be added.
+  document.querySelector(".run-sync").hidden = t.format === "quad";
   const scores = new Map(Pairing.standings(forEngine(t)).map((r) => [r.id, r.score]));
   runAttendance.tBodies[0].replaceChildren(...active.map((p) => {
     const row = document.createElement("tr");
@@ -181,15 +187,28 @@ function renderResults(round, number) {
   runNotes.replaceChildren();
 }
 
+const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative"];
+const QUAD_HEADINGS = ["Quad", "Place", "Name", "Rating", "Score", "Sonneborn-Berger"];
+
 function renderStandings() {
   if (!current?.rounds.length) return;
-  const rows = Pairing.standings(forEngine(current));
+  const quad = current.format === "quad";
+  const headings = quad ? QUAD_HEADINGS : SWISS_HEADINGS;
+  const head = runStandings.tHead.rows[0];
+  [...head.cells].slice(0, -1).forEach((c) => c.remove());
+  head.prepend(...headings.map((h) => Object.assign(document.createElement("th"), { scope: "col", textContent: h })));
+  runStandingsWrap.querySelector(".register-hint").textContent = quad
+    ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F)."
+    : "Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.";
+  const rows = quad ? Pairing.quadStandings(forEngine(current)) : Pairing.standings(forEngine(current));
   const next = current.rounds.length + 1;
   runStandings.tBodies[0].replaceChildren(...rows.map((r, i) => {
     const row = document.createElement("tr");
     const p = current.players.find((x) => x.id === r.id);
-    for (const text of [i + 1, r.name + (p?.out ? ` (out from round ${p.out})` : ""), r.rating ?? "Unrated", r.score,
-      r.median, r.solkoff, r.cumulative, r.opposition]) {
+    const name = r.name + (p?.out ? ` (out from round ${p.out})` : "");
+    const cells = quad ? [r.group, r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger]
+      : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition];
+    for (const text of cells) {
       row.insertCell().textContent = text;
     }
     const button = document.createElement("button");
@@ -209,11 +228,19 @@ function renderStandings() {
   }));
 }
 
+function showRoundsField() {
+  const quad = runStart.elements.format.value === "quad";
+  for (const el of [runStart.elements.rounds, runStart.querySelector('[for="run-rounds"]'), runStart.querySelector("#run-rounds-hint"),
+    runStart.elements.coin, runStart.querySelector('[for="run-coin"]')]) el.hidden = quad;
+}
+runStart.elements.format.addEventListener("change", showRoundsField);
+
 runStart.addEventListener("submit", async (event) => {
   event.preventDefault();
   const [eventName, date] = keyParts();
   const fields = Object.fromEntries(new FormData(runStart));
   if (fields.format === "swiss" && !/^\d+$/.test(fields.rounds)) return void (runStatus.textContent = "How many rounds?");
+  if (fields.format === "quad" && !confirm("Start the quads? Players are grouped by rating and numbered by lot now, so register everyone first.")) return;
   runStatus.textContent = "Starting…";
   const result = await call("start", { event: eventName, date, ...fields });
   runStatus.textContent = result.message || result.error;
@@ -233,12 +260,13 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
   const withdrawn = choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id);
   const [event, date] = keyParts();
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
-  const result = Pairing.pairRound(forEngine(current), {
-    halfByes: choicesMade.filter(([, v]) => v === "half").map(([id]) => id),
-    absent: choicesMade.filter(([, v]) => v === "absent").map(([id]) => id),
-    out: withdrawn,
-    coin: current.coin,
-  });
+  const result = current.format === "quad" ? Pairing.pairQuadRound(forEngine(current).players, number)
+    : Pairing.pairRound(forEngine(current), {
+      halfByes: choicesMade.filter(([, v]) => v === "half").map(([id]) => id),
+      absent: choicesMade.filter(([, v]) => v === "absent").map(([id]) => id),
+      out: withdrawn,
+      coin: current.coin,
+    });
   draft = { number, ...result };
   if (withdrawn.length) current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
   renderDraft();

@@ -28,6 +28,10 @@
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
  * pay when they arrive.
+ *
+ * Events with closed registration are in the registration Sheet's "Closed events" tab (Event,
+ * Name, Start, Format, Fee), not on the website's calendar: only the TD desk can register
+ * players for them, but their entries and pairings are public like any other event's.
  */
 
 const SITE = "https://larimerchess.org";
@@ -93,7 +97,7 @@ function register(p, td) {
 
   const key = `${p.event}/${p.date}`;
   const event = clubEvents()[key];
-  if (!event) return { error: "That event isn't open for registration." };
+  if (!event || (event.closed && !td)) return { error: "That event isn't open for registration." };
   if (!td && new Date(event.closes) <= new Date()) return { error: "Online registration for this has closed." };
   const id = String(p.id || "").trim();
   if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
@@ -156,7 +160,7 @@ function register(p, td) {
         `${name} (US Chess ID ${id}) is registered for ${event.name}, ${event.label}.`,
         due,
         lapsed && lapsed + " https://new.uschess.org/join-us-chess",
-        `Details and entries: ${SITE}${event.page}`,
+        event.page ? `Details and entries: ${SITE}${event.page}` : "",
         `Can't come? Withdraw here: ${ScriptApp.getService().getUrl()}?withdraw=${token}`,
         "Questions: president@larimerchess.org",
       ].filter(Boolean).join("\n\n"),
@@ -213,7 +217,7 @@ function allEntries() {
   const list = Object.entries(clubEvents())
     .filter(([, e]) => e.kind !== "month" && e.first >= today)
     .sort(([, a], [, b]) => a.closes.localeCompare(b.closes))
-    .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, start: e.closes,
+    .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, closed: Boolean(e.closed), start: e.closes,
       entries: entries(key, false, read) }));
   cache.put("entries:all", JSON.stringify(list), 60);
   return list;
@@ -224,7 +228,8 @@ function choices() {
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
   return Object.entries(clubEvents())
     .filter(([, e]) => e.last >= today)
-    .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first }))
+    .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first, format: e.format || "",
+      closed: Boolean(e.closed) }))
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
 }
 
@@ -434,15 +439,40 @@ function startTournament(p) {
   try {
     const t = table("Tournaments");
     if (t.rows.some((r) => r.Key === key)) return { error: "That tournament has already started." };
-    const format = p.format === "arena" ? "arena" : "swiss";
-    const rounds = String(p.rounds || "").trim();
+    const format = ["arena", "quad"].includes(p.format) ? p.format : "swiss";
+    // 30G: a quad is a three-round round robin.
+    const rounds = format === "quad" ? "3" : String(p.rounds || "").trim();
     appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "" });
   } finally {
     lock.releaseLock();
   }
-  return syncPlayers(key);
+  const synced = syncPlayers(key);
+  if (p.format === "quad") numberQuads(key);
+  return synced;
+}
+
+/** 30G and 30A: quads are groups of four by rating, and within each the table numbers are drawn by lot. */
+function numberQuads(key) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const t = table("Players");
+    const mine = t.rows.filter((r) => r.Key === key).sort((a, b) => (parseInt(b.Rating) || 0) - (parseInt(a.Rating) || 0));
+    for (let g = 0; g < mine.length; g += 4) {
+      const group = mine.slice(g, g + 4);
+      const numbers = group.map((_, i) => g + i + 1);
+      for (let i = numbers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+      }
+      group.forEach((r, i) => setCell(t, r.row, "No.", String(numbers[i])));
+    }
+    clearTournamentCache();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Adds registered entrants who aren't players yet, numbered after the others (28B). */
@@ -609,6 +639,21 @@ function clubEvents() {
         `all ${Utilities.formatDate(start, TZ, "EEEE")}s in ${Utilities.formatDate(start, TZ, "MMMM yyyy")}`);
     }
   }
+  const closed = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Closed events");
+  if (closed) {
+    const [header, ...rows] = closed.getDataRange().getDisplayValues();
+    const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+    for (const r of rows) {
+      const name = r[col.Event], start = r[col.Start];
+      if (!name || !start) continue;
+      out[`${name}/${start.slice(0, 10)}`] = {
+        event: name, name: r[col.Name] || name, page: "", kind: "entry", closed: true, format: r[col.Format] || "",
+        fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]),
+        label: Utilities.formatDate(new Date(start), TZ, "EEEE, MMMM d, yyyy"),
+        closes: start, first: start.slice(0, 10), last: start.slice(0, 10),
+      };
+    }
+  }
   cache.put("clubEvents", JSON.stringify(out), 600);
   return out;
 }
@@ -616,6 +661,7 @@ function clubEvents() {
 /** The fee from the website's prices.json, cached ten minutes: the row for the event and kind
  *  whose "applies" is the most specific match (the date, its month, or all). null when none applies. */
 function price(event, category) {
+  if (event.closed) return event.fee;
   const cache = CacheService.getScriptCache();
   let prices = cache.get("prices");
   if (!prices) {

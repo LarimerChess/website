@@ -550,6 +550,57 @@ pairingsAxe.violations.length ? fail(`Pairings page filled: ${pairingsAxe.violat
   : pass("Pairings page filled has no axe violations");
 await pairingsPage.close();
 
+// A quad on the TD desk: round one comes from the round robin table (30G), with no check-in.
+const quadPage = await browser.newPage();
+quadPage.on("pageerror", (error) => fail(`JavaScript error on /td/ running a quad: ${error.message}`));
+const quadCalls = [];
+let quad = null;
+await quadPage.setRequestInterception(true);
+quadPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+    return;
+  }
+  if (url.host !== "registration.test") return request.continue();
+  const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+  quadCalls.push(p);
+  // Numbers by lot: 3, 1, 4, 2 for the players in rating order.
+  const players = [["11111111", "Ann", 1900, 3], ["22222222", "Ben", 1700, 1], ["33333333", "Cal", 1500, 4], ["44444444", "Dee", 1300, 2]]
+    .map(([id, name, rating, number]) => ({ id, number, name, rating, out: null }));
+  let body = { ok: true };
+  if (p.action === "choices") body = { choices: [{ key: "alley-cat-quad/2026-10-10", name: "Alley Cat Quad", label: "Saturday, October 10, 2026", kind: "entry", first: "2026-10-10", format: "quad", closed: true }] };
+  else if (p.action === "entries") body = { entries: [] };
+  else if (p.action === "incidents") body = { incidents: [] };
+  else if (p.action === "tournament") body = { tournament: quad };
+  else if (p.action === "start") {
+    quad = { key: "alley-cat-quad/2026-10-10", name: "Alley Cat Quad", format: p.format, plannedRounds: 3, status: "running", coin: "white", players, rounds: [] };
+    body = { ok: true, message: "Added 4 player(s)." };
+  } else if (p.action === "round") {
+    quad.rounds = [{ games: JSON.parse(p.games).map((g) => ({ ...g, result: "" })), byes: [], out: [], posted: true }];
+    body = { ok: true, message: "Round 1 is posted." };
+  }
+  request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+});
+quadPage.on("dialog", (d) => d.accept());
+await quadPage.goto(base + "/td/", { waitUntil: "networkidle0" });
+await quadPage.type("#td-password", "secret");
+await quadPage.click(".td-login button");
+await quadPage.waitForSelector(".run-start:not([hidden])");
+const quadFormat = await quadPage.$eval("#run-format", (s) => s.value);
+await quadPage.click(".run-start button");
+await quadPage.waitForSelector(".run-round:not([hidden]) .run-pair");
+await quadPage.click(".run-pair");
+await quadPage.waitForSelector(".run-pairings:not([hidden])");
+await quadPage.click(".run-post");
+await quadPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const quadRound = JSON.parse((quadCalls.find((c) => c.action === "round") || {}).games || "[]");
+quadFormat === "quad" && JSON.stringify(quadRound.map((g) => [g.white, g.black])) === JSON.stringify([["22222222", "33333333"], ["44444444", "11111111"]])
+  ? pass("TD desk pairs a quad's first round from the table (1 v 4, 2 v 3)") : fail(`TD desk quad: format ${quadFormat}, ${JSON.stringify(quadRound)}`);
+await quadPage.close();
+
 await browser.close();
 if (failures.length) {
   console.log(`\n${failures.length} check(s) failed`);

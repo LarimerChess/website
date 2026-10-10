@@ -181,3 +181,41 @@ test("whole tournaments: no rematches, one bye each at most, and no color three 
     }
   }
 });
+
+test("30G: a quad plays everyone once, with each player's colors as even as three games allow", () => {
+  const players = [1, 2, 3, 4].map((n) => ({ id: `p${n}`, name: `p${n}`, rating: 2000 - n * 100, number: n }));
+  const met = new Set();
+  const whitesOf = new Map(players.map((p) => [p.id, 0]));
+  for (let round = 1; round <= 3; round++) {
+    const { games } = Pairing.pairQuadRound(players, round);
+    assert.equal(games.length, 2);
+    for (const g of games) {
+      met.add([g.white, g.black].sort().join("-"));
+      whitesOf.set(g.white, whitesOf.get(g.white) + 1);
+    }
+  }
+  assert.equal(met.size, 6, "each of the six pairs meets once");
+  for (const w of whitesOf.values()) assert.ok(w === 1 || w === 2);
+});
+
+test("30G: eight players make two quads, numbers 1 to 4 and 5 to 8", () => {
+  const players = [...Array(8)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1 }));
+  const { games } = Pairing.pairQuadRound(players, 1);
+  assert.deepEqual(games.map((g) => [g.white, g.black]), [["p1", "p4"], ["p2", "p3"], ["p5", "p8"], ["p6", "p7"]]);
+});
+
+test("34F: quad standings by score, then Sonneborn-Berger, then the game between the tied players", () => {
+  const players = ["a", "b", "c", "d"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100, number: i + 1 }));
+  // a beats b, b beats c, c beats a, everyone beats d: a, b, and c tie on 2 with equal Sonneborn-Berger.
+  const rounds = [
+    { games: [{ white: "a", black: "d", result: "1-0" }, { white: "b", black: "c", result: "1-0" }], byes: [] },
+    { games: [{ white: "c", black: "a", result: "1-0" }, { white: "d", black: "b", result: "0-1" }], byes: [] },
+    { games: [{ white: "a", black: "b", result: "1-0" }, { white: "c", black: "d", result: "1-0" }], byes: [] },
+  ];
+  const rows = Pairing.quadStandings({ players, rounds });
+  assert.deepEqual(rows.map((r) => [r.id, r.score, r.sonnebornBerger, r.place]),
+    [["a", 2, 2, 1], ["b", 2, 2, 1], ["c", 2, 2, 1], ["d", 0, 0, 4]]);
+  // Change b's loss to a into a draw: b now has 2.5 and wins outright.
+  rounds[2].games[0].result = "1/2-1/2";
+  assert.equal(Pairing.quadStandings({ players, rounds })[0].id, "b");
+});

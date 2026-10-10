@@ -52,6 +52,12 @@ function tournamentSection(t) {
   }
   const standingsHeading = document.createElement("h3");
   standingsHeading.textContent = t.status === "finished" ? "Final standings" : "Standings";
+  if (t.format === "quad") {
+    const rows = Pairing.quadStandings({ players: t.players, rounds: t.rounds });
+    section.append(standingsHeading, tableOf(["Quad", "Place", "Name", "Rating", "Score", "Sonneborn-Berger"],
+      rows.map((r) => [r.group, r.place, r.name, r.rating ?? "Unrated", r.score, r.sonnebornBerger])));
+    return section;
+  }
   const rows = Pairing.standings({ players: t.players, rounds: t.rounds });
   section.append(standingsHeading, tableOf(["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative"],
     rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative])));
