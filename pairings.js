@@ -295,8 +295,19 @@ function headToHead(r, rows) {
 const ROUNDS = "Each round shows the result (W win, L loss, D draw, X win by forfeit, F loss by forfeit, B full-point bye, "
   + "H half-point bye, U not played), the opponent's place in the table, and the color played (w or b). A game still "
   + "being played shows only the opponent and color.";
-const ESTIMATE = "Est. rating is the regular rating US Chess's formula would give each player for the games played so far, "
-  + "from their rating, floor, and rated games before the event. The official rating can differ.";
+const ESTIMATE = "* Est. rating estimates the regular rating US Chess will give each player for the games played so far, by its "
+  + "published formula, from their rating as entered, their floor, and their rated games before the event. Checked against US "
+  + "Chess's own ratings of a 63-player section, it was within a point for three players in four and within 10 for most of the "
+  + "rest. It is further off for an unrated player, whom US Chess starts from their age or another rating, for a rating that "
+  + "changed after the player entered, and for players over 2200 in some time controls. The official rating comes from US Chess "
+  + "once the event is rated.";
+
+/** A standings table with the estimate's footnote under it. */
+function withNote(table) {
+  const note = paragraph(ESTIMATE);
+  note.className = "table-note";
+  return [table, note];
+}
 
 /** A player's rounds, each as the result, the opponent's place in the table, and the color: "W4 b". */
 function roundCells(t, rows) {
@@ -322,7 +333,7 @@ function standingsSection(t, ti) {
   section.append(paragraph(quad
     ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). Players tied on all three share a place."
     : "Ties are broken in the US Chess default order (34E): modified median, Solkoff, cumulative, and cumulative of opposition."),
-  paragraph(ROUNDS), paragraph(PERFORMANCE), paragraph(ESTIMATE));
+  paragraph(ROUNDS), paragraph(PERFORMANCE));
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
@@ -338,16 +349,16 @@ function standingsSection(t, ti) {
       if (quad) {
         const rows = Pairing.quadStandings(sofar);
         const cells = roundCells(sofar, rows);
-        return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating"],
+        return withNote(tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating*"],
           rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, headToHead(r, rows),
-            r.performance ?? "", r.estimate ?? ""]), label)];
+            r.performance ?? "", r.estimate ?? ""]), label));
       }
       const rows = Pairing.standings(sofar);
       const cells = roundCells(sofar, rows);
-      return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
-        "Est. rating"],
+      return withNote(tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
+        "Est. rating*"],
         rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
-          r.performance ?? "", r.estimate ?? ""]), label)];
+          r.performance ?? "", r.estimate ?? ""]), label));
     };
     section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, rounds.at(-1)[0], draw));
   });

@@ -221,8 +221,13 @@ TIEBREAKS = ("Ties are broken by US Chess's default tiebreaks, in order: modifie
              "cumulative of opposition. Ratings are as the players entered.")
 ROUNDS = ("Each round in the standings shows the result, the opponent's place in the standings, and the color played; "
           "the letters are the wall chart's.")
-ESTIMATE = ("Est. rating is the regular rating US Chess's formula gives each player for these games, from their rating, "
-            "floor, and rated games before the event. The official rating can differ.")
+ESTIMATE = ("* Est. rating estimates the regular rating US Chess gives each player for these games, by its published formula, "
+            "from their rating as entered, their floor, and their rated games before the event. Checked against US Chess's own "
+            "ratings of a 63-player section, it was within a point for three players in four and within 10 for most of the rest. "
+            "It is further off for an unrated player, whom US Chess starts from their age or another rating, for a rating that "
+            "changed after the player entered, and for players over 2200 in some time controls. The official rating comes from "
+            "US Chess once the event is rated.")
+ESTIMATE_NOTE = f'\n      <p class="table-note">{ESTIMATE}</p>'
 PERFORMANCE = ("Performance is the rating that Elo's formula expects to make each player's score in the games they played "
                "against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below "
                "those opponents' average.")
@@ -237,7 +242,7 @@ def swiss_standings(s, label):
              score_text(r["cumulative"]), score_text(r["opposition"]), performance_text(r), performance_text(r, "estimate")]
             for i, r in enumerate(order, 1)]
     return table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(s), "Median", "Solkoff",
-                  "Cumulative", "Opp. cumulative", "Performance", "Est. rating"], rows, label)
+                  "Cumulative", "Opp. cumulative", "Performance", "Est. rating*"], rows, label) + ESTIMATE_NOTE
 
 
 def swiss_main(t):
@@ -248,7 +253,6 @@ def swiss_main(t):
       <p>{TIEBREAKS}</p>
       <p>{ROUNDS}</p>
       <p>{PERFORMANCE}</p>
-      <p>{ESTIMATE}</p>
       {swiss_standings(parts[0], "Final standings")}
     </section>
 
@@ -258,7 +262,7 @@ def swiss_main(t):
       {chart_table(parts[0], "Wall chart")}
     </section>"""
     out = [f"<p>Each section was paired and ranked on its own, with its players numbered within it. {TIEBREAKS}</p>",
-           f"<p>{ROUNDS}</p>", f"<p>{PERFORMANCE}</p>", f"<p>{ESTIMATE}</p>",
+           f"<p>{ROUNDS}</p>", f"<p>{PERFORMANCE}</p>",
            f"<p>{CHART_KEY}</p>"]
     for part in parts:
         name = part["name"]
@@ -287,12 +291,12 @@ def quad_main(t):
       <h2>{escaped(name)}</h2>
       <h3>Final standings</h3>
       {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(q), "Sonneborn-Berger", "Performance",
-               "Est. rating"], rows, f"{name} standings")}
+               "Est. rating*"], rows, f"{name} standings") + ESTIMATE_NOTE}
       <h3>Crosstable</h3>
       {chart_table(q, f"{name} crosstable")}
     </section>""")
     intro = ("<p>Each quad is a round robin of four players. Ties are broken by Sonneborn-Berger, then by the tied "
-             f"players' games with each other.</p>\n    <p>{ROUNDS}</p>\n    <p>{PERFORMANCE}</p>\n    <p>{ESTIMATE}</p>\n"
+             f"players' games with each other.</p>\n    <p>{ROUNDS}</p>\n    <p>{PERFORMANCE}</p>\n"
              f"    <p>{CHART_KEY}</p>")
     return "\n\n    ".join([intro, *out])
 

@@ -87,6 +87,8 @@ class Standings(unittest.TestCase):
         self.assertIn("Sam Spruce withdrew from round 3.", page)
         self.assertIn("<th scope=\"col\">Performance</th>", page)
         self.assertIn("Performance is the rating that Elo's formula expects", page)
+        self.assertIn('Est. rating*</th></tr></thead>', page)
+        self.assertIn('</section>\n      <p class="table-note">* Est. rating estimates', page)
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])

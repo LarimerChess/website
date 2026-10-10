@@ -858,17 +858,19 @@ const standingsTables = () => standingsPage.evaluate(() => [...document.querySel
   return { name: h.textContent, after: menu.querySelector("select").value,
     options: [...menu.querySelectorAll("option")].map((o) => o.textContent),
     head: [...menu.nextElementSibling.querySelectorAll("th")].map((c) => c.textContent),
+    note: menu.nextElementSibling.querySelector(".td-table + .table-note")?.textContent.slice(0, 22) || "",
     rows: [...menu.nextElementSibling.querySelectorAll("tbody tr")].map((r) => [...r.cells].map((c) => c.textContent)) };
 }));
 const now = await standingsTables();
 JSON.stringify(now.map((s) => [s.name, s.after, s.options, s.rows.length])) === JSON.stringify([
   ["Open", "2", ["1", "2 (in progress)"], 4], ["Under 1400", "1", ["1"], 3]])
-  && now[0].head.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Median|Solkoff|Cumulative|Opp. cumulative|Performance|Est. rating"
+  && now[0].head.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Median|Solkoff|Cumulative|Opp. cumulative|Performance|Est. rating*"
   && now[0].rows.slice(0, 2).every((r) => r[3] === "1.5")
+  && now.every((s) => s.note === "* Est. rating estimate")
   // Each round: the result, the opponent's place, and the color; Cal and Dee's game has no result yet.
   && now[0].rows.map((r) => `${r[1]} ${r[4]}, ${r[5]}`).join("|") === "Ann W3 w, D2 b|Ben W4 b, D1 w|Cal L1 b, 4 w|Dee L2 w, 3 b"
   && now[1].rows.map((r) => `${r[1]} ${r[4]}`).join("|") === "Gus B|Eve D3 w|Fay D2 b"
-  && now.flatMap((s) => s.rows.map((r) => `${r[1]} ${r[s.head.indexOf("Performance")]} ${r[s.head.indexOf("Est. rating")]}`)).join("|")
+  && now.flatMap((s) => s.rows.map((r) => `${r[1]} ${r[s.head.indexOf("Performance")]} ${r[s.head.indexOf("Est. rating*")]}`)).join("|")
     === "Ann 1891 1996|Ben 1941 1813|Cal 1200 1596|Dee 1000 1494|Gus  |Eve 1200 1293|Fay 1300 1207"
   ? pass("Standings page shows each section after its latest round with results: rounds, the 34E tiebreaks, performance, and estimated ratings")
   : fail(`Standings page: ${JSON.stringify(now)}`);
@@ -891,7 +893,7 @@ const quadStandingsPage = await mocked("/standings/ with quads", () => {
 });
 await quadStandingsPage.goto(base + "/standings/", { waitUntil: "networkidle0" });
 const quadHead = await quadStandingsPage.$$eval(".standings-all th", (cells) => cells.map((c) => c.textContent));
-quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Sonneborn-Berger|Head-to-head|Performance|Est. rating"
+quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Sonneborn-Berger|Head-to-head|Performance|Est. rating*"
   ? pass("Standings page ranks a quad by score, Sonneborn-Berger, and head-to-head (34F)") : fail(`Standings page quad: ${JSON.stringify(quadHead)}`);
 await quadStandingsPage.close();
 
