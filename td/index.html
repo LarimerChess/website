@@ -68,6 +68,8 @@ body {
   font: 17px/1.6 Inter, system-ui, sans-serif;
 }
 .wrap { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+/* The TD desk uses the whole window, for its wide tables. */
+.wrap-full { max-width: none; }
 h1, h2, h3 { font-family: Fraunces, Georgia, serif; line-height: 1.15; }
 a { color: var(--accent); }
 
@@ -481,7 +483,7 @@ section.td-table td { white-space: nowrap; }
       </ul>
     </div>
   </nav>
-  <main id="main" class="wrap">
+  <main id="main" class="wrap wrap-full">
     <h1>TD desk</h1>
     <p>Register players and manage entries for club events. For the club's tournament directors.</p>
     <noscript><p>The TD desk needs JavaScript.</p></noscript>
