@@ -69,6 +69,8 @@ class Standings(unittest.TestCase):
         rows = br.standings(SATURDAY)
         self.assertEqual([r["name"] for r in rows], ["Ben Birch", "Ada Alder", "Dee Dogwood", "Cal Cedar", "Eli Elm"])
         self.assertEqual([r["score"] for r in rows], [3.5, 3, 2, 1, 0])
+        # Rated games only: Ben's win over the unrated Eli doesn't count, nor Dee's forfeit win or anyone's bye.
+        self.assertEqual([r["performance"] for r in rows], [1841, 1796, 1000, 925, 850])
 
     def test_club_night_order(self):
         self.assertEqual([r["name"] for r in br.standings(CLUB_NIGHT)],
@@ -79,6 +81,8 @@ class Standings(unittest.TestCase):
         self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/monday-club-night-at-peak-2026-10/">', page)
         self.assertIn('<time datetime="2026-10">October 2026</time>', page)
         self.assertIn("Sam Spruce withdrew from round 3.", page)
+        self.assertIn("<th scope=\"col\">Performance</th>", page)
+        self.assertIn("Performance is the rating that Elo's formula expects", page)
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
@@ -101,6 +105,7 @@ class Quads(unittest.TestCase):
         self.assertIn("<h2>Quad 1</h2>", page)
         self.assertIn("<h2>Quad 2</h2>", page)
         self.assertIn("X4 <small>1</small>", page)
+        self.assertIn("Sonneborn-Berger</th><th scope=\"col\">Performance</th>", page)
 
 
 class Sections(unittest.TestCase):

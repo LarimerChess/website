@@ -72,6 +72,10 @@ def rating_text(p):
     return escaped(str(p["rating"])) if p.get("rating") is not None else "Unrated"
 
 
+def performance_text(row):
+    return "" if row.get("performance") is None else str(row["performance"])
+
+
 def date_text(date):
     """'2026-11-07' as 'November 7, 2026', and a month, '2026-10', as 'October 2026'."""
     year, month, *day = date.split("-")
@@ -201,16 +205,19 @@ def anchor(name):
 
 TIEBREAKS = ("Ties are broken by US Chess's default tiebreaks, in order: modified median, Solkoff, cumulative, and "
              "cumulative of opposition. Ratings are as the players entered.")
+PERFORMANCE = ("Performance is the rating that Elo's formula expects to make each player's score in the games they played "
+               "against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below "
+               "those opponents' average.")
 
 
 def swiss_standings(s, label):
     by_id = {p["id"]: p for p in s["players"]}
     rows = [[str(i), str(by_id[r["id"]]["number"]), escaped(r["name"]), r["id"], rating_text(by_id[r["id"]]),
              score_text(r["score"]), score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]),
-             score_text(r["opposition"])]
+             score_text(r["opposition"]), performance_text(r)]
             for i, r in enumerate(standings(s), 1)]
     return table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", "Median", "Solkoff", "Cumulative",
-                  "Opp. cumulative"], rows, label)
+                  "Opp. cumulative", "Performance"], rows, label)
 
 
 def swiss_main(t):
@@ -219,6 +226,7 @@ def swiss_main(t):
         return f"""<section id="standings">
       <h2>Final standings</h2>
       <p>{TIEBREAKS}</p>
+      <p>{PERFORMANCE}</p>
       {swiss_standings(parts[0], "Final standings")}
     </section>
 
@@ -228,6 +236,7 @@ def swiss_main(t):
       {chart_table(parts[0], "Wall chart")}
     </section>"""
     out = [f"<p>Each section was paired and ranked on its own, with its players numbered within it. {TIEBREAKS}</p>",
+           f"<p>{PERFORMANCE}</p>",
            f"<p>{CHART_KEY}</p>"]
     for part in parts:
         name = part["name"]
@@ -247,18 +256,18 @@ def quad_main(t):
         by_id = {p["id"]: p for p in q["players"]}
         order = standings(q, "quadStandings")
         rows = [[str(r["place"]), str(by_id[r["id"]]["number"]), escaped(by_id[r["id"]]["name"]), r["id"],
-                 rating_text(by_id[r["id"]]), score_text(r["score"]), score_text(r["sonnebornBerger"])]
+                 rating_text(by_id[r["id"]]), score_text(r["score"]), score_text(r["sonnebornBerger"]), performance_text(r)]
                 for r in order]
         name = q["name"]
         out.append(f"""<section id="{anchor(name)}">
       <h2>{escaped(name)}</h2>
       <h3>Final standings</h3>
-      {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", "Sonneborn-Berger"], rows, f"{name} standings")}
+      {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", "Sonneborn-Berger", "Performance"], rows, f"{name} standings")}
       <h3>Crosstable</h3>
       {chart_table(q, f"{name} crosstable")}
     </section>""")
     intro = ("<p>Each quad is a round robin of four players. Ties are broken by Sonneborn-Berger, then by the tied "
-             f"players' games with each other. {CHART_KEY}</p>")
+             f"players' games with each other.</p>\n    <p>{PERFORMANCE}</p>\n    <p>{CHART_KEY}</p>")
     return "\n\n    ".join([intro, *out])
 
 
