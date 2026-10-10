@@ -1,32 +1,5 @@
 [
  {
-  "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
-  "calendar": "community",
-  "organizer": "Chilson Senior Center",
-  "tags": [
-   "casual",
-   "senior",
-   "cost-unknown",
-   "weekly"
-  ],
-  "url": "https://www.lovgov.org/services/parks-recreation/chilson-senior-center",
-  "price": "",
-  "page": "",
-  "start": "2026-10-09T13:00:00-06:00",
-  "end": "2026-10-09T16:30:00-06:00",
-  "allDay": false,
-  "location": "Chilson Senior Center, 700 E 4th St, Loveland, CO 80537",
-  "place": {
-   "name": "Chilson Senior Center",
-   "street": "700 E 4th St",
-   "city": "Loveland",
-   "region": "CO",
-   "zip": "80537"
-  },
-  "city": "Loveland",
-  "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
- },
- {
   "title": "Sac’n Saturdays at Grand Slam (formerly Gryphon)",
   "calendar": "club",
   "organizer": "Grand Slam Games and Comics",
@@ -4102,5 +4075,31 @@
   },
   "city": "Fort Collins",
   "description": "Cost: free.\n\nWeekly casual chess night, Wednesdays from 6:00 PM. All skill levels; usually 10 to 20 players. Games are mostly blitz and quick, and unrated. The brewery has beer, soda, and pretzels.\n\nRun by the Fort Collins Chess Meetup Group. Not organized by the Larimer County Chess Club, but it's the same community.\n\nDetails and RSVP: https://www.meetup.com/fort-collins-chess-meetup-group/\n\nPurpose Brewing and Cellars\n4025 S Mason St, Unit C, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Adult Chess at Estes Valley Community Center",
+  "calendar": "club",
+  "organizer": "Estes Park players",
+  "tags": [
+   "casual",
+   "adults",
+   "weekly"
+  ],
+  "url": "https://www.facebook.com/groups/1070304347284532/posts/1691715275143433/",
+  "price": "",
+  "page": "",
+  "start": "2027-01-07T15:30:00-07:00",
+  "end": "2027-01-07T17:00:00-07:00",
+  "allDay": false,
+  "location": "Estes Valley Community Center, 660 Community Dr, Estes Park, CO 80517",
+  "place": {
+   "name": "Estes Valley Community Center",
+   "street": "660 Community Dr",
+   "city": "Estes Park",
+   "region": "CO",
+   "zip": "80517"
+  },
+  "city": "Estes Park",
+  "description": "Cost: an Estes Valley Community Center day pass or membership.\nDay pass, adults 18–54: $8 for district residents, $15 for non-residents\nDay pass, seniors 55+: $6 for district residents, $11 for non-residents\nPunch passes and memberships: https://evrpd.com/community-center-memberships/\n\nAdult Chess, Thursdays 3:30 – 5:00 PM, downstairs at the Estes Valley Community Center. Any level of play; boards and pieces provided.\n\nRun by players who meet there, announced in the Things to Do in Estes Park Facebook group. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.facebook.com/groups/1070304347284532/posts/1691715275143433/\n\nEstes Valley Community Center\n660 Community Dr, Estes Park, CO 80517"
  }
 ]
