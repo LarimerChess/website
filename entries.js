@@ -32,7 +32,10 @@ function eventSection(event) {
     const table = document.createElement("table");
     table.className = "entries";
     const head = table.createTHead().insertRow();
-    for (const label of ["Name", "US Chess ID", "Rating", ...(event.entries.some((e) => e.for === "Whole month") ? ["For"] : [])]) {
+    const month = event.entries.some((e) => e.for === "Whole month");
+    // Players get sections when the tournament starts.
+    const sectioned = event.entries.some((e) => e.section);
+    for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(sectioned ? ["Section"] : [])]) {
       cell(head, label, "th").scope = "col";
     }
     const body = table.createTBody();
@@ -50,7 +53,8 @@ function eventSection(event) {
       link.append(tab);
       cell(row, "").append(link);
       cell(row, e.rating || "Unrated");
-      if (head.cells.length > 3) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
+      if (month) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
+      if (sectioned) cell(row, e.section || "");
     }
     section.append(table);
   }

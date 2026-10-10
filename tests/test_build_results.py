@@ -4,7 +4,8 @@
 
 The fixtures are a Saturday Swiss and a club night's monthly Swiss between them with a
 half-point bye, full-point byes, forfeits one way and both ways, a late entrant, and two
-withdrawals; a quad tournament; an arena; and a tournament still running.
+withdrawals; a quad tournament; an arena; a Swiss in two sections, Open and Under 1400, with a
+player playing up; and a tournament still running.
 """
 
 import importlib.util
@@ -29,6 +30,7 @@ SATURDAY = TOURNAMENTS["first-saturday-classic/2026-11-07"]
 CLUB_NIGHT = TOURNAMENTS["monday-club-night-at-peak/2026-10"]
 QUAD = TOURNAMENTS["fourth-saturday-classic/2027-01-23"]
 ARENA = TOURNAMENTS["knightmare-arena-classical/2026-10-31"]
+SECTIONS = TOURNAMENTS["second-saturday-sections/2026-12-12"]
 
 
 def cells(t):
@@ -84,9 +86,12 @@ class Standings(unittest.TestCase):
 
 class Quads(unittest.TestCase):
     def test_groups_and_tiebreaks(self):
-        self.assertEqual(sorted({br.quad(p) for p in QUAD["players"]}), [1, 2])
-        second = br.within(QUAD, {p["id"] for p in QUAD["players"] if br.quad(p) == 2})
-        self.assertEqual(len(second["players"]), 4)
+        # Started before sections: a quad for each four numbers, numbered 1 to 4 within it.
+        quads = br.sections(QUAD)
+        self.assertEqual([q["name"] for q in quads], ["Quad 1", "Quad 2"])
+        second = quads[1]
+        self.assertEqual([p["number"] for p in second["players"]], [1, 2, 3, 4])
+        self.assertEqual(sum(len(r["games"]) for r in second["rounds"]), 6)
         rows = {r["id"]: r for r in br.standings(second, "quadStandings")}
         self.assertEqual((rows["90000045"]["score"], rows["90000045"]["sonnebornBerger"]), (2.5, 2.25))
         self.assertEqual((rows["90000046"]["score"], rows["90000046"]["sonnebornBerger"]), (1.0, 0.0))  # a forfeit win adds nothing
@@ -95,7 +100,28 @@ class Quads(unittest.TestCase):
         page = br.results_page(QUAD)
         self.assertIn("<h2>Quad 1</h2>", page)
         self.assertIn("<h2>Quad 2</h2>", page)
-        self.assertIn("X8 <small>1</small>", page)
+        self.assertIn("X4 <small>1</small>", page)
+
+
+class Sections(unittest.TestCase):
+    def test_each_section_on_its_own(self):
+        open_, under = br.sections(SECTIONS)
+        self.assertEqual([p["name"] for p in open_["players"]], ["Ivy Ironwood", "Jo Juniper", "Kit Kapok", "Max Maple"])
+        self.assertEqual([p["number"] for p in under["players"]], [1, 2, 3])
+        self.assertEqual([r["name"] for r in br.standings(open_)], ["Jo Juniper", "Ivy Ironwood", "Max Maple", "Kit Kapok"])
+        self.assertEqual([r["name"] for r in br.standings(under)], ["Lu Larch", "Ned Nutmeg", "Oz Olive"])
+
+    def test_wall_charts_by_section_numbers(self):
+        open_, under = br.sections(SECTIONS)
+        self.assertEqual(cells(open_)[4], ["L2 w 0", "W3 b 1"])     # Max Maple, playing up
+        self.assertEqual(cells(under), {1: ["W3 w 1", "W2 b 2"], 2: ["B 1", "L1 w 1"], 3: ["L1 b 0", "B 1"]})
+
+    def test_page(self):
+        page = br.results_page(SECTIONS)
+        self.assertLess(page.index('<section id="open">'), page.index('<section id="under-1400">'))
+        self.assertIn("<h2>Under 1400</h2>", page)
+        self.assertIn('aria-label="Open wall chart"', page)
+        self.assertIn("Final standings and wall charts", page)
 
 
 class Arena(unittest.TestCase):
@@ -112,6 +138,16 @@ class Fingerprint(unittest.TestCase):
         changed["rounds"][0]["games"][0]["result"] = "1/2-1/2"
         self.assertNotEqual(br.fingerprint(SATURDAY), br.fingerprint(changed))
         self.assertEqual(br.fingerprint(SATURDAY), br.fingerprint(json.loads(json.dumps(SATURDAY))))
+
+    def test_sections(self):
+        # Without sections the lines are as they were, so an old tournament's hash doesn't move.
+        blank = json.loads(json.dumps(SATURDAY))
+        for p in blank["players"]:
+            p["section"] = ""
+        self.assertEqual(br.fingerprint(SATURDAY), br.fingerprint(blank))
+        moved = json.loads(json.dumps(SECTIONS))
+        moved["players"][4]["section"] = "Under 1400"
+        self.assertNotEqual(br.fingerprint(SECTIONS), br.fingerprint(moved))
 
 
 class Build(unittest.TestCase):

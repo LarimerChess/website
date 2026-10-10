@@ -12,6 +12,9 @@
 //
 // pairRound(tournament, { halfByes, absent, out, coin }) returns { games: [{ board, white, black }], byes, notes }
 // for the next round. coin, for round one: "white" if the higher-rated player on board one has white.
+//
+// A tournament with sections also has sections: [{ name, under }] and each player's section;
+// sections(t) splits it into one such tournament per section, and pairSections pairs them all.
 
 (function (root) {
   "use strict";
@@ -499,7 +502,74 @@
     return out;
   }
 
-  const Pairing = { pairRound, standings, pairQuadRound, quadStandings, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
+  /** The section a rating puts a player in: the one with the lowest limit the rating is under,
+   *  or else one without a limit. Unrated players may enter any section. */
+  function placeIn(defs, rating) {
+    const r = rating == null || rating === "" ? null : parseInt(rating, 10);
+    const allowed = defs.filter((s) => !s.under || r == null || Number.isNaN(r) || r < Number(s.under));
+    const limited = allowed.filter((s) => s.under).sort((a, b) => a.under - b.under);
+    return (limited[0] || allowed[0] || [...defs].sort((a, b) => (b.under || Infinity) - (a.under || Infinity))[0])?.name || "";
+  }
+
+  /** Whether a player may enter a section: playing up is allowed, playing down isn't. */
+  function mayEnter(def, rating) {
+    const r = rating == null || rating === "" ? NaN : parseInt(rating, 10);
+    return !def.under || Number.isNaN(r) || r < Number(def.under);
+  }
+
+  /**
+   * A tournament's sections in order, each a tournament of its own (28A, 29): { name, key, under,
+   * players, rounds }. A player plays in one section, numbered 1 up within it in the order of
+   * their numbers; the rounds keep only the section's games and byes. key is what the
+   * spreadsheet's Section cells hold for it, empty for a tournament started before sections,
+   * which is one section, or for quads one per four numbers.
+   */
+  function sections(t) {
+    const defs = (t.sections || []).filter((s) => s && s.name);
+    let groups;
+    if (defs.length || t.players.some((p) => p.section)) {
+      const names = defs.map((s) => s.name);
+      const where = new Map(t.players.map((p) => [p.id, p.section || placeIn(defs, p.rating)]));
+      for (const name of where.values()) if (name && !names.includes(name)) names.push(name);
+      groups = names.map((name) => ({ name, key: name, under: defs.find((s) => s.name === name)?.under || null,
+        members: t.players.filter((p) => where.get(p.id) === name) }));
+    } else if (t.format === "quad") {
+      const quads = [...new Set(t.players.map((p) => Math.ceil(Number(p.number) / 4)))].sort((a, b) => a - b);
+      groups = quads.map((q) => ({ name: `Quad ${q}`, key: "", under: null,
+        members: t.players.filter((p) => Math.ceil(Number(p.number) / 4) === q) }));
+    } else {
+      groups = [{ name: "", key: "", under: null, members: t.players }];
+    }
+    return groups.map(({ members, ...g }) => {
+      const ids = new Set(members.map((p) => p.id));
+      const players = [...members].sort((a, b) => Number(a.number) - Number(b.number)).map((p, i) => ({ ...p, number: i + 1 }));
+      const rounds = t.rounds.map((r) => ({ ...r,
+        games: r.games.filter((x) => ids.has(x.white) && ids.has(x.black)),
+        byes: (r.byes || []).filter((b) => ids.has(b.id)),
+        out: (r.out || []).filter((id) => ids.has(id)) }));
+      return { ...g, players, rounds };
+    });
+  }
+
+  /**
+   * The next round for every section, each paired on its own: [{ section, name, games, byes, notes }],
+   * section being the key to save the round under. Boards are numbered within each section,
+   * except in a tournament started before sections, whose boards run on through its quads as
+   * they always did.
+   */
+  function pairSections(t, options = {}) {
+    const number = t.rounds.length + 1;
+    let board = 0;
+    return sections(t).filter((s) => s.players.length).map((s) => {
+      const result = t.format === "quad" ? pairQuadRound(s.players, number) : pairRound(s, options);
+      const offset = s.key ? 0 : board;
+      board += result.games.length;
+      return { section: s.key, name: s.name, ...result, games: result.games.map((g) => ({ ...g, board: g.board + offset })) };
+    });
+  }
+
+  const Pairing = { pairRound, standings, pairQuadRound, quadStandings, sections, pairSections, placeIn, mayEnter,
+    QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;
 })(typeof window !== "undefined" ? window : globalThis);

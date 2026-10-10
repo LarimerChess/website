@@ -435,3 +435,14 @@ section.td-table:focus-visible { outline: 2px solid var(--accent); outline-offse
 section.td-table td { white-space: nowrap; }
 .wallchart td { vertical-align: top; }
 .wallchart td small { display: block; font-size: 14px; color: var(--muted); }
+.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
+.run-sections legend { padding: 0; font-weight: 600; }
+.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
+.register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
+.run-section-row input { width: 100%; box-sizing: border-box; }
+.run-sections-edit { margin: 16px 0; }
+.run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.round-menu { margin: 12px 0 8px; }
+.round-menu label { font-weight: 600; }
+.round-menu select { font: inherit; padding: 6px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.round-menu select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

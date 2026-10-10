@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pairings · Larimer County Chess Club</title>
-  <meta name="description" content="Pairings and standings for Larimer County Chess Club tournaments in progress in Fort Collins, Colorado.">
+  <meta name="description" content="Pairings for Larimer County Chess Club tournaments in progress in Fort Collins, Colorado, round by round and section by section.">
   <link rel="canonical" href="https://larimerchess.org/pairings/">
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Larimer County Chess Club">
   <meta property="og:title" content="Pairings · Larimer County Chess Club">
-  <meta property="og:description" content="Pairings and standings for Larimer County Chess Club tournaments in progress in Fort Collins, Colorado.">
+  <meta property="og:description" content="Pairings for Larimer County Chess Club tournaments in progress in Fort Collins, Colorado, round by round and section by section.">
   <meta property="og:url" content="https://larimerchess.org/pairings/">
   <meta property="og:image" content="https://larimerchess.org/share.png">
   <meta property="og:image:width" content="1200">
@@ -459,6 +459,17 @@ section.td-table:focus-visible { outline: 2px solid var(--accent); outline-offse
 section.td-table td { white-space: nowrap; }
 .wallchart td { vertical-align: top; }
 .wallchart td small { display: block; font-size: 14px; color: var(--muted); }
+.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
+.run-sections legend { padding: 0; font-weight: 600; }
+.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
+.register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
+.run-section-row input { width: 100%; box-sizing: border-box; }
+.run-sections-edit { margin: 16px 0; }
+.run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.round-menu { margin: 12px 0 8px; }
+.round-menu label { font-weight: 600; }
+.round-menu select { font: inherit; padding: 6px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.round-menu select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>
 </head>
 <body>
@@ -470,15 +481,16 @@ section.td-table td { white-space: nowrap; }
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>
         <li><a href="/pairings/" aria-current="page">Pairings</a></li>
+        <li><a href="/standings/">Standings</a></li>
+        <li><a href="/results/">Results</a></li>
         <li><a href="/scholastic/">Scholastic</a></li>
-        <li><a href="/minutes/">Board minutes</a></li>
         <li><a href="/#join">Join</a></li>
       </ul>
     </div>
   </nav>
   <main id="main" class="wrap">
     <h1>Pairings</h1>
-    <p>Pairings and standings for club tournaments in progress, as the tournament director posts each round. Finished tournaments are on the <a href="/results/">Results</a> page.</p>
+    <p>Pairings for club tournaments in progress, as the tournament director posts each round, with each section in its own table. Pick a round to see an earlier one. The standings are on the <a href="/standings/">Standings</a> page, and finished tournaments on the <a href="/results/">Results</a> page.</p>
     <p class="pairings-status" role="status">Loading pairings…</p>
     <noscript><p>The pairings need JavaScript.</p></noscript>
     <div class="pairings-all"></div>
@@ -487,11 +499,12 @@ section.td-table td { white-space: nowrap; }
   <footer class="wrap">
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    <p><a href="/minutes/">Board minutes</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=1317c676ce" defer></script>
-  <script src="../pairing.js?v=d6f4f19033" defer></script>
+  <script src="../register.js?v=df15d3d6af" defer></script>
+  <script src="../pairing.js?v=f6f74df110" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
-  <script src="../pairings.js?v=b925272be0" defer></script>
+  <script src="../pairings.js?v=6b12926f07" defer></script>
 </body>
 </html>

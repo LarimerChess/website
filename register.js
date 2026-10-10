@@ -111,6 +111,12 @@ async function showEntries() {
     const players = entries.length === 1 ? "1 player" : `${entries.length} players`;
     entriesStatus.textContent = entries.length
       ? `${players} registered for ${day}.` : `No one has registered for ${day} yet.`;
+    const head = table.tHead.rows[0];
+    const forColumn = [...head.cells].some((c) => c.textContent === "For");
+    // Players get sections when the tournament starts.
+    const sectioned = entries.some((e) => e.section);
+    head.querySelector(".entries-section")?.remove();
+    if (sectioned) head.append(Object.assign(document.createElement("th"), { scope: "col", className: "entries-section", textContent: "Section" }));
     table.tBodies[0].replaceChildren(...entries.map((e) => {
       const row = document.createElement("tr");
       row.insertCell().textContent = e.name;
@@ -125,7 +131,8 @@ async function showEntries() {
       link.append(hint);
       row.insertCell().append(link);
       row.insertCell().textContent = e.rating || "Unrated";
-      if (table.tHead.rows[0].cells.length > 3) row.insertCell().textContent = e.for || "";
+      if (forColumn) row.insertCell().textContent = e.for || "";
+      if (sectioned) row.insertCell().textContent = e.section || "";
       return row;
     }));
     table.hidden = !entries.length;

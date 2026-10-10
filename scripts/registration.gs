@@ -14,8 +14,8 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, round, result, out, finish, and for arenas: arenaJoin, arenaLeave,
- *                               arenaPair, arenaResult, arenaPact, arenaCancel
+ *                               sync, sections, section, round, result, out, finish, and for arenas:
+ *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
  * the venue takes a player off that date's entries, so they aren't paired again; barred keeps
@@ -49,7 +49,9 @@ const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venu
 const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
-  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff"],
+  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"],
+  Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
   Queue: ["Key", "US Chess ID", "Since"],
 };
@@ -83,6 +85,8 @@ function doPost(e) {
       case "tournament": return json({ tournament: tournament(`${p.event}/${p.date}`, true) });
       case "start": return json(startTournament(p));
       case "sync": return json(syncPlayers(`${p.event}/${p.date}`));
+      case "sections": return json(setSections(p));
+      case "section": return json(setSection(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
       case "out": return json(setOut(p));
@@ -193,6 +197,8 @@ function entries(key, td, read) {
   const [event, date] = String(key).split("/");
   const { col, rows } = read || readEntries();
   const logged = read ? read.logged : readIncidents().rows;
+  const placed = read ? read.placed : sectionsByKey();
+  const sectionOf = placed[key] || (date.length === 10 && placed[`${event}/${date.slice(0, 7)}`]) || {};
   const outReason = (id) => {
     const out = logged.find((i) => i.event === event && i.date === date && i["us chess id"] === id
       && OUT_FOR_THE_DATE.includes(i.action));
@@ -209,6 +215,7 @@ function entries(key, td, read) {
     .map(({ r, out }) => {
       const entry = { name: r[col.Name], id: r[col["US Chess ID"]], rating: r[col["Regular rating"]],
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
+      if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       if (td) {
         Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
           paidOn: r[col["Paid on"]], email: r[col.Email],
@@ -226,7 +233,7 @@ function allEntries() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get("entries:all");
   if (cached) return JSON.parse(cached);
-  const read = { ...readEntries(), logged: readIncidents().rows };
+  const read = { ...readEntries(), logged: readIncidents().rows, placed: sectionsByKey() };
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
   const list = Object.entries(clubEvents())
     .filter(([, e]) => e.kind !== "month" && e.first >= today)
@@ -401,6 +408,12 @@ function readIncidents() {
 // round with pairing.js and posts it here; results are entered board by board. An arena has no
 // rounds: the desk pairs its games (Arena tab) with arena.js from the players waiting (Queue
 // tab), and they're public as soon as they're paired.
+//
+// A Swiss may have sections, such as Open and Under 1400, each paired and ranked on its own (28A,
+// 29). Tournaments' Sections cell holds them as JSON, [{"name":"Open"},{"name":"Under 1400",
+// "under":1400}], and each Players and Rounds row names its section; boards are numbered within
+// each. Quads are sections Quad 1, Quad 2, and so on. A tournament started before sections has
+// none of these, and runs as one section, or as quads by number, as it always did.
 
 function tournamentBook() {
   const id = PropertiesService.getScriptProperties().getProperty("TOURNAMENT_SHEET_ID");
@@ -435,7 +448,8 @@ function tournament(key, td) {
   const players = table("Players").rows.filter((r) => r.Key === key)
     .sort((a, b) => Number(a["No."]) - Number(b["No."]))
     .map((r) => ({ id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
-      rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null }));
+      rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null,
+      section: r.Section || "" }));
   const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
   const count = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
   const rounds = [...Array(count)].map((_, i) => {
@@ -443,14 +457,14 @@ function tournament(key, td) {
     const here = lines.filter((r) => Number(r.Round) === n);
     return {
       games: here.filter((r) => r.Black).sort((a, b) => Number(a.Board) - Number(b.Board))
-        .map((r) => ({ board: Number(r.Board), white: r.White, black: r.Black, result: r.Result })),
-      byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0 })),
+        .map((r) => ({ board: Number(r.Board), white: r.White, black: r.Black, result: r.Result, section: r.Section || "" })),
+      byes: here.filter((r) => !r.Black).map((r) => ({ id: r.White, points: Number(r["Bye points"]) || 0, section: r.Section || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
       posted: here.some((r) => r.Posted),
     };
   });
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
-    plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, players };
+    plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players };
   if (info.Format === "arena") {
     result.cutoff = info.Cutoff;
     result.games = table("Arena").rows.filter((r) => r.Key === key)
@@ -477,9 +491,12 @@ function startTournament(p) {
     const rounds = format === "quad" ? "3" : format === "arena" ? "" : String(p.rounds || "").trim();
     const cutoff = format === "arena" ? String(p.cutoff || "").trim() : "";
     if (format === "arena" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return { error: "No new games after what time? Such as 17:30." };
+    const defined = format === "swiss" && p.sections !== undefined ? parseSections(p.sections) : { sections: [] };
+    if (defined.error) return defined;
     appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
-      Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff });
+      Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
+      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "" });
   } finally {
     lock.releaseLock();
   }
@@ -488,13 +505,15 @@ function startTournament(p) {
   return synced;
 }
 
-/** 30G and 30A: quads are groups of four by rating, and within each the table numbers are drawn by lot. */
+/** 30G and 30A: quads are groups of four by rating, and within each the table numbers are drawn by
+ *  lot. Each quad is a section; numbers 5 to 8 are still the second quad's. */
 function numberQuads(key) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const t = table("Players");
     const mine = t.rows.filter((r) => r.Key === key).sort((a, b) => (parseInt(b.Rating) || 0) - (parseInt(a.Rating) || 0));
+    const quads = [];
     for (let g = 0; g < mine.length; g += 4) {
       const group = mine.slice(g, g + 4);
       const numbers = group.map((_, i) => g + i + 1);
@@ -502,19 +521,30 @@ function numberQuads(key) {
         const j = Math.floor(Math.random() * (i + 1));
         [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
       }
-      group.forEach((r, i) => setCell(t, r.row, "No.", String(numbers[i])));
+      const name = `Quad ${g / 4 + 1}`;
+      quads.push({ name });
+      group.forEach((r, i) => {
+        setCell(t, r.row, "No.", String(numbers[i]));
+        setCell(t, r.row, "Section", name);
+      });
     }
+    const info = table("Tournaments");
+    const line = info.rows.find((r) => r.Key === key);
+    if (line && quads.length) setCell(info, line.row, "Sections", JSON.stringify(quads));
     clearTournamentCache();
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Adds registered entrants who aren't players yet, numbered after the others (28B). */
+/** Adds registered entrants who aren't players yet, numbered after the others (28B), each in the
+ *  section their rating puts them in. */
 function syncPlayers(key) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    const defs = info && info.Format !== "quad" ? sectionsOf(info) : [];
     const t = table("Players");
     const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
     let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
@@ -523,7 +553,7 @@ function syncPlayers(key) {
     entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
     for (const e of entrants) {
       appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
-        Rating: e.rating || "", "Out from round": "" });
+        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "" });
     }
     clearTournamentCache();
     return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).` : "No new entrants." };
@@ -550,11 +580,11 @@ function saveRound(p) {
     const fresh = table("Rounds");
     for (const g of games) {
       appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: String(g.board), White: g.white,
-        Black: g.black, Result: "", "Bye points": "", Posted: posted });
+        Black: g.black, Result: "", "Bye points": "", Posted: posted, Section: String(g.section || "") });
     }
     for (const b of byes) {
       appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: "", White: b.id, Black: "",
-        Result: "", "Bye points": String(b.points), Posted: posted });
+        Result: "", "Bye points": String(b.points), Posted: posted, Section: String(b.section || "") });
     }
     clearTournamentCache();
     return { ok: true, message: posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.` };
@@ -571,7 +601,9 @@ function saveResult(p) {
   lock.waitLock(20000);
   try {
     const t = table("Rounds");
-    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && Number(r.Board) === Number(p.board));
+    // A desk from before sections sends none and saves rounds without one, with boards unique in the round.
+    const board = t.rows.filter((r) => r.Key === key && Number(r.Round) === Number(p.number) && Number(r.Board) === Number(p.board));
+    const line = board.find((r) => p.section === undefined || r.Section === p.section) || board.find((r) => !r.Section);
     if (!line) return { error: "No such board." };
     setCell(t, line.row, "Result", p.result);
     clearTournamentCache();
@@ -590,6 +622,123 @@ function setOut(p) {
   setCell(t, line.row, "Out from round", String(p.from || ""));
   clearTournamentCache();
   return { ok: true, message: p.from ? `${line.Name} is out from round ${p.from}.` : `${line.Name} is back in.` };
+}
+
+/** A tournament's sections from its Tournaments row; [] for one started before sections. */
+function sectionsOf(info) {
+  try {
+    const list = JSON.parse(info.Sections || "[]");
+    return Array.isArray(list) ? list.filter((s) => s && s.name) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/** The sections the desk sent, [{ name, under }], or an error. */
+function parseSections(text) {
+  let list;
+  try {
+    list = JSON.parse(text || "[]");
+  } catch (err) {
+    list = null;
+  }
+  if (!Array.isArray(list) || !list.length) return { error: "Give the tournament at least one section, such as Open." };
+  const sections = [];
+  for (const s of list) {
+    const name = String((s && s.name) || "").trim().replace(/\s+/g, " ");
+    const under = String(s && s.under != null ? s.under : "").trim();
+    // US Chess's rating report keeps 30 characters of a section's name.
+    if (!name || name.length > 30) return { error: "Each section needs a name of up to 30 characters." };
+    if (sections.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { error: `Two sections are named ${name}.` };
+    if (under && !/^\d{3,4}$/.test(under)) return { error: `${name}: the rating limit is a number, such as 1400, or empty for none.` };
+    sections.push(under ? { name, under: Number(under) } : { name });
+  }
+  return { sections };
+}
+
+/** pairing.js's placeIn: the section with the lowest limit the rating is under, or else one without a limit. */
+function placeIn(defs, rating) {
+  const r = parseInt(rating, 10);
+  const allowed = defs.filter((s) => !s.under || isNaN(r) || r < Number(s.under));
+  const limited = allowed.filter((s) => s.under).sort((a, b) => a.under - b.under);
+  const best = limited[0] || allowed[0] || defs.slice().sort((a, b) => (b.under || Infinity) - (a.under || Infinity))[0];
+  return best ? best.name : "";
+}
+
+/** Sections can change until round 1 is posted or has a result; a saved round 1 is deleted, to be paired again. */
+function beforeRoundOne(key) {
+  const t = table("Rounds");
+  const mine = t.rows.filter((r) => r.Key === key);
+  if (mine.some((r) => r.Posted || r.Result)) return "Round 1 is posted, so sections can't change now: a player plays in one section.";
+  for (const r of mine.reverse()) t.sheet.deleteRow(r.row);
+  return "";
+}
+
+/** Sets a Swiss's sections and puts every player in the one their rating gives, before round 1. */
+function setSections(p) {
+  const key = `${p.event}/${p.date}`;
+  const parsed = parseSections(p.sections);
+  if (parsed.error) return parsed;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const info = table("Tournaments");
+    const line = info.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    if (line.Format !== "swiss") return { error: "Only a Swiss has sections to set; quads are grouped when they start." };
+    const late = beforeRoundOne(key);
+    if (late) return { error: late };
+    setCell(info, line.row, "Sections", JSON.stringify(parsed.sections));
+    const t = table("Players");
+    for (const r of t.rows.filter((x) => x.Key === key)) setCell(t, r.row, "Section", placeIn(parsed.sections, r.Rating));
+    clearTournamentCache();
+    return { ok: true, message: `Sections: ${parsed.sections.map((s) => s.name).join(", ")}. Everyone is placed by rating.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Moves a player to another section before round 1. A player may play up, never down. */
+function setSection(p) {
+  const key = `${p.event}/${p.date}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (!info) return { error: "No such tournament." };
+    if (info.Format !== "swiss") return { error: "Quads are grouped by rating when they start." };
+    const def = sectionsOf(info).find((s) => s.name === p.section);
+    if (!def) return { error: "No such section." };
+    const t = table("Players");
+    const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+    if (!line) return { error: "Not a player in this tournament." };
+    const r = parseInt(line.Rating, 10);
+    if (def.under && r >= def.under) {
+      return { error: `${line.Name} is rated ${line.Rating}, too high for ${def.name}. A player may play up, not down.` };
+    }
+    const late = beforeRoundOne(key);
+    if (late) return { error: late };
+    setCell(t, line.row, "Section", def.name);
+    clearTournamentCache();
+    return { ok: true, message: `${line.Name} plays in ${def.name}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Each running tournament's players' sections, { key: { id: section } }, where it has more than one section. */
+function sectionsByKey() {
+  try {
+    const several = new Set(table("Tournaments").rows.filter((r) => sectionsOf(r).length > 1).map((r) => r.Key));
+    const out = {};
+    for (const r of table("Players").rows) {
+      if (several.has(r.Key) && r.Section) (out[r.Key] = out[r.Key] || {})[r["US Chess ID"]] = r.Section;
+    }
+    return out;
+  } catch (err) {
+    console.error(err);
+    return {};
+  }
 }
 
 function finishTournament(key) {
