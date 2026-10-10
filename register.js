@@ -180,9 +180,11 @@ if (!dateField) {
       const response = await fetch(ENDPOINT, { method: "POST", body });
       const result = await response.json();
       status.textContent = result.message || result.error;
-      // The official name leads the success message; the trap's reply ("Thanks.") has none.
-      const name = result.ok && (result.name || result.message?.match(/^(.+?) is registered for /)?.[1]);
-      if (name && rememberChoice?.checked && savedBox) {
+      // What's saved is what the player typed, once the script has accepted it: a registration,
+      // or a player already registered. US Chess's spelling of the name only labels the saved player.
+      const already = result.error?.match(/^(.+?) is already registered\b/);
+      if ((result.ok || already) && rememberChoice?.checked && savedBox) {
+        const name = result.name || result.message?.match(/^(.+?) is registered\b/)?.[1] || already?.[1] || "";
         savePlayer({ id: body.get("id").trim(), last: body.get("last").trim(), email: body.get("email").trim(), name });
       }
       if (result.ok) {

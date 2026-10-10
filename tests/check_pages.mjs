@@ -320,8 +320,11 @@ registration.on("request", async (request) => {
     if (request.method() === "POST") {
       const sent = Object.fromEntries(new URLSearchParams(request.postData()));
       posted.push(sent);
-      const message = `Test ${sent.last} is registered for Saturday, November 7, 2026. Due when you arrive: $15 (adult).`;
-      request.respond({ headers, contentType: "application/json", body: JSON.stringify({ ok: true, message }) });
+      // Kid's answer is in the wording of the script deployed before 2026-10-10, which has no " for …".
+      const message = sent.last === "Kid" ? `Test ${sent.last} is registered. A confirmation is on its way to ${sent.email}.`
+        : `Test ${sent.last} is registered for Saturday, November 7, 2026. Due when you arrive: $15 (adult).`;
+      const answer = sent.last === "Twin" ? { error: "Test Twin is already registered for Saturday, November 7, 2026." } : { ok: true, message };
+      request.respond({ headers, contentType: "application/json", body: JSON.stringify(answer) });
     } else {
       const entries = [{ name: "Test Player", id: "12345678", rating: "1500" }, { name: "New Player", id: "87654321", rating: "" }];
       request.respond({ headers, contentType: "application/json", body: JSON.stringify({ entries }) });
@@ -394,6 +397,16 @@ if (registerPath) {
     stored: localStorage.getItem("lccc-register-players"), checked: document.querySelector("#register-remember").checked }));
   posted.length === 3 && unremembered.hidden && unremembered.stored === null && unremembered.checked
     ? pass(`${registerPath} doesn't save a player when Remember is unchecked`) : fail(`${registerPath} unchecked Remember: ${JSON.stringify(unremembered)}`);
+  // A player already registered is saved too: the script has accepted their ID and last name.
+  for (const [field, value] of [["#register-id", "11223344"], ["#register-last", "Twin"], ["#register-email", "twin@example.com"]]) {
+    await registration.$eval(field, (input) => { input.value = ""; });
+    await registration.type(field, value);
+  }
+  await registration.click(".register-form button[type=submit]");
+  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.includes("already registered"));
+  const twin = await registration.evaluate(() => JSON.parse(localStorage.getItem("lccc-register-players") || "[]"));
+  twin.length === 1 && twin[0].id === "11223344" && twin[0].name === "Test Twin"
+    ? pass(`${registerPath} saves a player who is already registered`) : fail(`${registerPath} already registered: ${JSON.stringify(twin)}`);
   await registration.evaluate(() => localStorage.clear());
 }
 
