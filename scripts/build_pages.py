@@ -46,6 +46,8 @@ LISTINGS = {
 LABEL = re.compile(r"^(?:Cost(?: for [^:]+)?|Time control):")
 LINK = re.compile(r"https?://[^\s<>\"]*[^\s<>\".,;:!?)]|[\w.+-]+@[\w-]+\.[\w.-]*\w")
 STREET_ABBREVIATIONS = {"St", "Ave", "Rd", "Dr", "Blvd", "Ln", "Ct", "Pl", "Pkwy"}
+NAV = [("/events/", "Events"), ("/entries/", "Entries"), ("/pairings/", "Pairings"), ("/results/", "Results"),
+       ("/scholastic/", "Scholastic"), ("/minutes/", "Board minutes"), ("/#join", "Join")]
 
 
 def time_text(t):
@@ -288,9 +290,40 @@ def series_page(events, prices):
                  '<span class="visually-hidden"> (opens in a new tab)</span></a></address>')
     else:
         where = f"<p>{escaped(e['location'])}</p>"
+    main = f"""<h1>{escaped(name)}</h1>
+    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.
+      Next: <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
+
+    <section id="details">
+      <h2>Details</h2>
+      {description_html(e["description"])}
+    </section>
+
+    {register_html(events, prices)}
+
+    <section id="where">
+      <h2>Where</h2>
+      {where}
+    </section>
+
+    <p><a href="/events/">All chess events in Fort Collins and Larimer County</a></p>"""
+    stamp = hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]
+    return page_html(title, description, url, main, head=data_script(events),
+                     scripts=f'<script src="../../register.js?v={stamp}" defer></script>')
+
+
+def page_html(title, description, url, main, head="", scripts="", depth=2, current=None, main_attributes="",
+              generated=GENERATED):
+    """A page in the site's shell, with style.css inlined as sync_assets.py keeps it. current is
+    the navigation link to mark as this page."""
     css = (ROOT / "style.css").read_text(encoding="utf-8")
+    up = "../" * depth
+    nav = "\n".join(f'        <li><a href="{href}"{' aria-current="page"' if href == current else ''}>{text}</a></li>'
+                    for href, text in NAV)
+    head = f"\n  {head}" if head else ""
+    scripts = f"\n  {scripts}" if scripts else ""
     return f"""<!DOCTYPE html>
-{GENERATED}
+{generated}
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -310,10 +343,9 @@ def series_page(events, prices):
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
-  <meta name="twitter:card" content="summary_large_image">
-  {data_script(events)}
-  <link rel="preload" href="../../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="../../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <meta name="twitter:card" content="summary_large_image">{head}
+  <link rel="preload" href="{up}fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{up}fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
   <style>
 {css}</style>
 </head>
@@ -323,41 +355,19 @@ def series_page(events, prices):
     <div class="wrap">
       <a class="brand" href="/"><span aria-hidden="true">♞ </span>{CLUB}</a>
       <ul>
-        <li><a href="/events/">Events</a></li>
-        <li><a href="/entries/">Entries</a></li>
-        <li><a href="/pairings/">Pairings</a></li>
-        <li><a href="/scholastic/">Scholastic</a></li>
-        <li><a href="/minutes/">Board minutes</a></li>
-        <li><a href="/#join">Join</a></li>
+{nav}
       </ul>
     </div>
   </nav>
-  <main id="main" class="wrap">
-    <h1>{escaped(name)}</h1>
-    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.
-      Next: <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
-
-    <section id="details">
-      <h2>Details</h2>
-      {description_html(e["description"])}
-    </section>
-
-    {register_html(events, prices)}
-
-    <section id="where">
-      <h2>Where</h2>
-      {where}
-    </section>
-
-    <p><a href="/events/">All chess events in Fort Collins and Larimer County</a></p>
+  <main id="main" class="wrap"{main_attributes}>
+    {main}
   </main>
 
   <footer class="wrap">
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
-  </footer>
-  <script src="../../register.js?v={hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]}" defer></script>
+  </footer>{scripts}
 </body>
 </html>
 """

@@ -1,13 +1,25 @@
 <!DOCTYPE html>
+<!-- Written by scripts/build_results.py from the tournament results; don't edit by hand. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TD desk · Larimer County Chess Club</title>
-  <meta name="robots" content="noindex">
+  <title>Results · Larimer County Chess Club</title>
+  <meta name="description" content="Final standings and wall charts of Larimer County Chess Club tournaments in Fort Collins, Colorado.">
+  <link rel="canonical" href="https://larimerchess.org/results/">
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Larimer County Chess Club">
+  <meta property="og:title" content="Results · Larimer County Chess Club">
+  <meta property="og:description" content="Final standings and wall charts of Larimer County Chess Club tournaments in Fort Collins, Colorado.">
+  <meta property="og:url" content="https://larimerchess.org/results/">
+  <meta property="og:image" content="https://larimerchess.org/share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
   <style>
@@ -443,7 +455,7 @@ section.td-table td { white-space: nowrap; }
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>
         <li><a href="/pairings/">Pairings</a></li>
-        <li><a href="/results/">Results</a></li>
+        <li><a href="/results/" aria-current="page">Results</a></li>
         <li><a href="/scholastic/">Scholastic</a></li>
         <li><a href="/minutes/">Board minutes</a></li>
         <li><a href="/#join">Join</a></li>
@@ -451,156 +463,18 @@ section.td-table td { white-space: nowrap; }
     </div>
   </nav>
   <main id="main" class="wrap">
-    <h1>TD desk</h1>
-    <p>Register players and manage entries for club events. For the club's tournament directors.</p>
-    <noscript><p>The TD desk needs JavaScript.</p></noscript>
-
-    <form class="register-form td-login" hidden>
-      <label for="td-password">Password</label>
-      <input id="td-password" name="password" type="password" required autocomplete="current-password">
-      <button class="button" type="submit">Sign in</button>
-      <p class="td-login-status" role="status"></p>
-    </form>
-
-    <div class="td-desk" hidden>
-      <section>
-        <h2>Register a player</h2>
-        <form class="register-form td-register">
-          <label for="td-event">Event</label>
-          <select id="td-event" name="choice" required></select>
-          <label for="td-player">Player</label>
-          <div class="td-combobox">
-            <input id="td-player" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
-              aria-controls="td-players" aria-describedby="td-player-hint" autocomplete="off" spellcheck="false">
-            <!-- [html-validate-disable-next prefer-native-element -- a select can't search as you type] -->
-            <ul id="td-players" class="td-players" role="listbox" aria-label="Matching players" hidden></ul>
-          </div>
-          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Colorado players come first.</p>
-          <p class="td-chosen" role="status"></p>
-          <label for="td-category">Fee category</label>
-          <select id="td-category" name="category">
-            <option value="">From US Chess, by age on the event date</option>
-            <option>Adult</option>
-            <option>Senior (65+)</option>
-            <option>Under 18</option>
-          </select>
-          <label for="td-email">Email (optional)</label>
-          <input id="td-email" name="email" type="email" autocomplete="off" aria-describedby="td-email-hint">
-          <p id="td-email-hint" class="register-hint">With an email, the player gets the confirmation and a withdraw link. For a player under 18, a parent's or guardian's.</p>
-          <button class="button" type="submit">Register</button>
-          <p class="td-register-status" role="status"></p>
-        </form>
-      </section>
-
-      <section>
-        <h2>Entries</h2>
-        <p class="td-entries-status" role="status"></p>
-        <div class="td-table">
-          <table class="entries td-entries" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="run">
-        <h2>Run the tournament</h2>
-        <p class="run-status" role="status"></p>
-        <form class="register-form run-start" hidden>
-          <label for="run-format">Format</label>
-          <select id="run-format" name="format">
-            <option value="swiss">Swiss (US Chess rules 27 to 29)</option>
-            <option value="arena">Arena</option>
-          </select>
-          <label for="run-rounds">Rounds</label>
-          <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint">
-          <p id="run-rounds-hint" class="register-hint">For a club night's month, one round a night. Leave empty for an arena.</p>
-          <label for="run-coin">Coin toss: board one's higher-rated player has</label>
-          <select id="run-coin" name="coin">
-            <option value="white">White</option>
-            <option value="black">Black</option>
-          </select>
-          <button class="button" type="submit">Start the tournament</button>
-        </form>
-        <div class="run-round" hidden>
-          <h3 class="run-round-title">This round</h3>
-          <div class="run-checkin">
-            <p>Who is playing this round? Players not here get a zero-point bye unless they asked for a half-point bye (22C).</p>
-            <div class="td-table"><table class="entries run-attendance">
-              <thead><tr><th scope="col">No.</th><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Score</th><th scope="col">This round</th></tr></thead>
-              <tbody></tbody>
-            </table></div>
-            <p><button class="button run-pair" type="button">Pair the round</button> <button class="button button-secondary run-sync" type="button">Add new entrants</button></p>
-          </div>
-          <div class="run-pairings" hidden>
-            <p class="register-hint">Review the pairings and change any player with the menus; the director is responsible for the pairings (29E7). Save keeps them private; Post shows them on the Pairings page.</p>
-            <div class="td-table"><table class="entries run-games">
-              <thead><tr><th scope="col">Board</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
-              <tbody></tbody>
-            </table></div>
-            <p class="run-byes"></p>
-            <ul class="run-notes"></ul>
-            <p class="run-edit-buttons"><button class="button run-post" type="button">Post the pairings</button> <button class="button button-secondary run-save" type="button">Save without posting</button> <button class="button button-secondary run-repair" type="button">Pair again</button></p>
-          </div>
-        </div>
-        <div class="run-standings-wrap" hidden>
-          <h3>Standings</h3>
-          <p class="register-hint">Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.</p>
-          <div class="td-table"><table class="entries run-standings">
-            <thead><tr><th scope="col">Place</th><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Score</th><th scope="col">Median</th><th scope="col">Solkoff</th><th scope="col">Cumulative</th><th scope="col">Opp. cumulative</th><th scope="col"><span class="visually-hidden">Withdraw</span></th></tr></thead>
-            <tbody></tbody>
-          </table></div>
-          <p><button class="button button-secondary run-finish" type="button">Finish the tournament</button></p>
-        </div>
-      </section>
-
-      <section>
-        <h2>Incidents</h2>
-        <p>Warnings, penalties, game losses, expulsions, and bars, under the Safe Play policy, §8. Log one from a player's Incident button. Expelled and removed players drop off that date's entries, so they aren't paired again; barred players can't register. Those three email the President.</p>
-        <p class="td-incidents-status" role="status"></p>
-        <ul class="td-incidents"></ul>
-      </section>
-
-      <p><button class="button button-secondary td-sign-out" type="button">Sign out</button></p>
-    </div>
-
-    <dialog class="event-dialog td-incident" aria-labelledby="td-incident-title">
-      <form class="register-form event-dialog-body" method="dialog">
-        <h2 id="td-incident-title">Log an incident</h2>
-        <p class="td-incident-player"></p>
-        <label for="td-action">What the TD did</label>
-        <select id="td-action" name="action_taken" required>
-          <option>Warning</option>
-          <option>Time penalty</option>
-          <option>Game loss</option>
-          <option>Expelled from the tournament</option>
-          <option>Removed from the venue</option>
-          <option>Barred from club events</option>
-        </select>
-        <label for="td-round">Round (optional)</label>
-        <input id="td-round" name="round" type="text" inputmode="numeric" maxlength="3" autocomplete="off">
-        <label for="td-reason">What happened</label>
-        <textarea id="td-reason" name="reason" rows="4" required></textarea>
-        <label for="td-name">Your name</label>
-        <input id="td-name" name="td" type="text" required autocomplete="name">
-        <div class="td-until" hidden>
-          <label for="td-until">Barred until (empty while the Board reviews it)</label>
-          <input id="td-until" name="until" type="date">
-        </div>
-        <p class="register-hint">Only the President may bar a player (§8). The Incidents tab of the registration Sheet keeps the log; reasons never appear on the website.</p>
-        <p class="td-incident-status" role="status"></p>
-        <p><button class="button" type="submit" value="log">Log it</button> <button class="button button-secondary" type="button" value="cancel">Cancel</button></p>
-      </form>
-    </dialog>
+    <h1>Results</h1>
+    <p>Final standings and wall charts of the club's US Chess rated tournaments. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
+    <section id="all-results">
+      <h2>Tournaments</h2>
+      <p>Results are posted here after each tournament is finished.</p>
+    </section>
   </main>
 
   <footer class="wrap">
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
+    <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=8a2b563af1" defer></script>
-  <script src="../td.js?v=ea08b388bb" defer></script>
-  <script src="../pairing.js?v=1546a4e68f" defer></script>
-  <script src="../td-run.js?v=76fea0b688" defer></script>
 </body>
 </html>

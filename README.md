@@ -39,13 +39,19 @@ pairing.js pairs Swiss rounds by the US Chess rules (chapter 2, rules 27 to 29) 
 
 The TD desk's Run the tournament section (td-run.js) starts a tournament for the chosen event, with the registered entrants numbered by rating, checks players in each round (playing, half-point bye, absent, or withdrawn), pairs the round, lets the TD change any pairing, saves or posts it, and takes results board by board. A tournament date is one tournament; a club night's month is one Swiss, a round a night, so its key is the month. The script keeps players, pairings, and results in the private Tournaments in progress spreadsheet (script property TOURNAMENT_SHEET_ID) until the tournament is finished and archived. The Pairings page, /pairings/ (pairings.js), shows each tournament's latest posted round and its standings, from the script's ?tournaments=current.
 
+## Results
+
+When the TD finishes a tournament, the Action "Results" (.github/workflows/results.yml) writes its page within the hour: scripts/build_results.py reads the finished tournaments from the script's ?tournaments=current and writes results/<event>-<date>/ (results/monday-club-night-at-peak-2026-10/ for a club night's month). A Swiss gets its final standings, with the tiebreaks from pairing.js run in node, and a wall chart in the US Chess style: each round's result and opponent's number, the color, and the running score, with forfeits, byes, and unplayed rounds marked. A quad tournament gets each quad's standings and crosstable; an arena, its leaderboard and games. The pages show names, US Chess IDs, ratings, and results, as US Chess's crosstables do, and nothing from the registration Sheet. The Results page, /results/, lists them all, and each gets a sitemap entry.
+
+The pages are written once and committed, because the docs repo's Archive tournaments Action then archives the tournament and clears it from the Tournaments in progress spreadsheet; it clears one only when its page here answers with the same rows, which build_results.py records in the page's data-results attribute. Nothing deletes a results page, and a page whose tournament has been cleared is never rewritten, so a later correction is made by hand. To build pages from saved data, as tests/test_build_results.py does: `python3 scripts/build_results.py --from tests/fixtures/tournaments.json`.
+
 ## TD expirations
 
 The Action "TD expirations" (.github/workflows/td-expirations.yml) runs scripts/td_expirations.py every Monday. It reads the club's TDs from scripts/tds.json and asks the US Chess ratings API for each one's membership, TD certification, and SafeSport dates and for the affiliate's expiration, and fails, which emails a warning, when any is past or within 60 days. When a TD joins or leaves, change scripts/tds.json. Junior TDs are minors: their IDs go in the repository secret LCCC_JUNIOR_TD_IDS, never in the repo, and the output shows neither their names nor their dates. The API key is the secret USCHESS_API_KEY. When anything is due, the run also emails the list to president@larimerchess.org through Gmail, with a send-only token for that account in the secret LCCC_GOOGLE_GMAIL_SEND_TOKEN (made with docs/scripts/google_auth.py --gmail-send). To test the email, run the Action by hand with a large number of days, such as 400. Locally the script reads all three from ~/.config/lccc/ (uschess-api-key, junior-td-ids, and google-token-gmail-send.json) and emails only with --email.
 
 ## Checks
 
-Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, a check that the pages built from events.json are current, the sitemap check, tests for the calendar import and the page builder, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines and Details links, the add-to-calendar menu, structured data, and the tournament pages), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
+Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, a check that the pages built from events.json are current, that the Results page lists every results page, the sitemap check, tests for the calendar import, the page builder, and the results pages, page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines and Details links, the add-to-calendar menu, structured data, and the tournament and results pages), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
 
 To run them locally:
 
@@ -54,6 +60,7 @@ npm ci
 npm run check:html
 python scripts/sync_assets.py --check
 python scripts/build_pages.py --check
+python scripts/build_results.py --check
 python tests/check_sitemap.py
 python -m unittest discover -s tests
 python -m http.server 8765 --bind 127.0.0.1 &
