@@ -469,6 +469,8 @@ desk.on("request", async (request) => {
           incident: { ok: true, message: "Logged: Game loss, Test Player." },
           incidents: { incidents: [] },
           tournament: { tournament: null } }[p.action];
+    // Registering answers slowly, like the real script, so a second player can be entered meanwhile.
+    if (p.action === "register") await new Promise((resolve) => setTimeout(resolve, 1500));
     request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
   } else {
     request.continue();
@@ -489,11 +491,21 @@ await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
 await desk.keyboard.press("Enter");
-await desk.click(".td-register button");
-await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("registered"));
+await desk.click(".td-register button[type=submit]");
+// While the first saves, the form is clear and takes the next player.
+const whileSaving = await desk.evaluate(() => ({ field: document.querySelector("#td-player").value,
+  pending: document.querySelectorAll(".td-saving .td-save-pending").length }));
+await desk.type("#td-player", "test pl");
+await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
+await desk.keyboard.press("ArrowDown");
+await desk.keyboard.press("Enter");
+await desk.click(".td-register button[type=submit]");
+await desk.waitForFunction(() => document.querySelectorAll(".td-saving .td-save-done").length === 2);
 const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
 sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk.id === "12345678"
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
+whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) => c.action === "register").length === 2
+  ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
 await desk.click(".td-entries tbody tr td:nth-child(7) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "15") ? pass("TD desk marks a player paid")

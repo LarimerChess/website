@@ -180,35 +180,62 @@ choice.addEventListener("change", () => {
   showDeskEntries();
 });
 
-registerForm.addEventListener("submit", async (event) => {
+// Saving takes a few seconds, so Register hands the player off and clears the form at once: the
+// TD can fill in the next player while earlier ones save. Each shows in the list below the form
+// until the script answers, then says how it went; one that failed can be tried again.
+const saving = document.querySelector(".td-saving");
+
+function save(job, item) {
+  item.className = "td-save-pending";
+  item.replaceChildren(`Saving ${job.player.name} (${job.player.id}) for ${job.label}…`);
+  call("register", job.fields)
+    .then((result) => {
+      item.className = result.ok ? "td-save-done" : "td-save-failed";
+      item.replaceChildren(result.message || result.error);
+      deskStatus.textContent = result.message || result.error;
+      if (result.ok) showDeskEntries();
+      else retry(job, item);
+    })
+    .catch(() => {
+      item.className = "td-save-failed";
+      item.replaceChildren(`${job.player.name} didn't go through.`);
+      deskStatus.textContent = `${job.player.name} didn't go through.`;
+      retry(job, item);
+    });
+}
+
+function retry(job, item) {
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "td-action";
+  again.textContent = "Try again";
+  again.append(hidden(` for ${job.player.name}`));
+  again.addEventListener("click", () => save(job, item));
+  item.append(" ", again);
+}
+
+registerForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!player) {
     deskStatus.textContent = "Pick a player from the list first.";
     return playerInput.focus();
   }
   const [eventName, date] = choice.value.split("/");
-  const button = registerForm.querySelector("button");
-  button.disabled = true;
-  deskStatus.textContent = "Registering…";
-  try {
-    const result = await call("register", {
-      event: eventName, date, id: player.id, category: registerForm.elements.category.value,
-      email: registerForm.elements.email.value,
-    });
-    deskStatus.textContent = result.message || result.error;
-    if (result.ok) {
-      player = null;
-      playerInput.value = "";
-      chosen.textContent = "";
-      registerForm.elements.email.value = "";
-      registerForm.elements.category.value = "";
-      playerInput.focus();
-      showDeskEntries();
-    }
-  } catch {
-    deskStatus.textContent = "Registration didn't go through. Try again.";
-  }
-  button.disabled = false;
+  const job = {
+    player, label: choice.selectedOptions[0]?.textContent || choice.value,
+    fields: { event: eventName, date, id: player.id, category: registerForm.elements.category.value,
+      email: registerForm.elements.email.value },
+  };
+  const item = document.createElement("li");
+  saving.prepend(item);
+  save(job, item);
+  deskStatus.textContent = `Saving ${player.name}. You can fill in the next player.`;
+  player = null;
+  playerInput.value = "";
+  chosen.textContent = "";
+  registerForm.elements.email.value = "";
+  registerForm.elements.category.value = "";
+  playerInput.focus();
 });
 
 async function showDeskEntries() {
