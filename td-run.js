@@ -1,7 +1,7 @@
 // The TD desk's Run the tournament section: start a tournament for the chosen event, check in
 // players, pair each round with pairing.js, review and post it, enter results, and follow the
-// standings. The script keeps everything in the Tournaments in progress spreadsheet.
-// call, choice, and choices come from td.js.
+// standings. The script keeps everything in the Tournaments in progress spreadsheet. An arena is
+// run by td-arena.js. call, choice, and choices come from td.js.
 
 const runStatus = document.querySelector(".run-status");
 const runStart = document.querySelector(".run-start");
@@ -16,6 +16,7 @@ const runNotes = document.querySelector(".run-notes");
 const runEditButtons = document.querySelector(".run-edit-buttons");
 const runStandingsWrap = document.querySelector(".run-standings-wrap");
 const runStandings = document.querySelector(".run-standings");
+const runArena = document.querySelector(".run-arena");
 const RESULTS = [["", "No result"], ["1-0", "1–0"], ["0-1", "0–1"], ["1/2-1/2", "½–½"],
   ["1F-0F", "1F–0F (black forfeits)"], ["0F-1F", "0F–1F (white forfeits)"], ["0F-0F", "0F–0F (both forfeit)"]];
 let current = null;
@@ -58,7 +59,7 @@ async function loadRun() {
 }
 
 function renderRun() {
-  runStart.hidden = runRound.hidden = runStandingsWrap.hidden = true;
+  runStart.hidden = runRound.hidden = runStandingsWrap.hidden = runArena.hidden = true;
   if (!current) {
     const selectedChoice = choices.find((c) => c.key === choice.value);
     if (selectedChoice?.kind === "night") {
@@ -77,12 +78,9 @@ function renderRun() {
   const active = t.players.filter((p) => !p.out);
   const last = t.rounds.at(-1);
   const complete = (r) => r.games.every((g) => g.result);
+  if (t.format === "arena") return renderArena();
   runStatus.textContent = `${t.name}: ${t.players.length} players, ${t.rounds.length} of ${t.plannedRounds || "?"} rounds paired.`
     + (t.status === "finished" ? " Finished." : "");
-  if (t.format === "arena") {
-    runStatus.textContent += " Arena pairing isn't on the desk yet.";
-    return;
-  }
   runStandingsWrap.hidden = !t.rounds.length;
   renderStandings();
   if (t.status === "finished") return;
@@ -209,11 +207,16 @@ function renderStandings() {
   }));
 }
 
+runStart.elements.format.addEventListener("change", () => {
+  for (const field of runStart.querySelectorAll("[data-format]")) field.hidden = field.dataset.format !== runStart.elements.format.value;
+});
+
 runStart.addEventListener("submit", async (event) => {
   event.preventDefault();
   const [eventName, date] = keyParts();
   const fields = Object.fromEntries(new FormData(runStart));
   if (fields.format === "swiss" && !/^\d+$/.test(fields.rounds)) return void (runStatus.textContent = "How many rounds?");
+  if (fields.format === "arena" && !/^\d\d:\d\d$/.test(fields.cutoff)) return void (runStatus.textContent = "No new games after what time?");
   runStatus.textContent = "Starting…";
   const result = await call("start", { event: eventName, date, ...fields });
   runStatus.textContent = result.message || result.error;
