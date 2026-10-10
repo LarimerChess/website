@@ -197,8 +197,8 @@ function renderCheckin(t, parts, next) {
   runPairings.hidden = true;
   // A quad's pairings come from the table, so a player not here loses that game by forfeit.
   runCheckinHint.textContent = quad
-    ? "Mark each player who is here Present. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
-    : "Mark each player who is here Present; only they are paired. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
+    ? "Everyone starts as Present; change anyone who isn't here. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
+    : "Everyone starts as Present; change anyone who isn't here. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section).
@@ -227,9 +227,8 @@ function renderCheckin(t, parts, next) {
       select.dataset.id = p.id;
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round`);
-      // Nobody is paired until the TD marks them present.
-      select.append(option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", true),
-        option("play", "Present", false),
+      select.append(option("play", "Present", true),
+        option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", false),
         ...(quad ? [] : [option("half", "Half-point bye (asked for)", false), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
       row.insertCell().append(select);
@@ -437,15 +436,10 @@ document.querySelector(".run-sync").addEventListener("click", async () => {
   loadRun();
 });
 
-document.querySelector(".run-all-present").addEventListener("click", () => {
-  for (const select of runAttendance.querySelectorAll(".run-this-round")) if (select.value === "absent") select.value = "play";
-  runStatus.textContent = "Everyone not on a bye or withdrawn is marked present.";
-});
-
 document.querySelector(".run-pair").addEventListener("click", async () => {
   const number = current.rounds.length + 1;
   const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value]);
-  if (!choicesMade.some(([, v]) => v === "play")) return void (runStatus.textContent = "Mark the players who are here Present first.");
+  if (!choicesMade.some(([, v]) => v === "play")) return void (runStatus.textContent = "Nobody is present to pair.");
   const withdrawn = choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id);
   const [event, date] = keyParts();
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
