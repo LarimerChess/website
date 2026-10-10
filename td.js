@@ -133,7 +133,10 @@ function choose(p) {
   const current = choices.find((c) => c.key === choice.value);
   const lapsed = p.expires && current && p.expires < current.first;
   chosen.textContent = `${p.name}, US Chess ID ${p.id}, ${p.state ? `${p.state}, ` : ""}rating ${p.rating || "unrated"}, `
-    + (p.expires ? `membership ${lapsed ? "expires before the event: " : "until "}${p.expires}.` : "no membership on record.");
+    + (p.expires ? `membership ${lapsed ? "expires before the event: " : "until "}${p.expires}.` : "no membership on record.")
+    + (p.phone ? ` Phone: ${p.phone}.` : "");
+  // A past registration or the club's contacts give the email; the TD can change or clear it.
+  if (p.email && !registerForm.elements.email.value) registerForm.elements.email.value = p.email;
   closeList();
 }
 
@@ -259,7 +262,7 @@ registerForm.addEventListener("submit", (event) => {
   const job = {
     player, label: choice.selectedOptions[0]?.textContent || choice.value,
     fields: { event: eventName, date, id: player.id, category: registerForm.elements.category.value,
-      email: registerForm.elements.email.value },
+      email: registerForm.elements.email.value, phone: player.phone || "" },
   };
   const item = document.createElement("li");
   saving.prepend(item);

@@ -41,7 +41,7 @@ const MEMBERS = "https://ratings-api.uschess.org/api/v1/members";
 const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
-  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token"];
+  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
 const ACTIONS = ["Warning", "Time penalty", "Game loss", "Expelled from the tournament", "Removed from the venue",
@@ -158,7 +158,7 @@ function register(p, td) {
       "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : String(amount),
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
-      "Added by": td ? "TD" : "online", Token: token,
+      "Added by": td ? "TD" : "online", Token: token, Phone: td ? String(p.phone || "").trim() : "",
     };
     appendText(sheet, col, row);
     clearEntriesCache(p.event, p.date);
@@ -274,7 +274,41 @@ function history(q) {
       : words.every((w) => r[col.Name].toLowerCase().includes(w)))
     .slice(0, 12)
     .map((r) => ({ id: r[col["US Chess ID"]], name: r[col.Name], state: "", rating: r[col["Regular rating"]],
-      expires: r[col["Membership expires"]], known: true }));
+      expires: r[col["Membership expires"]], known: true }))
+    .map((p) => {
+      const last = latest.get(p.id);
+      const contact = contactFor(p.name);
+      return { ...p, email: last[col.Email] || contact?.email || "", phone: last[col.Phone] || contact?.phone || "" };
+    });
+}
+
+/**
+ * The club contact, from the Sheet's Contacts tab (which docs/scripts/sync_contacts.py copies from
+ * the club's contact list), whose first and last names match a player's; null if none or several.
+ * A nickname in parentheses, as in "Anthony (Tony) Whitt", matches as a first name too. Only the
+ * TD desk reads contacts.
+ */
+let contactRows = null;
+
+function contactFor(name) {
+  if (!name) return null;
+  if (!contactRows) {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Contacts");
+    contactRows = sheet ? sheet.getDataRange().getDisplayValues() : [[]];
+  }
+  const words = (s) => String(s).toLowerCase().normalize("NFD").replace(/[^a-z\s()-]/g, "").split(/\s+/).filter(Boolean);
+  const player = words(name.replace(/\(.*?\)/g, " "));
+  if (player.length < 2) return null;
+  const [header, ...rows] = contactRows;
+  const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  if (col.Name === undefined) return null;
+  const matches = rows.filter((r) => {
+    const all = words(r[col.Name]);
+    const plain = all.filter((w) => !w.startsWith("("));
+    const firsts = [plain[0], ...all.filter((w) => w.startsWith("(")).map((w) => w.replace(/[()]/g, ""))];
+    return plain.length >= 2 && plain.at(-1) === player.at(-1) && firsts.includes(player[0]);
+  });
+  return matches.length === 1 ? { email: matches[0][col.Email], phone: matches[0][col.Phone] } : null;
 }
 
 /** US Chess members by ID or name, Colorado first, for the TD desk's search. */
@@ -297,10 +331,11 @@ function search(q) {
     found = query("CO");
     if (found.length < 5) found = found.concat(query("").filter((m) => !found.some((f) => f.id === m.id)));
   }
-  const players = found.slice(0, 12).map((m) => ({
-    id: m.id, name: displayName(m), state: m.stateRep || "", rating: rating(m, "R"),
-    expires: m.expirationDate || "",
-  }));
+  const players = found.slice(0, 12).map((m) => {
+    const contact = contactFor(displayName(m));
+    return { id: m.id, name: displayName(m), state: m.stateRep || "", rating: rating(m, "R"),
+      expires: m.expirationDate || "", email: contact?.email || "", phone: contact?.phone || "" };
+  });
   cache.put("search:" + q.toLowerCase(), JSON.stringify(players), 600);
   return players;
 }

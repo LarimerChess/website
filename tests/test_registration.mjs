@@ -49,7 +49,7 @@ function load(tabs) {
   const context = {
     console,
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => "sheet" }) },
-    SpreadsheetApp: { openById: () => book },
+    SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => book },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {}, removeAll() {} }) },
     Utilities: { formatDate: () => "2026-10-10 10:00", getUuid: () => "uuid" },
@@ -152,4 +152,20 @@ test("quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them", 
   // The old desk's pairing, from numbers across the quads, still works on these rows.
   assert.equal(Pairing.pairQuadRound(t.players, 1).games.length, 4);
   eq(Pairing.pairSections(t).map((s) => [s.section, s.games.map((g) => g.board)]), [["Quad 1", [1, 2]], ["Quad 2", [1, 2]]]);
+});
+
+test("a player's contact is found by first and last name, a nickname, or not at all when unclear", () => {
+  const { gs } = load({ Contacts: [
+    ["Name", "Email", "Phone", "Status"],
+    ["Steven Garverick", "steven@example.com", "650-555-0100", "Core member"],
+    ["Anthony (Tony) Whitt", "tony@example.com", "970-555-0101", "Core member"],
+    ["Sam Lee", "sam1@example.com", "", "Player"],
+    ["Sam Lee", "sam2@example.com", "", "Player"],
+  ] });
+  assert.equal(gs.contactFor("Steven Garverick").email, "steven@example.com");
+  assert.equal(gs.contactFor("STEVEN GARVERICK".toLowerCase()).phone, "650-555-0100");
+  assert.equal(gs.contactFor("Tony Whitt").email, "tony@example.com");
+  assert.equal(gs.contactFor("Anthony Whitt").email, "tony@example.com");
+  assert.equal(gs.contactFor("Sam Lee"), null, "two contacts share the name");
+  assert.equal(gs.contactFor("Steven Smith"), null);
 });
