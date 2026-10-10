@@ -1009,6 +1009,11 @@ const reportShown = () => reportPage.evaluate(() => ({
   buttons: [...document.querySelectorAll(".report button")].map((b) => `${b.textContent}${b.getAttribute("aria-pressed") === "true" ? " (pressed)" : ""}`),
   status: document.querySelector(".report [role=status]")?.textContent, focused: document.activeElement?.textContent }));
 const beforeReport = await reportShown();
+const prefilled = await reportPage.evaluate(() => ({ id: document.querySelector("#report-id").value,
+  saved: [...document.querySelectorAll(".report-find .register-pick")].map((b) => b.textContent) }));
+prefilled.id === "22222222" && JSON.stringify(prefilled.saved) === JSON.stringify(["Ben (22222222)"])
+  ? pass("Pairings page fills in the ID the Register form saved, and lists the players saved on this device")
+  : fail(`Pairings page saved players: ${JSON.stringify(prefilled)}`);
 JSON.stringify(beforeReport.results) === JSON.stringify(["1–0, reported, awaiting the TD", ""])
   && beforeReport.boxes.length === 1 && beforeReport.boxes[0].startsWith("Board 2: Dee (1300) with white, Ben (1700) with black")
   && JSON.stringify(beforeReport.buttons) === JSON.stringify(["1–0, Dee won", "0–1, Ben won", "½–½, a draw"])
@@ -1029,11 +1034,11 @@ await reportPage.evaluate(() => localStorage.clear());
 await reportPage.reload({ waitUntil: "networkidle0" });
 const unsaved = await reportShown();
 await reportPage.type("#report-id", "99999999");
-await press(reportPage, ".report-find button");
+await press(reportPage, ".report-find button[type=submit]");
 const nobody = await reportPage.$eval(".report-find [role=status]", (p) => p.textContent);
 await reportPage.$eval("#report-id", (i) => { i.value = ""; });
 await reportPage.type("#report-id", "33333333");
-await press(reportPage, ".report-find button");
+await press(reportPage, ".report-find button[type=submit]");
 await reportPage.waitForSelector(".report");
 const foundBoard = await reportShown();
 const savedNow = await reportPage.evaluate(() => JSON.parse(localStorage.getItem("lccc-register-players")));
@@ -1042,6 +1047,11 @@ unsaved.boxes.length === 0 && nobody.startsWith("Nobody with that US Chess ID") 
   ? pass("a player finds their board by US Chess ID on the Pairings page, and is saved on this device")
   : fail(`Pairings page find by ID: ${JSON.stringify({ unsaved, nobody, foundBoard, savedNow })}`);
 await axeBoth(reportPage, "Pairings page after finding a board by US Chess ID");
+await press(reportPage, ".report-find .register-forget");
+const forgotten = await reportPage.evaluate(() => ({ saved: localStorage.getItem("lccc-register-players"), boxes: document.querySelectorAll(".report").length,
+  listed: !document.querySelector(".report-find .register-saved").hidden }));
+forgotten.saved === null && forgotten.boxes === 0 && !forgotten.listed
+  ? pass("Forget on the Pairings page removes the saved player and their report buttons") : fail(`Pairings page forget: ${JSON.stringify(forgotten)}`);
 await reportPage.close();
 
 // A desk that keeps a Swiss of four in memory, for the checks below. rounds, if given, starts it with them.

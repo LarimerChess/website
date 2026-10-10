@@ -131,23 +131,65 @@ function reportBox(t, number, g, name, redraw) {
     buttons.append(button);
   }
   box.dataset.where = where;
+  box.dataset.players = `${g.white} ${g.black}`;
   box.append(buttons, status);
   return box;
 }
 
-/** A form to find a player's board by US Chess ID, which saves the player on this device. */
+/** A form to find a player's board by US Chess ID, which saves the player on this device as the
+ * Register form does: the same list, most recent first, with the same Remember choice. */
 function findForm(tournaments, render) {
   const form = document.createElement("form");
   form.className = "register-form report-find";
-  const input = Object.assign(document.createElement("input"), { id: "report-id", name: "uschess-id", type: "text",
-    inputMode: "numeric", maxLength: 8, autocomplete: "off", required: true });
-  input.setAttribute("aria-describedby", "report-id-hint");
-  const hint = Object.assign(paragraph("To report your game's result, find your board. Your ID is saved on this device, as the Register form saves players."),
-    { id: "report-id-hint", className: "register-hint" });
-  const button = Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Find my board" });
   const status = Object.assign(paragraph(""), { className: "register-hint" });
   status.setAttribute("role", "status");
-  form.append(Object.assign(document.createElement("label"), { htmlFor: "report-id", textContent: "Playing? Your US Chess ID" }), input, hint, button, status);
+  const savedBox = Object.assign(document.createElement("fieldset"), { className: "register-saved", hidden: true });
+  const list = document.createElement("ul");
+  savedBox.append(Object.assign(document.createElement("legend"), { textContent: "Players saved on this device" }), list);
+  const input = Object.assign(document.createElement("input"), { id: "report-id", name: "uschess-id", type: "text",
+    inputMode: "numeric", pattern: "[0-9]{8}", maxLength: 8, autocomplete: "on", required: true });
+  input.setAttribute("aria-describedby", "report-id-hint");
+  const hint = Object.assign(paragraph("To report your game's result, find your board."), { id: "report-id-hint", className: "register-hint" });
+  const remember = Object.assign(document.createElement("div"), { className: "register-remember", hidden: !canStore() });
+  const choice = Object.assign(document.createElement("input"), { id: "report-remember", type: "checkbox", checked: true });
+  choice.setAttribute("aria-describedby", "report-remember-hint");
+  remember.append(choice, Object.assign(document.createElement("label"), { htmlFor: "report-remember", textContent: "Remember this player on this device" }),
+    Object.assign(paragraph("Kept only in this browser, for next time. Uncheck it on a shared computer."), { id: "report-remember-hint", className: "register-hint" }));
+  const button = Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Find my board" });
+  form.append(savedBox, Object.assign(document.createElement("label"), { htmlFor: "report-id", textContent: "Playing? Your US Chess ID" }),
+    input, hint, remember, button, status);
+
+  const boxOf = (id) => pairingsAll.querySelector(`.report[data-players~="${CSS.escape(id)}"]`);
+  const showSaved = () => {
+    const saved = savedPlayers();
+    savedBox.hidden = !saved.length;
+    list.replaceChildren(...saved.map((p) => {
+      const item = document.createElement("li");
+      const pick = Object.assign(document.createElement("button"), { type: "button", className: "register-pick", textContent: playerName(p) });
+      pick.addEventListener("click", () => {
+        const box = boxOf(p.id);
+        status.textContent = box ? `${playerName(p)}: report the result with the buttons below the board.`
+          : `${playerName(p)} has no game to report in the round shown.`;
+        box?.querySelector("button").focus();
+      });
+      const forget = Object.assign(document.createElement("button"), { type: "button", className: "register-forget", textContent: "Forget" });
+      forget.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` ${playerName(p)}` }));
+      forget.addEventListener("click", () => {
+        if (!storePlayers(savedPlayers().filter((q) => q.id !== p.id))) return;
+        found.delete(p.id);
+        render();
+        status.textContent = `${playerName(p)} is no longer saved on this device.`;
+        (list.querySelector(".register-pick") || input).focus();
+      });
+      item.append(pick, " ", forget);
+      return item;
+    }));
+  };
+  form.showSaved = showSaved;
+  // As on the Register form, the most recent player saved here is filled in.
+  const [latest] = savedPlayers();
+  if (latest) input.value = latest.id;
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const id = input.value.trim();
@@ -157,12 +199,14 @@ function findForm(tournaments, render) {
     if (!player) return void (status.textContent = "Nobody with that US Chess ID is playing in a tournament in progress.");
     found.add(id);
     const saved = savedPlayers();
-    if (!saved.some((p) => p.id === id)) storePlayers([...saved, { id, last: "", email: "", name: player.name }]);
+    // A player the Register form saved keeps their last name and email.
+    const kept = saved.find((p) => p.id === id) || { id, last: "", email: "", name: player.name };
+    const stored = choice.checked && storePlayers([kept, ...saved.filter((p) => p.id !== id)]);
     input.value = "";
     render();
-    const box = pairingsAll.querySelector(".report");
-    status.textContent = `${player.name} is saved on this device. ${box ? "Report your game's result with the buttons below its board."
-      : "Once your board is posted, buttons to report its result appear below it."}`;
+    const box = boxOf(id);
+    status.textContent = `${stored ? `${player.name} is saved on this device.` : `Found ${player.name}.`} ${box
+      ? "Report your game's result with the buttons below its board." : "Once your board is posted, buttons to report its result appear below it."}`;
     (box?.querySelector("button") || input).focus();
   });
   return form;
@@ -291,7 +335,10 @@ if (!ENDPOINT) {
         : "No tournament is in progress. Pairings appear here as each round is posted.";
       if (onStandings) return standingsAll.replaceChildren(...tournaments.map(standingsSection));
       const reporting = tournaments.some((t) => t.status === "running" && t.format !== "arena" && t.rounds.length);
-      const render = () => pairingsAll.replaceChildren(...(reporting ? [form] : []), ...tournaments.map(pairingsSection));
+      const render = () => {
+        pairingsAll.replaceChildren(...(reporting ? [form] : []), ...tournaments.map(pairingsSection));
+        form.showSaved();
+      };
       const form = findForm(tournaments, render);
       render();
     })
