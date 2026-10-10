@@ -71,6 +71,10 @@ class Standings(unittest.TestCase):
         self.assertEqual([r["score"] for r in rows], [3.5, 3, 2, 1, 0])
         # Rated games only: Ben's win over the unrated Eli doesn't count, nor Dee's forfeit win or anyone's bye.
         self.assertEqual([r["performance"] for r in rows], [1841, 1796, 1000, 925, 850])
+        # Each round by the opponent's place in these standings: Ada (2nd) beat Cal, 4th, with White.
+        self.assertEqual(br.round_cells(SATURDAY, rows)["90000001"], ["W4 w", "D1 b", "W3 w", "H"])
+        # Eli, unrated, lost only to Ben, so he lands 400 below Ben's intermediate (step 4) rating, 1674.
+        self.assertEqual([r["estimate"] for r in rows], [1671, 1802, 1396, 1482, 1274])
 
     def test_club_night_order(self):
         self.assertEqual([r["name"] for r in br.standings(CLUB_NIGHT)],

@@ -622,8 +622,8 @@ function renderByesAll() {
     : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
 }
 
-const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance"];
-const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Performance"];
+const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance", "Est. rating"];
+const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Performance", "Est. rating"];
 
 function renderStandings() {
   if (!current?.rounds.length) return;
@@ -631,7 +631,8 @@ function renderStandings() {
   runStandingsHint.textContent = (quad
     ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F)."
     : "Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.")
-    + " Performance is the Elo performance rating over the games played against rated opponents.";
+    + " Performance is the Elo performance rating over the games played against rated opponents; Est. rating, US Chess's formula"
+    + " applied to the games played so far.";
   const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
   runStandings.replaceChildren(...parts.flatMap((s) => {
@@ -639,8 +640,8 @@ function renderStandings() {
       const row = document.createElement("tr");
       const p = current.players.find((x) => x.id === r.id);
       const name = r.name + (p?.out ? ` (out from round ${p.out})` : "");
-      const cells = quad ? [r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, r.performance ?? ""]
-        : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition, r.performance ?? ""];
+      const cells = quad ? [r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, r.performance ?? "", r.estimate ?? ""]
+        : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition, r.performance ?? "", r.estimate ?? ""];
       for (const text of cells) row.insertCell().textContent = text;
       const button = document.createElement("button");
       button.type = "button";

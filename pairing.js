@@ -421,6 +421,121 @@
     }));
   }
 
+  /** Each player's rounds, as on a wall chart: { code, opponent, color } with code W, L, D, X (won by
+   *  forfeit), F (lost by forfeit), B (full-point bye), H (half-point bye), U (not played), or "" for
+   *  a game without a result yet, and color w or b for a game on the board. */
+  function roundByRound(tournament) {
+    const out = new Map(tournament.players.map((p) => [p.id, []]));
+    for (const round of tournament.rounds) {
+      const got = new Map();
+      for (const g of round.games) {
+        const points = POINTS[g.result];
+        const forfeit = Boolean(points) && FORFEIT(g.result);
+        for (const [me, them, color, side] of [[g.white, g.black, "w", 0], [g.black, g.white, "b", 1]]) {
+          const code = !points ? "" : forfeit ? (points[side] ? "X" : "F") : points[side] === 1 ? "W" : points[side] ? "D" : "L";
+          got.set(me, { code, opponent: them, color: forfeit ? "" : color });
+        }
+      }
+      for (const b of round.byes || []) got.set(b.id, { code: { bye: "B", half: "H" }[byeKind(b)] || "U", opponent: null, color: "" });
+      for (const [id, list] of out) list.push(got.get(id) || { code: "U", opponent: null, color: "" });
+    }
+    return out;
+  }
+
+  // US Chess's rating system, as specified April 6, 2026 (glicko.net/ratings/rating.system.pdf);
+  // section numbers below are that document's.
+
+  /** 3: the effective number of prior games. */
+  function effectiveGames(rating, games) {
+    return Math.min(games, rating > 2355 ? 50 : 50 / Math.sqrt(0.662 + 0.00000739 * (2569 - rating) ** 2));
+  }
+
+  /** 4.1: the special formula, found by the document's own iteration so that ties between equally
+   *  good ratings break as US Chess's do. games: [{ rating, score }]; sweep: "wins" or "losses" if
+   *  every prior game was one. */
+  function specialRating(r0, effective, games, sweep) {
+    const score = games.reduce((sum, g) => sum + g.score, 0);
+    const prior = sweep === "wins" ? r0 - 400 : sweep === "losses" ? r0 + 400 : r0;
+    const target = sweep === "wins" ? score + effective : sweep === "losses" ? score : score + effective / 2;
+    const pwe = (r, ri) => (r <= ri - 400 ? 0 : r >= ri + 400 ? 1 : 0.5 + (r - ri) / 800);
+    const f = (r) => effective * pwe(r, prior) + games.reduce((sum, g) => sum + pwe(r, g.rating), 0) - target;
+    const knots = [...new Set([prior, ...games.map((g) => g.rating)].flatMap((x) => [x - 400, x + 400]))].sort((a, b) => a - b);
+    const below = (m) => knots.filter((z) => z < m).at(-1);
+    const above = (m) => knots.find((z) => z > m);
+    const eps = 1e-7;
+    let m = prior;
+    for (let step = 0; step < 1000; step++) {
+      const fm = f(m);
+      if (fm > eps) {
+        const za = below(m);
+        if (za === undefined) break;
+        if (Math.abs(fm - f(za)) < eps) { m = za; continue; }
+        m = Math.max(za, m - fm * (m - za) / (fm - f(za)));
+      } else if (fm < -eps) {
+        const zb = above(m);
+        if (zb === undefined) break;
+        if (Math.abs(f(zb) - fm) < eps) { m = zb; continue; }
+        m = Math.min(zb, m - fm * (zb - m) / (f(zb) - fm));
+      } else {
+        const near = games.filter((g) => Math.abs(m - g.rating) <= 400).length + (Math.abs(m - prior) <= 400 ? 1 : 0);
+        if (!near) {
+          const za = below(m), zb = above(m);
+          if (za !== undefined && r0 < za) m = za;
+          else if (zb !== undefined && r0 > zb) m = zb;
+          else m = r0;
+        }
+        break;
+      }
+    }
+    return Math.min(2700, m);
+  }
+
+  /** 4.2: the standard formula. The bonus needs three games against different opponents, or more
+   *  than three with no opponent met three times. */
+  function standardRating(r0, effective, games) {
+    const m = games.length;
+    const k = 800 / (effective + m);
+    const change = k * games.reduce((sum, g) => sum + g.score - 1 / (1 + 10 ** (-(r0 - g.rating) / 400)), 0);
+    const meetings = Math.max(0, ...Object.values(games.reduce((n, g) => ({ ...n, [g.id]: (n[g.id] || 0) + 1 }), {})));
+    const bonus = (m === 3 && meetings === 1) || (m > 3 && meetings <= 2);
+    return r0 + change + (bonus ? Math.max(0, change - 10 * Math.sqrt(Math.max(m, 4))) : 0);
+  }
+
+  /** Each player's estimated regular rating once the games played so far are rated, by the five
+   *  steps of section 1; null for a player with none. A player carries rating, games (their rated
+   *  games before the event, null if unknown), sweep, and floor. An unrated player starts at the
+   *  1300 the document gives an adult of unknown age, which decides only ties (4.1, step 4b); one
+   *  with games unknown counts as established. Not modeled: unrated players' other ratings (2),
+   *  the K for players over 2200 in dual-rated events (4.2), and anything after the event. */
+  function ratingEstimates(tournament) {
+    const players = new Map(tournament.players.map((p) => {
+      const rating = Number(p.rating) > 0 ? Number(p.rating) : null;
+      const games = rating == null ? 0 : p.games == null || p.games === "" ? 50 : Number(p.games);
+      return [p.id, { r0: rating ?? 1300, games, effective: effectiveGames(rating ?? 1300, games), sweep: p.sweep || "",
+        floor: Math.max(100, Number(p.floor) || 0), played: [] }];
+    }));
+    for (const round of tournament.rounds) {
+      for (const g of round.games) {
+        if (!POINTS[g.result] || FORFEIT(g.result) || !players.has(g.white) || !players.has(g.black)) continue;
+        const [w, b] = POINTS[g.result];
+        players.get(g.white).played.push({ id: g.black, score: w });
+        players.get(g.black).played.push({ id: g.white, score: b });
+      }
+    }
+    const rate = (p, ratingOf, effective = p.effective) => {
+      const games = p.played.map((g) => ({ id: g.id, score: g.score, rating: ratingOf(g.id) }));
+      const r = p.games <= 8 || p.sweep ? specialRating(p.r0, effective, games, p.sweep) : standardRating(p.r0, effective, games);
+      return Math.max(100, r);
+    };
+    const pre = (id) => players.get(id).r0;
+    // Step 3: unrated players first, with one effective game, against everyone's pre-event ratings.
+    const first = new Map([...players].filter(([, p]) => p.games === 0).map(([id, p]) => [id, rate(p, pre, 1)]));
+    const step3 = (id) => first.get(id) ?? pre(id);
+    const step4 = new Map([...players].map(([id, p]) => [id, rate(p, step3)]));
+    return new Map([...players].map(([id, p]) => [id, p.played.length
+      ? Math.round(Math.max(p.floor, rate(p, (o) => step4.get(o)))) : null]));
+  }
+
   /** Standings: score, then the US Chess tiebreaks in their default order (34E): modified
    *  median, Solkoff, cumulative, and cumulative of opposition. */
   function standings(tournament) {
@@ -463,6 +578,7 @@
     }));
     const drop = rounds >= 9 ? 2 : 1;
     const perf = performance(tournament, info);
+    const estimate = ratingEstimates(tournament);
     const rows = ids.map((id) => {
       const p = info.get(id), e = each.get(id);
       // The player's own unplayed games count as opponents with adjusted scores of 0.
@@ -475,7 +591,7 @@
         solkoff: opp.reduce((sum, x) => sum + x, 0),
         cumulative: cumulative.get(id),
         opposition: e.opponents.reduce((sum, o) => sum + cumulative.get(o), 0),
-        performance: perf.get(id),
+        performance: perf.get(id), estimate: estimate.get(id),
       };
     });
     return rows.sort((a, b) => b.score - a.score || b.median - a.median || b.solkoff - a.solkoff
@@ -516,8 +632,9 @@
       }
     }
     const perf = performance(tournament, info);
+    const estimate = ratingEstimates(tournament);
     const rows = [...info.values()].map((p) => ({
-      id: p.id, name: p.name, rating: p.rating, performance: perf.get(p.id), number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
+      id: p.id, name: p.name, rating: p.rating, performance: perf.get(p.id), estimate: estimate.get(p.id), number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
       // Nothing is added for losses or unplayed games.
       sonnebornBerger: results.get(p.id).reduce((sum, r) => sum + r.points * info.get(r.opponent).score, 0),
     }));
@@ -606,7 +723,7 @@
     });
   }
 
-  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, pairQuadRound, quadStandings, sections, pairSections, placeIn, mayEnter,
+  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, sections, pairSections, placeIn, mayEnter,
     QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;

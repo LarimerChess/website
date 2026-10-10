@@ -53,7 +53,7 @@ const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
-  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"],
+  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
@@ -512,7 +512,8 @@ function tournament(key, td) {
     .sort((a, b) => Number(a["No."]) - Number(b["No."]))
     .map((r) => ({ id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
       rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null,
-      section: r.Section || "" }));
+      section: r.Section || "", floor: /^\d+$/.test(r.Floor) ? Number(r.Floor) : null,
+      games: /^\d+$/.test(r["Prior games"]) ? Number(r["Prior games"]) : null, sweep: r["Prior sweep"] || "" }));
   const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
   const count = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
   const rounds = [...Array(count)].map((_, i) => {
@@ -619,9 +620,15 @@ function syncPlayers(key) {
     // A month's entrants include each night's; entries() already leaves out the expelled and barred.
     const entrants = entries(key, true).filter((e) => !e.out && !have.has(e.id));
     entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
+    // Players added before the records were kept get them now.
+    const unrecorded = t.rows.filter((r) => r.Key === key && r["Prior games"] === "");
+    const records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
     for (const e of entrants) {
       appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
-        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "" });
+        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "", ...records[e.id] });
+    }
+    for (const r of unrecorded) {
+      for (const [heading, value] of Object.entries(records[r["US Chess ID"]] || {})) setCell(t, r.row, heading, value);
     }
     clearTournamentCache();
     return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).` : "No new entrants." };
@@ -1241,6 +1248,60 @@ function ageCategory(id, date) {
   if (at > players.getMaxRows()) players.insertRowAfter(players.getMaxRows());
   players.getRange(at, 1, 1, 4).setNumberFormat("@").setValues([row]);
   return category;
+}
+
+/**
+ * For pairing.js's rating estimates: each player's regular-rating floor and their regular-rated
+ * games before now, counted to 50 (the formula never needs more), with "wins" or "losses" if they
+ * were all one. The registration Sheet's Players tab keeps each for two weeks, so US Chess is
+ * asked again only after that; anyone it doesn't answer for is left blank.
+ */
+function priorRecords(ids) {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  const players = book.getSheetByName("Players") || book.insertSheet("Players");
+  const headings = ["US Chess ID", "Category", "Checked on", "For the date", "Floor", "Prior games", "Prior sweep", "Record checked on"];
+  let rows = players.getDataRange().getDisplayValues();
+  const header = rows[0].filter((h) => h.trim());
+  const missing = headings.filter((h) => !header.includes(h));
+  if (missing.length) {
+    players.getRange(1, header.length + 1, 1, missing.length).setNumberFormat("@").setValues([missing]);
+    players.setFrozenRows(1);
+    rows = players.getDataRange().getDisplayValues();
+  }
+  const col = Object.fromEntries(rows[0].map((h, i) => [h.trim(), i]));
+  const fresh = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), TZ, "yyyy-MM-dd");
+  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  const records = {};
+  const stale = [];
+  for (const id of [...new Set(ids)]) {
+    const row = rows.find((r, i) => i > 0 && r[col["US Chess ID"]] === id);
+    if (row && row[col["Record checked on"]] > fresh) {
+      records[id] = { Floor: row[col.Floor], "Prior games": row[col["Prior games"]], "Prior sweep": row[col["Prior sweep"]] };
+    } else stale.push(id);
+  }
+  if (!stale.length) return records;
+  const responses = UrlFetchApp.fetchAll(stale.flatMap((id) => [
+    { url: `${MEMBERS}/${id}`, muteHttpExceptions: true },
+    { url: `${MEMBERS}/${id}/games?RatingSource=R&Size=50`, muteHttpExceptions: true }]));
+  stale.forEach((id, i) => {
+    const [member, games] = responses.slice(2 * i, 2 * i + 2)
+      .map((r) => (r.getResponseCode() === 200 ? JSON.parse(r.getContentText()) : null));
+    if (!member || !games) return;
+    const regular = (member.ratings || []).find((x) => x.ratingSystem === "R") || {};
+    const outcomes = [...new Set((games.items || []).map((g) => g.player && g.player.outcome))];
+    records[id] = { Floor: regular.floor ? String(regular.floor) : "", "Prior games": String((games.items || []).length),
+      "Prior sweep": outcomes.length === 1 ? { Win: "wins", Loss: "losses" }[outcomes[0]] || "" : "" };
+    let at = rows.findIndex((r, j) => j > 0 && r[col["US Chess ID"]] === id) + 1;
+    if (!at) {
+      at = players.getLastRow() + 1;
+      if (at > players.getMaxRows()) players.insertRowAfter(players.getMaxRows());
+    }
+    const row = rows[0].map((_, j) => (at <= rows.length ? rows[at - 1][j] : ""));
+    for (const [heading, value] of Object.entries({ ...records[id], "US Chess ID": id, "Record checked on": today })) row[col[heading]] = value;
+    players.getRange(at, 1, 1, row.length).setNumberFormat("@").setValues([row]);
+    if (at > rows.length) rows.push(row);
+  });
+  return records;
 }
 
 /** US Chess keeps some names in capitals; those are shown with only their first letters capitalized. */

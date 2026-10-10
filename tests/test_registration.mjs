@@ -44,18 +44,37 @@ function makeSheet(rows) {
   return sheet;
 }
 
-// cache: what the script cache holds, such as this minute's count of public posts.
+// US Chess as the script sees it: a member's regular floor and their regular-rated games' outcomes.
+const US_CHESS = {
+  11111111: { floor: 1700, outcomes: ["Win", "Loss", "Draw"] },
+  55555555: { floor: 100, outcomes: ["Loss", "Loss"] },
+};
+
+// cache: what the script cache holds, such as this minute's count of public posts. The
+// registration Sheet's Players tab, US Chess answers kept by ID, is sheets.Registry.
 function load(tabs, cache = {}) {
   const sheets = Object.fromEntries(Object.entries(tabs).map(([name, rows]) => [name, makeSheet(rows)]));
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
+  const registration = { ...book, getSheetByName: (n) => (n === "Players" ? sheets.Registry ||= makeSheet([]) : book.getSheetByName(n)) };
+  const fetched = [];
+  const answer = (url) => {
+    fetched.push(url);
+    const [, id, games] = url.match(/members\/(\d+)(\/games)?/);
+    const m = US_CHESS[id] || { outcomes: [] };
+    const body = games ? { items: m.outcomes.map((outcome) => ({ player: { outcome } })) }
+      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [] };
+    return { getResponseCode: () => 200, getContentText: () => JSON.stringify(body) };
+  };
   const context = {
     console,
+    fetched,
+    UrlFetchApp: { fetch: answer, fetchAll: (requests) => requests.map((r) => answer(r.url)) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => "sheet" }) },
-    SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => book },
+    SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => registration },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {} }) },
     ContentService: { MimeType: { JSON: "json" }, createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }) },
-    Utilities: { formatDate: () => "2026-10-10 10:00", getUuid: () => "uuid",
+    Utilities: { formatDate: (d, tz, f) => (f === "yyyy-MM-dd" ? d.toISOString().slice(0, 10) : "2026-10-10 10:00"), getUuid: () => "uuid",
       computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {} },
   };
   vm.createContext(context);
@@ -92,7 +111,7 @@ test("a quad started before sections, with none of their columns, runs as before
   assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "4", section: "", result: "1-0" }).ok, true);
   const r2 = rowsOf(sheets.Rounds).filter((r) => r.Round === "2");
   eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
-  eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"]);
+  eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"]);
   eq(heading(sheets.Tournaments).slice(-2), ["Cutoff", "Sections"]);
   // Its rows are where they were; only headings were added.
   assert.equal(rowsOf(sheets.Players)[4]["No."], "5");
@@ -116,6 +135,18 @@ test("a Swiss in two sections: placed by rating, moved up, paired, posted, and s
   registered = entrants;
   gs.syncPlayers("classic/2026-11-07");
   assert.equal(sectionOf().Fay, "Under 1400", "an unrated late entrant goes to the lowest section");
+  // Each player's floor and prior record from US Chess, kept two weeks in the registration Sheet.
+  eq(rowsOf(sheets.Players).map((r) => [r.Name, r.Floor, r["Prior games"], r["Prior sweep"]]),
+    [["Ann", "1700", "3", ""], ["Ben", "", "0", ""], ["Cal", "", "0", ""], ["Dee", "", "0", ""], ["Eve", "100", "2", "losses"], ["Fay", "", "0", ""]]);
+  eq(rowsOf(sheets.Registry).find((r) => r["US Chess ID"] === "55555555"),
+    { "US Chess ID": "55555555", Category: "", "Checked on": "", "For the date": "", Floor: "100", "Prior games": "2",
+      "Prior sweep": "losses", "Record checked on": new Date().toISOString().slice(0, 10) });
+  const asked = gs.fetched.length;
+  assert.equal(asked, 12);
+  gs.priorRecords(["11111111"]);
+  assert.equal(gs.fetched.length, asked, "a record checked today isn't asked for again");
+  eq(gs.tournament("classic/2026-11-07", true).players.find((x) => x.id === "55555555"), { id: "55555555", number: 5, name: "Eve",
+    rating: 1200, out: null, section: "Under 1400", floor: 100, games: 2, sweep: "losses" });
   assert.match(gs.setSection({ ...p, id: "33333333", section: "Under 1400" }).error, /play up, not down/);
   assert.equal(gs.setSection({ ...p, id: "55555555", section: "Open" }).ok, true);
   const t = gs.tournament("classic/2026-11-07", true);

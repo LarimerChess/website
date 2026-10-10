@@ -72,8 +72,21 @@ def rating_text(p):
     return escaped(str(p["rating"])) if p.get("rating") is not None else "Unrated"
 
 
-def performance_text(row):
-    return "" if row.get("performance") is None else str(row["performance"])
+def performance_text(row, field="performance"):
+    return "" if row.get(field) is None else str(row[field])
+
+
+def round_cells(t, order):
+    """Each player's rounds as the result, the opponent's place in order, and the color, as 'W4 b'."""
+    place = {r["id"]: r.get("place", i) for i, r in enumerate(order, 1)}
+    place_by_number = {p["number"]: place[p["id"]] for p in t["players"]}
+    chart = wall_chart(t)
+    return {pid: [f"{code}{place_by_number[opponent] if opponent else ''}{' ' + color if color else ''}"
+                  for code, opponent, color, _ in rounds] for pid, rounds in chart.items()}
+
+
+def round_headings(t):
+    return [f"Round {n}" for n in range(1, len(t["rounds"]) + 1)]
 
 
 def date_text(date):
@@ -130,7 +143,7 @@ def standings(t, function="standings"):
     """Pairing.standings from pairing.js: score, then modified median, Solkoff, cumulative, and
     cumulative of opposition (34E). With "quadStandings", a quad's: score, Sonneborn-Berger, then
     head-to-head."""
-    tournament = {"players": [{"id": p["id"], "name": p["name"], "rating": p.get("rating"), "number": p.get("number")}
+    tournament = {"players": [{k: p.get(k) for k in ("id", "name", "rating", "number", "games", "sweep", "floor")}
                               for p in t["players"]],
                   "rounds": [{"games": r["games"], "byes": r.get("byes", []), "out": r.get("out", [])}
                              for r in t["rounds"]]}
@@ -142,7 +155,8 @@ def sections(t):
     its players numbered 1 up. A tournament without sections is one, unnamed; quads without them
     are a section for each four numbers."""
     tournament = {"format": t.get("format") or "swiss", "sections": t.get("sections") or [],
-                  "players": [{k: p.get(k) for k in ("id", "name", "rating", "number", "out", "section")} for p in t["players"]],
+                  "players": [{k: p.get(k) for k in ("id", "name", "rating", "number", "out", "section", "games", "sweep", "floor")}
+                              for p in t["players"]],
                   "rounds": [{"games": r["games"], "byes": r.get("byes", []), "out": r.get("out", [])} for r in t["rounds"]]}
     return [s for s in pairing_js("sections", tournament) if s["players"]]
 
@@ -205,6 +219,10 @@ def anchor(name):
 
 TIEBREAKS = ("Ties are broken by US Chess's default tiebreaks, in order: modified median, Solkoff, cumulative, and "
              "cumulative of opposition. Ratings are as the players entered.")
+ROUNDS = ("Each round in the standings shows the result, the opponent's place in the standings, and the color played; "
+          "the letters are the wall chart's.")
+ESTIMATE = ("Est. rating is the regular rating US Chess's formula gives each player for these games, from their rating, "
+            "floor, and rated games before the event. The official rating can differ.")
 PERFORMANCE = ("Performance is the rating that Elo's formula expects to make each player's score in the games they played "
                "against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below "
                "those opponents' average.")
@@ -212,12 +230,14 @@ PERFORMANCE = ("Performance is the rating that Elo's formula expects to make eac
 
 def swiss_standings(s, label):
     by_id = {p["id"]: p for p in s["players"]}
+    order = standings(s)
+    rounds = round_cells(s, order)
     rows = [[str(i), str(by_id[r["id"]]["number"]), escaped(r["name"]), r["id"], rating_text(by_id[r["id"]]),
-             score_text(r["score"]), score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]),
-             score_text(r["opposition"]), performance_text(r)]
-            for i, r in enumerate(standings(s), 1)]
-    return table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", "Median", "Solkoff", "Cumulative",
-                  "Opp. cumulative", "Performance"], rows, label)
+             score_text(r["score"]), *rounds[r["id"]], score_text(r["median"]), score_text(r["solkoff"]),
+             score_text(r["cumulative"]), score_text(r["opposition"]), performance_text(r), performance_text(r, "estimate")]
+            for i, r in enumerate(order, 1)]
+    return table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(s), "Median", "Solkoff",
+                  "Cumulative", "Opp. cumulative", "Performance", "Est. rating"], rows, label)
 
 
 def swiss_main(t):
@@ -226,7 +246,9 @@ def swiss_main(t):
         return f"""<section id="standings">
       <h2>Final standings</h2>
       <p>{TIEBREAKS}</p>
+      <p>{ROUNDS}</p>
       <p>{PERFORMANCE}</p>
+      <p>{ESTIMATE}</p>
       {swiss_standings(parts[0], "Final standings")}
     </section>
 
@@ -236,7 +258,7 @@ def swiss_main(t):
       {chart_table(parts[0], "Wall chart")}
     </section>"""
     out = [f"<p>Each section was paired and ranked on its own, with its players numbered within it. {TIEBREAKS}</p>",
-           f"<p>{PERFORMANCE}</p>",
+           f"<p>{ROUNDS}</p>", f"<p>{PERFORMANCE}</p>", f"<p>{ESTIMATE}</p>",
            f"<p>{CHART_KEY}</p>"]
     for part in parts:
         name = part["name"]
@@ -255,19 +277,23 @@ def quad_main(t):
     for q in sections(t):
         by_id = {p["id"]: p for p in q["players"]}
         order = standings(q, "quadStandings")
+        rounds = round_cells(q, order)
         rows = [[str(r["place"]), str(by_id[r["id"]]["number"]), escaped(by_id[r["id"]]["name"]), r["id"],
-                 rating_text(by_id[r["id"]]), score_text(r["score"]), score_text(r["sonnebornBerger"]), performance_text(r)]
+                 rating_text(by_id[r["id"]]), score_text(r["score"]), *rounds[r["id"]], score_text(r["sonnebornBerger"]),
+                 performance_text(r), performance_text(r, "estimate")]
                 for r in order]
         name = q["name"]
         out.append(f"""<section id="{anchor(name)}">
       <h2>{escaped(name)}</h2>
       <h3>Final standings</h3>
-      {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", "Sonneborn-Berger", "Performance"], rows, f"{name} standings")}
+      {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(q), "Sonneborn-Berger", "Performance",
+               "Est. rating"], rows, f"{name} standings")}
       <h3>Crosstable</h3>
       {chart_table(q, f"{name} crosstable")}
     </section>""")
     intro = ("<p>Each quad is a round robin of four players. Ties are broken by Sonneborn-Berger, then by the tied "
-             f"players' games with each other.</p>\n    <p>{PERFORMANCE}</p>\n    <p>{CHART_KEY}</p>")
+             f"players' games with each other.</p>\n    <p>{ROUNDS}</p>\n    <p>{PERFORMANCE}</p>\n    <p>{ESTIMATE}</p>\n"
+             f"    <p>{CHART_KEY}</p>")
     return "\n\n    ".join([intro, *out])
 
 

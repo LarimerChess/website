@@ -10,7 +10,8 @@ const pairingsAll = document.querySelector(".pairings-all");
 const standingsAll = document.querySelector(".standings-all");
 const SHOWN = { "1-0": "1–0", "0-1": "0–1", "1/2-1/2": "½–½", "1F-0F": "1F–0F", "0F-1F": "0F–1F", "0F-0F": "0F–0F" };
 
-function tableOf(headings, rows) {
+/** A table in a box that scrolls sideways; a label makes the box a region the keyboard can scroll. */
+function tableOf(headings, rows, label) {
   const table = document.createElement("table");
   table.className = "entries";
   const head = table.createTHead().insertRow();
@@ -27,6 +28,11 @@ function tableOf(headings, rows) {
   }
   const wrap = document.createElement("div");
   wrap.className = "td-table";
+  if (label) {
+    wrap.setAttribute("role", "region");
+    wrap.setAttribute("aria-label", label);
+    wrap.tabIndex = 0;
+  }
   wrap.append(table);
   return wrap;
 }
@@ -286,6 +292,19 @@ function headToHead(r, rows) {
   return rows.some((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger) ? r.headToHead : "";
 }
 
+const ROUNDS = "Each round shows the result (W win, L loss, D draw, X win by forfeit, F loss by forfeit, B full-point bye, "
+  + "H half-point bye, U not played), the opponent's place in the table, and the color played (w or b). A game still "
+  + "being played shows only the opponent and color.";
+const ESTIMATE = "Est. rating is the regular rating US Chess's formula would give each player for the games played so far, "
+  + "from their rating, floor, and rated games before the event. The official rating can differ.";
+
+/** A player's rounds, each as the result, the opponent's place in the table, and the color: "W4 b". */
+function roundCells(t, rows) {
+  const place = new Map(rows.map((r, i) => [r.id, r.place ?? i + 1]));
+  const rounds = Pairing.roundByRound(t);
+  return (id) => rounds.get(id).map((x) => `${x.code}${x.opponent ? place.get(x.opponent) : ""}${x.color ? ` ${x.color}` : ""}`);
+}
+
 const PERFORMANCE = "Performance is the rating that Elo's formula expects to make each player's score in the games played so far against "
   + "rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below those opponents' average.";
 
@@ -303,7 +322,7 @@ function standingsSection(t, ti) {
   section.append(paragraph(quad
     ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). Players tied on all three share a place."
     : "Ties are broken in the US Chess default order (34E): modified median, Solkoff, cumulative, and cumulative of opposition."),
-  paragraph(PERFORMANCE));
+  paragraph(ROUNDS), paragraph(PERFORMANCE), paragraph(ESTIMATE));
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
@@ -314,14 +333,21 @@ function standingsSection(t, ti) {
     }
     const draw = (n) => {
       const sofar = { players: s.players, rounds: s.rounds.slice(0, n) };
+      const heads = sofar.rounds.map((_, i) => `Round ${i + 1}`);
+      const label = `${several ? s.name : t.name} standings`;
       if (quad) {
         const rows = Pairing.quadStandings(sofar);
-        return [tableOf(["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Head-to-head", "Performance"],
-          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, headToHead(r, rows), r.performance ?? ""]))];
+        const cells = roundCells(sofar, rows);
+        return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating"],
+          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, headToHead(r, rows),
+            r.performance ?? "", r.estimate ?? ""]), label)];
       }
-      return [tableOf(["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance"],
-        Pairing.standings(sofar).map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition,
-          r.performance ?? ""]))];
+      const rows = Pairing.standings(sofar);
+      const cells = roundCells(sofar, rows);
+      return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
+        "Est. rating"],
+        rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
+          r.performance ?? "", r.estimate ?? ""]), label)];
     };
     section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, rounds.at(-1)[0], draw));
   });

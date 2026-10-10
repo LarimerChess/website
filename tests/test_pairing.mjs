@@ -150,6 +150,37 @@ test("performance rating: Elo over rated games played, capped at 800, without fo
   assert.deepEqual(quad.map((r) => [r.id, r.performance]), [["a", 2600], ["b", 1200]]);
 });
 
+test("rating estimates match US Chess's ratings of a real section, The Garage 1 quad 2 (2026-09-26)", () => {
+  // Pre-event ratings to the hundredth, as US Chess stores them; all six were established, and
+  // number 3 (1810.71) has an 1800 floor.
+  const players = [[1, 1670.49], [2, 1286.67], [3, 1810.71, 1800], [4, 1444.84], [5, 1692.69], [6, 1279.57]]
+    .map(([id, rating, floor]) => ({ id, name: String(id), rating, games: 50, floor }));
+  const rounds = [
+    [[1, 4, "1/2-1/2"], [2, 5, "0-1"], [6, 3, "1-0"]],
+    [[1, 2, "1-0"], [3, 5, "1/2-1/2"], [4, 6, "1-0"]],
+    [[5, 1, "1/2-1/2"], [3, 4, "1-0"], [6, 2, "0-1"]],
+  ].map((games) => ({ games: games.map(([white, black, result]) => ({ white, black, result })), byes: [] }));
+  const official = { 1: 1666.32, 2: 1301.58, 3: 1800, 4: 1463.63, 5: 1698.88, 6: 1290.02 };
+  const estimates = Pairing.ratingEstimates({ players, rounds });
+  for (const [id, post] of Object.entries(official)) assert.equal(estimates.get(Number(id)), Math.round(post), `player ${id}`);
+});
+
+test("special formula: the rating whose provisional expectancy matches the score", () => {
+  // Unrated (no prior games): a win over a 1400 and a loss to a 1600 is 1500.
+  assert.equal(Pairing.specialRating(1300, 0, [{ rating: 1400, score: 1 }, { rating: 1600, score: 0 }], ""), 1500);
+  // A lone loss leaves every rating up to 1250 equally good; the document picks the one nearest the prior rating.
+  assert.equal(Pairing.specialRating(1300, 0, [{ rating: 1650, score: 0 }], ""), 1250);
+  assert.equal(Pairing.specialRating(1000, 0, [{ rating: 1650, score: 0 }], ""), 1000);
+  // Two prior games, both losses: they count as two losses to an 1200, the old rating plus 400, so
+  // a win over another 1200 is one point in three, an expectancy of 1/3 at 1200 - 800/6.
+  assert.equal(Pairing.specialRating(800, 2, [{ rating: 1200, score: 1 }], "losses"), 1066.6666666666667);
+  // Unrated players get estimates; a player with no games gets none.
+  const t = { players: [{ id: "a", rating: null }, { id: "b", rating: 1500, games: 30 }, { id: "c", rating: 1400, games: 4 }],
+    rounds: [{ games: [{ white: "a", black: "b", result: "1-0" }], byes: [] }] };
+  const e = Pairing.ratingEstimates(t);
+  assert.ok(e.get("a") > 1500 && e.get("b") < 1500 && e.get("c") === null, JSON.stringify([...e]));
+});
+
 test("34E3: a full-point bye takes a point off cumulative", () => {
   const players = ["a", "b", "c"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100 }));
   const t = { players, rounds: [{ games: [{ white: "a", black: "b", result: "1-0" }], byes: [{ id: "c", points: 1 }] }] };
