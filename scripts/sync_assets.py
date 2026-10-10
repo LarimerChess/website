@@ -16,8 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-stamps = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10] for name in ("calendar.js", "register.js", "td.js", "entries.js", "pairing.js", "td-run.js", "pairings.js", "arena.js", "td-arena.js")}
-script = re.compile(r"((?:\.\./)*(calendar\.js|register\.js|td\.js|entries\.js|pairing\.js|td-run\.js|pairings\.js|arena\.js|td-arena\.js))(?:\?v=[0-9a-f]+)?\"")
+stamps = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10] for name in ("calendar.js", "register.js", "td.js", "entries.js", "pairing.js", "td-run.js", "pairings.js", "arena.js", "td-arena.js", "results.js")}
+script = re.compile(r"((?:\.\./)*(calendar\.js|register\.js|td\.js|entries\.js|pairing\.js|td-run\.js|pairings\.js|arena\.js|td-arena\.js|results\.js))(?:\?v=[0-9a-f]+)?\"")
 css = (ROOT / "style.css").read_text(encoding="utf-8")
 styles = re.compile(r'<link rel="stylesheet" href="(?:\.\./)*style\.css[^"]*">|<style>.*?</style>', re.S)
 

@@ -333,18 +333,27 @@ def listed():
 
 def index_page():
     pages = listed()
-    items = "\n".join(f'        <li><a href="/{path}">{name}</a>, <time datetime="{date}">{date_text(date)}</time></li>'
-                      for path, name, date in pages)
-    body = f"<ul>\n{items}\n      </ul>" if pages else "<p>Results are posted here after each tournament is finished.</p>"
+    rows = "\n".join(f'          <tr><td><time datetime="{date}">{date_text(date)}</time></td><td><a href="/{path}">{name}</a></td></tr>'
+                     for path, name, date in pages)
+    # results.js shows 20 rows a page; without it, every row shows.
+    body = f"""<table class="entries results-table">
+        <thead><tr><th scope="col">Date</th><th scope="col">Tournament</th></tr></thead>
+        <tbody>
+{rows}
+        </tbody>
+      </table>
+      <nav class="results-pages" aria-label="Pages of results" hidden></nav>""" if pages else "<p>Results are posted here after each tournament is finished.</p>"
     main = f"""<h1>Results</h1>
-    <p>Final standings and wall charts of the club's US Chess rated tournaments. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
+    <p>Final standings and wall charts of the club's US Chess rated tournaments, newest first. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
     <section id="all-results">
-      <h2>Tournaments</h2>
+      <h2 class="visually-hidden">Tournaments</h2>
       {body}
     </section>"""
     return page_html(f"Results · {CLUB}",
                      "Final standings and wall charts of Larimer County Chess Club tournaments in Fort Collins, Colorado.",
-                     f"{SITE}/results/", main, depth=1, current="/results/", generated=GENERATED)
+                     f"{SITE}/results/", main, depth=1, current="/results/", generated=GENERATED,
+                     scripts=(f'<script src="../results.js?v={hashlib.sha256((ROOT / "results.js").read_bytes()).hexdigest()[:10]}" '
+                              'defer></script>') if pages else "")
 
 
 def sitemap(text, paths, today):

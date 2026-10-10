@@ -1091,6 +1091,37 @@ JSON.stringify(leaderboard[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1",
 await axeBoth(arenaStandings, "Standings page with an arena");
 await arenaStandings.close();
 
+// The Results page pages its table 20 rows at a time; with no finished tournaments yet, it is
+// served here with 45 made-up rows.
+const resultsPage = await browser.newPage();
+resultsPage.on("pageerror", (error) => fail(`JavaScript error on /results/: ${error.message}`));
+await resultsPage.setRequestInterception(true);
+resultsPage.on("request", async (request) => {
+  if (new URL(request.url()).pathname !== "/results/") return request.continue();
+  const rows = [...Array(45)].map((_, i) => `<tr><td>Day ${i + 1}</td><td><a href="/results/t-${i + 1}/">Tournament ${i + 1}</a></td></tr>`).join("");
+  const page = (await (await fetch(base + "/results/")).text())
+    .replace(/<p>Results are posted here[^<]*<\/p>/, `<table class="entries results-table"><thead><tr><th scope="col">Date</th><th scope="col">Tournament</th></tr></thead><tbody>${rows}</tbody></table><nav class="results-pages" aria-label="Pages of results" hidden></nav>`)
+    .replace("</body>", '<script src="../results.js" defer></script></body>');
+  request.respond({ contentType: "text/html", body: page });
+});
+await resultsPage.goto(base + "/results/", { waitUntil: "networkidle0" });
+const resultsShown = () => resultsPage.evaluate(() => ({
+  visible: [...document.querySelectorAll(".results-table tbody tr:not([hidden])")].map((r) => r.cells[1].textContent),
+  where: document.querySelector(".results-pages [role=status]")?.textContent, address: location.search }));
+const firstPage = await resultsShown();
+await resultsPage.click(".results-pages button:last-child");
+await resultsPage.click(".results-pages button:last-child");
+const lastPage = await resultsShown();
+firstPage.visible.length === 20 && firstPage.visible[0] === "Tournament 1" && firstPage.where === "Page 1 of 3"
+  && lastPage.visible.length === 5 && lastPage.visible[0] === "Tournament 41" && lastPage.where === "Page 3 of 3" && lastPage.address === "?page=3"
+  ? pass("Results page shows 20 tournaments a page, with the page in the address")
+  : fail(`Results paging: ${JSON.stringify({ firstPage, lastPage })}`);
+await resultsPage.evaluate(axeSource);
+const resultsAxe = await resultsPage.evaluate(() => axe.run());
+resultsAxe.violations.length ? fail(`Results page paged: ${resultsAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("Results page paged has no axe violations");
+await resultsPage.close();
+
 await browser.close();
 if (failures.length) {
   console.log(`\n${failures.length} check(s) failed`);

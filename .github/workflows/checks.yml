@@ -28,7 +28,7 @@ jobs:
         run: npm run -s check:html
       - name: JavaScript syntax
         if: success() || failure()
-        run: for f in calendar.js register.js td.js td-run.js td-arena.js entries.js pairings.js pairing.js arena.js; do node --check "$f"; done
+        run: for f in calendar.js register.js td.js td-run.js td-arena.js entries.js pairings.js pairing.js arena.js results.js; do node --check "$f"; done
       - name: Pages match style.css and the scripts
         if: success() || failure()
         run: python scripts/sync_assets.py --check
