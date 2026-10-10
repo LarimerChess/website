@@ -1,5 +1,6 @@
 // The TD desk's Run the tournament section: start a tournament for the chosen event, check in
-// players, pair each round with pairing.js and review and post it, enter results, and follow the
+// players, pair each round with pairing.js or by hand, review, change, and post it (and change it
+// again until it has results), enter results or confirm the ones players report, and follow the
 // standings. The script keeps everything in the Tournaments in progress spreadsheet. An arena is
 // run by td-arena.js. call, choice, and choices come from td.js.
 //
@@ -17,6 +18,10 @@ const runSectionsEdit = document.querySelector(".run-sections-edit");
 const runPairings = document.querySelector(".run-pairings");
 const runGames = document.querySelector(".run-games-all");
 const runEditButtons = document.querySelector(".run-edit-buttons");
+const runPairingsHint = document.querySelector(".run-pairings-hint");
+const runProblems = document.querySelector(".run-problems");
+const runCancel = document.querySelector(".run-cancel");
+const runResultButtons = document.querySelector(".run-result-buttons");
 const runStandingsWrap = document.querySelector(".run-standings-wrap");
 const runStandingsHint = document.querySelector(".run-standings-hint");
 const runStandings = document.querySelector(".run-standings-all");
@@ -170,17 +175,13 @@ function renderRun() {
   if (t.rounds.length) renderByesAll();
   if (t.status === "finished") return;
   runRound.hidden = false;
-  if (last && !last.posted) {
-    draft = draft || { number: t.rounds.length, sections: parts.map((s) => ({ section: s.key, name: s.name,
-      games: s.rounds.at(-1).games, byes: s.rounds.at(-1).byes, notes: [] })).filter((s) => s.games.length || s.byes.length) };
-    return renderDraft();
-  }
+  if (last && !last.posted) draft = draft || draftFrom(t.rounds.length);
+  if (draft) return renderDraft();
   if (last && !complete(last)) {
     runTitle.textContent = `Round ${t.rounds.length}: results`;
     runCheckin.hidden = true;
     return renderResults(t.rounds.length);
   }
-  if (draft) return renderDraft();
   const next = t.rounds.length + 1;
   if (t.plannedRounds && next > t.plannedRounds) {
     runRound.hidden = true;
@@ -248,76 +249,343 @@ async function moveTo(p, section) {
   loadRun();
 }
 
+// The draft editor. A draft is { number, posted, sections: [{ section, name, games, byes, waiting }] }:
+// posted when it re-pairs a posted round, and waiting the players not yet paired. Choosing a
+// player for a seat swaps them with whoever had it, so nobody is lost or doubled; removing a
+// board leaves its players not yet paired, and Save and Post wait until everyone is placed.
+
+/** A saved or posted round as a draft, copied, so nothing changes until it is saved. */
+function draftFrom(number) {
+  return { number, sections: Pairing.sections(forEngine(current)).filter((s) => s.players.length).map((s) => ({
+    section: s.key, name: s.name, waiting: [],
+    games: s.rounds[number - 1].games.map((g) => ({ board: g.board, white: g.white, black: g.black, result: g.result || "" })),
+    byes: s.rounds[number - 1].byes.map((b) => ({ id: b.id, points: b.points, kind: b.kind })) })) };
+}
+
+const numberOf = (id) => current.players.find((p) => p.id === id)?.number ?? Infinity;
+const isWithdrawn = (id) => {
+  const out = current.players.find((p) => p.id === id)?.out;
+  return Boolean(out && out <= draft.number);
+};
+
+/** The players of a draft's section who play this round, in number order. */
+function activeIn(s) {
+  const part = Pairing.sections(forEngine(current)).find((x) => x.name === s.name);
+  return (part?.players || []).map((p) => p.id).filter((id) => !isWithdrawn(id));
+}
+
+function seat(s, id, g, side) {
+  const old = g[side];
+  if (id === old) return;
+  const game = s.games.find((x) => x.white === id || x.black === id);
+  const bye = s.byes.find((b) => b.id === id);
+  const at = s.waiting.indexOf(id);
+  if (game) game[game.white === id ? "white" : "black"] = old;
+  else if (bye) bye.id = old;
+  else if (at >= 0) s.waiting[at] = old;
+  else s.waiting.push(old);
+  g[side] = id;
+}
+
+function setKind(s, id, kind) {
+  const bye = s.byes.find((b) => b.id === id);
+  if (kind === "waiting") {
+    s.byes = s.byes.filter((b) => b.id !== id);
+    if (!s.waiting.includes(id)) s.waiting.push(id);
+  } else if (bye) {
+    Object.assign(bye, { kind, points: Pairing.BYE_KINDS[kind] });
+  } else {
+    s.waiting = s.waiting.filter((x) => x !== id);
+    s.byes.push({ id, kind, points: Pairing.BYE_KINDS[kind] });
+  }
+}
+
+/** Boards from 1 in each section; a tournament started before sections numbers on through its quads. */
+function renumber() {
+  let board = 0;
+  for (const s of draft.sections) {
+    const offset = s.section ? 0 : board;
+    s.games.forEach((g, i) => { g.board = offset + i + 1; });
+    board += s.games.length;
+  }
+}
+
+/** What keeps the draft from being saved, in words for the TD. */
+function draftProblems() {
+  const problems = [];
+  const seen = new Set();
+  const several = draft.sections.length > 1;
+  for (const s of draft.sections) {
+    const where = several ? ` (${s.name})` : "";
+    const active = activeIn(s);
+    const placed = [...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id)];
+    for (const id of placed) {
+      if (seen.has(id)) problems.push(`${nameOf(id)} is in the pairings twice.`);
+      else if (!active.includes(id)) problems.push(`${nameOf(id)}${where} ${isWithdrawn(id) ? "is withdrawn" : "plays in another section"}; take them out of these pairings.`);
+      seen.add(id);
+    }
+    for (const id of active) if (!placed.includes(id)) problems.push(`${nameOf(id)}${where} isn't paired yet: add a board for them, or choose a round without a game.`);
+  }
+  return [...new Set(problems)];
+}
+
+function editButton(text, hint, focus, onClick) {
+  const button = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: text });
+  button.append(hidden(hint));
+  button.dataset.focus = focus;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function labelled(text, control) {
+  const field = document.createElement("span");
+  field.className = "run-field";
+  field.append(Object.assign(document.createElement("label"), { htmlFor: control.id, textContent: text }), control);
+  return field;
+}
+
+/** Redraws, keeping the keyboard where it was: on the control with the same data-focus, else its
+ *  data-focus-after (a Confirm button goes once its result is in), or on focus if given. */
+function keepFocus(render, focus) {
+  const { focus: key, focusAfter } = focus ? { focus } : document.activeElement?.dataset || {};
+  render();
+  const find = (k) => k && runGames.querySelector(`[data-focus="${CSS.escape(k)}"]`);
+  (find(key) || find(focusAfter))?.focus();
+}
+
 function renderDraft() {
-  runTitle.textContent = `Round ${draft.number}: pairings to review`;
+  runTitle.textContent = draft.posted ? `Round ${draft.number}: change the posted pairings` : `Round ${draft.number}: pairings to review`;
   runCheckin.hidden = true;
   runPairings.hidden = false;
   runEditButtons.hidden = false;
+  runResultButtons.hidden = true;
+  runCancel.hidden = !draft.posted;
+  runPairingsHint.textContent = "Change any seat with its menu: the player you choose swaps places with the one there. The director is "
+    + "responsible for the pairings (29E7). Save keeps them private; Post shows them on the Pairings page"
+    + (draft.posted ? ", in place of the round posted, and clears any results players reported for it." : ".");
   const several = draft.sections.length > 1;
-  runGames.replaceChildren(...draft.sections.flatMap((s) => {
-    const ids = [...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id)];
-    const playerSelect = (value, label) => {
-      const select = document.createElement("select");
-      select.setAttribute("aria-label", label);
-      for (const id of ids) select.append(option(id, nameOf(id), id === value));
-      return select;
-    };
-    const where = several ? `${s.name} board` : "Board";
-    const rows = s.games.map((g) => {
+  runGames.replaceChildren(...draft.sections.flatMap((s, n) => editSection(s, n, several)));
+  const problems = draftProblems();
+  runProblems.hidden = !problems.length;
+  runProblems.querySelector("ul").replaceChildren(...problems.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
+}
+
+function editSection(s, n, several) {
+  s.waiting = s.waiting || [];
+  const active = activeIn(s);
+  const placed = new Set([...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id), ...s.waiting]);
+  for (const id of active) if (!placed.has(id)) s.waiting.push(id);
+  const where = several ? `${s.name} board` : "Board";
+  const key = (what) => `${n}|${what}`;
+  const redraw = (focus) => keepFocus(renderDraft, focus);
+
+  const seatMenu = (g, side) => {
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `${where} ${g.board} ${side}`);
+    select.dataset.focus = key(`${g.board}-${side}`);
+    for (const id of new Set([g[side], ...active])) select.append(option(id, nameOf(id), id === g[side]));
+    select.addEventListener("change", () => {
+      seat(s, select.value, g, side);
+      redraw();
+    });
+    return select;
+  };
+  const rows = s.games.map((g) => {
+    const row = document.createElement("tr");
+    row.insertCell().textContent = g.board;
+    row.insertCell().append(seatMenu(g, "white"));
+    row.insertCell().append(seatMenu(g, "black"));
+    const forfeit = document.createElement("select");
+    forfeit.setAttribute("aria-label", `${where} ${g.board} forfeit`);
+    forfeit.dataset.focus = key(`${g.board}-forfeit`);
+    for (const [value, text] of RESULTS.filter(([v]) => !v || v.includes("F"))) forfeit.append(option(value, value ? text : "None", value === g.result));
+    forfeit.addEventListener("change", () => { g.result = forfeit.value; });
+    row.insertCell().append(forfeit);
+    const buttons = document.createElement("div");
+    buttons.className = "td-buttons";
+    const which = ` on ${several ? `${s.name} board` : "board"} ${g.board}`;
+    buttons.append(editButton("Swap colors", which, key(`${g.board}-swap`), () => {
+      [g.white, g.black] = [g.black, g.white];
+      g.result = { "1F-0F": "0F-1F", "0F-1F": "1F-0F" }[g.result] || g.result;
+      redraw();
+    }), editButton("Remove", ` ${several ? `${s.name} board` : "board"} ${g.board}`, key(`${g.board}-remove`), () => {
+      s.games.splice(s.games.indexOf(g), 1);
+      s.waiting.push(g.white, g.black);
+      renumber();
+      runStatus.textContent = `${where} ${g.board} is removed; ${nameOf(g.white)} and ${nameOf(g.black)} are not yet paired.`;
+      redraw(key("add-white"));
+    }));
+    row.insertCell().append(buttons);
+    return row;
+  });
+  const out = rows.length ? sectionTable("run-games", ["Board", "White", "Black", "Forfeit", hidden("Change")], rows, s.name, several)
+    : [...(several ? [Object.assign(document.createElement("h4"), { textContent: s.name })] : []),
+      Object.assign(document.createElement("p"), { textContent: "No boards yet." })];
+
+  const off = [...s.byes.map((b) => b.id), ...s.waiting].sort((a, b) => numberOf(a) - numberOf(b));
+  if (off.length) {
+    const offRows = off.map((id) => {
       const row = document.createElement("tr");
-      row.insertCell().textContent = g.board;
-      const white = playerSelect(g.white, `${where} ${g.board} white`);
-      const black = playerSelect(g.black, `${where} ${g.board} black`);
-      white.addEventListener("change", () => { g.white = white.value; });
-      black.addEventListener("change", () => { g.black = black.value; });
-      row.insertCell().append(white);
-      row.insertCell().append(black);
-      row.insertCell().textContent = (RESULTS.find(([v]) => v === g.result) || ["", ""])[1].replace("No result", "");
+      row.insertCell().textContent = nameOf(id);
+      const bye = s.byes.find((b) => b.id === id);
+      const now = bye ? Pairing.byeKind(bye) : "waiting";
+      const kind = document.createElement("select");
+      kind.setAttribute("aria-label", `${nameOf(id)} this round`);
+      kind.dataset.focus = key(`kind-${id}`);
+      kind.append(option("waiting", "Not yet paired", now === "waiting"),
+        ...Object.entries(BYE_LABELS).map(([value, text]) => option(value, text, value === now)));
+      kind.addEventListener("change", () => {
+        setKind(s, id, kind.value);
+        redraw();
+      });
+      row.insertCell().append(kind);
+      if (!bye) row.className = "run-unpaired";
       return row;
     });
-    const label = (b) => `${nameOf(b.id)}, ${BYE_LABELS[Pairing.byeKind(b)].toLowerCase()}`;
-    const byes = Object.assign(document.createElement("p"), { textContent: s.byes.length
-      ? `Without a game: ${s.byes.map(label).join("; ")}.` : "Everyone has a game." });
+    out.push(Object.assign(document.createElement("p"), { className: "run-label", textContent: several ? `Without a game in ${s.name}` : "Without a game" }),
+      ...sectionTable("run-off", ["Player", "This round"], offRows, "", false));
+  } else {
+    out.push(Object.assign(document.createElement("p"), { textContent: "Everyone has a game." }));
+  }
+  if (s.notes?.length) {
     const notes = document.createElement("ul");
-    notes.append(...(s.notes || []).map((n) => Object.assign(document.createElement("li"), { textContent: n })));
-    return [...sectionTable("run-games", ["Board", "White", "Black", "Result"], rows, s.name, several), byes, ...(notes.children.length ? [notes] : [])];
-  }));
+    notes.append(...s.notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
+    out.push(notes);
+  }
+
+  const tools = document.createElement("div");
+  tools.className = "run-tools";
+  const menu = (id, ids, label) => {
+    const select = Object.assign(document.createElement("select"), { id });
+    select.dataset.focus = key(label);
+    for (const x of ids) select.append(option(x, nameOf(x), false));
+    return select;
+  };
+  if (off.length >= 2) {
+    const white = menu(`run-add-white-${n}`, off, "add-white");
+    const black = menu(`run-add-black-${n}`, off, "add-black");
+    black.selectedIndex = 1;
+    const add = editButton("Add the board", several ? ` in ${s.name}` : "", key("add"), () => {
+      if (white.value === black.value) return void (runStatus.textContent = "Choose two different players for the board.");
+      for (const id of [white.value, black.value]) {
+        s.byes = s.byes.filter((b) => b.id !== id);
+        s.waiting = s.waiting.filter((x) => x !== id);
+      }
+      s.games.push({ board: 0, white: white.value, black: black.value, result: "" });
+      renumber();
+      runStatus.textContent = `${where} ${s.games.length}: ${nameOf(white.value)} has white against ${nameOf(black.value)}.`;
+      redraw(key("add"));
+    });
+    const line = document.createElement("p");
+    line.append(Object.assign(document.createElement("strong"), { textContent: "Add a board" }), " ",
+      labelled("White", white), " ", labelled("Black", black), " ", add);
+    tools.append(line);
+  }
+  if (s.games.length) {
+    const inGames = s.games.flatMap((g) => [g.white, g.black]);
+    const who = menu(`run-move-${n}`, inGames, "move-who");
+    const kind = Object.assign(document.createElement("select"), { id: `run-move-kind-${n}` });
+    for (const [value, text] of Object.entries(BYE_LABELS)) kind.append(option(value, text, value === "unplayed"));
+    const move = editButton("Move", several ? ` out of a game in ${s.name}` : " out of a game", key("move"), () => {
+      const g = s.games.find((x) => x.white === who.value || x.black === who.value);
+      const other = g.white === who.value ? g.black : g.white;
+      s.games.splice(s.games.indexOf(g), 1);
+      s.waiting.push(other);
+      setKind(s, who.value, kind.value);
+      renumber();
+      runStatus.textContent = `${nameOf(who.value)}: ${BYE_LABELS[kind.value].toLowerCase()}. ${nameOf(other)} is not yet paired.`;
+      redraw(s.games.length ? key("move") : key("add"));
+    });
+    const line = document.createElement("p");
+    line.append(Object.assign(document.createElement("strong"), { textContent: "Take a player out of a game" }), " ",
+      labelled("Player", who), " ", labelled("This round", kind), " ", move);
+    tools.append(line);
+  }
+  out.push(tools);
+  return out;
+}
+
+const SHORT = { "1-0": "1–0", "0-1": "0–1", "1/2-1/2": "½–½" };
+
+/** What a board's players reported on the Pairings page: value when one reported or both agree. */
+function reportOf(g) {
+  const white = g.reports?.white || "", black = g.reports?.black || "";
+  if (!white && !black) return null;
+  if (white && black && white !== black) return { conflict: true, text: `Conflict: White reported ${SHORT[white]}, Black ${SHORT[black]}` };
+  const value = white || black;
+  return { value, agreed: Boolean(white && black), text: `${SHORT[value]}, ${white && black ? "both reported" : white ? "White reported" : "Black reported"}` };
+}
+
+let agreedNow = [];
+
+/** After a result is entered: the standings, and the next round's check-in once every board has one. */
+function afterResults(number) {
+  renderStandings();
+  if (current.rounds[number - 1].games.every((g) => g.result)) renderRun();
+  else keepFocus(() => renderResults(number));
+}
+
+async function enterResult(g, s, number, value, control) {
+  const [event, date] = keyParts();
+  control.disabled = true;
+  const result = await call("result", { event, date, number, board: g.board, section: g.section ?? s.key, result: value });
+  control.disabled = false;
+  if (!result.ok) {
+    runStatus.textContent = result.error;
+    return;
+  }
+  g.result = value;
+  afterResults(number);
 }
 
 function renderResults(number) {
   runPairings.hidden = false;
-  runEditButtons.hidden = true;
+  runEditButtons.hidden = runProblems.hidden = true;
+  runResultButtons.hidden = false;
+  runPairingsHint.textContent = "Enter each board's result with its menu, which overrides anything reported. Players can report their "
+    + "results on the Pairings page; a report counts once you confirm it. Check for reports to see new ones.";
   const parts = Pairing.sections(forEngine(current));
   const several = parts.length > 1;
   const round = current.rounds[number - 1];
-  runGames.replaceChildren(...parts.filter((s) => s.players.length).flatMap((s) => {
+  agreedNow = [];
+  runGames.replaceChildren(...parts.filter((s) => s.players.length).flatMap((s, n) => {
     const here = s.rounds[number - 1];
+    const where = several ? `${s.name} board` : "Board";
     const rows = here.games.map((g) => {
       const row = document.createElement("tr");
       row.insertCell().textContent = g.board;
       row.insertCell().textContent = nameOf(g.white);
       row.insertCell().textContent = nameOf(g.black);
+      const reported = row.insertCell();
+      const report = reportOf(g);
+      if (report) {
+        reported.append(report.text);
+        if (report.conflict) reported.className = "run-conflict";
+        if (report.value && report.value !== g.result) {
+          const confirmIt = editButton("Confirm", ` ${SHORT[report.value]} on ${several ? `${s.name} board` : "board"} ${g.board}`, `${n}|${g.board}-confirm`,
+            () => enterResult(g, s, number, report.value, confirmIt));
+          confirmIt.dataset.focusAfter = `${n}|${g.board}-result`;
+          reported.append(" ", confirmIt);
+        }
+        if (report.agreed && !g.result) agreedNow.push({ g, s, value: report.value });
+      }
       const select = document.createElement("select");
-      select.setAttribute("aria-label", `${several ? `${s.name} board` : "Board"} ${g.board} result`);
+      select.setAttribute("aria-label", `${where} ${g.board} result`);
+      select.dataset.focus = `${n}|${g.board}-result`;
       for (const [value, text] of RESULTS) select.append(option(value, text, value === (g.result || "")));
-      select.addEventListener("change", async () => {
-        const [event, date] = keyParts();
-        select.disabled = true;
-        const result = await call("result", { event, date, number, board: g.board, section: g.section ?? s.key, result: select.value });
-        select.disabled = false;
-        if (!result.ok) return void (runStatus.textContent = result.error);
-        g.result = select.value;
-        renderStandings();
-        if (round.games.every((x) => x.result)) renderRun();
-      });
+      select.addEventListener("change", () => enterResult(g, s, number, select.value, select));
       row.insertCell().append(select);
       return row;
     });
     const byes = Object.assign(document.createElement("p"), { textContent: here.byes.length
       ? `Without a game: ${here.byes.map((b) => `${nameOf(b.id)}, ${BYE_LABELS[Pairing.byeKind(b)].toLowerCase()}`).join("; ")}.`
       : "Everyone has a game." });
-    return [...sectionTable("run-games", ["Board", "White", "Black", "Result"], rows, s.name, several), byes];
+    return [...sectionTable("run-games", ["Board", "White", "Black", "Reported", "Result"], rows, s.name, several), byes];
   }));
+  const agreed = runResultButtons.querySelector(".run-confirm-agreed");
+  agreed.hidden = !agreedNow.length;
+  agreed.textContent = `Confirm agreed results (${agreedNow.length})`;
+  runResultButtons.querySelector(".run-edit").hidden = round.games.some((g) => g.result);
 }
 
 const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
@@ -436,13 +704,21 @@ document.querySelector(".run-sync").addEventListener("click", async () => {
   loadRun();
 });
 
-document.querySelector(".run-pair").addEventListener("click", async () => {
-  const number = current.rounds.length + 1;
+/** The check-in's choice for each player, after taking out those withdrawn from this round on. */
+async function checkIn(number) {
   const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value]);
-  if (!choicesMade.some(([, v]) => v === "play")) return void (runStatus.textContent = "Nobody is present to pair.");
   const withdrawn = choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id);
   const [event, date] = keyParts();
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
+  return { choicesMade, withdrawn };
+}
+
+document.querySelector(".run-pair").addEventListener("click", async () => {
+  const number = current.rounds.length + 1;
+  if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play")) {
+    return void (runStatus.textContent = "Nobody is present to pair.");
+  }
+  const { choicesMade, withdrawn } = await checkIn(number);
   const sections = Pairing.pairSections(forEngine(current), {
     halfByes: choicesMade.filter(([, v]) => v === "half").map(([id]) => id),
     zeroByes: choicesMade.filter(([, v]) => v === "zero").map(([id]) => id),
@@ -465,20 +741,72 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
   renderDraft();
 });
 
+// By hand, the players marked present start out not yet paired, as does everyone when nobody is
+// marked present; the others are unplayed, except in a quad, where the TD gives them forfeits.
+document.querySelector(".run-by-hand").addEventListener("click", async () => {
+  const number = current.rounds.length + 1;
+  const { choicesMade, withdrawn } = await checkIn(number);
+  current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
+  const chosen = new Map(choicesMade);
+  const anyone = choicesMade.some(([, v]) => v === "play");
+  draft = { number, sections: Pairing.sections(forEngine(current)).filter((s) => s.players.length).map((s) => {
+    const part = { section: s.key, name: s.name, games: [], byes: [], waiting: [] };
+    for (const p of s.players) {
+      if (!chosen.has(p.id) || withdrawn.includes(p.id)) continue;
+      const kind = { half: "half", zero: "zero", absent: anyone && current.format !== "quad" ? "unplayed" : "" }[chosen.get(p.id)];
+      if (kind) part.byes.push({ id: p.id, kind, points: Pairing.BYE_KINDS[kind] });
+      else part.waiting.push(p.id);
+    }
+    return part;
+  }) };
+  renderDraft();
+  runStatus.textContent = `Round ${number}: add each board from the players not yet paired.`;
+});
+
 document.querySelector(".run-repair").addEventListener("click", () => {
+  const last = current.rounds.at(-1);
+  if (last && (!last.posted || draft?.posted)) current.rounds.pop();
   draft = null;
-  if (current.rounds.at(-1) && !current.rounds.at(-1).posted) current.rounds.pop();
   renderRun();
 });
 
+document.querySelector(".run-cancel").addEventListener("click", () => {
+  draft = null;
+  renderRun();
+});
+
+document.querySelector(".run-edit").addEventListener("click", () => {
+  const number = current.rounds.length;
+  const reported = current.rounds[number - 1].games.some((g) => g.reports);
+  if (reported && !confirm("Players have reported results for this round. Changing its pairings clears their reports. Change them?")) return;
+  draft = { ...draftFrom(number), posted: true };
+  renderDraft();
+  runStatus.textContent = `Change round ${number}'s pairings, then post them again.`;
+});
+
+document.querySelector(".run-refresh").addEventListener("click", loadRun);
+
+document.querySelector(".run-confirm-agreed").addEventListener("click", async (event) => {
+  const number = current.rounds.length;
+  const agreed = agreedNow;
+  const [eventName, date] = keyParts();
+  event.target.disabled = true;
+  const result = await call("results", { event: eventName, date, number,
+    results: JSON.stringify(agreed.map(({ g, s, value }) => ({ board: g.board, section: g.section ?? s.key, result: value }))) });
+  event.target.disabled = false;
+  if (!result.ok) return void (runStatus.textContent = result.error);
+  for (const { g, value } of agreed) g.result = value;
+  runStatus.textContent = `${agreed.length} agreed ${agreed.length === 1 ? "result is" : "results are"} confirmed.`;
+  afterResults(number);
+});
+
 async function saveDraft(post) {
-  const seen = new Set();
-  for (const s of draft.sections) {
-    for (const id of [...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id)]) {
-      if (seen.has(id)) return void (runStatus.textContent = `${nameOf(id)} is in the pairings twice.`);
-      seen.add(id);
-    }
+  const problems = draftProblems();
+  if (problems.length) {
+    runStatus.textContent = `Not saved yet. ${problems[0]}${problems.length > 1 ? ` The other ${problems.length - 1} are listed above the buttons.` : ""}`;
+    return;
   }
+  if (draft.posted && !post && !confirm(`Saving without posting takes round ${draft.number} off the Pairings page until you post it. Save?`)) return;
   const games = draft.sections.flatMap((s) => s.games.map((g) => ({ board: g.board, white: g.white, black: g.black, section: s.section,
     result: g.result || "" })));
   const byes = draft.sections.flatMap((s) => s.byes.map((b) => ({ id: b.id, points: b.points, kind: Pairing.byeKind(b),

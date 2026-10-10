@@ -1,5 +1,6 @@
 // Tests for scripts/registration.gs's running tournaments, against in-memory sheets: a spreadsheet
-// from before sections (a quad mid-event), a Swiss in two sections, and quads as sections.
+// from before sections (a quad mid-event), a Swiss in two sections, quads as sections, and the
+// results players report.
 //   node --test tests/test_registration.mjs
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
@@ -43,7 +44,8 @@ function makeSheet(rows) {
   return sheet;
 }
 
-function load(tabs) {
+// cache: what the script cache holds, such as this minute's count of public posts.
+function load(tabs, cache = {}) {
   const sheets = Object.fromEntries(Object.entries(tabs).map(([name, rows]) => [name, makeSheet(rows)]));
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
   const context = {
@@ -51,8 +53,10 @@ function load(tabs) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => "sheet" }) },
     SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => book },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {}, removeAll() {} }) },
-    Utilities: { formatDate: () => "2026-10-10 10:00", getUuid: () => "uuid" },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {} }) },
+    ContentService: { MimeType: { JSON: "json" }, createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }) },
+    Utilities: { formatDate: () => "2026-10-10 10:00", getUuid: () => "uuid",
+      computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {} },
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
@@ -168,4 +172,85 @@ test("a player's contact is found by first and last name, a nickname, or not at 
   assert.equal(gs.contactFor("Anthony Whitt").email, "tony@example.com");
   assert.equal(gs.contactFor("Sam Lee"), null, "two contacts share the name");
   assert.equal(gs.contactFor("Steven Smith"), null);
+});
+
+// A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
+function reporting(cache) {
+  const key = "classic/2026-11-07";
+  const players = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1500"], ["44444444", "Dee", "1300"]]
+    .map(([id, name, rating], i) => [key, String(i + 1), id, name, rating, "", ""]);
+  return load({
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+      [key, "classic", "Classic", "swiss", "3", "running", "2026-11-07 10:00", "white", "", "", ""],
+      ["arena/2026-11-07", "arena", "Arena", "arena", "", "running", "2026-11-07 10:00", "white", "", "17:30", ""]],
+    Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section"], ...players],
+    Rounds: [["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind"],
+      [key, "1", "1", "11111111", "33333333", "", "", "2026-11-07 10:05", "", ""],
+      [key, "1", "2", "44444444", "22222222", "", "", "2026-11-07 10:05", "", ""],
+      [key, "2", "1", "22222222", "11111111", "", "", "", "", ""],
+      [key, "2", "2", "33333333", "44444444", "", "", "", "", ""]],
+  }, cache);
+}
+
+test("a player's report is checked against the posted round, kept apart from the result, and shown as reported", () => {
+  const { gs, sheets } = reporting();
+  const p = { event: "classic", date: "2026-11-07", number: "1", board: "1", section: "" };
+  assert.match(gs.reportResult({ ...p, id: "1111111", result: "1-0" }).error, /eight digits/);
+  assert.match(gs.reportResult({ ...p, id: "11111111", result: "1F-0F" }).error, /Report 1–0/);
+  assert.match(gs.reportResult({ ...p, id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 1/);
+  assert.match(gs.reportResult({ ...p, board: "2", id: "11111111", result: "1-0" }).error, /isn't on board 2/);
+  assert.match(gs.reportResult({ ...p, number: "2", id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 2/, "round 2 isn't posted");
+  assert.match(gs.reportResult({ ...p, event: "arena", id: "11111111", result: "1-0" }).error, /isn't taking results/);
+  assert.match(gs.reportResult({ ...p, event: "nothing", id: "11111111", result: "1-0" }).error, /isn't taking results/);
+  // Sent as the Pairings page sends it, with no password.
+  const sent = gs.doPost({ parameter: { action: "report", ...p, id: "11111111", result: "1-0" } });
+  assert.equal(sent.ok, true, JSON.stringify(sent));
+  assert.match(sent.message, /1–0 is reported/);
+  assert.equal(gs.reportResult({ ...p, id: "33333333", result: "0-1" }).ok, true);
+  eq(heading(sheets.Rounds).slice(-2), ["White report", "Black report"]);
+  const row = rowsOf(sheets.Rounds)[0];
+  eq([row.Result, row["White report"], row["Black report"]], ["", "1-0", "0-1"]);
+  const t = gs.tournament("classic/2026-11-07", false);
+  eq(t.rounds[0].games[0].reports, { white: "1-0", black: "0-1" });
+  assert.equal(t.rounds[0].games[0].result, "");
+  assert.equal(t.rounds[0].games[1].reports, undefined);
+  eq(Pairing.standings(t).map((r) => r.score), [0, 0, 0, 0], "reports don't count in the standings");
+  // A board with the TD's result takes no more reports.
+  assert.equal(gs.saveResult({ ...p, board: "2", result: "1/2-1/2" }).ok, true);
+  assert.match(gs.reportResult({ ...p, board: "2", id: "22222222", result: "0-1" }).error, /already entered/);
+  sheets.Tournaments.data[1][5] = "finished";
+  assert.match(gs.reportResult({ ...p, id: "11111111", result: "1-0" }).error, /isn't taking results/);
+});
+
+test("reports are limited like public registrations", () => {
+  const minute = Math.floor(Date.now() / 60000);
+  const { gs } = reporting({ [`posts:${minute}`]: "20", [`posts:${minute + 1}`]: "20" });
+  assert.match(gs.reportResult({ event: "classic", date: "2026-11-07", number: "1", board: "1", section: "", id: "11111111", result: "1-0" }).error,
+    /Too many/);
+});
+
+test("the TD confirms agreed reports together, and re-pairing a round clears its reports", () => {
+  const { gs, sheets } = reporting();
+  const p = { event: "classic", date: "2026-11-07", number: "1" };
+  gs.reportResult({ ...p, board: "1", section: "", id: "11111111", result: "1-0" });
+  gs.reportResult({ ...p, board: "2", section: "", id: "22222222", result: "0-1" });
+  // Reports aren't results, so a posted round with only reports can be paired again.
+  const games = [{ board: 1, white: "11111111", black: "22222222", section: "" }, { board: 2, white: "33333333", black: "44444444", section: "" }];
+  const again = gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" });
+  assert.equal(again.ok, true, JSON.stringify(again));
+  const round1 = () => rowsOf(sheets.Rounds).filter((r) => r.Round === "1");
+  eq(round1().map((r) => [r.Board, r.White, r.Black, r["White report"], r["Black report"], Boolean(r.Posted)]),
+    [["1", "11111111", "22222222", "", "", true], ["2", "33333333", "44444444", "", "", true]]);
+  assert.equal(gs.tournament("classic/2026-11-07", false).rounds[0].games.some((g) => g.reports), false);
+  // A list with a bad board or result changes nothing.
+  assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 9, section: "", result: "1-0" }]) }).error,
+    /No such board/);
+  assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "2-0" }]) }).error, /Not a result/);
+  eq(round1().map((r) => r.Result), ["", ""]);
+  const both = gs.doPost({ parameter: { action: "results", password: "sheet", ...p,
+    results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 2, section: "", result: "1/2-1/2" }]) } });
+  assert.equal(both.ok, true, JSON.stringify(both));
+  eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
+  // Once a posted round has a confirmed result, it can't be paired again (29G).
+  assert.match(gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" }).error, /has results/);
 });
