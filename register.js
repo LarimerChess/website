@@ -16,6 +16,9 @@ if (dateField?.tagName === "SELECT" && [...dateField.options].some((o) => o.valu
 // Players registered from this browser, most recent first. Storage can throw (a private
 // window, blocked site data); then the form works as if nothing were saved.
 const SAVED = "lccc-register-players";
+// A phone may keep an event page cached for minutes after this script changes, so the field is
+// found by its id, not by the name it had when this script was written.
+const idField = form?.querySelector("#register-id");
 const KEEP = 6;
 const savedBox = form?.querySelector(".register-saved");
 const rememberChoice = form?.querySelector("#register-remember");
@@ -61,12 +64,8 @@ function showSaved() {
     pick.className = "register-pick";
     pick.textContent = playerName(p);
     pick.addEventListener("click", () => {
-      form.elements["uschess-id"].value = p.id;
-      form.elements.last.value = p.last;
-      form.elements.email.value = p.email;
-      const menu = dateField.tagName === "SELECT";
-      status.textContent = `${playerName(p)} is filled in. ${menu ? "Choose the date, then press" : "Press"} Register.`;
-      (menu ? dateField : form.querySelector("button[type=submit]")).focus();
+      fillIn(p);
+      (dateField.tagName === "SELECT" ? dateField : form.querySelector("button[type=submit]")).focus();
     });
     const forget = document.createElement("button");
     forget.type = "button";
@@ -83,11 +82,19 @@ function showSaved() {
       showSaved();
       status.textContent = `${playerName(p)} is no longer saved on this device.`;
       const picks = savedBox.querySelectorAll(".register-pick");
-      (picks[Math.min(at, picks.length - 1)] || form.elements["uschess-id"]).focus();
+      (picks[Math.min(at, picks.length - 1)] || idField).focus();
     });
     item.append(pick, " ", forget);
     return item;
   }));
+}
+
+function fillIn(p) {
+  idField.value = p.id;
+  form.elements.last.value = p.last;
+  form.elements.email.value = p.email;
+  const menu = dateField.tagName === "SELECT";
+  status.textContent = `${playerName(p)} is filled in. ${menu ? "Choose the date, then press" : "Press"} Register.`;
 }
 
 function savePlayer(player) {
@@ -145,9 +152,13 @@ if (!dateField) {
   // The TD desk, which has its own code in td.js.
 } else if (ENDPOINT) {
   form.hidden = false;
-  if (canStore()) {
+  // An event page cached from before saved players has neither the list nor the checkbox.
+  if (canStore() && savedBox && rememberChoice) {
     rememberChoice.parentElement.hidden = false;
     showSaved();
+    // The most recent player is usually the one registering again; the list switches to another.
+    const [latest] = savedPlayers();
+    if (latest && !idField.value) fillIn(latest);
   }
   if (dateField.tagName === "SELECT") dateField.addEventListener("change", showEntries);
   form.addEventListener("submit", async (event) => {
@@ -158,18 +169,18 @@ if (!dateField) {
     try {
       // The field is named uschess-id for the browser's autofill; see README.md.
       const body = new URLSearchParams(new FormData(form));
-      body.set("id", body.get("uschess-id"));
+      body.set("id", idField.value);
       body.delete("uschess-id");
       const response = await fetch(ENDPOINT, { method: "POST", body });
       const result = await response.json();
       status.textContent = result.message || result.error;
       // The official name leads the success message; the trap's reply ("Thanks.") has none.
       const name = result.ok && (result.name || result.message?.match(/^(.+?) is registered for /)?.[1]);
-      if (name && rememberChoice.checked) {
+      if (name && rememberChoice?.checked && savedBox) {
         savePlayer({ id: body.get("id").trim(), last: body.get("last").trim(), email: body.get("email").trim(), name });
       }
       if (result.ok) {
-        form.elements["uschess-id"].value = "";
+        idField.value = "";
         form.elements.last.value = "";
         showEntries();
       }

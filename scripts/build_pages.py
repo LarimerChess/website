@@ -241,7 +241,7 @@ def register_html(events, prices):
       <form class="register-form" hidden>
         <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
         <fieldset class="register-saved" hidden>
-          <legend>Fill in a player saved on this device</legend>
+          <legend>Players saved on this device</legend>
           <ul></ul>
         </fieldset>
         <input type="hidden" name="event" value="{name}">

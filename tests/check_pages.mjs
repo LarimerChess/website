@@ -342,6 +342,9 @@ if (registerPath) {
   const shown = await saved();
   JSON.stringify(shown) === JSON.stringify(["Test Kid (87654321)", "Test Player (12345678)"])
     ? pass(`${registerPath} offers the players registered here, most recent first`) : fail(`${registerPath} saved players: ${JSON.stringify(shown)}`);
+  const onLoad = await registration.evaluate(() => [document.querySelector("#register-id").value, document.querySelector("#register-last").value]);
+  JSON.stringify(onLoad) === JSON.stringify(["87654321", "Kid"])
+    ? pass(`${registerPath} fills in the most recent saved player when it opens`) : fail(`${registerPath} on load: ${JSON.stringify(onLoad)}`);
   await registration.click(".register-saved li:nth-child(2) .register-pick");
   const filled = await registration.evaluate(() => ({ id: document.querySelector("#register-id").value,
     last: document.querySelector("#register-last").value, email: document.querySelector("#register-email").value,
