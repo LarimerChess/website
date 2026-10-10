@@ -262,6 +262,21 @@ await page.goto(base + "/", { waitUntil: "networkidle0" });
 const homeCards = await page.$$eval(".event", (c) => c.length);
 homeCards > 0 && homeCards <= 6 ? pass(`home page shows ${homeCards} events`) : fail(`home page shows ${homeCards} events`);
 
+// Every club event's card, and its details at the top and bottom, offer Register.
+await page.goto(base + "/events/", { waitUntil: "networkidle0" });
+const clubCard = (await page.$$(".event-club")).at(0);
+if (clubCard) {
+  const cardLink = await clubCard.$eval(".event-card-register", (a) => a.getAttribute("href")).catch(() => null);
+  await clubCard.$eval(".event-open", (b) => b.click());
+  const dialogLinks = await page.$$eval("dialog.event-dialog .event-register", (a) => a.map((x) => x.getAttribute("href")));
+  const otherCards = await page.$$eval(".event:not(.event-club) .event-card-register", (a) => a.length);
+  /^\/events\/[^/]+\/\?date=\d{4}-\d\d-\d\d#register$/.test(cardLink || "") && dialogLinks.length === 2
+    && dialogLinks.every((h) => h === cardLink) && otherCards === 0
+    ? pass(`club cards and their details offer Register (${cardLink})`)
+    : fail(`Register links: card ${cardLink}, details ${JSON.stringify(dialogLinks)}, on other cards ${otherCards}`);
+  await page.keyboard.press("Escape");
+}
+
 // Registration, against a stand-in for the Apps Script: register.js is served with its
 // ENDPOINT pointed at it, whatever the real one is.
 const registration = await browser.newPage();

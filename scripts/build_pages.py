@@ -5,7 +5,7 @@
 
 - events/index.html gets schema.org Event data for every club event.
 - Each club event gets its own page at its "page" path (events/<name>/), with its
-  dates, its calendar description, a Register form and entry list (register.js), and its
+  next date, its calendar description, a Register form and entry list (register.js), and its
   Event data. A page whose event has left
   events.json is deleted.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
@@ -246,8 +246,6 @@ def series_page(events):
         title = name
     what = summary(e)
     description = " ".join(x for x in [what, f"Next: {when_text(e).rsplit(', ', 1)[0]}.", cost(e)] if x)
-    dates = "\n".join(f'        <li><time datetime="{x["start"]}">{escaped(when_text(x))}</time></li>'
-                      for x in events)
     if p.get("name"):
         query = quote(f"{p['name']}, {p['street']}, {p['city']}, {p['region']} {p['zip']}")
         where = (f'<address><a href="https://www.google.com/maps/search/?api=1&amp;query={query}" target="_blank" '
@@ -300,14 +298,8 @@ def series_page(events):
   </nav>
   <main id="main" class="wrap">
     <h1>{escaped(name)}</h1>
-    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.</p>
-
-    <section id="dates">
-      <h2>Dates</h2>
-      <ul>
-{dates}
-      </ul>
-    </section>
+    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.
+      Next: <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
 
     <section id="details">
       <h2>Details</h2>

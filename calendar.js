@@ -139,6 +139,16 @@ function organizerLine(event) {
   return by;
 }
 
+// Registering is the site's main call to action, so every club event offers it: on the card,
+// and at the top and bottom of the details. It opens the Register form on the event's page.
+function registerLink(event, className) {
+  if (!event.page || event.organizer !== CLUB) return null;
+  const link = el("a", className, "Register");
+  link.append(spoken(` for ${event.title}, ${longDate.format(new Date(event.start))}`));
+  link.href = `${event.page}?date=${event.start.slice(0, 10)}#register`;
+  return link;
+}
+
 // Text with its web addresses made into links, built as nodes so nothing in it is read as HTML.
 function linked(text) {
   const nodes = [];
@@ -218,6 +228,8 @@ function showDetails(event, button) {
   }
   content.append(title, date);
   if (!event.allDay) content.append(whenText(event, start, end));
+  const registerTop = registerLink(event, "button event-register");
+  if (registerTop) content.append(registerTop);
 
   const add = el("div", "event-add");
   const google = el("a", "button", "Add to Google Calendar");
@@ -236,6 +248,8 @@ function showDetails(event, button) {
     description.append(...descriptionNodes(event.description));
     content.append(description);
   }
+  const registerBottom = registerLink(event, "button event-register");
+  if (registerBottom) content.append(registerBottom);
 
   const close = el("button", "event-dialog-close", "Close");
   close.type = "button";
@@ -283,6 +297,8 @@ function renderEvent(event) {
   if (event.location) body.append(el("p", "event-meta", event.location.split(",")[0]));
   const by = organizerLine(event);
   if (by) body.append(by);
+  const register = registerLink(event, "button event-card-register");
+  if (register) body.append(register);
 
   // The heading already says the date.
   const date = el("div", "event-date");
