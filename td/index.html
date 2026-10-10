@@ -652,7 +652,8 @@ section.td-table td { white-space: nowrap; }
             <!-- [html-validate-disable-next prefer-native-element -- a select can't search as you type] -->
             <ul id="td-players" class="td-players" role="listbox" aria-label="Matching players" hidden></ul>
           </div>
-          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Colorado players come first.</p>
+          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Players who have registered before come up first; an eight-digit ID not among them is looked up at US Chess.</p>
+          <p class="td-uschess" hidden><button class="button button-secondary td-search-uschess" type="button">Search US Chess</button></p>
           <p class="td-chosen" role="status"></p>
           <label for="td-category">Fee category</label>
           <select id="td-category" name="category">
@@ -726,7 +727,7 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=c4f8a47163" defer></script>
-  <script src="../td.js?v=f0467f82ce" defer></script>
+  <script src="../td.js?v=97a1d75396" defer></script>
   <script src="../pairing.js?v=85166896c3" defer></script>
   <script src="../td-run.js?v=b66a54d344" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>

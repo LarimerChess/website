@@ -461,7 +461,8 @@ desk.on("request", async (request) => {
     const body = p.password !== "secret" ? { error: "Wrong password.", login: true }
       : { login: { ok: true },
           choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
-          search: { players: [{ id: "12345678", name: "Test Player", state: "CO", rating: "1500", expires: "2027-01-31" }] },
+          history: { players: /test|1234/i.test(p.q || "") ? [{ id: "12345678", name: "Test Player", state: "", rating: "1500", expires: "2027-01-31", known: true }] : [] },
+          search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "15", email: "", expires: "2027-01-31", token: "t1" }] },
           remove: { message: "Test Player is withdrawn." },
@@ -501,6 +502,25 @@ await desk.keyboard.press("ArrowDown");
 await desk.keyboard.press("Enter");
 await desk.click(".td-register button[type=submit]");
 await desk.waitForFunction(() => document.querySelectorAll(".td-saving .td-save-done").length === 2);
+// A name nobody has registered with offers to ask US Chess, and only asks when pressed; a full
+// ID nobody has registered with goes to US Chess on its own.
+const searchesBefore = deskCalls.filter((c) => c.action === "search").length;
+await desk.type("#td-player", "zed");
+await desk.waitForSelector(".td-uschess:not([hidden])");
+const askedWhileTyping = deskCalls.filter((c) => c.action === "search").length - searchesBefore;
+await desk.click(".td-search-uschess");
+await desk.waitForFunction(() => [...document.querySelectorAll("#td-players [role=option]")].some((o) => o.textContent.includes("Zed")));
+const askedOnPress = deskCalls.filter((c) => c.action === "search").length - searchesBefore;
+await desk.$eval("#td-player", (i) => { i.value = ""; });
+await desk.type("#td-player", "87654321");
+for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "search").length - searchesBefore < 2; waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+const askedForId = deskCalls.filter((c) => c.action === "search").length - searchesBefore;
+askedWhileTyping === 0 && askedOnPress === 1 && askedForId === 2
+  ? pass("TD desk searches past registrations first, and US Chess only for a new ID or when asked")
+  : fail(`TD desk US Chess searches: while typing ${askedWhileTyping}, on press ${askedOnPress}, for an ID ${askedForId}`);
+await desk.$eval("#td-player", (i) => { i.value = ""; i.dispatchEvent(new Event("input")); });
 const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
 sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk.id === "12345678"
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);

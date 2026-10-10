@@ -132,40 +132,73 @@ function choose(p) {
   playerInput.value = `${p.name} (${p.id})`;
   const current = choices.find((c) => c.key === choice.value);
   const lapsed = p.expires && current && p.expires < current.first;
-  chosen.textContent = `${p.name}, US Chess ID ${p.id}, ${p.state || "no state"}, rating ${p.rating || "unrated"}, `
+  chosen.textContent = `${p.name}, US Chess ID ${p.id}, ${p.state ? `${p.state}, ` : ""}rating ${p.rating || "unrated"}, `
     + (p.expires ? `membership ${lapsed ? "expires before the event: " : "until "}${p.expires}.` : "no membership on record.");
   closeList();
 }
 
+const uschessRow = document.querySelector(".td-uschess");
+const uschessButton = document.querySelector(".td-search-uschess");
+
+function showPlayers(players, empty) {
+  playerList.replaceChildren(...players.map((p, i) => {
+    const option = document.createElement("li");
+    option.id = `td-player-${i}`;
+    option.setAttribute("role", "option");
+    option.textContent = `${p.name} · ${p.id} · ${p.rating || "unrated"}` + (p.known ? " · registered before" : ` · ${p.state || "–"}`);
+    option.addEventListener("mousedown", (e) => { e.preventDefault(); choose(p); });
+    option.player = p;
+    return option;
+  }));
+  if (!players.length) {
+    const none = document.createElement("li");
+    none.className = "td-none";
+    none.textContent = empty;
+    playerList.replaceChildren(none);
+  }
+  playerList.hidden = false;
+  playerInput.setAttribute("aria-expanded", "true");
+  setActive(-1);
+}
+
+// US Chess is asked only for a full eight-digit ID nobody here has registered with, or when the
+// TD presses Search US Chess for a name; everything else comes from our own registrations.
 playerInput.addEventListener("input", () => {
   player = null;
   chosen.textContent = "";
+  uschessRow.hidden = true;
   clearTimeout(searchTimer);
   const q = playerInput.value.trim();
   if (q.length < 2) return closeList();
+  if (/^\d{9,}$/.test(q)) return showPlayers([], "A US Chess ID is eight digits.");
   searchTimer = setTimeout(async () => {
     const mine = ++searchCount;
-    const { players = [] } = await call("search", { q });
+    const { players = [] } = await call("history", { q });
     if (mine !== searchCount) return;
-    playerList.replaceChildren(...players.map((p, i) => {
-      const option = document.createElement("li");
-      option.id = `td-player-${i}`;
-      option.setAttribute("role", "option");
-      option.textContent = `${p.name} · ${p.id} · ${p.state || "–"} · ${p.rating || "unrated"}`;
-      option.addEventListener("mousedown", (e) => { e.preventDefault(); choose(p); });
-      option.player = p;
-      return option;
-    }));
-    if (!players.length) {
-      const none = document.createElement("li");
-      none.className = "td-none";
-      none.textContent = "No players found.";
-      playerList.replaceChildren(none);
+    if (/^\d{8}$/.test(q) && !players.some((p) => p.id === q)) {
+      const found = await call("search", { q });
+      if (mine !== searchCount) return;
+      return showPlayers(found.players || [], "US Chess has no member with that ID.");
     }
-    playerList.hidden = false;
-    playerInput.setAttribute("aria-expanded", "true");
-    setActive(-1);
+    showPlayers(players, /^\d+$/.test(q) ? "Keep typing: a US Chess ID is eight digits." : "Nobody by that name has registered here before.");
+    if (!/^\d+$/.test(q)) {
+      uschessButton.textContent = `Search US Chess for “${q}”`;
+      uschessRow.hidden = false;
+    }
   }, 300);
+});
+
+uschessButton.addEventListener("click", async () => {
+  const q = playerInput.value.trim();
+  const mine = ++searchCount;
+  uschessButton.disabled = true;
+  try {
+    const { players = [] } = await call("search", { q });
+    if (mine === searchCount) showPlayers(players, "US Chess has nobody by that name.");
+  } finally {
+    uschessButton.disabled = false;
+  }
+  playerInput.focus();
 });
 
 playerInput.addEventListener("keydown", (event) => {

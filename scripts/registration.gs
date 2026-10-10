@@ -12,7 +12,7 @@
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
- * POST action=..., password=...  the TD desk: login, choices, search, register, entries, remove, paid,
+ * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, byeKind, out, finish, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
@@ -76,6 +76,7 @@ function doPost(e) {
     switch (p.action) {
       case "login": return json({ ok: true });
       case "choices": return json({ choices: choices() });
+      case "history": return json({ players: history(p.q) });
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
@@ -254,6 +255,26 @@ function choices() {
     .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first, format: e.format || "",
       rounds: e.rounds || "", closed: Boolean(e.closed) }))
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
+}
+
+/** Players who have registered before, by US Chess ID or by every word of a name, each as of their
+ *  latest registration: the TD desk looks here first, so most searches never reach US Chess. */
+function history(q) {
+  q = String(q || "").trim().toLowerCase();
+  if (q.length < 2) return [];
+  const words = q.split(/\s+/);
+  const { col, rows } = readEntries();
+  const latest = new Map();
+  for (const r of rows) {
+    const id = r[col["US Chess ID"]];
+    if (id) latest.set(id, r);
+  }
+  return [...latest.values()]
+    .filter((r) => /^\d+$/.test(q) ? r[col["US Chess ID"]].startsWith(q)
+      : words.every((w) => r[col.Name].toLowerCase().includes(w)))
+    .slice(0, 12)
+    .map((r) => ({ id: r[col["US Chess ID"]], name: r[col.Name], state: "", rating: r[col["Regular rating"]],
+      expires: r[col["Membership expires"]], known: true }));
 }
 
 /** US Chess members by ID or name, Colorado first, for the TD desk's search. */
