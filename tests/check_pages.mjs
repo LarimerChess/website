@@ -15,7 +15,7 @@ const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
 const CLUB = "Larimer County Chess Club";
 const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", ...seriesPages];
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", ...seriesPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 const pass = (message) => console.log(`ok   ${message}`);
@@ -422,6 +422,40 @@ await desk.waitForFunction(() => document.querySelector(".td-register-status").t
 deskCalls.some((c) => c.action === "remove" && c.token === "t1") ? pass("TD desk removes an entry")
   : fail("TD desk didn't remove the entry");
 await desk.close();
+
+// The Entries page, against a stand-in for the Apps Script's ?entries=all.
+const entriesPage = await browser.newPage();
+entriesPage.on("pageerror", (error) => fail(`JavaScript error on /entries/: ${error.message}`));
+await entriesPage.setRequestInterception(true);
+entriesPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.host === "registration.test") {
+    const events = [
+      { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", page: "/events/club-night/",
+        start: "2026-10-12T18:30:00-06:00", entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month" }] },
+      { key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", page: "/events/classic/",
+        start: "2026-11-07T10:00:00-07:00", entries: [] },
+    ];
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify({ events }) });
+  } else {
+    request.continue();
+  }
+});
+await entriesPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
+const shownEvents = await entriesPage.evaluate(() => [...document.querySelectorAll(".entries-all section")].map((s) => ({
+  title: s.querySelector("h2").textContent, rows: s.querySelectorAll("tbody tr").length,
+  register: s.querySelector("a.button").getAttribute("href") })));
+shownEvents.length === 2 && shownEvents[0].rows === 1 && shownEvents[1].rows === 0 && shownEvents[0].register === "/events/club-night/?date=2026-10-12#register"
+  ? pass("Entries page lists each event with its players and a Register link") : fail(`Entries page: ${JSON.stringify(shownEvents)}`);
+await entriesPage.evaluate(axeSource);
+const entriesAxe = await entriesPage.evaluate(() => axe.run());
+entriesAxe.violations.length ? fail(`Entries page filled: ${entriesAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("Entries page filled has no axe violations");
+await entriesPage.close();
 
 await browser.close();
 if (failures.length) {

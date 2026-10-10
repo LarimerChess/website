@@ -324,6 +324,7 @@ def series_page(events, prices):
       <a class="brand" href="/"><span aria-hidden="true">♞ </span>{CLUB}</a>
       <ul>
         <li><a href="/events/">Events</a></li>
+        <li><a href="/entries/">Entries</a></li>
         <li><a href="/scholastic/">Scholastic</a></li>
         <li><a href="/minutes/">Board minutes</a></li>
         <li><a href="/#join">Join</a></li>

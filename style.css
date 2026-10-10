@@ -413,3 +413,4 @@ main > h1:first-child { margin-top: 32px; }
 .td-out td { color: var(--muted); }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
 .td-incidents { padding-left: 20px; }
+.entries-all section .entries { margin-bottom: 16px; }

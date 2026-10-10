@@ -7,6 +7,7 @@
  *   a tournament date (2026-11-07), a club night (2026-10-12), or a club night's whole month (2026-10).
  *
  * GET  ?entries=<key>     the public entry list, as JSON
+ * GET  ?entries=all       every upcoming tournament date's and club night's list, for /entries/
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
  *                         registers a player, then emails the amount due and a withdraw link
@@ -40,6 +41,7 @@ const POSTS_PER_MINUTE = 20;
 const FAILED_LOGINS = 10;
 
 function doGet(e) {
+  if (e.parameter.entries === "all") return json({ events: allEntries() });
   if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false) });
   if (e.parameter.withdraw) return withdrawPage(e.parameter.withdraw);
   return ContentService.createTextOutput("Larimer County Chess Club registration. See " + SITE + "/events/");
@@ -154,13 +156,13 @@ function register(p, td) {
 
 /** The entry list for a key. A club night's list includes the month's registrations; a month's
  *  includes each night's. The TD desk also gets what only the Sheet should show. */
-function entries(key, td) {
+function entries(key, td, read) {
   const cache = CacheService.getScriptCache();
   const cached = !td && cache.get("entries:" + key);
   if (cached) return JSON.parse(cached);
   const [event, date] = String(key).split("/");
-  const { col, rows } = readEntries();
-  const logged = readIncidents().rows;
+  const { col, rows } = read || readEntries();
+  const logged = read ? read.logged : readIncidents().rows;
   const outReason = (id) => {
     const out = logged.find((i) => i.event === event && i.date === date && i["us chess id"] === id
       && OUT_FOR_THE_DATE.includes(i.action));
@@ -186,6 +188,22 @@ function entries(key, td) {
     })
     .sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0) || a.name.localeCompare(b.name));
   if (!td) cache.put("entries:" + key, JSON.stringify(list), 60);
+  return list;
+}
+
+/** The public lists for every tournament date and club night still to come, in date order. */
+function allEntries() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("entries:all");
+  if (cached) return JSON.parse(cached);
+  const read = { ...readEntries(), logged: readIncidents().rows };
+  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  const list = Object.entries(clubEvents())
+    .filter(([, e]) => e.kind !== "month" && e.first >= today)
+    .sort(([, a], [, b]) => a.closes.localeCompare(b.closes))
+    .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, start: e.closes,
+      entries: entries(key, false, read) }));
+  cache.put("entries:all", JSON.stringify(list), 60);
   return list;
 }
 
@@ -457,6 +475,7 @@ function appendText(sheet, col, row) {
 
 function clearEntriesCache(event, date) {
   const cache = CacheService.getScriptCache();
+  cache.remove("entries:all");
   const keys = [date, date.slice(0, 7)];
   if (date.length === 7) {
     for (const key of Object.keys(clubEvents())) if (key.startsWith(`${event}/${date}-`)) keys.push(key.split("/")[1]);

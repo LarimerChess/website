@@ -1,4 +1,4 @@
-"""Copy style.css into every page and stamp its links to calendar.js, register.js, and td.js with a hash of the file.
+"""Copy style.css into every page and stamp its links to calendar.js, register.js, td.js, and entries.js with a hash of the file.
 
     python scripts/sync_assets.py          # update the pages
     python scripts/sync_assets.py --check  # fail if any page is out of date
@@ -16,8 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-stamps = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10] for name in ("calendar.js", "register.js", "td.js")}
-script = re.compile(r"((?:\.\./)*(calendar\.js|register\.js|td\.js))(?:\?v=[0-9a-f]+)?\"")
+stamps = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10] for name in ("calendar.js", "register.js", "td.js", "entries.js")}
+script = re.compile(r"((?:\.\./)*(calendar\.js|register\.js|td\.js|entries\.js))(?:\?v=[0-9a-f]+)?\"")
 css = (ROOT / "style.css").read_text(encoding="utf-8")
 styles = re.compile(r'<link rel="stylesheet" href="(?:\.\./)*style\.css[^"]*">|<style>.*?</style>', re.S)
 
