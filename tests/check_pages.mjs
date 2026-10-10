@@ -863,9 +863,10 @@ const standingsTables = () => standingsPage.evaluate(() => [...document.querySel
 const now = await standingsTables();
 JSON.stringify(now.map((s) => [s.name, s.after, s.options, s.rows.length])) === JSON.stringify([
   ["Open", "2", ["1", "2 (in progress)"], 4], ["Under 1400", "1", ["1"], 3]])
-  && now[0].head.join("|") === "Place|Name|Rating|Score|Median|Solkoff|Cumulative|Opp. cumulative"
+  && now[0].head.join("|") === "Place|Name|Rating|Score|Median|Solkoff|Cumulative|Opp. cumulative|Performance"
   && now[0].rows.slice(0, 2).every((r) => r[3] === "1.5")
-  ? pass("Standings page shows each section after its latest round with results, with the 34E tiebreaks")
+  && now.flatMap((s) => s.rows).map((r) => `${r[1]} ${r[8]}`).join("|") === "Ann 1891|Ben 1941|Cal 1200|Dee 1000|Gus |Eve 1200|Fay 1300"
+  ? pass("Standings page shows each section after its latest round with results, with the 34E tiebreaks and performance ratings")
   : fail(`Standings page: ${JSON.stringify(now)}`);
 await standingsPage.select(".standings-all select", "1");
 const afterOne = await standingsTables();
@@ -886,7 +887,7 @@ const quadStandingsPage = await mocked("/standings/ with quads", () => {
 });
 await quadStandingsPage.goto(base + "/standings/", { waitUntil: "networkidle0" });
 const quadHead = await quadStandingsPage.$$eval(".standings-all th", (cells) => cells.map((c) => c.textContent));
-quadHead.join("|") === "Place|Name|Rating|Score|Sonneborn-Berger|Head-to-head"
+quadHead.join("|") === "Place|Name|Rating|Score|Sonneborn-Berger|Head-to-head|Performance"
   ? pass("Standings page ranks a quad by score, Sonneborn-Berger, and head-to-head (34F)") : fail(`Standings page quad: ${JSON.stringify(quadHead)}`);
 await quadStandingsPage.close();
 
@@ -971,6 +972,11 @@ await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standing
 const resulted = sectionCalls.find((c) => c.action === "result") || {};
 resulted.section === "Under 1400" && resulted.board === "1" && resulted.result === "1-0"
   ? pass("TD desk enters a result by section and board, with each section's standings") : fail(`TD desk result: ${JSON.stringify(resulted)}`);
+const deskPerformance = await sectionDesk.$$eval(".run-standings", (tables) => tables.map((t) => [t.tHead.rows[0].cells[8]?.textContent,
+  ...[...t.tBodies[0].rows].map((r) => `${r.cells[1].textContent} ${r.cells[8].textContent}`)]));
+// Eve beat an unrated player, so she has no rated games; Gus lost to a 1300.
+JSON.stringify(deskPerformance[1]) === JSON.stringify(["Performance", "Eve ", "Gus 500"])
+  ? pass("TD desk shows performance ratings in the standings") : fail(`TD desk performance: ${JSON.stringify(deskPerformance)}`);
 // The round without a game can be reclassified afterward; the change saves at once.
 await sectionDesk.select('.run-byes-all select[aria-label$="round 1"]', "half");
 await sectionDesk.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Half-point bye"));

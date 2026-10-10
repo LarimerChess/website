@@ -286,6 +286,9 @@ function headToHead(r, rows) {
   return rows.some((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger) ? r.headToHead : "";
 }
 
+const PERFORMANCE = "Performance is the rating that Elo's formula expects to make each player's score in the games played so far against "
+  + "rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below those opponents' average.";
+
 function standingsSection(t, ti) {
   const section = document.createElement("section");
   section.append(heading(2, t.name));
@@ -299,7 +302,8 @@ function standingsSection(t, ti) {
   }
   section.append(paragraph(quad
     ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). Players tied on all three share a place."
-    : "Ties are broken in the US Chess default order (34E): modified median, Solkoff, cumulative, and cumulative of opposition."));
+    : "Ties are broken in the US Chess default order (34E): modified median, Solkoff, cumulative, and cumulative of opposition."),
+  paragraph(PERFORMANCE));
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
@@ -312,11 +316,12 @@ function standingsSection(t, ti) {
       const sofar = { players: s.players, rounds: s.rounds.slice(0, n) };
       if (quad) {
         const rows = Pairing.quadStandings(sofar);
-        return [tableOf(["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Head-to-head"],
-          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, headToHead(r, rows)]))];
+        return [tableOf(["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Head-to-head", "Performance"],
+          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, headToHead(r, rows), r.performance ?? ""]))];
       }
-      return [tableOf(["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative"],
-        Pairing.standings(sofar).map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition]))];
+      return [tableOf(["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance"],
+        Pairing.standings(sofar).map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition,
+          r.performance ?? ""]))];
     };
     section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, rounds.at(-1)[0], draw));
   });

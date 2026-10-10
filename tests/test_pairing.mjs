@@ -133,6 +133,23 @@ test("34E: modified median, Solkoff, and cumulative from the rulebook's definiti
   assert.equal(rows.b.cumulative, 2.5);
 });
 
+test("performance rating: Elo over rated games played, capped at 800, without forfeits, byes, or unrated opponents", () => {
+  const players = [["a", 2000], ["b", 1800], ["c", 1600], ["d", null], ["e", 1500]].map(([id, rating]) => ({ id, name: id, rating }));
+  const t = { players, rounds: [
+    { games: [{ white: "a", black: "b", result: "1-0" }, { white: "c", black: "d", result: "1/2-1/2" }], byes: [{ id: "e", points: 1 }] },
+    { games: [{ white: "b", black: "c", result: "1/2-1/2" }, { white: "a", black: "e", result: "1F-0F" }, { white: "d", black: "c", result: "" }], byes: [] },
+    { games: [{ white: "c", black: "a", result: "1-0" }], byes: [] },
+  ] };
+  const rows = Object.fromEntries(Pairing.standings(t).map((r) => [r.id, r]));
+  assert.equal(rows.a.performance, 1700); // 1 of 2 against 1800 and 1600
+  assert.equal(rows.b.performance, 1609); // 0.5 of 2 against 2000 and 1600: 1800 - 400 log10(3)
+  assert.equal(rows.c.performance, 2091); // 1.5 of 2 against 1800 and 2000; d is unrated
+  assert.equal(rows.d.performance, 1600);
+  assert.equal(rows.e.performance, null);
+  const quad = Pairing.quadStandings({ players: players.slice(0, 2).map((p, i) => ({ ...p, number: i + 1 })), rounds: t.rounds.slice(0, 1) });
+  assert.deepEqual(quad.map((r) => [r.id, r.performance]), [["a", 2600], ["b", 1200]]);
+});
+
 test("34E3: a full-point bye takes a point off cumulative", () => {
   const players = ["a", "b", "c"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100 }));
   const t = { players, rounds: [{ games: [{ white: "a", black: "b", result: "1-0" }], byes: [{ id: "c", points: 1 }] }] };

@@ -394,6 +394,33 @@
     return { games, byes, notes };
   }
 
+  /** Each player's performance rating over the games played so far against rated opponents: the
+   *  rating whose Elo expected score is the score made, or null with no such games. A perfect or
+   *  zero score has no such rating; it is capped at 800 above or below the opponents' average, as
+   *  FIDE does. Forfeits and byes are not games played. */
+  function performance(tournament, info) {
+    const games = new Map([...info.keys()].map((id) => [id, { points: 0, ratings: [] }]));
+    for (const round of tournament.rounds) {
+      for (const g of round.games) {
+        if (!POINTS[g.result] || FORFEIT(g.result)) continue;
+        const [w, b] = POINTS[g.result];
+        for (const [me, them, points] of [[g.white, g.black, w], [g.black, g.white, b]]) {
+          const rating = info.get(them)?.rating;
+          if (!games.has(me) || !(rating > 0)) continue;
+          games.get(me).points += points;
+          games.get(me).ratings.push(rating);
+        }
+      }
+    }
+    return new Map([...games].map(([id, { points, ratings }]) => {
+      if (!ratings.length) return [id, null];
+      const average = ratings.reduce((sum, r) => sum + r, 0) / ratings.length;
+      const p = points / ratings.length;
+      const difference = Math.max(-800, Math.min(800, 400 * Math.log10(p / (1 - p))));
+      return [id, Math.round(average + difference)];
+    }));
+  }
+
   /** Standings: score, then the US Chess tiebreaks in their default order (34E): modified
    *  median, Solkoff, cumulative, and cumulative of opposition. */
   function standings(tournament) {
@@ -435,6 +462,7 @@
       return [id, total - e.unearned];
     }));
     const drop = rounds >= 9 ? 2 : 1;
+    const perf = performance(tournament, info);
     const rows = ids.map((id) => {
       const p = info.get(id), e = each.get(id);
       // The player's own unplayed games count as opponents with adjusted scores of 0.
@@ -447,6 +475,7 @@
         solkoff: opp.reduce((sum, x) => sum + x, 0),
         cumulative: cumulative.get(id),
         opposition: e.opponents.reduce((sum, o) => sum + cumulative.get(o), 0),
+        performance: perf.get(id),
       };
     });
     return rows.sort((a, b) => b.score - a.score || b.median - a.median || b.solkoff - a.solkoff
@@ -486,8 +515,9 @@
         results.get(g.black)?.push({ opponent: g.white, points: b });
       }
     }
+    const perf = performance(tournament, info);
     const rows = [...info.values()].map((p) => ({
-      id: p.id, name: p.name, rating: p.rating, number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
+      id: p.id, name: p.name, rating: p.rating, performance: perf.get(p.id), number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
       // Nothing is added for losses or unplayed games.
       sonnebornBerger: results.get(p.id).reduce((sum, r) => sum + r.points * info.get(r.opponent).score, 0),
     }));

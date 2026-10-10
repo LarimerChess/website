@@ -622,15 +622,16 @@ function renderByesAll() {
     : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
 }
 
-const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative"];
-const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger"];
+const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance"];
+const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Performance"];
 
 function renderStandings() {
   if (!current?.rounds.length) return;
   const quad = current.format === "quad";
-  runStandingsHint.textContent = quad
+  runStandingsHint.textContent = (quad
     ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F)."
-    : "Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.";
+    : "Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.")
+    + " Performance is the Elo performance rating over the games played against rated opponents.";
   const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
   runStandings.replaceChildren(...parts.flatMap((s) => {
@@ -638,8 +639,8 @@ function renderStandings() {
       const row = document.createElement("tr");
       const p = current.players.find((x) => x.id === r.id);
       const name = r.name + (p?.out ? ` (out from round ${p.out})` : "");
-      const cells = quad ? [r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger]
-        : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition];
+      const cells = quad ? [r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, r.performance ?? ""]
+        : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition, r.performance ?? ""];
       for (const text of cells) row.insertCell().textContent = text;
       const button = document.createElement("button");
       button.type = "button";
