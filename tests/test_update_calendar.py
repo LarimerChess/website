@@ -63,6 +63,10 @@ class Tags(unittest.TestCase):
         d = uc.describe(MEETUP, "community")
         self.assertEqual((d["organizer"], d["url"]), ("Fort Collins Chess Meetup", MEETUP["details"]))
 
+    def test_reduced(self):
+        tags = lambda reduced: uc.describe({**CLUB_TOURNAMENT, "cost": "paid", "reduced": reduced}, "club")["tags"]
+        self.assertEqual([tags("youth")[-1:], tags("youth,senior")[-2:]], [["reduced-youth"], ["reduced-youth", "reduced-senior"]])
+
     def test_speed(self):
         self.assertEqual(uc.describe({**CLUB_TOURNAMENT, "speed": "regular,quick"}, "club")["tags"],
                          ["tournament", "all-ages", "club", "rated", "free-youth", "regular", "quick"])
@@ -101,6 +105,10 @@ class BadMetadata(unittest.TestCase):
         missing = {k: v for k, v in MEETUP.items() if k != "ages"}
         self.assertEqual(uc.problems(missing), ["ages is missing"])
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "price": "$15"}), ["price is '$15', expected \\d+(?:\\.\\d\\d)?"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "reduced": "kids"}),
+                         ["reduced is 'kids', expected (?:youth|senior)(?:,(?:youth|senior))?"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "reduced": "youth"}),
+                         ["reduced has youth, but cost free-youth already says players under 18 play free"])
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "rated": "no"}),
                          ["rated is 'no', but every club event is US Chess rated"])
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "run_by": "hide"}),

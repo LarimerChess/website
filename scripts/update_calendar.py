@@ -36,6 +36,8 @@ FIELDS = {
     "rated": (True, {"yes", "no"}),
     "cost": (True, {"free", "free-youth", "paid", "unknown"}),
     "price": (False, re.compile(r"\d+(?:\.\d\d)?")),
+    # Who pays less than adults, but not nothing: youth, senior, or both, comma-separated.
+    "reduced": (False, re.compile(r"(?:youth|senior)(?:,(?:youth|senior))?")),
     "details": (False, re.compile(r"https?://\S+")),
     # hide leaves out the card's "Run by" line; the organizer stays in the metadata.
     "run_by": (False, {"show", "hide"}),
@@ -67,6 +69,8 @@ def problems(meta):
             found.append(f"{field} is {value!r}, expected {allowed.pattern}")
     if meta.get("organizer") == CLUB and meta.get("rated") == "no":
         found.append("rated is 'no', but every club event is US Chess rated")
+    if meta.get("cost") == "free-youth" and "youth" in meta.get("reduced", "").split(","):
+        found.append("reduced has youth, but cost free-youth already says players under 18 play free")
     if meta.get("organizer") == CLUB and meta.get("run_by") == "hide":
         found.append("run_by is 'hide', but the site finds club events by their organizer")
     return found
@@ -82,6 +86,8 @@ def describe(meta, calendar):
         tags.append("rated")
     if COST_TAGS[meta["cost"]]:
         tags.append(COST_TAGS[meta["cost"]])
+    if meta.get("reduced"):
+        tags += [f"reduced-{who}" for who in meta["reduced"].split(",")]
     if meta.get("speed"):
         tags += meta["speed"].split(",")
     if meta.get("access") == "invitational":

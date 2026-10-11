@@ -125,7 +125,7 @@ for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
 }
 await choose("schedule", "all");
 
-for (const value of ["free", "free-youth", "cost-unknown"]) {
+for (const value of ["free", "free-youth", "reduced-youth", "reduced-senior", "cost-unknown"]) {
   await choose("cost", value);
   const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
   const expected = upcoming.filter((e) => (e.tags || []).includes(value)).length;
