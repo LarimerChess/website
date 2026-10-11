@@ -559,7 +559,13 @@ section.td-table td { white-space: nowrap; }
     <p>Final standings and wall charts of the club's US Chess rated tournaments, newest first. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
     <section id="all-results">
       <h2 class="visually-hidden">Tournaments</h2>
-      <p>Results are posted here once US Chess has rated each tournament.</p>
+      <table class="entries results-table">
+        <thead><tr><th scope="col">Date</th><th scope="col">Tournament</th></tr></thead>
+        <tbody>
+          <tr><td><time datetime="2026-10-10">October 10, 2026</time></td><td><a href="/results/alley-cat-quad-2026-10-10/">Alley Cat Quad, Saturday, October 10, 2026</a></td></tr>
+        </tbody>
+      </table>
+      <nav class="results-pages" aria-label="Pages of results" hidden></nav>
     </section>
   </main>
 
@@ -569,5 +575,6 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/minutes/">Board minutes</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
+  <script src="../results.js?v=62d066246e" defer></script>
 </body>
 </html>
