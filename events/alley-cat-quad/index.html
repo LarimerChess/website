@@ -452,6 +452,7 @@ main > h1:first-child { margin-top: 32px; }
 .td-entries td { white-space: nowrap; }
 .td-action { font: inherit; font-size: 14px; padding: 4px 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; cursor: pointer; }
 .td-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.td-action + .td-action { margin-left: 6px; }
 .td-out td { color: var(--muted); }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
 .td-incidents { padding-left: 20px; }
@@ -577,7 +578,7 @@ section.td-table td { white-space: nowrap; }
       <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form" data-invitational="yes" hidden>
-        <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
+        <p>Register online, then pay when you arrive. Your confirmation email says how much. Paying by card adds 2.5% + $0.50.</p>
         <fieldset class="register-saved" hidden>
           <legend>Players saved on this device</legend>
           <ul></ul>

@@ -51,12 +51,26 @@ class Fees(unittest.TestCase):
         self.assertEqual([fee("2026-10-26"), fee("2026-10-19"), fee("2026-11-02"), fee("2026-10", "month"),
                           fee("2026-11", "month")], [0, 7, 8, 15, None])
 
+    FEES = {"round": 0.5, "card": {"percent": 2.5, "fixed": 0.5}}
+
     def test_wording(self):
         rows = self.PRICES["club-night"]
-        self.assertEqual([bp.fee_text(rows[0]), bp.fee_text(rows[1]), bp.fee_text(rows[2]), bp.fee_text(rows[3]),
-                          bp.fee_text(None)],
-                         ["$8, free under 18", "$7 adults, $5 seniors (65+), free under 18", "free",
-                          "$15 adults, $10 seniors (65+), $2.50 under 18", "fee to be announced"])
+        text = lambda row, rounds=1: bp.fee_text(row, rounds, self.FEES)
+        self.assertEqual([text(rows[0]), text(rows[1]), text(rows[2]), text(rows[3], 4), text(None)],
+                         ["$8.50, reduced rate $0.50 under 18", "$7.50 adults, $5.50 seniors (65+), reduced rate $0.50 under 18",
+                          "$0.50, reduced rate $0.50 under 18", "$17 adults, $12 seniors (65+), reduced rate $4.50 under 18",
+                          "fee to be announced"])
+
+    def test_an_arena_adds_its_games(self):
+        row = {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
+        self.assertEqual(bp.fee_text(row, None, self.FEES), "$15 plus $0.50 a game played; reduced rate under 18, the games only")
+
+    def test_rounds(self):
+        night = {"start": "2026-10-12T18:30:00-06:00", "tags": ["casual"]}
+        nights = [night, {**night, "start": "2026-10-19T18:30:00-06:00"}, {**night, "start": "2026-11-02T18:30:00-07:00"}]
+        self.assertEqual([bp.rounds_of(night), bp.rounds_of(night, "2026-10", nights), bp.rounds_of({**CLASSIC, "rounds": "4"}),
+                          bp.rounds_of({**CLASSIC, "pairing": "quad"}), bp.rounds_of({**CLASSIC, "pairing": "arena"})],
+                         [1, 2, 4, 3, None])
 
 
 class Dates(unittest.TestCase):
@@ -87,11 +101,11 @@ class Description(unittest.TestCase):
 
 class Invitational(unittest.TestCase):
     def test_registration_is_closed_but_entries_show(self):
-        page = bp.register_html([{**CLASSIC, "tags": [*CLASSIC["tags"], "invitational"]}], {})
+        page = bp.register_html([{**CLASSIC, "tags": [*CLASSIC["tags"], "invitational"]}], {"fees": Fees.FEES})
         self.assertIn('data-invitational="yes"', page)
         self.assertIn('<p class="register-invitational">', page)
         self.assertIn('id="entries"', page)
-        self.assertNotIn("data-invitational", bp.register_html([CLASSIC], {}))
+        self.assertNotIn("data-invitational", bp.register_html([CLASSIC], {"fees": Fees.FEES}))
 
 
 class EventData(unittest.TestCase):

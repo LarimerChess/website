@@ -465,7 +465,7 @@ desk.on("request", async (request) => {
             email: "test@example.com", phone: "970-555-0100" }] : [] },
           search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
-          entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "15", email: "", expires: "2027-01-31", token: "t1" }] },
+          entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.41", email: "", expires: "2027-01-31", token: "t1" }] },
           remove: { message: "Test Player is withdrawn." },
           paid: { ok: true, message: "Test Player paid $15." },
           incident: { ok: true, message: "Logged: Game loss, Test Player." },
@@ -488,7 +488,7 @@ const usernameField = await desk.$eval('.td-login input[autocomplete="username"]
 JSON.stringify(offered) === JSON.stringify([["TD desk", "secret"]]) && usernameField === "TD desk"
   ? pass("TD desk offers the password to the browser's password manager after signing in")
   : fail(`TD desk password saving: ${JSON.stringify({ offered, usernameField })}`);
-await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $15"));
+await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $16.50"));
 await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
@@ -531,8 +531,16 @@ whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) =>
   ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
 await desk.click(".td-entries tbody tr td:nth-child(7) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
-deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "15") ? pass("TD desk marks a player paid")
+deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && !c.by) ? pass("TD desk marks a player paid")
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
+await desk.waitForSelector(".td-entries tbody tr td:nth-child(7) button:nth-child(2)");
+await desk.click(".td-entries tbody tr td:nth-child(7) button:nth-child(2)");
+for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "paid" && c.by === "card"); waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "17.41" && c.by === "card")
+  ? pass("TD desk takes a card payment, starting from the fee with the card fee")
+  : fail(`TD desk card payment: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
 await desk.click(".td-entries tbody tr td:nth-last-child(2) button");
 await desk.waitForSelector("dialog.td-incident[open]");
 await desk.select("#td-action", "Game loss");

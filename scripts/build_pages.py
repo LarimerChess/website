@@ -184,17 +184,33 @@ def fee(prices, event, kind, value):
     return max(rows, key=lambda r: rank(r["applies"]), default=None)
 
 
-def fee_text(row):
-    """'$15, free under 18', or '$15 adults, $10 seniors (65+), free under 18'."""
+def money(n):
+    return f"${n:.0f}" if n == int(n) else f"${n:.2f}"
+
+
+def fee_text(row, rounds, fees):
+    """The fee with the round fee for each rated round the entry covers: '$17, reduced rate $2 under 18',
+    or '$16.50 adults, $11.50 seniors (65+), reduced rate $1.50 under 18'. rounds is None for an arena,
+    whose games are paid for at the end."""
     if not row:
         return "fee to be announced"
-    money = lambda n: "free" if n == 0 else f"${n:.0f}" if n == int(n) else f"${n:.2f}"
-    if row["adult"] == row["senior"] == row["youth"] == 0:
-        return "free"
-    youth = "free under 18" if row["youth"] == 0 else f"{money(row['youth'])} under 18"
-    if row["senior"] == row["adult"]:
-        return f"{money(row['adult'])}, {youth}"
-    return f"{money(row['adult'])} adults, {money(row['senior'])} seniors (65+), {youth}"
+    total = lambda n: money(n + fees["round"] * (rounds or 0))
+    text = (f"{total(row['adult'])}" if row["senior"] == row["adult"]
+            else f"{total(row['adult'])} adults, {total(row['senior'])} seniors (65+)")
+    if rounds is None:
+        youth = f"reduced rate {money(row['youth'])} under 18, plus the games" if row["youth"] else "reduced rate under 18, the games only"
+        return f"{text} plus {money(fees['round'])} a game played; {youth}"
+    return f"{text}, reduced rate {total(row['youth'])} under 18"
+
+
+def rounds_of(e, month=None, events=()):
+    """The rated rounds an entry covers: a night is one, a month its nights, a tournament date its planned
+    rounds (a quad's three). None for an arena, and 0 when the rounds aren't known."""
+    if month:
+        return sum(1 for x in events if x["start"][:7] == month)
+    if "tournament" not in e["tags"]:
+        return 1
+    return {"arena": None, "quad": 3}.get(e.get("pairing"), int(e.get("rounds") or 0))
 
 
 def register_choices(events, prices):
@@ -202,17 +218,22 @@ def register_choices(events, prices):
     each month of a club night, whole or by the night, each shown with its fee. The phrase
     finishes "registered for …"."""
     name = events[0]["page"].strip("/").split("/")[-1]
-    with_fee = lambda value, kind, shown: f"{shown} · {fee_text(fee(prices, name, kind, value))}"
+
+    def with_fee(value, kind, shown, rounds):
+        row = fee(prices, name, kind, value)
+        return f"{shown} · {fee_text(row if rounds != 0 else None, rounds, prices['fees'])}"
+
     if "tournament" in events[0]["tags"]:
-        return [(None, [(e["start"][:10], with_fee(e["start"][:10], "entry", day_text(e)), day_text(e))
+        return [(None, [(e["start"][:10], with_fee(e["start"][:10], "entry", day_text(e), rounds_of(e)), day_text(e))
                         for e in events])]
     months = {}
     for e in events:
         start = datetime.fromisoformat(e["start"]).astimezone(TZ)
         month = months.setdefault(f"{start:%B} {start.year}", [(
-            e["start"][:7], with_fee(e["start"][:7], "month", f"All {start:%A}s in {start:%B}"),
+            e["start"][:7], with_fee(e["start"][:7], "month", f"All {start:%A}s in {start:%B}",
+                                     rounds_of(e, e["start"][:7], events)),
             f"all {start:%A}s in {start:%B} {start.year}")])
-        month.append((e["start"][:10], with_fee(e["start"][:10], "night", f"{start:%A}, {start:%B} {start.day}"),
+        month.append((e["start"][:10], with_fee(e["start"][:10], "night", f"{start:%A}, {start:%B} {start.day}", 1),
                       day_text(e)))
     return list(months.items())
 
@@ -235,13 +256,14 @@ def register_html(events, prices):
         date = f'<label for="register-date">{label}</label>\n        <select id="register-date" name="date">{options}</select>'
     for_column = "" if tournament else '<th scope="col">For</th>'
     invitational = "invitational" in events[0]["tags"]
+    card = f'{prices["fees"]["card"]["percent"]:g}% + {money(prices["fees"]["card"]["fixed"])}'
     return f"""<section id="register">
       <h2>Register</h2>
       <p class="register-invitational"{"" if invitational else " hidden"}>This is an invitational: registration is closed, and the tournament director registers the players. The entries below are public.</p>
       <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form"{' data-invitational="yes"' if invitational else ""} hidden>
-        <p>Register online, then pay when you arrive. Your confirmation email says how much.</p>
+        <p>Register online, then pay when you arrive. Your confirmation email says how much. Paying by card adds {card}.</p>
         <fieldset class="register-saved" hidden>
           <legend>Players saved on this device</legend>
           <ul></ul>

@@ -30,11 +30,12 @@
  * keep their players, pairings, and results in until US Chess has rated them and the archive
  * Action clears them; and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
- * 65 or older on the event's date. Fees for each come from the website's prices.json. Players
- * pay when they arrive.
+ * 65 or older on the event's date. Fees for each come from the website's prices.json: the entry
+ * fee, plus its round fee for each rated round (an arena's games, at the end), plus the card fee
+ * when paid by card. Players pay when they arrive.
  *
  * Invitational club events (calendar metadata access=invitational) and events in the registration
- * Sheet's "Closed events" tab (Event, Name, Start, Format, Fee) take registrations only from the TD
+ * Sheet's "Closed events" tab (Event, Name, Start, Format, Rounds, Fee) take registrations only from the TD
  * desk; their entries and pairings are public like any other event's. The tab can also hold an
  * event that isn't on the calendar, and gives a calendar event its format and fee.
  */
@@ -44,7 +45,7 @@ const MEMBERS = "https://ratings-api.uschess.org/api/v1/members";
 const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
-  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone"];
+  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
 const ACTIONS = ["Warning", "Time penalty", "Game loss", "Expelled from the tournament", "Removed from the venue",
@@ -92,7 +93,7 @@ function doPost(e) {
       case "register": return json(register(p, true));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
-      case "paid": return json(markPaid(p.token, p.amount));
+      case "paid": return json(markPaid(p.token, p.amount, p.by));
       case "incident": return json(logIncident(p));
       case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
       case "tournament": return json({ tournament: tournament(`${p.event}/${p.date}`, true) });
@@ -168,7 +169,7 @@ function register(p, td) {
     token = Utilities.getUuid();
     const row = {
       Registered: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Event: p.event, Date: p.date,
-      "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : String(amount),
+      "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : money(amount),
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
       "Added by": td ? "TD" : "online", Token: token, Phone: td ? String(p.phone || "").trim() : "",
@@ -179,8 +180,12 @@ function register(p, td) {
     lock.releaseLock();
   }
 
+  const card = prices().fees.card;
   const due = amount === null ? "The TD will confirm the fee when you arrive."
-    : amount === 0 ? `No fee (${category.toLowerCase()}).` : `Due when you arrive: $${amount} (${category.toLowerCase()}).`;
+    : amount === 0 ? `No fee (${category.toLowerCase()}).`
+    : `Due when you arrive: $${money(amount)} (${category.toLowerCase()})`
+      + (event.format === "arena" ? `, plus $${money(prices().fees.round)} for each game you play, at the end` : "")
+      + `. Paying by card adds ${card.percent}% + $${money(card.fixed)}.`;
   const lapsed = member.expirationDate && member.expirationDate < event.first
     ? `The US Chess membership expires ${member.expirationDate}, before this event. Renew it before you play.`
     : "";
@@ -222,6 +227,8 @@ function entries(key, td, read) {
     const bar = barred(id, date.length === 7 ? date + "-01" : date, logged);
     return bar ? "Barred from club events" : "";
   };
+  const fees = td && prices().fees;
+  const games = td && (clubEvents()[key] || {}).format === "arena" ? arenaGames(key) : {};
   const list = rows
     .filter((r) => r[col.Event] === event && r[col.Status] !== "withdrawn" && (r[col.Date] === date
       || (date.length === 7 && r[col.Date].startsWith(date + "-"))
@@ -233,8 +240,11 @@ function entries(key, td, read) {
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       if (td) {
+        // due adds an arena's games to its entry fee; card is due with the card fee.
+        const due = r[col.Amount] === "" ? null : Number(r[col.Amount]) + fees.round * (games[entry.id] || 0);
         Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
-          paidOn: r[col["Paid on"]], email: r[col.Email],
+          paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
+          due: due === null ? "" : money(due), card: due === null ? "" : money(cardTotal(due, fees.card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
       }
       return entry;
@@ -1123,8 +1133,8 @@ function clearTournamentCache() {
   CacheService.getScriptCache().remove("tournaments");
 }
 
-/** Records what a player paid at the door, or clears it when amount is empty. */
-function markPaid(token, amount) {
+/** Records what a player paid at the door, and whether by card, or clears it when amount is empty. */
+function markPaid(token, amount, by) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
   const lock = LockService.getScriptLock();
@@ -1136,7 +1146,9 @@ function markPaid(token, amount) {
     const when = amount ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
     sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
-    return { ok: true, message: amount ? `${row.name} paid $${amount}.` : `${row.name} is marked unpaid.` };
+    const card = amount && by === "card";
+    sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(card ? "card" : "");
+    return { ok: true, message: amount ? `${row.name} paid $${amount}${card ? " by card" : ""}.` : `${row.name} is marked unpaid.` };
   } finally {
     lock.releaseLock();
   }
@@ -1192,6 +1204,7 @@ function clubEvents() {
       const key = `${name}/${start.slice(0, 10)}`;
       const extra = { closed: true, fee: r[col.Fee] === "" || r[col.Fee] === undefined ? null : Number(r[col.Fee]) };
       if (r[col.Format]) extra.format = r[col.Format];
+      if (r[col.Rounds]) extra.rounds = r[col.Rounds];
       // An event on the calendar too keeps its page and dates; the tab adds the format and fee.
       out[key] = out[key] ? { ...out[key], ...extra } : {
         event: name, name: r[col.Name] || name, page: "", kind: "entry", format: "", rounds: "", ...extra,
@@ -1204,23 +1217,68 @@ function clubEvents() {
   return out;
 }
 
-/** The fee from the website's prices.json, cached ten minutes: the row for the event and kind
- *  whose "applies" is the most specific match (the date, its month, or all). null when none applies. */
-function price(event, category) {
-  if (event.closed) return event.fee;
+/** The website's prices.json, cached ten minutes. */
+function prices() {
   const cache = CacheService.getScriptCache();
-  let prices = cache.get("prices");
-  if (!prices) {
-    prices = UrlFetchApp.fetch(SITE + "/prices.json").getContentText();
-    cache.put("prices", prices, 600);
+  let text = cache.get("prices");
+  if (!text) {
+    text = UrlFetchApp.fetch(SITE + "/prices.json").getContentText();
+    cache.put("prices", text, 600);
   }
-  const date = event.kind === "month" ? event.first.slice(0, 7) : event.first;
-  const rank = (applies) => applies === date ? 3 : applies === date.slice(0, 7) ? 2 : applies === "all" ? 1 : 0;
-  const best = (JSON.parse(prices)[event.event] || [])
-    .filter((r) => r.kind === event.kind && rank(r.applies))
-    .sort((a, b) => rank(b.applies) - rank(a.applies))[0];
-  const field = { "Adult": "adult", "Senior (65+)": "senior", "Under 18": "youth" }[category];
-  return best && typeof best[field] === "number" ? best[field] : null;
+  return JSON.parse(text);
+}
+
+/** The fee: the entry fee from the prices.json row for the event and kind whose "applies" is the
+ *  most specific match (the date, its month, or all), plus the round fee for each round the entry
+ *  covers. null when no row applies or the rounds aren't known. */
+function price(event, category) {
+  const list = prices();
+  let entry = event.closed ? event.fee : null;
+  if (!event.closed) {
+    const date = event.kind === "month" ? event.first.slice(0, 7) : event.first;
+    const rank = (applies) => applies === date ? 3 : applies === date.slice(0, 7) ? 2 : applies === "all" ? 1 : 0;
+    const best = (list[event.event] || [])
+      .filter((r) => r.kind === event.kind && rank(r.applies))
+      .sort((a, b) => rank(b.applies) - rank(a.applies))[0];
+    const field = { "Adult": "adult", "Senior (65+)": "senior", "Under 18": "youth" }[category];
+    entry = best && typeof best[field] === "number" ? best[field] : null;
+  }
+  const rounds = roundsOf(event);
+  if (entry === null || entry === undefined || rounds === null) return null;
+  return Math.round((entry + list.fees.round * rounds) * 100) / 100;
+}
+
+/** The rated rounds an entry covers: a night is one, a month its nights, a tournament date its planned
+ *  rounds (a quad's three). An arena has none, since each game played is paid for at the end. */
+function roundsOf(event) {
+  if (event.kind === "night") return 1;
+  if (event.kind === "month") {
+    return Object.values(clubEvents()).filter((e) => e.kind === "night" && e.event === event.event
+      && e.first.startsWith(event.first.slice(0, 7))).length;
+  }
+  if (event.format === "arena") return 0;
+  if (event.format === "quad") return 3;
+  return Number(event.rounds) || null;
+}
+
+/** What paying an amount by card comes to, with the processor's percentage and fixed fee. */
+function cardTotal(amount, card) {
+  return Math.round((amount * (1 + card.percent / 100) + card.fixed) * 100) / 100;
+}
+
+/** Each arena player's rated games so far, by US Chess ID: every finished game but a forfeit. */
+function arenaGames(key) {
+  const count = {};
+  for (const g of table("Arena").rows) {
+    if (g.Key !== key || !g.Result || FORFEITS.includes(g.Result)) continue;
+    for (const id of [g.White, g.Black]) count[id] = (count[id] || 0) + 1;
+  }
+  return count;
+}
+
+/** An amount as the Sheet and messages show it: 17, or 16.50. */
+function money(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
 /** The Entries tab, its columns by heading (so TDs can reorder them), and its rows. */
