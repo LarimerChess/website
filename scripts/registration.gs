@@ -31,7 +31,7 @@
  * Action clears them; and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json: the entry
- * fee, plus its round fee for each rated round (an arena's games, at the end), plus the card fee
+ * fee, plus its round fee for each rated round (an arena, a flat rating fee), plus the card fee
  * when paid by card. Players pay when they arrive.
  *
  * Invitational club events (calendar metadata access=invitational) and events in the registration
@@ -184,7 +184,6 @@ function register(p, td) {
   const due = amount === null ? "The TD will confirm the fee when you arrive."
     : amount === 0 ? `No fee (${category.toLowerCase()}).`
     : `Due when you arrive: $${money(amount)} (${category.toLowerCase()})`
-      + (event.format === "arena" ? `, plus $${money(prices().fees.round)} for each game you play, at the end` : "")
       + `. Paying by card adds ${card.percent}% + $${money(card.fixed)}.`;
   const lapsed = member.expirationDate && member.expirationDate < event.first
     ? `The US Chess membership expires ${member.expirationDate}, before this event. Renew it before you play.`
@@ -227,8 +226,7 @@ function entries(key, td, read) {
     const bar = barred(id, date.length === 7 ? date + "-01" : date, logged);
     return bar ? "Barred from club events" : "";
   };
-  const fees = td && prices().fees;
-  const games = td && (clubEvents()[key] || {}).format === "arena" ? arenaGames(key) : {};
+  const card = td && prices().fees.card;
   const list = rows
     .filter((r) => r[col.Event] === event && r[col.Status] !== "withdrawn" && (r[col.Date] === date
       || (date.length === 7 && r[col.Date].startsWith(date + "-"))
@@ -240,11 +238,10 @@ function entries(key, td, read) {
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       if (td) {
-        // due adds an arena's games to its entry fee; card is due with the card fee.
-        const due = r[col.Amount] === "" ? null : Number(r[col.Amount]) + fees.round * (games[entry.id] || 0);
-        Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
+        const due = r[col.Amount];
+        Object.assign(entry, { out, category: r[col.Category], amount: due, paid: r[col.Paid],
           paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
-          due: due === null ? "" : money(due), card: due === null ? "" : money(cardTotal(due, fees.card)),
+          due, card: due === "" ? "" : money(cardTotal(Number(due), card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
       }
       return entry;
@@ -1243,22 +1240,24 @@ function price(event, category) {
     const field = { "Adult": "adult", "Senior (65+)": "senior", "Under 18": "youth" }[category];
     entry = best && typeof best[field] === "number" ? best[field] : null;
   }
-  const rounds = roundsOf(event);
-  if (entry === null || entry === undefined || rounds === null) return null;
-  return Math.round((entry + list.fees.round * rounds) * 100) / 100;
+  const rating = ratingFee(event, list.fees);
+  if (entry === null || entry === undefined || rating === null) return null;
+  return Math.round((entry + rating) * 100) / 100;
 }
 
-/** The rated rounds an entry covers: a night is one, a month its nights, a tournament date its planned
- *  rounds (a quad's three). An arena has none, since each game played is paid for at the end. */
-function roundsOf(event) {
-  if (event.kind === "night") return 1;
+/** What an entry adds for US Chess rating: the round fee for each rated round it covers (a night one, a
+ *  month its nights, a tournament date its planned rounds, a quad's three), or an arena's flat fee, since
+ *  no one knows ahead how many games each player will play. null when the rounds aren't known. */
+function ratingFee(event, fees) {
+  if (event.format === "arena" && event.kind === "entry") return fees.arena;
+  let rounds = Number(event.rounds) || null;
+  if (event.kind === "night") rounds = 1;
   if (event.kind === "month") {
-    return Object.values(clubEvents()).filter((e) => e.kind === "night" && e.event === event.event
+    rounds = Object.values(clubEvents()).filter((e) => e.kind === "night" && e.event === event.event
       && e.first.startsWith(event.first.slice(0, 7))).length;
   }
-  if (event.format === "arena") return 0;
-  if (event.format === "quad") return 3;
-  return Number(event.rounds) || null;
+  if (event.kind === "entry" && event.format === "quad") rounds = 3;
+  return rounds === null ? null : fees.round * rounds;
 }
 
 /** What paying an amount by card comes to, with the processor's percentage and fixed fee, rounded up to
@@ -1269,15 +1268,6 @@ function cardTotal(amount, card) {
   return Math.ceil(cents + cents * card.percent / 100 + card.fixed * 100) / 100;
 }
 
-/** Each arena player's rated games so far, by US Chess ID: every finished game but a forfeit. */
-function arenaGames(key) {
-  const count = {};
-  for (const g of table("Arena").rows) {
-    if (g.Key !== key || !g.Result || FORFEITS.includes(g.Result)) continue;
-    for (const id of [g.White, g.Black]) count[id] = (count[id] || 0) + 1;
-  }
-  return count;
-}
 
 /** An amount as the Sheet and messages show it: 17, or 16.50. */
 function money(n) {

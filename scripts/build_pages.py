@@ -188,29 +188,30 @@ def money(n):
     return f"${n:.0f}" if n == int(n) else f"${n:.2f}"
 
 
-def fee_text(row, rounds, fees):
-    """The fee with the round fee for each rated round the entry covers: '$17, reduced rate $2 under 18',
-    or '$16.50 adults, $11.50 seniors (65+), reduced rate $1.50 under 18'. rounds is None for an arena,
-    whose games are paid for at the end."""
-    if not row:
+def fee_text(row, rating):
+    """The fee with what the entry adds for US Chess rating: '$17, reduced rate $2 under 18', or
+    '$16.50 adults, $11.50 seniors (65+), reduced rate $1.50 under 18'."""
+    if not row or rating is None:
         return "fee to be announced"
-    total = lambda n: money(n + fees["round"] * (rounds or 0))
+    total = lambda n: money(n + rating)
     text = (f"{total(row['adult'])}" if row["senior"] == row["adult"]
             else f"{total(row['adult'])} adults, {total(row['senior'])} seniors (65+)")
-    if rounds is None:
-        youth = f"reduced rate {money(row['youth'])} under 18, plus the games" if row["youth"] else "reduced rate under 18, the games only"
-        return f"{text} plus {money(fees['round'])} a game played; {youth}"
     return f"{text}, reduced rate {total(row['youth'])} under 18"
 
 
-def rounds_of(e, month=None, events=()):
-    """The rated rounds an entry covers: a night is one, a month its nights, a tournament date its planned
-    rounds (a quad's three). None for an arena, and 0 when the rounds aren't known."""
+def rating_fee(fees, e, month=None, events=()):
+    """What an entry adds for US Chess rating: the round fee for each rated round it covers (a night one, a
+    month its nights, a tournament date its planned rounds, a quad's three), or an arena's flat fee, since
+    no one knows ahead how many games each player will play. None when the rounds aren't known."""
     if month:
-        return sum(1 for x in events if x["start"][:7] == month)
-    if "tournament" not in e["tags"]:
-        return 1
-    return {"arena": None, "quad": 3}.get(e.get("pairing"), int(e.get("rounds") or 0))
+        rounds = sum(1 for x in events if x["start"][:7] == month)
+    elif "tournament" not in e["tags"]:
+        rounds = 1
+    elif e.get("pairing") == "arena":
+        return fees["arena"]
+    else:
+        rounds = 3 if e.get("pairing") == "quad" else int(e.get("rounds") or 0)
+    return fees["round"] * rounds if rounds else None
 
 
 def register_choices(events, prices):
@@ -219,21 +220,19 @@ def register_choices(events, prices):
     finishes "registered for …"."""
     name = events[0]["page"].strip("/").split("/")[-1]
 
-    def with_fee(value, kind, shown, rounds):
-        row = fee(prices, name, kind, value)
-        return f"{shown} · {fee_text(row if rounds != 0 else None, rounds, prices['fees'])}"
-
+    with_fee = lambda value, kind, shown, rating: f"{shown} · {fee_text(fee(prices, name, kind, value), rating)}"
+    fees = prices["fees"]
     if "tournament" in events[0]["tags"]:
-        return [(None, [(e["start"][:10], with_fee(e["start"][:10], "entry", day_text(e), rounds_of(e)), day_text(e))
+        return [(None, [(e["start"][:10], with_fee(e["start"][:10], "entry", day_text(e), rating_fee(fees, e)), day_text(e))
                         for e in events])]
     months = {}
     for e in events:
         start = datetime.fromisoformat(e["start"]).astimezone(TZ)
         month = months.setdefault(f"{start:%B} {start.year}", [(
             e["start"][:7], with_fee(e["start"][:7], "month", f"All {start:%A}s in {start:%B}",
-                                     rounds_of(e, e["start"][:7], events)),
+                                     rating_fee(fees, e, e["start"][:7], events)),
             f"all {start:%A}s in {start:%B} {start.year}")])
-        month.append((e["start"][:10], with_fee(e["start"][:10], "night", f"{start:%A}, {start:%B} {start.day}", 1),
+        month.append((e["start"][:10], with_fee(e["start"][:10], "night", f"{start:%A}, {start:%B} {start.day}", rating_fee(fees, e)),
                       day_text(e)))
     return list(months.items())
 

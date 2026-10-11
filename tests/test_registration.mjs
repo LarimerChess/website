@@ -89,16 +89,12 @@ function load(tabs, cache = {}) {
 const heading = (sheet) => sheet.data[0];
 const rowsOf = (sheet) => sheet.data.slice(1).map((r) => Object.fromEntries(heading(sheet).map((h, i) => [h, r[i] || ""])));
 
-test("fees: the round fee for each round an entry covers, an arena's games at the end, and the card fee", () => {
+test("fees: the round fee for each round an entry covers, an arena's flat fee, and the card fee", () => {
   const arena = "knightmare-arena-classical/2026-10-31";
   const { gs, sheets } = load({
     Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Status", "Token"],
-      ["", "knightmare-arena-classical", "2026-10-31", "11111111", "Ann", "Adult", "15", "", "", "registered", "t1"],
-      ["", "knightmare-arena-classical", "2026-10-31", "22222222", "Ben", "Under 18", "0", "", "", "registered", "t2"]],
-    Arena: [["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
-      [arena, "1", "11111111", "22222222", "", "", "1-0", "", ""],
-      [arena, "2", "22222222", "11111111", "", "", "1F-0F", "", ""],
-      [arena, "3", "11111111", "33333333", "", "", "", "", ""]],
+      ["", "knightmare-arena-classical", "2026-10-31", "11111111", "Ann", "Adult", "18", "", "", "registered", "t1"],
+      ["", "knightmare-arena-classical", "2026-10-31", "22222222", "Ben", "Under 18", "3", "", "", "registered", "t2"]],
   });
   const night = (date) => ({ event: "monday-club-night-at-peak", kind: "night", first: date });
   gs.clubEvents = () => ({ [arena]: { event: "knightmare-arena-classical", kind: "entry", first: "2026-10-31", format: "arena" },
@@ -107,12 +103,12 @@ test("fees: the round fee for each round an entry covers, an arena's games at th
   const saturday = { event: "first-saturday-classic", kind: "entry", first: "2026-11-07", format: "swiss", rounds: "4" };
   eq([gs.price(saturday, "Adult"), gs.price(saturday, "Under 18"), gs.price({ ...saturday, rounds: "" }, "Adult")], [17, 2, null]);
   const month = { event: "monday-club-night-at-peak", kind: "month", first: "2026-10-12" };
-  eq([gs.price(month, "Senior (65+)"), gs.price(night("2026-10-19"), "Adult"), gs.price(gs.clubEvents()[arena], "Adult")], [11.5, 7.5, 15]);
-  // Ann's one rated game; the forfeit and the game in progress don't count.
-  eq(gs.entries(arena, true).map((e) => [e.name, e.due, e.card]), [["Ann", "15.50", "16.39"], ["Ben", "0.50", "1.02"]]);
+  eq([gs.price(month, "Senior (65+)"), gs.price(night("2026-10-19"), "Adult"), gs.price(gs.clubEvents()[arena], "Adult"),
+    gs.price(gs.clubEvents()[arena], "Under 18")], [11.5, 7.5, 18, 3]);
+  eq(gs.entries(arena, true).map((e) => [e.name, e.due, e.card]), [["Ann", "18", "18.95"], ["Ben", "3", "3.58"]]);
   eq([15, 16.5, 17].map((n) => gs.cardTotal(n, { percent: 2.5, fixed: 0.5 })), [15.88, 17.42, 17.93], "any part of a cent rounds up");
-  assert.equal(gs.markPaid("t1", "16.39", "card").message, "Ann paid $16.39 by card.");
-  eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["16.39", "card"], ["", ""]]);
+  assert.equal(gs.markPaid("t1", "18.95", "card").message, "Ann paid $18.95 by card.");
+  eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["18.95", "card"], ["", ""]]);
 });
 
 test("a quad started before sections, with none of their columns, runs as before", () => {
