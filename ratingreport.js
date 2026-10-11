@@ -112,8 +112,9 @@
         S_END_DATE: ymd(report.end), S_SCH_LVL: "N", S_GR_PRIX: "N", S_GP_PTS: "0" });
       const cells = roundCells(s, count);
       for (const p of s.players) {
+        // MUIR warns about a player whose state differs from the rest; an unknown one is the event's.
         const row = { D_SEC_NUM: number, D_PAIR_NUM: String(p.number), D_MEM_ID: p.id, D_NAME: lastFirst(p.name),
-          D_RATING: p.rating ? String(p.rating) : "0" };
+          D_STATE: p.state || report.state || "", D_RATING: p.rating ? String(p.rating) : "0" };
         cells.get(p.id).forEach((c, n) => { row[`D_RND${String(n + 1).padStart(2, "0")}`] = c; });
         players.push(row);
       }

@@ -31,6 +31,7 @@ test("each section is a section of the report, its players numbered within it", 
     ["2C", "Second Saturday Sections", "2", "20261212", "31847334", "A4003249"]);
   assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => [s.S_SEC_NUM, s.S_SEC_NAME, s.S_R_SYSTEM, s.S_TIMECTL, s.S_LST_PAIR]),
     [["1", "Open", "R", "Game/70;d10", "4"], ["2", "Under 1400", "R", "Game/70;d10", "3"]]);
+  assert.deepEqual(read(files["TDEXPORT.DBF"]).map((p) => p.D_STATE), Array(7).fill("CO"), "a player's state, else the event's");
   assert.deepEqual(read(files["TDEXPORT.DBF"]).map((p) => [p.D_SEC_NUM, p.D_PAIR_NUM, p.D_NAME, p.D_RATING, p.D_RND01, p.D_RND02]), [
     ["1", "1", "IRONWOOD, IVY", "2000", "W3W", "D2B"], ["1", "2", "JUNIPER, JO", "1800", "W4B", "D1W"],
     ["1", "3", "KAPOK, KIT", "1600", "L1B", "L4W"], ["1", "4", "MAPLE, MAX", "1300", "L2W", "W3B"],
@@ -41,7 +42,7 @@ test("each section is a section of the report, its players numbered within it", 
 test("the files don't change by accident", () => {
   const files = RatingReport.files(SECTIONS, REPORT);
   const hash = (name) => createHash("sha256").update(files[name]).digest("hex").slice(0, 16);
-  assert.deepEqual(["THEXPORT.DBF", "TSEXPORT.DBF", "TDEXPORT.DBF"].map(hash), ["35a4a4c50e0a32cd", "90984067af4c6d0e", "90e9692a09800a67"]);
+  assert.deepEqual(["THEXPORT.DBF", "TSEXPORT.DBF", "TDEXPORT.DBF"].map(hash), ["35a4a4c50e0a32cd", "90984067af4c6d0e", "91d38ba00d668953"]);
 });
 
 test("a quad's sections are round robins, a Swiss's Swiss", () => {

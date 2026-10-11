@@ -65,7 +65,7 @@ function load(tabs, cache = {}) {
     const [, id, games] = url.match(/members\/(\d+)(\/games)?/);
     const m = US_CHESS[id] || { outcomes: [] };
     const body = games ? { items: m.outcomes.map((outcome) => ({ player: { outcome } })) }
-      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [] };
+      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [], stateRep: m.state ?? "CO" };
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify(body) };
   };
   const context = {
@@ -114,7 +114,8 @@ test("a quad started before sections, with none of their columns, runs as before
   assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "4", section: "", result: "1-0" }).ok, true);
   const r2 = rowsOf(sheets.Rounds).filter((r) => r.Round === "2");
   eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
-  eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"]);
+  eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
+    "State"]);
   eq(heading(sheets.Tournaments).slice(-3), ["Cutoff", "Sections", "TD"]);
   // Its rows are where they were; only headings were added.
   assert.equal(rowsOf(sheets.Players)[4]["No."], "5");
@@ -143,13 +144,13 @@ test("a Swiss in two sections: placed by rating, moved up, paired, posted, and s
     [["Ann", "1700", "3", ""], ["Ben", "", "0", ""], ["Cal", "", "0", ""], ["Dee", "", "0", ""], ["Eve", "100", "2", "losses"], ["Fay", "", "0", ""]]);
   eq(rowsOf(sheets.Registry).find((r) => r["US Chess ID"] === "55555555"),
     { "US Chess ID": "55555555", Category: "", "Checked on": "", "For the date": "", Floor: "100", "Prior games": "2",
-      "Prior sweep": "losses", "Record checked on": new Date().toISOString().slice(0, 10) });
+      "Prior sweep": "losses", "Record checked on": new Date().toISOString().slice(0, 10), State: "CO" });
   const asked = gs.fetched.length;
   assert.equal(asked, 12);
   gs.priorRecords(["11111111"]);
   assert.equal(gs.fetched.length, asked, "a record checked today isn't asked for again");
   eq(gs.tournament("classic/2026-11-07", true).players.find((x) => x.id === "55555555"), { id: "55555555", number: 5, name: "Eve",
-    rating: 1200, out: null, section: "Under 1400", floor: 100, games: 2, sweep: "losses" });
+    rating: 1200, out: null, section: "Under 1400", floor: 100, games: 2, sweep: "losses", state: "CO" });
   assert.match(gs.setSection({ ...p, id: "33333333", section: "Under 1400" }).error, /play up, not down/);
   assert.equal(gs.setSection({ ...p, id: "55555555", section: "Open" }).ok, true);
   const t = gs.tournament("classic/2026-11-07", true);

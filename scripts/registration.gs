@@ -54,7 +54,7 @@ const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD"],
-  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep"],
+  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
@@ -521,7 +521,8 @@ function tournament(key, td) {
     .map((r) => ({ id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
       rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null,
       section: r.Section || "", floor: /^\d+$/.test(r.Floor) ? Number(r.Floor) : null,
-      games: /^\d+$/.test(r["Prior games"]) ? Number(r["Prior games"]) : null, sweep: r["Prior sweep"] || "" }));
+      games: /^\d+$/.test(r["Prior games"]) ? Number(r["Prior games"]) : null, sweep: r["Prior sweep"] || "",
+      state: r.State || "" }));
   const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
   const count = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
   const rounds = [...Array(count)].map((_, i) => {
@@ -695,7 +696,7 @@ function syncPlayers(key) {
     const entrants = entries(key, true).filter((e) => !e.out && !have.has(e.id));
     entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
     // Players added before the records were kept get them now.
-    const unrecorded = t.rows.filter((r) => r.Key === key && r["Prior games"] === "");
+    const unrecorded = t.rows.filter((r) => r.Key === key && (r["Prior games"] === "" || !r.State));
     const records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
     for (const e of entrants) {
       appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
@@ -1317,13 +1318,15 @@ function ageCategory(id, date) {
 /**
  * For pairing.js's rating estimates: each player's regular-rating floor and their regular-rated
  * games before now, counted to 50 (the formula never needs more), with "wins" or "losses" if they
- * were all one. The registration Sheet's Players tab keeps each for two weeks, so US Chess is
- * asked again only after that; anyone it doesn't answer for is left blank.
+ * were all one; and for the rating report, the state they represent. The registration Sheet's
+ * Players tab keeps each for two weeks, so US Chess is asked again only after that, or sooner for
+ * a record kept before it had the state; anyone it doesn't answer for is left blank.
  */
 function priorRecords(ids) {
   const book = SpreadsheetApp.getActiveSpreadsheet();
   const players = book.getSheetByName("Players") || book.insertSheet("Players");
-  const headings = ["US Chess ID", "Category", "Checked on", "For the date", "Floor", "Prior games", "Prior sweep", "Record checked on"];
+  const headings = ["US Chess ID", "Category", "Checked on", "For the date", "Floor", "Prior games", "Prior sweep", "Record checked on",
+    "State"];
   let rows = players.getDataRange().getDisplayValues();
   const header = rows[0].filter((h) => h.trim());
   const missing = headings.filter((h) => !header.includes(h));
@@ -1339,8 +1342,9 @@ function priorRecords(ids) {
   const stale = [];
   for (const id of [...new Set(ids)]) {
     const row = rows.find((r, i) => i > 0 && r[col["US Chess ID"]] === id);
-    if (row && row[col["Record checked on"]] > fresh) {
-      records[id] = { Floor: row[col.Floor], "Prior games": row[col["Prior games"]], "Prior sweep": row[col["Prior sweep"]] };
+    if (row && row[col["Record checked on"]] > fresh && row[col.State]) {
+      records[id] = { Floor: row[col.Floor], "Prior games": row[col["Prior games"]], "Prior sweep": row[col["Prior sweep"]],
+        State: row[col.State] };
     } else stale.push(id);
   }
   if (!stale.length) return records;
@@ -1354,7 +1358,7 @@ function priorRecords(ids) {
     const regular = (member.ratings || []).find((x) => x.ratingSystem === "R") || {};
     const outcomes = [...new Set((games.items || []).map((g) => g.player && g.player.outcome))];
     records[id] = { Floor: regular.floor ? String(regular.floor) : "", "Prior games": String((games.items || []).length),
-      "Prior sweep": outcomes.length === 1 ? { Win: "wins", Loss: "losses" }[outcomes[0]] || "" : "" };
+      "Prior sweep": outcomes.length === 1 ? { Win: "wins", Loss: "losses" }[outcomes[0]] || "" : "", State: member.stateRep || "" };
     let at = rows.findIndex((r, j) => j > 0 && r[col["US Chess ID"]] === id) + 1;
     if (!at) {
       at = players.getLastRow() + 1;
