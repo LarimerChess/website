@@ -1,0 +1,814 @@
+{
+ "Tournaments": [
+  [
+   "Key",
+   "Event",
+   "Name",
+   "Format",
+   "Rounds",
+   "Status",
+   "Started",
+   "Coin",
+   "Finished",
+   "Cutoff",
+   "Sections"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "first-saturday-classic",
+   "First Saturday Classic, Saturday, November 7, 2026",
+   "swiss",
+   "4",
+   "finished",
+   "2026-11-07 09:40",
+   "white",
+   "2026-11-07 18:55"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "monday-club-night-at-peak",
+   "Monday Club Night at Peak, October 2026",
+   "swiss",
+   "3",
+   "finished",
+   "2026-10-12 09:40",
+   "black",
+   "2026-10-26 18:55"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "knightmare-arena-classical",
+   "Knightmare Arena Classical, Saturday, October 31, 2026",
+   "arena",
+   "",
+   "finished",
+   "2026-10-31 09:40",
+   "white",
+   "2026-10-31 18:55"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "fourth-saturday-classic",
+   "Fourth Saturday Classic, Saturday, January 23, 2027",
+   "quad",
+   "3",
+   "finished",
+   "2027-01-23 09:40",
+   "white",
+   "2027-01-23 18:55"
+  ],
+  [
+   "third-saturday-slow/2026-11-21",
+   "third-saturday-slow",
+   "Third Saturday Slow, Saturday, November 21, 2026",
+   "swiss",
+   "3",
+   "running",
+   "2026-11-21 09:40",
+   "white",
+   ""
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "second-saturday-sections",
+   "Second Saturday Sections, Saturday, December 12, 2026",
+   "swiss",
+   "2",
+   "finished",
+   "2026-12-12 09:40",
+   "white",
+   "2026-12-12 16:30",
+   "",
+   "[{\"name\":\"Open\"},{\"name\":\"Under 1400\",\"under\":1400}]"
+  ]
+ ],
+ "Players": [
+  [
+   "Key",
+   "No.",
+   "US Chess ID",
+   "Name",
+   "Rating",
+   "Out from round",
+   "Section"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "1",
+   "90000001",
+   "Ada Alder",
+   "1800",
+   ""
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "2",
+   "90000002",
+   "Ben Birch",
+   "1650",
+   ""
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "3",
+   "90000003",
+   "Cal Cedar",
+   "1500",
+   ""
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "4",
+   "90000004",
+   "Dee Dogwood",
+   "1400",
+   ""
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "5",
+   "90000005",
+   "Eli Elm",
+   "",
+   "3"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "1",
+   "90000011",
+   "Pat Pine",
+   "2000",
+   ""
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "2",
+   "90000012",
+   "Quinn Quaking",
+   "1700",
+   ""
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "3",
+   "90000013",
+   "Rae Redwood",
+   "1600",
+   ""
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "4",
+   "90000014",
+   "Sam Spruce",
+   "1200",
+   "3"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "5",
+   "90000015",
+   "Tia Tamarack",
+   "900",
+   ""
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "1",
+   "90000021",
+   "Vic Vine",
+   "1900",
+   ""
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "2",
+   "90000022",
+   "Wren Willow",
+   "1500",
+   ""
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "3",
+   "90000023",
+   "Xan Yew",
+   "",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "1",
+   "90000041",
+   "Ash Acacia",
+   "1900",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "2",
+   "90000042",
+   "Bay Beech",
+   "1850",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "3",
+   "90000043",
+   "Cy Cypress",
+   "1800",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "4",
+   "90000044",
+   "Dot Date",
+   "1750",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "5",
+   "90000045",
+   "Em Ebony",
+   "1400",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "6",
+   "90000046",
+   "Fay Fir",
+   "1350",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "7",
+   "90000047",
+   "Gus Gum",
+   "1300",
+   ""
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "8",
+   "90000048",
+   "Hal Hazel",
+   "",
+   ""
+  ],
+  [
+   "third-saturday-slow/2026-11-21",
+   "1",
+   "90000031",
+   "Zed Zelkova",
+   "1500",
+   ""
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "1",
+   "90000061",
+   "Ivy Ironwood",
+   "2000",
+   "",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "2",
+   "90000062",
+   "Jo Juniper",
+   "1800",
+   "",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "3",
+   "90000063",
+   "Kit Kapok",
+   "1600",
+   "",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "4",
+   "90000064",
+   "Lu Larch",
+   "1350",
+   "",
+   "Under 1400"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "5",
+   "90000065",
+   "Max Maple",
+   "1300",
+   "",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "6",
+   "90000066",
+   "Ned Nutmeg",
+   "1100",
+   "",
+   "Under 1400"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "7",
+   "90000067",
+   "Oz Olive",
+   "",
+   "",
+   "Under 1400"
+  ]
+ ],
+ "Rounds": [
+  [
+   "Key",
+   "Round",
+   "Board",
+   "White",
+   "Black",
+   "Result",
+   "Bye points",
+   "Posted",
+   "Section"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "1",
+   "1",
+   "90000001",
+   "90000003",
+   "1-0",
+   "",
+   "2026-11-07 11:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "1",
+   "2",
+   "90000005",
+   "90000002",
+   "0-1",
+   "",
+   "2026-11-07 11:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "1",
+   "",
+   "90000004",
+   "",
+   "",
+   "1",
+   "2026-11-07 11:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "2",
+   "1",
+   "90000002",
+   "90000001",
+   "1/2-1/2",
+   "",
+   "2026-11-07 13:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "2",
+   "2",
+   "90000004",
+   "90000005",
+   "1F-0F",
+   "",
+   "2026-11-07 13:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "2",
+   "",
+   "90000003",
+   "",
+   "",
+   "1",
+   "2026-11-07 13:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "3",
+   "1",
+   "90000001",
+   "90000004",
+   "1-0",
+   "",
+   "2026-11-07 15:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "3",
+   "2",
+   "90000003",
+   "90000002",
+   "0-1",
+   "",
+   "2026-11-07 15:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "4",
+   "1",
+   "90000004",
+   "90000003",
+   "0F-0F",
+   "",
+   "2026-11-07 17:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "4",
+   "",
+   "90000001",
+   "",
+   "",
+   "0.5",
+   "2026-11-07 17:05"
+  ],
+  [
+   "first-saturday-classic/2026-11-07",
+   "4",
+   "",
+   "90000002",
+   "",
+   "",
+   "1",
+   "2026-11-07 17:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "1",
+   "1",
+   "90000011",
+   "90000013",
+   "1-0",
+   "",
+   "2026-10-12 11:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "1",
+   "2",
+   "90000012",
+   "90000014",
+   "1/2-1/2",
+   "",
+   "2026-10-12 11:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "2",
+   "1",
+   "90000013",
+   "90000012",
+   "0F-1F",
+   "",
+   "2026-10-19 13:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "2",
+   "2",
+   "90000014",
+   "90000015",
+   "0-1",
+   "",
+   "2026-10-19 13:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "2",
+   "",
+   "90000011",
+   "",
+   "",
+   "0.5",
+   "2026-10-19 13:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "3",
+   "1",
+   "90000011",
+   "90000012",
+   "1-0",
+   "",
+   "2026-10-26 15:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "3",
+   "",
+   "90000015",
+   "",
+   "",
+   "1",
+   "2026-10-26 15:05"
+  ],
+  [
+   "monday-club-night-at-peak/2026-10",
+   "3",
+   "",
+   "90000013",
+   "",
+   "",
+   "0",
+   "2026-10-26 15:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "1",
+   "1",
+   "90000041",
+   "90000044",
+   "1-0",
+   "",
+   "2027-01-23 11:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "1",
+   "2",
+   "90000042",
+   "90000043",
+   "1/2-1/2",
+   "",
+   "2027-01-23 11:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "1",
+   "3",
+   "90000045",
+   "90000048",
+   "1-0",
+   "",
+   "2027-01-23 11:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "1",
+   "4",
+   "90000046",
+   "90000047",
+   "0-1",
+   "",
+   "2027-01-23 11:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "2",
+   "1",
+   "90000043",
+   "90000041",
+   "1/2-1/2",
+   "",
+   "2027-01-23 13:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "2",
+   "2",
+   "90000044",
+   "90000042",
+   "0-1",
+   "",
+   "2027-01-23 13:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "2",
+   "3",
+   "90000047",
+   "90000045",
+   "1/2-1/2",
+   "",
+   "2027-01-23 13:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "2",
+   "4",
+   "90000048",
+   "90000046",
+   "0F-1F",
+   "",
+   "2027-01-23 13:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "3",
+   "1",
+   "90000041",
+   "90000042",
+   "0-1",
+   "",
+   "2027-01-23 15:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "3",
+   "2",
+   "90000043",
+   "90000044",
+   "1-0",
+   "",
+   "2027-01-23 15:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "3",
+   "3",
+   "90000045",
+   "90000046",
+   "1-0",
+   "",
+   "2027-01-23 15:05"
+  ],
+  [
+   "fourth-saturday-classic/2027-01-23",
+   "3",
+   "4",
+   "90000047",
+   "90000048",
+   "1-0",
+   "",
+   "2027-01-23 15:05"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "1",
+   "1",
+   "90000061",
+   "90000063",
+   "1-0",
+   "",
+   "2026-12-12 10:05",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "1",
+   "2",
+   "90000065",
+   "90000062",
+   "0-1",
+   "",
+   "2026-12-12 10:05",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "1",
+   "1",
+   "90000064",
+   "90000067",
+   "1-0",
+   "",
+   "2026-12-12 10:05",
+   "Under 1400"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "1",
+   "",
+   "90000066",
+   "",
+   "",
+   "1",
+   "2026-12-12 10:05",
+   "Under 1400"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "2",
+   "1",
+   "90000062",
+   "90000061",
+   "1/2-1/2",
+   "",
+   "2026-12-12 13:05",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "2",
+   "2",
+   "90000063",
+   "90000065",
+   "0-1",
+   "",
+   "2026-12-12 13:05",
+   "Open"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "2",
+   "1",
+   "90000066",
+   "90000064",
+   "0-1",
+   "",
+   "2026-12-12 13:05",
+   "Under 1400"
+  ],
+  [
+   "second-saturday-sections/2026-12-12",
+   "2",
+   "",
+   "90000067",
+   "",
+   "",
+   "1",
+   "2026-12-12 13:05",
+   "Under 1400"
+  ]
+ ],
+ "Arena": [
+  [
+   "Key",
+   "Game",
+   "White",
+   "Black",
+   "White pact",
+   "Black pact",
+   "Result",
+   "Started",
+   "Ended"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "1",
+   "90000021",
+   "90000022",
+   "",
+   "",
+   "1-0",
+   "2026-10-31 10:00",
+   "2026-10-31 11:30"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "2",
+   "90000023",
+   "90000021",
+   "",
+   "yes",
+   "0-1",
+   "2026-10-31 11:00",
+   "2026-10-31 12:30"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "3",
+   "90000021",
+   "90000022",
+   "",
+   "",
+   "1-0",
+   "2026-10-31 12:00",
+   "2026-10-31 13:30"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "4",
+   "90000022",
+   "90000023",
+   "yes",
+   "yes",
+   "1/2-1/2",
+   "2026-10-31 13:00",
+   "2026-10-31 14:30"
+  ],
+  [
+   "knightmare-arena-classical/2026-10-31",
+   "5",
+   "90000023",
+   "90000021",
+   "",
+   "",
+   "1/2-1/2",
+   "2026-10-31 14:00",
+   "2026-10-31 15:30"
+  ]
+ ]
+}

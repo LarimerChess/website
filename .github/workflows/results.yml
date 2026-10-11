@@ -35,7 +35,7 @@ jobs:
           LCCC_GMAIL_TOKEN: ${{ secrets.LCCC_GOOGLE_GMAIL_SEND_TOKEN }}
           LCCC_TD_EMAILS: ${{ secrets.LCCC_TD_EMAILS }}
       # Reads the rated tournaments from the registration script's public ?tournaments=current.
-      # The docs repo's Archive tournaments Action clears a tournament from the spreadsheet only
+      # The Archive tournaments Action clears a tournament from the spreadsheet only
       # once its page here is live, and the pages are never deleted.
       - run: python scripts/build_results.py
         if: success() || failure()

@@ -1,0 +1,46 @@
+name: Archive tournaments
+
+on:
+  schedule:
+    # 4:30 AM in Colorado, when no TD is changing the spreadsheet.
+    - cron: "30 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: commits-to-main
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - name: Archive finished tournaments
+        run: python scripts/archive_tournaments.py
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_SHEETS_TOKEN }}
+      - name: Commit and push the archive
+        run: |
+          git add results
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Archive finished tournaments"
+          git push
+          gh api -X POST repos/${{ github.repository }}/pages/builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+      # Deletes a tournament's rows only once its archive is pushed and its results page shows the
+      # same rows; otherwise the log says what it is waiting for.
+      - name: Clear archived and published tournaments from the spreadsheet
+        run: python scripts/archive_tournaments.py --clear
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_SHEETS_TOKEN }}

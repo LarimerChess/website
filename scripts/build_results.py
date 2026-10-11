@@ -11,7 +11,7 @@
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
-  kept after the docs repo's archive Action clears it from there. Nothing here deletes a page.
+  kept after the Archive tournaments Action clears it from there. Nothing here deletes a page.
 - results/index.html lists every page under results/, newest first, and sitemap.xml gets an
   entry for each. build_pages.py dates them like any other page.
 
@@ -54,7 +54,7 @@ def fetch(url):
         return json.loads(body).get("tournaments", [])
     except ValueError:
         # A deployment older than the tournament code answers with its plain-text greeting. The
-        # archive in the docs repo then waits for the pages, and says so in its log.
+        # Archive tournaments Action then waits for the pages, and says so in its log.
         print(f"::warning::The registration script answered ?tournaments=current with {body[:80]!r}, not JSON. "
               "Deploy the current scripts/registration.gs (README, Registration). No results pages written.")
         return []
@@ -119,7 +119,7 @@ def bye_kind(b):
 
 
 def fingerprint(t):
-    """What the page shows, as a hash. docs/scripts/archive_tournaments.py computes the same from the
+    """What the page shows, as a hash. scripts/archive_tournaments.py computes the same from the
     spreadsheet's rows and clears a tournament only when the published page carries it."""
     lines = [f"P {p['id']} {p.get('out') or ''}{in_section(p)}" for p in t["players"]]
     for n, r in enumerate(t["rounds"], 1):

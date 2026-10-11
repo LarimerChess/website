@@ -1,0 +1,34 @@
+name: Sync calendars
+
+on:
+  schedule:
+    - cron: "15 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - run: python scripts/sync_grandslam.py
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
+      - run: python scripts/sync_chessmates.py
+        if: success() || failure()
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
+      - run: python scripts/sync_tournaments.py
+        if: success() || failure()
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
+      - run: python scripts/sync_evrpd.py
+        if: success() || failure()
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}

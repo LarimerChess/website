@@ -16,7 +16,7 @@ from ~/.config/lccc/uschess-api-key.
 
 With --email, a run that finds anything also mails the list to president@larimerchess.org
 through Gmail, signed in as that account with a send-only token: LCCC_GMAIL_TOKEN, or
-locally ~/.config/lccc/google-token-gmail-send.json (docs/scripts/google_auth.py
+locally ~/.config/lccc/google-token-gmail-send.json (scripts/google_auth.py
 --gmail-send makes it).
 """
 import argparse
