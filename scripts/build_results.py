@@ -6,8 +6,8 @@
 
 - Each rated tournament gets results/<slug>/, the slug being its key with "/" as "-"
   (first-saturday-classic-2026-11-07). A Swiss shows each section's final standings with the
-  US Chess tiebreaks, from pairing.js run with node, and wall chart; a quad tournament, each
-  quad's standings and crosstable; an arena, its leaderboard and games. A tournament is rated
+  US Chess tiebreaks, from pairing.js run with node; a quad tournament, each quad's standings;
+  an arena, its leaderboard and games. A tournament is rated
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
@@ -37,9 +37,6 @@ SHOWN = {"1-0": "1–0", "0-1": "0–1", "1/2-1/2": "½–½", "1F-0F": "1F–0F
 POINTS = {"1-0": (1, 0), "0-1": (0, 1), "1/2-1/2": (0.5, 0.5), "1F-0F": (1, 0), "0F-1F": (0, 1), "0F-0F": (0, 0)}
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December"]
-CHART_KEY = ("Players by number. Each round shows the result and the opponent's number, then the color played "
-             "(w or b) and the running score. W win, L loss, D draw, X win by forfeit, F loss by forfeit, "
-             "B full-point bye, H half-point bye, U not played. Forfeits have no color.")
 
 
 def endpoint():
@@ -72,10 +69,6 @@ def score_text(x):
 
 def rating_text(p):
     return escaped(str(p["rating"])) if p.get("rating") is not None else "Unrated"
-
-
-def performance_text(row, field="performance"):
-    return "" if row.get(field) is None else str(row[field])
 
 
 def round_cells(t, order):
@@ -199,83 +192,34 @@ def table(headings, rows, label, cls="entries"):
             "          </tbody>\n        </table>\n      </section>")
 
 
-def chart_table(t, label):
-    """The wall chart by number, then a line for each player who withdrew."""
-    chart = wall_chart(t)
-    rows = []
-    for p in sorted(t["players"], key=lambda p: p["number"]):
-        cells = [str(p["number"]), escaped(p["name"]), rating_text(p)]
-        for code, opponent, color, running in chart[p["id"]]:
-            cells.append(f"<td>{code}{opponent or ''} <small>{color + ' ' if color else ''}{score_text(running)}</small></td>")
-        cells.append(score_text(chart[p["id"]][-1][3] if chart[p["id"]] else 0))
-        rows.append(cells)
-    withdrawn = "".join(f"\n      <p>{escaped(p['name'])} withdrew from round {p['out']}.</p>"
-                        for p in sorted(t["players"], key=lambda p: p["number"]) if p.get("out"))
-    rounds = [f"Round {n}" for n in range(1, len(t["rounds"]) + 1)]
-    return table(["No.", "Name", "Rating", *rounds, "Total"], rows, label, "entries wallchart") + withdrawn
+def withdrawals(t):
+    return "".join(f"\n      <p>{escaped(p['name'])} withdrew from round {p['out']}.</p>"
+                   for p in sorted(t["players"], key=lambda p: p["number"]) if p.get("out"))
 
 
 def anchor(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-TIEBREAKS = ("Ties are broken by US Chess's default tiebreaks, in order: modified median, Solkoff, cumulative, and "
-             "cumulative of opposition. Ratings are as the players entered.")
-ROUNDS = ("Each round in the standings shows the result, the opponent's place in the standings, and the color played; "
-          "the letters are the wall chart's.")
-ESTIMATE = ("* Est. rating estimates the regular rating US Chess gives each player for these games, by its published formula, "
-            "from their rating as entered, their floor, and their rated games before the event. Checked against US Chess's own "
-            "ratings of a 63-player section, it was within a point for three players in four and within 10 for most of the rest. "
-            "It is further off for an unrated player, whom US Chess starts from their age or another rating, for a rating that "
-            "changed after the player entered, and for players over 2200 in some time controls. The official rating comes from "
-            "US Chess once the event is rated.")
-ESTIMATE_NOTE = f'\n      <p class="table-note">{ESTIMATE}</p>'
-PERFORMANCE = ("Performance is the rating that Elo's formula expects to make each player's score in the games they played "
-               "against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below "
-               "those opponents' average.")
-
-
 def swiss_standings(s, label):
     by_id = {p["id"]: p for p in s["players"]}
     order = standings(s)
     rounds = round_cells(s, order)
-    rows = [[str(i), str(by_id[r["id"]]["number"]), escaped(r["name"]), r["id"], rating_text(by_id[r["id"]]),
-             score_text(r["score"]), *rounds[r["id"]], score_text(r["median"]), score_text(r["solkoff"]),
-             score_text(r["cumulative"]), score_text(r["opposition"]), performance_text(r), performance_text(r, "estimate")]
+    rows = [[str(i), escaped(r["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]], score_text(r["score"]),
+             score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]), score_text(r["opposition"])]
             for i, r in enumerate(order, 1)]
-    return table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(s), "Median", "Solkoff",
-                  "Cumulative", "Opp. cumulative", "Performance", "Est. rating*"], rows, label) + ESTIMATE_NOTE
+    return table(["Place", "Name", "Rating", *round_headings(s), "Score", "Median", "Solkoff", "Cumulative",
+                  "Opp. cumulative"], rows, label) + withdrawals(s)
 
 
 def swiss_main(t):
     parts = sections(t)
     if len(parts) == 1:
-        return f"""<section id="standings">
-      <h2>Final standings</h2>
-      <p>{TIEBREAKS}</p>
-      <p>{ROUNDS}</p>
-      <p>{PERFORMANCE}</p>
-      {swiss_standings(parts[0], "Final standings")}
-    </section>
-
-    <section id="wall-chart">
-      <h2>Wall chart</h2>
-      <p>{CHART_KEY}</p>
-      {chart_table(parts[0], "Wall chart")}
-    </section>"""
-    out = [f"<p>Each section was paired and ranked on its own, with its players numbered within it. {TIEBREAKS}</p>",
-           f"<p>{ROUNDS}</p>", f"<p>{PERFORMANCE}</p>",
-           f"<p>{CHART_KEY}</p>"]
-    for part in parts:
-        name = part["name"]
-        out.append(f"""<section id="{anchor(name)}">
-      <h2>{escaped(name)}</h2>
-      <h3>Final standings</h3>
-      {swiss_standings(part, f"{name} standings")}
-      <h3>Wall chart</h3>
-      {chart_table(part, f"{name} wall chart")}
-    </section>""")
-    return "\n\n    ".join(out)
+        return swiss_standings(parts[0], "Final standings")
+    return "\n\n    ".join(f"""<section id="{anchor(part['name'])}">
+      <h2>{escaped(part['name'])}</h2>
+      {swiss_standings(part, f"{part['name']} standings")}
+    </section>""" for part in parts)
 
 
 def quad_main(t):
@@ -284,23 +228,15 @@ def quad_main(t):
         by_id = {p["id"]: p for p in q["players"]}
         order = standings(q, "quadStandings")
         rounds = round_cells(q, order)
-        rows = [[str(r["place"]), str(by_id[r["id"]]["number"]), escaped(by_id[r["id"]]["name"]), r["id"],
-                 rating_text(by_id[r["id"]]), score_text(r["score"]), *rounds[r["id"]], score_text(r["sonnebornBerger"]),
-                 performance_text(r), performance_text(r, "estimate")]
+        rows = [[str(r["place"]), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
+                 score_text(r["score"]), score_text(r["sonnebornBerger"])]
                 for r in order]
         name = q["name"]
         out.append(f"""<section id="{anchor(name)}">
       <h2>{escaped(name)}</h2>
-      <h3>Final standings</h3>
-      {table(["Place", "No.", "Name", "US Chess ID", "Rating", "Score", *round_headings(q), "Sonneborn-Berger", "Performance",
-               "Est. rating*"], rows, f"{name} standings") + ESTIMATE_NOTE}
-      <h3>Crosstable</h3>
-      {chart_table(q, f"{name} crosstable")}
+      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger"], rows, f"{name} standings")}{withdrawals(q)}
     </section>""")
-    intro = ("<p>Each quad is a round robin of four players. Ties are broken by Sonneborn-Berger, then by the tied "
-             f"players' games with each other.</p>\n    <p>{ROUNDS}</p>\n    <p>{PERFORMANCE}</p>\n"
-             f"    <p>{CHART_KEY}</p>")
-    return "\n\n    ".join([intro, *out])
+    return "\n\n    ".join(out)
 
 
 def arena_scores(t):
@@ -333,7 +269,6 @@ def arena_main(t):
                   pacts(g)] for g, got in scored]
     return f"""<section id="standings">
       <h2>Final leaderboard</h2>
-      <p>A win scores 2 points, a draw 1, and a loss 0. After two wins in a row, each further win scores 3 until a loss or a draw, and a win with a Blood Pact scores 1 more when the opponent kept the full time. A forfeit win scores 2, without a streak or a Blood Pact bonus. Games counts only games played; tied players share a place.</p>
       {table(["Place", "Name", "US Chess ID", "Rating", "Games", "Wins", "Draws", "Losses", "Points"], leader_rows, "Final leaderboard")}
     </section>
 
@@ -344,11 +279,9 @@ def arena_main(t):
 
 
 def results_page(t):
-    date = t["key"].rsplit("/", 1)[-1]
     name = t["name"]
     form = t.get("format") or "swiss"
-    shows = {"arena": "leaderboard and games", "quad": "standings and crosstables"}.get(
-        form, "standings and wall charts" if len(t.get("sections") or []) > 1 else "standings and wall chart")
+    shows = "leaderboard and games" if form == "arena" else "standings"
     kind = {"arena": "arena tournament", "quad": "quad tournament"}.get(form, f"{len(t['rounds'])}-round Swiss")
     description = f"Final {shows} of the {name}, a US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado."
     body = {"arena": arena_main, "quad": quad_main}.get(form, swiss_main)(t)
@@ -357,7 +290,6 @@ def results_page(t):
              f'rel="noopener">{escaped(event)}<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>\n\n    '
              if event else "")
     main = f"""<h1>{escaped(name)}</h1>
-    <p>A US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado, <time datetime="{date}">{date_text(date)}</time>.</p>
 
     {rated}{body}
 
@@ -371,7 +303,7 @@ def listed():
     pages = []
     for file in RESULTS.glob("*/index.html"):
         text = file.read_text(encoding="utf-8")
-        name, date = re.search(r"<h1>(.*?)</h1>", text), re.search(r'<time datetime="([^"]+)"', text)
+        name, date = re.search(r"<h1>(.*?)</h1>", text), re.search(r"-(\d{4}-\d\d(?:-\d\d)?)$", file.parent.name)
         pages.append((f"results/{file.parent.name}/", name[1] if name else file.parent.name, date[1] if date else ""))
     return sorted(pages, key=lambda p: (p[2], p[0]), reverse=True)
 
@@ -389,13 +321,12 @@ def index_page():
       </table>
       <nav class="results-pages" aria-label="Pages of results" hidden></nav>""" if pages else "<p>Results are posted here once US Chess has rated each tournament.</p>"
     main = f"""<h1>Results</h1>
-    <p>Final standings and wall charts of the club's US Chess rated tournaments, newest first. Tournaments in progress are on the <a href="/pairings/">Pairings</a> page.</p>
     <section id="all-results">
       <h2 class="visually-hidden">Tournaments</h2>
       {body}
     </section>"""
     return page_html(f"Results · {CLUB}",
-                     "Final standings and wall charts of Larimer County Chess Club tournaments in Fort Collins, Colorado.",
+                     "Final standings of Larimer County Chess Club tournaments in Fort Collins, Colorado.",
                      f"{SITE}/results/", main, depth=1, current="/results/", generated=GENERATED,
                      scripts=(f'<script src="../results.js?v={hashlib.sha256((ROOT / "results.js").read_bytes()).hexdigest()[:10]}" '
                               'defer></script>') if pages else "")

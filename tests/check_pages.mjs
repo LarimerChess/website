@@ -1439,8 +1439,8 @@ afterPlay.status.includes("The rating report is under Standings") && afterPlay.t
   : fail(`TD desk after the last round: ${JSON.stringify({ afterPlay, records, told, rewritten, goneWhenMissing, roundAdded, afterRating })}`);
 await ratedPage.close();
 
-// The Results page pages its table 20 rows at a time; with no finished tournaments yet, it is
-// served here with 45 made-up rows.
+// The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
+// in place of the real ones.
 const resultsPage = await browser.newPage();
 resultsPage.on("pageerror", (error) => fail(`JavaScript error on /results/: ${error.message}`));
 await resultsPage.setRequestInterception(true);
@@ -1448,7 +1448,8 @@ resultsPage.on("request", async (request) => {
   if (new URL(request.url()).pathname !== "/results/") return request.continue();
   const rows = [...Array(45)].map((_, i) => `<tr><td>Day ${i + 1}</td><td><a href="/results/t-${i + 1}/">Tournament ${i + 1}</a></td></tr>`).join("");
   const page = (await (await fetch(base + "/results/")).text())
-    .replace(/<p>Results are posted here[^<]*<\/p>/, `<table class="entries results-table"><thead><tr><th scope="col">Date</th><th scope="col">Tournament</th></tr></thead><tbody>${rows}</tbody></table><nav class="results-pages" aria-label="Pages of results" hidden></nav>`)
+    .replace(/(<h2 class="visually-hidden">Tournaments<\/h2>)[\s\S]*?(<\/section>)/, `$1<table class="entries results-table"><thead><tr><th scope="col">Date</th><th scope="col">Tournament</th></tr></thead><tbody>${rows}</tbody></table><nav class="results-pages" aria-label="Pages of results" hidden></nav>$2`)
+    .replace(/<script src="\.\.\/results\.js[^"]*" defer><\/script>/, "")
     .replace("</body>", '<script src="../results.js" defer></script></body>');
   request.respond({ contentType: "text/html", body: page });
 });

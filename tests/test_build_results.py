@@ -1,4 +1,4 @@
-"""Tests for scripts/build_results.py: the wall chart, standings, quads, arenas, and the pages it keeps.
+"""Tests for scripts/build_results.py: the round cells, standings, quads, arenas, and the pages it keeps.
 
     python -m unittest discover tests
 
@@ -83,12 +83,9 @@ class Standings(unittest.TestCase):
     def test_page(self):
         page = br.results_page(CLUB_NIGHT)
         self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/monday-club-night-at-peak-2026-10/">', page)
-        self.assertIn('<time datetime="2026-10">October 2026</time>', page)
         self.assertIn("Sam Spruce withdrew from round 3.", page)
-        self.assertIn("<th scope=\"col\">Performance</th>", page)
-        self.assertIn("Performance is the rating that Elo's formula expects", page)
-        self.assertIn('Est. rating*</th></tr></thead>', page)
-        self.assertIn('</section>\n      <p class="table-note">* Est. rating estimates', page)
+        self.assertIn('<th scope="col">Round 3</th><th scope="col">Score</th><th scope="col">Median</th>', page)
+        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 2)  # the withdrawal and the link to all results
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
@@ -115,8 +112,9 @@ class Quads(unittest.TestCase):
         page = br.results_page(QUAD)
         self.assertIn("<h2>Quad 1</h2>", page)
         self.assertIn("<h2>Quad 2</h2>", page)
-        self.assertIn("X4 <small>1</small>", page)
-        self.assertIn("Sonneborn-Berger</th><th scope=\"col\">Performance</th>", page)
+        self.assertIn("<td>X4", page)
+        self.assertEqual(page.count("<table"), 2)  # one per quad
+        self.assertIn('Score</th><th scope="col">Sonneborn-Berger</th></tr>', page)
 
 
 class Sections(unittest.TestCase):
@@ -136,8 +134,8 @@ class Sections(unittest.TestCase):
         page = br.results_page(SECTIONS)
         self.assertLess(page.index('<section id="open">'), page.index('<section id="under-1400">'))
         self.assertIn("<h2>Under 1400</h2>", page)
-        self.assertIn('aria-label="Open wall chart"', page)
-        self.assertIn("Final standings and wall charts", page)
+        self.assertIn('aria-label="Open standings"', page)
+        self.assertEqual(page.count("<table"), 2)  # one per section
 
 
 class Arena(unittest.TestCase):
