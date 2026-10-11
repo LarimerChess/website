@@ -1261,11 +1261,12 @@ function roundsOf(event) {
   return Number(event.rounds) || null;
 }
 
-/** What paying an amount by card comes to, with the processor's percentage and fixed fee, in whole
- *  cents first: 15 * 1.025 is 15.374999… in floating point, which would round $15.875 down. */
+/** What paying an amount by card comes to, with the processor's percentage and fixed fee, rounded up to
+ *  the cent so the club never comes out short. It works in cents, since 15 * 1.025 is 15.374999… in
+ *  floating point. */
 function cardTotal(amount, card) {
   const cents = Math.round(amount * 100);
-  return Math.round(cents + cents * card.percent / 100 + card.fixed * 100) / 100;
+  return Math.ceil(cents + cents * card.percent / 100 + card.fixed * 100) / 100;
 }
 
 /** Each arena player's rated games so far, by US Chess ID: every finished game but a forfeit. */

@@ -109,8 +109,8 @@ test("fees: the round fee for each round an entry covers, an arena's games at th
   const month = { event: "monday-club-night-at-peak", kind: "month", first: "2026-10-12" };
   eq([gs.price(month, "Senior (65+)"), gs.price(night("2026-10-19"), "Adult"), gs.price(gs.clubEvents()[arena], "Adult")], [11.5, 7.5, 15]);
   // Ann's one rated game; the forfeit and the game in progress don't count.
-  eq(gs.entries(arena, true).map((e) => [e.name, e.due, e.card]), [["Ann", "15.50", "16.39"], ["Ben", "0.50", "1.01"]]);
-  assert.equal(gs.cardTotal(15, { percent: 2.5, fixed: 0.5 }), 15.88, "half a cent rounds up");
+  eq(gs.entries(arena, true).map((e) => [e.name, e.due, e.card]), [["Ann", "15.50", "16.39"], ["Ben", "0.50", "1.02"]]);
+  eq([15, 16.5, 17].map((n) => gs.cardTotal(n, { percent: 2.5, fixed: 0.5 })), [15.88, 17.42, 17.93], "any part of a cent rounds up");
   assert.equal(gs.markPaid("t1", "16.39", "card").message, "Ann paid $16.39 by card.");
   eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["16.39", "card"], ["", ""]]);
 });
