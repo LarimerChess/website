@@ -296,8 +296,8 @@ function history(q) {
 }
 
 /**
- * The club contact, from the Sheet's Contacts tab (which docs/scripts/sync_contacts.py copies from
- * the club's contact list), whose first and last names match a player's; null if none or several.
+ * The club contact, from the Sheet's Contacts tab (the club's contact list), whose first and last
+ * names match a player's; null if none or several.
  * A nickname in parentheses, as in "Anthony (Tony) Whitt", matches as a first name too. Only the
  * TD desk reads contacts.
  */

@@ -129,7 +129,7 @@ def main():
             link = f"\n\nRun: https://github.com/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{run}" if run else ""
             send_email("TD expirations need attention",
                        report + "\n\n" + "\n".join(lines) + link
-                       + "\n\nJunior TD 1 is the junior TD in LCCC_JUNIOR_TD_IDS; see docs/contacts/people.md.")
+                       + "\n\nJunior TD 1 is the junior TD in LCCC_JUNIOR_TD_IDS; see the registration Sheet's Contacts tab.")
         sys.exit(1)
     print(f"\nNothing expires in the next {args.days} days.")
 

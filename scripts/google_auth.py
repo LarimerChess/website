@@ -15,8 +15,8 @@ then run the script here and open the URL it prints in that browser.
 Sync calendars Action; --calendar-read for one that can only read them, for Update
 calendar; --gmail-send for one that can only send mail, for the TD expirations check;
 --sheets for one that can only read and edit spreadsheets, for the Archive tournaments
-Action and the docs repo's Sync contacts. In Actions the token's JSON comes from the
-LCCC_GOOGLE_TOKEN environment variable instead of a file.
+Action. In Actions the token's JSON comes from the LCCC_GOOGLE_TOKEN environment
+variable instead of a file.
 
 Other scripts import credentials() from here, the docs repo's through its own
 scripts/google_auth.py. See docs/plans/google-api-access.md.
