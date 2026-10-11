@@ -1,79 +1,65 @@
 # Larimer County Chess Club
 
-Website for the Larimer County Chess Club, served by GitHub Pages from the main branch.
+The club's website, larimerchess.org. GitHub Pages serves the main branch as it is; there is no build step, so a push publishes at once.
 
-Edit index.html to update content; style.css holds the styling, copied into each page's <style>.
+How each part works is in the opening comment of its file. This README says where things are and what runs them. The private side, the Google Sheets, their setup, and the steps on the day of an event, is in the docs repo's events/registration.md.
 
-When you add a page, such as new board minutes, add its URL to sitemap.xml. The tournament pages under events/ are listed for you (see Events).
+## Pages
 
-The menu at the top of every page is written by hand in each hand-written page and from NAV in scripts/build_pages.py in the pages it writes; Board minutes is in the footer. The menu fits on one line at 1100px, which the page checks enforce, with little room left: a new item likely means moving another to the footer.
+| Page | Files |
+|---|---|
+| Home, / | index.html; calendar.js fills the event cards from events.json |
+| Events, /events/ | events/index.html with calendar.js's filters; each club event's page, events/<name>/, is written by scripts/build_pages.py and takes entries with register.js |
+| Scholastic, /scholastic/ | calendar.js, showing the events tagged for youth |
+| Entries, /entries/ | entries.js |
+| Pairings and Standings, /pairings/ and /standings/ | pairings.js, with pairing.js for Swiss and quad tournaments and arena.js for arenas |
+| Results, /results/ | written by scripts/build_results.py; results.js pages the table |
+| TD desk, /td/ (noindex, unlinked) | td.js, td-run.js, td-arena.js, pairing.js, arena.js, ratingreport.js |
+| Board minutes, /minutes/ | by hand |
 
-After changing calendar.js or style.css, run python scripts/sync_assets.py. It copies style.css into every page, so the first paint doesn't wait on another request, and updates the ?v= stamp on every page's link to calendar.js, so browsers don't pair a new page with a cached old script. Never edit a page's <style> by hand. CI fails if a page is out of date.
+- **Styles.** style.css is copied into every page's <style>, so the first paint doesn't wait on another request. After changing style.css or any page's script, run python scripts/sync_assets.py, which copies it and updates each script link's ?v= stamp so browsers don't pair a new page with a cached old script. Never edit a page's <style> by hand.
+- **Menu.** It is written by hand in each hand-written page and from NAV in scripts/build_pages.py in the pages it writes. It fits on one line at 1100px with little room left, so a new item likely means moving another to the footer.
+- **New pages.** Add a hand-written page's URL to sitemap.xml. The Date pages Action keeps every page's lastmod.
+- **Written pages.** Never edit events.json, events/<name>/, results/, or the Event data in events/index.html by hand; the Actions below rewrite them.
 
-## Events
+## The registration script
 
-The event cards come from events.json, which the Action "Update calendar" (.github/workflows/calendar.yml) rebuilds hourly with scripts/update_calendar.py. Don't edit events.json by hand. The script reads the club and community Google Calendars through the Calendar API, with a read-only OAuth token in the repository secret LCCC_GOOGLE_CALENDAR_READ_TOKEN, because the public iCal feeds leave out each event's metadata: private extended properties that say who runs it, its format, ages, rating, cost, and Details link. The filters use only that metadata, never titles or descriptions. FIELDS in the script lists the fields. If an event has missing or invalid metadata, the run fails, names the event, and leaves events.json alone.
+scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament.
 
-Then scripts/build_pages.py writes what search engines should read without running JavaScript, all from events.json: the schema.org Event data in events/index.html, a page for each club event at events/<name>/ (named from its calendar title), and the sitemap's entries for them and lastmod dates. Every other page's lastmod is the day of the last commit that changed its text; the Date pages Action moves it after each push. Never edit those pages by hand; a page whose event has left events.json is deleted. Renaming a club event in Google Calendar moves its page, and the run fails if a hand-written page still links to the old one.
+What the site shows of them is public: names, US Chess IDs, ratings, pairings, and results, minors' included, as US Chess's crosstables show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
 
-To run it locally, with a token JSON from ~/.config/lccc/:
+Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensions → Apps Script, then Deploy → Manage deployments → Edit → New version, which keeps the URL. Only the president's account can deploy it.
+
+## Actions
+
+| Action | When | What it runs | Secrets |
+|---|---|---|---|
+| Update calendar | hourly | scripts/update_calendar.py, then build_pages.py | LCCC_GOOGLE_CALENDAR_READ_TOKEN |
+| Results | hourly | scripts/rating_check.mjs, build_results.py, and build_pages.py | LCCC_GOOGLE_GMAIL_SEND_TOKEN, LCCC_TD_EMAILS |
+| Archive tournaments | daily, 10:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN |
+| Sync calendars | daily, 13:15 UTC | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
+| TD expirations | Mondays | scripts/td_expirations.py | USCHESS_API_KEY, LCCC_JUNIOR_TD_IDS, LCCC_GOOGLE_GMAIL_SEND_TOKEN |
+| Date pages | each push that changes a page | build_pages.py, for the sitemap's lastmod dates | |
+| Docs repo is private | hourly | fails if the docs repo can be seen | |
+| Check site | each push, and weekly for external links | the checks below | |
+
+Update calendar fails, naming the event, when an event's calendar metadata is missing or invalid, and leaves events.json alone. A tournament goes from Results to Archive tournaments: once US Chess rates it, rating_check.mjs adds it to ratings.json, the record of what US Chess has rated; build_results.py writes its page; and the archive commits its rows beside the page, then clears them from the spreadsheet.
+
+The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
+
+## Running scripts locally
+
+Tokens, the US Chess API key, and the other secrets' local copies are in ~/.config/lccc/, outside every repo. The Python scripts that use Google need the venv at ~/.local/share/lccc/venv, with pip install -r scripts/requirements.txt. Each script's opening comment gives its options; the ones that change a calendar or a spreadsheet take --dry-run. Offline, from the fixtures in tests/fixtures/:
 
 ```
-LCCC_GOOGLE_TOKEN="$(cat ~/.config/lccc/google-token-calendar-read.json)" python3 scripts/update_calendar.py
-python3 scripts/build_pages.py
+python3 scripts/build_results.py --from tests/fixtures/tournaments.json
+python3 scripts/archive_tournaments.py --fixture tests/fixtures/sheets.json --ratings FILE --out DIR
+node scripts/rating_check.mjs --now 2026-11-08T09:17 --from tests/fixtures/tournaments.json --uschess tests/fixtures/uschess.json
 ```
-
-The Action "Sync calendars" (.github/workflows/sync-calendars.yml) keeps outside events on the calendars daily, each script changing only the events tagged with its source: sync_grandslam.py moves or cancels single dates of Sac’n Saturdays to match Grand Slam's chess events, sync_chessmates.py copies Chessmates' scholastic tournaments, sync_tournaments.py copies Colorado's multi-day weekend tournaments, and sync_evrpd.py keeps the Estes Valley day-pass rates current. They write with an events-only token in the repository secret LCCC_GOOGLE_CALENDAR_TOKEN (scripts/google_auth.py --calendar makes it). Each takes --dry-run; locally they run with the venv in ~/.local/share/lccc/venv and pip install -r scripts/requirements.txt.
-
-## Registration
-
-Registering for club events is the site's main call to action. Every club event's card offers Register, as do its details, at the top and bottom. Each club event's page has a Register form and the list of players registered, from register.js: a tournament takes entries by date, Monday Club Night by the night or the whole month. Players pay when they arrive. The home page's two cards, filled by calendar.js, point to the next Monday Club Night and the next tournament; through a month's second Monday the club night card asks players to register for the month, and after it to drop in. Entries are kept in a private Google Sheet, through the Apps Script in scripts/registration.gs, which runs in that Sheet as president@larimerchess.org and is deployed as a web app anyone can call. ENDPOINT in register.js is its URL; while it is empty, the pages say registration isn't open yet.
-
-The form remembers the players registered from each browser, in its localStorage and never sent anywhere, so a returning player or a parent with several kids fills it in with one tap; Remember this player on this device, checked by default, decides whether a registration is kept. Chrome also saves what was typed for its own autofill, which follows a signed-in user to other devices. Browsers keep those values by field name across every site, so the US Chess ID field is named uschess-id, and register.js sends it to the script as id.
-
-The script accepts a registration only for a club event in the live events.json until its date, or its month's last date, starts. It checks the US Chess ID and last name against the public US Chess member lookup, refuses a second entry for the same player and date or month, and emails a confirmation with the fee due and a withdraw link. The fee depends on whether the player is an adult, a senior (65+), or under 18 on the event's date, which the script asks US Chess with the club's API key and remembers in the Sheet's Players tab for a year, or three months for a player under 18. The fees themselves are in prices.json, by the event's page name; each Register form shows the fee beside each choice. A row's kind is entry (a tournament date), night, or month, and its applies is a date, a month such as 2026-10, or all; the most specific row wins. The entry list shows name, US Chess ID, and regular rating; emails and fee categories stay in the Sheet. Anyone can register any member, so the TD checks the list before the event.
-
-The Entries page, /entries/, shows who is registered for the upcoming tournament date or club night the reader picks, from the script's ?entries=all; a night's list includes the month's registrations. It opens on ?event=<key> if the address has one, else the soonest event, and keeps the choice in the address.
-
-The TD desk at /td/ (noindex, out of the sitemap and navigation) is for registering walk-ups, marking who has paid, logging incidents, and removing entries. Incidents follow the Safe Play policy's §8: an expelled or removed player drops off that date's entries, public and on the desk, so they aren't paired again, and a barred player can't register; those three email the President. It searches US Chess by ID or name, Colorado players first, through the script, since US Chess's API doesn't allow calls from browsers. When the TD picks a player, the desk fills in the email from their last registration, or from the club contact with the same first and last name in the registration Sheet's private Contacts tab, and shows their phone, which is saved with the entry. Every call carries the TD password, which the script checks against its TD_PASSWORD property and locks out for 15 minutes after ten wrong tries.
-
-After changing scripts/registration.gs, paste it into the Sheet's Apps Script and deploy a new version of the existing deployment (Deploy → Manage deployments → Edit → New version), which keeps the URL.
-
-## Pairings
-
-pairing.js pairs Swiss rounds by the US Chess rules (chapter 2, rules 27 to 29) and computes standings with the default tiebreaks (34E): modified median, Solkoff, cumulative, and cumulative of opposition. It runs in the browser on the TD desk, and tests/test_pairing.mjs checks it against the rulebook's examples and simulated tournaments (`npm run test:pairing`). The TD reviews each round's pairings and can change them before posting, as the rulebook expects (29E7).
-
-The TD desk's Run the tournament section (td-run.js) starts a tournament for the chosen event, with the registered entrants numbered by rating, checks players in each round (everyone starts as present and the TD changes anyone who isn't; anyone else's round is unplayed, or a half-point or zero-point bye they asked for, or they are withdrawn; in a quad, a player not here loses that game by forfeit). A round without a game is one of four kinds, full-point bye, half-point bye, zero-point bye, or unplayed, and the TD can reclassify any of them later under Standings; the score follows, pairs the round, lets the TD change any pairing, saves or posts it, and takes results board by board. A tournament date is one tournament; a club night's month is one Swiss, a round a night, so its key is the month. Quads (30G) group the players into fours by rating, number them by lot, pair from the round robin table in pairing.js, and rank each quad by score, Sonneborn-Berger, and the games between tied players (34F). The script keeps players, pairings, and results in the private Tournaments in progress spreadsheet (script property TOURNAMENT_SHEET_ID) until US Chess has rated the tournament and it is archived.
-
-Rounds, at the bottom of the section, adds rounds to a Swiss or stops it early, never below the rounds paired; Restart the tournament deletes its rows from the spreadsheet, so it can be started again, and leaves the entries.
-
-The TD never finishes a tournament on the desk. Once the planned rounds are all posted with their results, the desk's Rating report, under Standings, offers THEXPORT.DBF, TSEXPORT.DBF, and TDEXPORT.DBF for the TD to upload in MUIR, written in the browser by ratingreport.js in US Chess's draft 2C layout (tests/test_ratingreport.mjs): each section of a Swiss, and each quad, is a section of the report, with the chief TD from scripts/tds.json the tournament was started with (Start asks; the report can change it), the club's affiliate, and the time control and place from the event's listing in events.json while it is still there. Nothing stores them: Keep the files in a folder (the File System Access API, in Chrome and Edge on a computer; the folder's handle stays in the browser's IndexedDB) rewrites them in the folder the TD picks each time the tournament loads ready, and deletes them when it isn't, such as after a result is cleared, a round added, or a restart; a download reloads the tournament first. An arena has no files; its games are entered in MUIR by hand. The TD can instead enter the results in MUIR by hand. Each hour the Results Action runs scripts/rating_check.mjs (tests/test_rating_check.mjs), which looks for the club's rated events on US Chess, through the public v1 API, with the same players and games as each tournament whose play has ended. Once it finds one, it adds { key: US Chess event ID } to ratings.json, the record of what US Chess has rated; the script reads it (cached five minutes) to show the tournament as rated and refuse every desk change to it. Until then, in the 9:00 AM run each day from 24 hours after the day play ended, it emails the tournament's chief TD and the President with what US Chess is missing or has differently. The TDs' addresses are the repository secret LCCC_TD_EMAILS, JSON by US Chess ID (locally ~/.config/lccc/td-emails.json), and the mail goes through the TD expirations token, LCCC_GOOGLE_GMAIL_SEND_TOKEN; the run's public log never shows an address. Run it with --now and no --email to see what it would send.
-
-The TD reviews each round's pairings in an editor, by section: change either player on a board (the player chosen swaps places with whoever had the seat, so nobody is lost or doubled), swap a board's colors, remove a board (its players are then not yet paired), add a board from players without a game, take a player out of a game for a round without a game of any kind, and set a forfeit. Boards are numbered again within each section. Save and Post wait until every player who plays the round is on one board or has one round without a game, and list what is missing. Pair by hand starts the round with no boards: the players present are not yet paired, the others unplayed or on the byes they asked for. A posted round with no results yet can be changed with Edit pairings (29G); saving or posting replaces its rows, which also clears any reports for it, and the script refuses once the round has a result.
-
-Players report their own results on the Pairings page, for a posted round of a running Swiss or quad: a board whose White or Black is saved on that device (by the Register form, or by typing a US Chess ID on the Pairings page; the two share one list, so the Pairings page lists the same saved players, fills in the most recent one's ID, and has the same Remember choice and Forget buttons) gets buttons for 1–0, 0–1, and ½–½. The script's public report action checks that the ID is on that board in that posted round and the board has no result, is limited like public registrations, and keeps the report in the Rounds tab's White report and Black report columns, never in Result. Nothing proves who is reporting, so a report counts only once the TD confirms it: the Pairings page shows it as awaiting the TD, and the standings leave it out. On the desk each board shows its reports, with Confirm for a single report or two that agree, Confirm agreed results for every board both players reported alike, and conflicting reports flagged; the TD's result menu still sets or overrides any result.
-
-A Swiss can have sections, such as Open and Under 1400, each paired and ranked on its own, as if a tournament of its own (28A, 29); a player plays in one. The TD names them when starting, one Open section by default, each with an optional rating limit: a section takes players rated under its limit, and unrated players. Starting puts each player in the section with the lowest limit their rating is under, and players added later the same way; until round 1 is posted the TD can move a player up to a higher section (never down) or change the sections, which places everyone again. Each quad is a section, Quad 1, Quad 2, and so on. All sections play each round together, since they share the schedule: one check-in, one Pair the round that pairs each section on its own, one review, and one Post, with each section in its own tables and its boards numbered from 1. Pairing.sections in pairing.js splits a tournament into its sections, numbering their players 1 up within each. The Tournaments tab's Sections column holds the sections as JSON, and the Players and Rounds tabs' Section column says which each row belongs to; the script adds those columns when they're missing. A tournament started before sections has none of them and runs as one section, or as quads by number, as it always did.
-
-The Pairings page, /pairings/ (pairings.js), shows each tournament in progress, from the script's ?tournaments=current, with a table for each section and a menu of its posted rounds that starts at the latest. The Standings page, /standings/, also from pairings.js, shows each section's standings after the latest round with results, or after an earlier one from its menu: a Swiss's with the tiebreaks above, a quad's with Sonneborn-Berger and head-to-head. Both show each round as the result, the opponent's place in the table, and the color, as "W4 b". Both, and the TD desk's standings, show each player's performance rating: the rating Elo's formula expects to make their score in the games played so far against rated opponents, without forfeits or byes, capped at 800 above or below those opponents' average for a perfect or zero score. They also show an estimated rating: pairing.js's ratingEstimates runs US Chess's five-step rating calculation (the April 6, 2026 specification at glicko.net/ratings/rating.system.pdf), with the special formula for unrated players, players with 8 or fewer games, and players whose games were all wins or all losses, and the standard formula with its bonus for the rest, then the player's floor. It needs each player's floor and rated games before the event, which the script asks US Chess for (the public member and games endpoints, both at once with UrlFetchApp.fetchAll) when a player joins a tournament, keeps two weeks in the registration Sheet's Players tab, and copies to the tournament's Players tab; a player without them counts as established. It leaves out what US Chess knows and we don't: an unrated player's other ratings and age, which set their starting point (it assumes 1300), and the K factor over 2200 in dual-rated events. Against US Chess's ratings of a 63-player Denver Chess Club section from September 2026, given each player's prior games but not their floors, it came within a point for 48 players, established, provisional, and unrated alike, and within 10 for 9 more; the other 6 were floors and an unrated player US Chess started from another rating.
-
-An arena has no rounds. arena.js scores it and pairs the next games from the queue of players waiting, and tests/test_arena.mjs checks it (`npm run test:arena`). An arena starts with the time after which no new games start. Its Run the tournament section (td-arena.js) shows the queue, where the TD puts players in and takes them out for a break, and pairs the players waiting when the TD asks, never after that time. It takes each game's Blood Pacts and result, after which both players wait again unless one forfeited, and shows the leaderboard and the finished games, whose results can be corrected. The queue and games live in the tournament spreadsheet's Queue and Arena tabs, which the script adds when they're missing, so every device sees the same arena. The Pairings page shows an arena's games in progress, who is waiting, and recent results; the Standings page, its leaderboard.
-
-## Results
-
-Once ratings.json lists a tournament, the Action "Results" (.github/workflows/results.yml) writes its page in the same run: scripts/build_results.py reads the rated tournaments from the script's ?tournaments=current and writes results/<event>-<date>/ (results/monday-club-night-at-peak-2026-10/ for a club night's month). A Swiss gets its final standings, with each round, the tiebreaks, performance ratings, and estimated ratings from pairing.js run in node, and a wall chart in the US Chess style: each round's result and opponent's number, the color, and the running score, with forfeits, byes, and unplayed rounds marked. A Swiss in sections gets both for each section, its players numbered within it. A quad tournament gets each quad's standings, with each round, performance ratings, and estimated ratings, and crosstable; an arena, its leaderboard and games. Each links to US Chess's crosstable for the rated event. The pages show names, US Chess IDs, ratings, and results, as US Chess's crosstables do, and nothing from the registration Sheet. The Results page, /results/, lists them all in a table, newest first, which results.js shows 20 rows a page (?page=2 in the address); each gets a sitemap entry.
-
-The pages are written once and committed, because the Action "Archive tournaments" (.github/workflows/archive-tournaments.yml) then archives the tournament and clears it from the Tournaments in progress spreadsheet. Daily, scripts/archive_tournaments.py writes each rated tournament's rows from the Tournaments, Players, Rounds, and Arena tabs to results/<event>-<date>/archive.json and pushes them, then deletes the rows, but only once the archive is pushed and the page here answers with the same rows, which build_results.py records in the page's data-results attribute. The archive holds nothing from the registration Sheet, which it never reads or changes. Its token, which can only read and edit spreadsheets, is the repository secret LCCC_GOOGLE_SHEETS_TOKEN (scripts/google_auth.py --sheets). A row's section counts only when it has one, so a tournament without sections has the same fingerprint as before them. Nothing deletes a results page, and a page whose tournament has been cleared is never rewritten, so a later correction is made by hand. To build pages from saved data, as tests/test_build_results.py does: `python3 scripts/build_results.py --from tests/fixtures/tournaments.json`. tests/fixtures/sheets.json holds the spreadsheet rows behind that file, and tests/test_archive_tournaments.py checks that the archive's fingerprint matches the page's; `python3 scripts/archive_tournaments.py --fixture tests/fixtures/sheets.json --ratings FILE --out DIR` archives them without Google.
-
-## TD expirations
-
-The Action "TD expirations" (.github/workflows/td-expirations.yml) runs scripts/td_expirations.py every Monday. It reads the club's TDs from scripts/tds.json and asks the US Chess ratings API for each one's membership, TD certification, and SafeSport dates and for the affiliate's expiration, and fails, which emails a warning, when any is past or within 60 days. When a TD joins or leaves, change scripts/tds.json. Junior TDs are minors: their IDs go in the repository secret LCCC_JUNIOR_TD_IDS, never in the repo, and the output shows neither their names nor their dates. The API key is the secret USCHESS_API_KEY. When anything is due, the run also emails the list to president@larimerchess.org through Gmail, with a send-only token for that account in the secret LCCC_GOOGLE_GMAIL_SEND_TOKEN (made with scripts/google_auth.py --gmail-send). To test the email, run the Action by hand with a large number of days, such as 400. Locally the script reads all three from ~/.config/lccc/ (uschess-api-key, junior-td-ids, and google-token-gmail-send.json) and emails only with --email.
 
 ## Checks
 
-Every push runs .github/workflows/checks.yml: HTML validation, a JavaScript syntax check, a check that the pages built from events.json are current, that the Results page lists every results page, the sitemap check, tests for the calendar import, the page builder, the results pages, and the tournament archive, tests for the pairing engine, arenas, the rating report files, the rating check, and the registration script's running tournaments (tests/test_registration.mjs, against in-memory sheets, including one from before sections, and players' reports), page checks in Chrome (axe accessibility in light and dark mode, the event filters, the Run by lines and Details links, the add-to-calendar menu, structured data, the tournament, Pairings, Standings, and results pages, reporting a result, a Swiss in two sections on the TD desk, confirming reports, editing pairings, pairing by hand, and changing a posted round, the rating report's folder after the last round, and the menu on one line at 1100px and on a 390px phone), and internal links. External links are checked weekly. .github/workflows/docs-private.yml checks hourly that the docs repo is still private.
-
-To run them locally:
+Check site runs these on every push; run them before pushing:
 
 ```
 npm ci
@@ -87,6 +73,84 @@ node --test tests/test_pairing.mjs tests/test_arena.mjs tests/test_registration.
 python -m http.server 8765 --bind 127.0.0.1 &
 npm run check:pages
 ```
+
+tests/check_pages.mjs drives the pages in Chrome against a stand-in for the registration script, and checks accessibility in light and dark mode and the layout at 1100px and on a 390px phone. New behavior gets a check there.
+
+## Running your own club
+
+A fork runs another club's site. Do these steps once, in order.
+
+### 1. Publish the fork
+
+1. Fork the repo. In its Settings → Pages, deploy from the branch main, folder / (root).
+2. Put your domain in CNAME, or delete CNAME to use <owner>.github.io/<repo>. Point the domain's DNS at GitHub Pages; verify.sh checks the records once DOMAIN in it is yours.
+3. GitHub turns off a fork's scheduled Actions. Turn them on in the Actions tab.
+4. Delete what only this club uses: .github/workflows/docs-private.yml, and the four calendar syncs (scripts/sync_*.py and .github/workflows/sync-calendars.yml) unless you adapt them to your area's events.
+
+### 2. Make it your club
+
+Change the club's name, site, and address wherever they appear:
+
+```
+grep -rln "Larimer County Chess Club\|larimerchess" --exclude-dir=node_modules --exclude-dir=.git .
+```
+
+These need your values too:
+
+| What | Where |
+|---|---|
+| The club and community calendars' IDs (step 4) | CALENDARS in scripts/update_calendar.py |
+| The Tournaments in progress spreadsheet's ID (step 5) | TOURNAMENT_SHEET in scripts/archive_tournaments.py |
+| Your Google domain or account, which sign-in insists on | DOMAIN in scripts/google_auth.py |
+| The address that sends and receives the club's mail | PRESIDENT in scripts/rating_check.mjs and scripts/td_expirations.py, and the president@ addresses in scripts/registration.gs and the pages |
+| Your site's URL | SITE in scripts/registration.gs, scripts/build_pages.py, and scripts/archive_tournaments.py |
+| Your US Chess affiliate ID and your TDs' US Chess IDs | scripts/tds.json |
+| Each club event's fees by age | prices.json, by event page name |
+| The time zone, if not Colorado's | every America/Denver: grep -rn America/Denver --exclude-dir=node_modules . |
+
+Then set ratings.json to {}, and delete the club's minutes, results pages, and event pages; the Actions rewrite events.json and the event pages from your calendars.
+
+### 3. Google
+
+Use one Google account for everything, the one that owns the calendars and sends the club's mail. A Google Workspace account on your own domain is simplest.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and enable the Google Calendar, Google Sheets, and Gmail APIs.
+2. Set up the OAuth consent screen. With Workspace, choose Internal. With a personal Gmail account, choose External and then publish the app (In production): while it is in Testing, Google expires its sign-ins after seven days and every Action stops.
+3. Under Credentials, create an OAuth client ID of type Desktop app, download its JSON, and save it as ~/.config/lccc/google-client.json.
+4. Install the Python libraries: python3 -m venv ~/.local/share/lccc/venv, then ~/.local/share/lccc/venv/bin/pip install -r scripts/requirements.txt.
+
+### 4. Calendars
+
+Create two Google Calendars in that account: the club's own events, and the community's (other groups' events, shown on /events/). Put their IDs, from each calendar's settings, in CALENDARS. Every event needs metadata, private extended properties named in FIELDS in scripts/update_calendar.py (who runs it, its format, ages, rating, and cost); the hourly import fails on an event without it and names the event. Set them through the Calendar API, as extendedProperties.private. An event whose organizer is your club's name is a club event and gets its own page.
+
+### 5. Sheets and the registration script
+
+1. Create an empty Google Sheet for running tournaments, Tournaments in progress; the script adds its tabs. Copy its ID from its URL.
+2. Create a Google Sheet for registrations with one tab, Entries; the script adds the rest. Extensions → Apps Script, and replace Code.gs with scripts/registration.gs.
+3. In the script's Project Settings → Script properties, add TD_PASSWORD (a password you choose for the TD desk), USCHESS_API_KEY (step 6), and TOURNAMENT_SHEET_ID (the ID from 1).
+4. Run any function, such as checkPassword, and allow what it asks: the spreadsheets, outside requests (your site and US Chess), and sending mail. Google warns the app isn't verified; it's your own, so go ahead (Advanced).
+5. Deploy → New deployment → Web app, executing as you, with access for Anyone. Put its URL, which ends in /exec, in ENDPOINT in register.js, run python scripts/sync_assets.py, and push. Opening the URL should show the plain greeting.
+6. Share both Sheets with your TDs, never publicly.
+
+To change the script later, see The registration script above.
+
+### 6. Tokens and secrets
+
+Make each Google token by running scripts/google_auth.py with the venv's Python, signed in as the club account; each lands in ~/.config/lccc/. Over SSH, forward port 8085 from the machine with the browser first (ssh -L 8085:localhost:8085 <host>). Then put each file's whole contents in the repo's Settings → Secrets and variables → Actions, or use gh secret set NAME -R <owner>/<repo> < FILE.
+
+| Secret | How to make it | Used by |
+|---|---|---|
+| LCCC_GOOGLE_CALENDAR_READ_TOKEN | google_auth.py --calendar-read, google-token-calendar-read.json | Update calendar |
+| LCCC_GOOGLE_CALENDAR_TOKEN | google_auth.py --calendar, google-token-calendar.json | Sync calendars |
+| LCCC_GOOGLE_SHEETS_TOKEN | google_auth.py --sheets, google-token-sheets.json | Archive tournaments |
+| LCCC_GOOGLE_GMAIL_SEND_TOKEN | google_auth.py --gmail-send, google-token-gmail-send.json | Results, TD expirations |
+| USCHESS_API_KEY | A US Chess member creates one on the ratings portal's [API access page](https://ratings.uschess.org/portal/api-access); it shows only once. It is also the script property in step 5. | TD expirations |
+| LCCC_TD_EMAILS | JSON of each TD's US Chess ID and email, {"12345678": "td@example.org"} | Results |
+| LCCC_JUNIOR_TD_IDS | The US Chess IDs of TDs who are minors, comma-separated, or leave it out | TD expirations |
+
+Each token can do only its one job. google_auth.py without an option makes google-token.json, which can do everything, for running scripts locally; it never goes in a secret. The same files in ~/.config/lccc/ serve the scripts when run locally: uschess-api-key, td-emails.json, and junior-td-ids hold the last three.
+
+Last, run each Action once by hand from the Actions tab and read its log.
 
 ## License
 

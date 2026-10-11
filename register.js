@@ -176,7 +176,8 @@ if (!dateField) {
     button.disabled = true;
     status.textContent = "Registering…";
     try {
-      // The field is named uschess-id for the browser's autofill; see README.md.
+      // Browsers keep autofill values by field name across every site, so the field is named
+      // uschess-id, not id.
       const body = new URLSearchParams(new FormData(form));
       body.set("id", idField.value);
       body.delete("uschess-id");

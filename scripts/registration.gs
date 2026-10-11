@@ -1,7 +1,7 @@
 /**
  * Online registration for club events: the Apps Script behind the Register form on each
  * club event's page (register.js) and the TD desk (td/). It lives in the registration
- * Sheet's Extensions → Apps Script; this file is its source. See README.md, Registration.
+ * Sheet's Extensions → Apps Script; this file is its source. See README.md, The registration script.
  *
  * What players register for, by key "<page name>/<date>":
  *   a tournament date (2026-11-07), a club night (2026-10-12), or a club night's whole month (2026-10).

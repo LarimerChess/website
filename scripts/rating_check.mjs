@@ -11,7 +11,7 @@
 //      and the one sharing the most players is compared with the tournament, player by player and
 //      round by round. When nothing differs, ratings.json gets { key: US Chess event ID }. The
 //      registration script reads it to refuse desk changes and show the tournament as rated; the
-//      Results Action then writes its page, and the docs repo's archive takes it from there.
+//      Results Action then writes its page, and the Archive tournaments Action takes it from there.
 //   3. Otherwise, in the 9:00 AM run each day from 24 hours after the day play ended, it emails the
 //      tournament's chief TD (the TD the desk started it with, by US Chess ID in LCCC_TD_EMAILS, or
 //      locally ~/.config/lccc/td-emails.json) and the President with what US Chess is missing or

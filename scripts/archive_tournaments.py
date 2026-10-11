@@ -25,7 +25,7 @@ tab's first row its headings) and never writes to Google; --ratings FILE reads r
 from a file; --out DIR writes the archive somewhere other than this repo.
 
 The Archive tournaments Action runs this daily, commits and pushes the archive, then runs it
-with --clear. See README, Results.
+with --clear. See README.md, Actions.
 """
 import argparse
 import hashlib

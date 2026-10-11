@@ -56,7 +56,7 @@ def fetch(url):
         # A deployment older than the tournament code answers with its plain-text greeting. The
         # Archive tournaments Action then waits for the pages, and says so in its log.
         print(f"::warning::The registration script answered ?tournaments=current with {body[:80]!r}, not JSON. "
-              "Deploy the current scripts/registration.gs (README, Registration). No results pages written.")
+              "Deploy the current scripts/registration.gs (README, The registration script). No results pages written.")
         return []
 
 
