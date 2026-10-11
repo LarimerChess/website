@@ -44,7 +44,16 @@ test("the files don't change by accident", () => {
   assert.deepEqual(["THEXPORT.DBF", "TSEXPORT.DBF", "TDEXPORT.DBF"].map(hash), ["35a4a4c50e0a32cd", "90984067af4c6d0e", "90e9692a09800a67"]);
 });
 
+test("a quad's sections are round robins, a Swiss's Swiss", () => {
+  const quad = fixtures.find((t) => t.format === "quad");
+  assert.deepEqual([...new Set(read(RatingReport.files(quad, REPORT)["TSEXPORT.DBF"]).map((s) => s.S_TRN_TYPE))], ["R"]);
+  assert.deepEqual(read(RatingReport.files(SECTIONS, REPORT)["TSEXPORT.DBF"]).map((s) => s.S_TRN_TYPE), ["S", "S"]);
+});
+
 test("the rating system follows the time control", () => {
   assert.deepEqual(["G/70;d10", "G/30;+10", "G/20;d5", "G/90;+30", ""].map(RatingReport.ratingSystem), ["R", "D", "Q", "R", "R"]);
+  // Rule 5C's examples, in its notation: every control's minutes count.
+  assert.deepEqual(["G/60 d/5", "G/61 d/5", "G/25 d/5", "G/26 d/3", "30/30 SD/30 d/5", "40/90, SD/30; inc/30", "G/10 d/3"]
+    .map(RatingReport.ratingSystem), ["D", "R", "D", "Q", "D", "R", "Q"]);
   assert.equal(RatingReport.lastFirst("José de la Cruz"), "CRUZ, JOSE DE LA");
 });

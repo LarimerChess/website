@@ -61,11 +61,14 @@
     return (parts.length > 1 ? `${parts.at(-1)}, ${parts.slice(0, -1).join(" ")}` : parts[0] || "").toUpperCase();
   }
 
-  /** US Chess adds base minutes to increment or delay seconds: above 65 regular, 30 to 65 dual, below quick. */
+  /** Rule 5C: the minutes of every control plus the increment or delay's seconds; above 65 is regular,
+   *  30 to 65 dual, below that quick. The 2C layout has no letter for blitz. */
   function ratingSystem(control) {
-    const m = /G\/(\d+)(?:;[+d](\d+))?/.exec(control || "");
-    if (!m) return "R";
-    const total = Number(m[1]) + Number(m[2] || 0);
+    const text = control || "";
+    const minutes = [...text.matchAll(/(?:\b(?:G|SD|Game)\s*\/\s*|\b\d+\s*\/\s*)(\d+)/gi)].map((m) => Number(m[1]));
+    if (!minutes.length) return "R";
+    const seconds = /(?:\+\s*|\binc\s*\/?\s*|\bd\s*\/?\s*)(\d+)/i.exec(text);
+    const total = minutes.reduce((a, b) => a + b, 0) + Number(seconds?.[1] || 0);
     return total > 65 ? "R" : total >= 30 ? "D" : "Q";
   }
 
@@ -100,7 +103,9 @@
     sections.forEach((s, i) => {
       const number = String(i + 1);
       sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(report.timeControl),
-        S_TIMECTL: (report.timeControl || "").replace("G/", "Game/"), S_CTD_ID: report.td, S_TRN_TYPE: "S",
+        S_TIMECTL: (report.timeControl || "").replace("G/", "Game/"), S_CTD_ID: report.td,
+        // R for Round Robin: each quad plays rule 30G's table, the order US Chess reads its rounds in.
+        S_TRN_TYPE: t.format === "quad" ? "R" : "S",
         S_TOT_RNDS: String(count), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
         // S_SCH_LVL is MUIR's participant code: N Non-Scholastic, S Scholastic, J JTP K-12, P JTP Primary.
         // Club events are open to all ages and not tied to a school (docs/tds/rating-an-event.md).
