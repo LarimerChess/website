@@ -102,6 +102,8 @@
       sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(report.timeControl),
         S_TIMECTL: (report.timeControl || "").replace("G/", "Game/"), S_CTD_ID: report.td, S_TRN_TYPE: "S",
         S_TOT_RNDS: String(count), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
+        // S_SCH_LVL is MUIR's participant code: N Non-Scholastic, S Scholastic, J JTP K-12, P JTP Primary.
+        // Club events are open to all ages and not tied to a school (docs/tds/rating-an-event.md).
         S_END_DATE: ymd(report.end), S_SCH_LVL: "N", S_GR_PRIX: "N", S_GP_PTS: "0" });
       const cells = roundCells(s, count);
       for (const p of s.players) {
