@@ -36,7 +36,7 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 |---|---|---|---|
 | Update calendar | hourly | scripts/update_calendar.py, then build_pages.py | LCCC_GOOGLE_CALENDAR_READ_TOKEN |
 | Results | hourly | scripts/rating_check.mjs, build_results.py, and build_pages.py | LCCC_GOOGLE_GMAIL_SEND_TOKEN, LCCC_TD_EMAILS |
-| Archive tournaments | daily, 10:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN |
+| Archive tournaments | daily, 10:30, 11:30, and 12:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN |
 | Sync calendars | daily, 13:15 UTC | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
 | TD expirations | Mondays | scripts/td_expirations.py | USCHESS_API_KEY, LCCC_JUNIOR_TD_IDS, LCCC_GOOGLE_GMAIL_SEND_TOKEN |
 | Date pages | each push that changes a page | build_pages.py, for the sitemap's lastmod dates | |

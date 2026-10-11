@@ -2,8 +2,9 @@ name: Archive tournaments
 
 on:
   schedule:
-    # 4:30 AM in Colorado, when no TD is changing the spreadsheet.
-    - cron: "30 10 * * *"
+    # 4:30 AM in Colorado, when no TD is changing the spreadsheet, and again at 5:30 and 6:30
+    # because GitHub sometimes skips a scheduled run.
+    - cron: "30 10-12 * * *"
   workflow_dispatch:
 
 permissions:
