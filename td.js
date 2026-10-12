@@ -1,6 +1,9 @@
-// The TD desk (td/): register players by US Chess ID or name, and remove entries. Every call
-// carries the password, which the Apps Script (scripts/registration.gs) checks against its
-// TD_PASSWORD property. ENDPOINT and LIVE_DB come from register.js, listenLive from live.js.
+// The TD desk (td/): register players by US Chess ID or name, and remove entries. Once FIREBASE
+// (register.js) is set, TDs sign in with Firebase Authentication, by Google, Microsoft, or a link
+// sent by email, and every call carries the Firebase ID token, which the Apps Script
+// (scripts/registration.gs) checks; until then every call carries the shared password, which it
+// checks against its TD_PASSWORD property. ENDPOINT, LIVE_DB, and FIREBASE come from register.js,
+// listenLive from live.js.
 
 const login = document.querySelector(".td-login");
 const desk = document.querySelector(".td-desk");
@@ -41,6 +44,11 @@ document.addEventListener("pointerenter", (event) => {
 }, true);
 document.addEventListener("focusin", (event) => event.target.closest?.(".hint")?.removeAttribute("data-dismissed"));
 let password = "";
+let signedIn = false;
+// The Firebase Auth instance and the SDK's functions, once FIREBASE has loaded them.
+let firebase = null;
+// The TD the script recognized from the Firebase sign-in: { email, name, usChessId }.
+let td = null;
 let incidentPlayer = null;
 let player = null;
 let choices = [];
@@ -83,30 +91,53 @@ function deviceId() {
   }
 }
 
+async function credentials() {
+  if (!FIREBASE) return { password, device: deviceId() };
+  const user = firebase?.auth.currentUser;
+  return user ? { idToken: await user.getIdToken() } : {};
+}
+
 async function call(action, fields = {}) {
   const response = await fetch(ENDPOINT, {
-    method: "POST", body: new URLSearchParams({ action, password, device: deviceId(), ...fields }),
+    method: "POST", body: new URLSearchParams({ action, ...(await credentials()), ...fields }),
   });
   const result = await response.json();
-  if (result.login) signOut(result.error);
+  const user = firebase?.auth.currentUser;
+  if (result.verify && user) {
+    await firebase.sendEmailVerification(user, { url: deskAddress() }).catch(() => {});
+    signOut("Check your email for a link to confirm your address, then sign in again.");
+  } else if (result.login) {
+    signOut(result.error);
+  }
   return result;
 }
 
 function signOut(message = "") {
   password = "";
   remember("");
+  signedIn = false;
+  td = null;
+  if (firebase?.auth.currentUser) firebase.signOut(firebase.auth).catch(() => {});
   desk.hidden = navEvent.hidden = true;
   login.hidden = false;
   login.querySelector(".td-login-status").textContent = message;
 }
 
-async function signIn(value) {
+async function signIn(value = "") {
   password = value;
   const result = await call("login");
-  if (!result.ok) return false;
+  if (!result.ok) {
+    if (FIREBASE && !result.login && !result.verify) signOut(result.error || "Sign-in didn't work. Try again.");
+    return false;
+  }
+  signedIn = true;
   seen = result.changes || null;
   checked = Date.now();
-  remember(value);
+  if (!FIREBASE) remember(value);
+  td = result.td || null;
+  const who = document.querySelector(".td-who");
+  who.textContent = td ? `Signed in as ${td.name || td.email}` : "";
+  who.hidden = !td;
   login.hidden = true;
   desk.hidden = navEvent.hidden = false;
   const { choices: list } = await call("choices");
@@ -137,6 +168,7 @@ function offerToSave(value) {
 
 login.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (firebase) return emailLink();
   const status = login.querySelector(".td-login-status");
   status.textContent = "Signing in…";
   try {
@@ -498,7 +530,8 @@ function openIncident(entry) {
   incidentDialog.querySelector(".td-incident-player").textContent =
     `${entry.name}, US Chess ID ${entry.id}. ${choice.selectedOptions[0]?.textContent || ""}`;
   incidentDialog.querySelector(".td-incident-status").textContent = "";
-  try { incidentForm.elements.td.value = localStorage.getItem("tdName") || ""; } catch {}
+  incidentForm.elements.td.value = td?.name || "";
+  try { incidentForm.elements.td.value ||= localStorage.getItem("tdName") || ""; } catch {}
   incidentDialog.showModal();
 }
 
@@ -551,7 +584,7 @@ function noteChanges(changes) {
 }
 
 async function checkChanges() {
-  if (!password || document.hidden || checking) return;
+  if (!signedIn || document.hidden || checking) return;
   checking = true;
   checked = Date.now();
   try {
@@ -581,7 +614,7 @@ let streamDown = LIVE_DB ? null : 0;
 if (LIVE_DB) {
   listenLive("/changes", (changes) => {
     streamDown = null;
-    if (password && changes) noteChanges(changes);
+    if (signedIn && changes) noteChanges(changes);
   }, (final) => {
     if (final) streamDown = 0;
     else streamDown ??= Date.now();
@@ -598,10 +631,130 @@ document.addEventListener("visibilitychange", () => {
 // What was held back loads once the TD leaves the field.
 document.addEventListener("focusout", () => setTimeout(applyChanges));
 
-(async () => {
-  const saved = remembered();
-  if (!saved || !(await signIn(saved).catch(() => false))) {
-    login.hidden = false;
-    if (!saved) login.querySelector(".td-login-status").textContent = "";
+// Sign-in with Firebase. The SDK keeps the session in this browser and refreshes the ID token, so a
+// reload signs the desk in again through onAuthStateChanged.
+const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.19.0";
+const EMAIL_KEY = "lccc-td-email";
+const loginStatus = login.querySelector(".td-login-status");
+// The page's address without the sign-in link's query, for links back to it.
+const deskAddress = () => new URL(location.pathname, location.href).href;
+
+function authProblem(error) {
+  const code = String(error?.code || "").replace(/^auth\//, "");
+  if (["popup-closed-by-user", "cancelled-popup-request", "user-cancelled"].includes(code)) return "Sign-in was cancelled.";
+  if (code === "account-exists-with-different-credential") return "That email address signs in with a different button. Use the one you signed in with before.";
+  if (code === "invalid-email") return "That email address isn't valid.";
+  if (["invalid-action-code", "expired-action-code"].includes(code)) return "That sign-in link has expired or was already used. Ask for a new one.";
+  if (code === "network-request-failed") return "Couldn't reach the sign-in service. Try again.";
+  return "Sign-in didn't work. Try again.";
+}
+
+async function signInWith(provider) {
+  // Club laptops are shared, so the provider asks which account rather than using the last TD's.
+  provider.setCustomParameters({ prompt: "select_account" });
+  loginStatus.textContent = "Signing in…";
+  try {
+    await firebase.signInWithPopup(firebase.auth, provider);
+  } catch (error) {
+    if (error?.code !== "auth/popup-blocked") {
+      loginStatus.textContent = authProblem(error);
+      return;
+    }
+    await firebase.signInWithRedirect(firebase.auth, provider).catch((e) => { loginStatus.textContent = authProblem(e); });
   }
-})();
+}
+
+/** Sends a sign-in link, or, when the page was opened from one on a device that didn't ask for it,
+ *  completes it with the address typed in. */
+async function emailLink() {
+  const email = login.elements.email.value.trim();
+  const button = login.querySelector(".td-email-link");
+  button.disabled = true;
+  try {
+    if (firebase.isSignInWithEmailLink(firebase.auth, location.href)) {
+      loginStatus.textContent = "Signing in…";
+      await finishEmailLink(email).catch(spentLink);
+    } else {
+      loginStatus.textContent = "Sending…";
+      await firebase.sendSignInLinkToEmail(firebase.auth, email, { url: deskAddress(), handleCodeInApp: true });
+      try { localStorage.setItem(EMAIL_KEY, email); } catch {}
+      loginStatus.textContent = `Check ${email} for a sign-in link, and open it to sign in.`;
+    }
+  } catch (error) {
+    loginStatus.textContent = authProblem(error);
+  }
+  button.disabled = false;
+}
+
+async function finishEmailLink(email) {
+  await firebase.signInWithEmailLink(firebase.auth, email, location.href);
+  try { localStorage.removeItem(EMAIL_KEY); } catch {}
+  leaveEmailLink();
+}
+
+function leaveEmailLink() {
+  history.replaceState(history.state, "", deskAddress());
+  login.querySelector(".td-email-link").textContent = "Email me a sign-in link";
+}
+
+/** Rethrows error, first dropping a link that can't be used again, so the form can send a new one. */
+function spentLink(error) {
+  if (/^auth\/(invalid|expired)-action-code$/.test(error?.code)) leaveEmailLink();
+  throw error;
+}
+
+async function startFirebase() {
+  try {
+    const [app, sdk] = await Promise.all([import(`${FIREBASE_SDK}/firebase-app.js`), import(`${FIREBASE_SDK}/firebase-auth.js`)]);
+    firebase = { ...sdk, auth: sdk.getAuth(app.initializeApp(FIREBASE)) };
+  } catch {
+    login.hidden = false;
+    login.querySelector(".td-login-password").remove();
+    loginStatus.textContent = "Couldn't load the sign-in service. Check the connection, then reload the page.";
+    return;
+  }
+  login.querySelector(".td-login-password").remove();
+  login.querySelector(".td-login-accounts").hidden = false;
+  login.querySelector(".td-google").addEventListener("click", () => signInWith(new firebase.GoogleAuthProvider()));
+  login.querySelector(".td-microsoft").addEventListener("click", () => signInWith(new firebase.OAuthProvider("microsoft.com")));
+  firebase.getRedirectResult(firebase.auth).catch((error) => { loginStatus.textContent = authProblem(error); });
+  if (firebase.isSignInWithEmailLink(firebase.auth, location.href)) {
+    let email = "";
+    try { email = localStorage.getItem(EMAIL_KEY) || ""; } catch {}
+    if (email) {
+      finishEmailLink(email).catch(spentLink).catch((error) => { loginStatus.textContent = authProblem(error); });
+    } else {
+      loginStatus.textContent = "Enter the email address the sign-in link was sent to, to finish signing in.";
+      login.querySelector(".td-email-link").textContent = "Finish signing in";
+    }
+  }
+  firebase.onAuthStateChanged(firebase.auth, async (user) => {
+    // Firebase ends a session itself when the account is disabled, or when another tab signs out.
+    if (!user) {
+      if (signedIn) signOut("Your sign-in has ended. Sign in again.");
+      login.hidden = false;
+      return;
+    }
+    if (signedIn) return;
+    login.hidden = false;
+    loginStatus.textContent = "Signing in…";
+    try {
+      if (await signIn()) loginStatus.textContent = "";
+    } catch {
+      signOut("Couldn't reach the registration service. Try again.");
+    }
+  });
+}
+
+if (FIREBASE) {
+  startFirebase();
+} else {
+  login.querySelector(".td-login-accounts").remove();
+  (async () => {
+    const saved = remembered();
+    if (!saved || !(await signIn(saved).catch(() => false))) {
+      login.hidden = false;
+      if (!saved) loginStatus.textContent = "";
+    }
+  })();
+}

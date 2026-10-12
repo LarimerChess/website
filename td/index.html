@@ -512,7 +512,7 @@ section.td-table td { white-space: nowrap; }
 .td-nav-event { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
 .td-nav-event label { font-weight: 600; }
 .td-nav-event select {
-  flex: 1 1 220px;
+  flex: 1 1 160px;
   min-width: 0;
   font: inherit;
   font-weight: 600;
@@ -544,6 +544,9 @@ section.td-table td { white-space: nowrap; }
 }
 .td-grid h3 { margin: 16px 0 4px; font: 600 15px/1.3 Inter, system-ui, sans-serif; color: var(--muted); }
 .td-grid h3.run-round-title { color: var(--fg); font-size: 17px; }
+.td-login > div:not([hidden]) { display: contents; }
+.td-login .td-google, .td-login .td-microsoft { justify-self: stretch; }
+.td-who { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -556,6 +559,7 @@ section.td-table td { white-space: nowrap; }
         <select id="td-event" required></select>
         <button class="button button-secondary td-refresh" type="button" aria-describedby="td-refresh-hint">Refresh public pages</button>
         <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About refreshing" aria-describedby="td-refresh-hint">?</button><span id="td-refresh-hint" class="hint-text" role="tooltip">The Entries, Pairings, and Standings pages show a copy that lasts six hours, which every change made on this desk or by a registration replaces at once. After editing the Sheets by hand, refresh to replace the copies now.</span></span>
+        <span class="td-who" hidden></span>
         <button class="button button-secondary td-sign-out" type="button">Sign out</button>
       </div>
       <ul>
@@ -574,11 +578,21 @@ section.td-table td { white-space: nowrap; }
     <noscript><p>The TD desk needs JavaScript.</p></noscript>
 
     <form class="register-form td-login" method="post" hidden>
-      <!-- There is one shared TD password; this name is what a password manager files it under. -->
-      <input name="username" type="text" value="TD desk" autocomplete="username" readonly hidden>
-      <label for="td-password">Password</label>
-      <input id="td-password" name="password" type="password" required autocomplete="current-password">
-      <button class="button" type="submit">Sign in</button>
+      <!-- td.js keeps one of these two and removes the other. -->
+      <div class="td-login-password">
+        <!-- There is one shared TD password; this name is what a password manager files it under. -->
+        <input name="username" type="text" value="TD desk" autocomplete="username" readonly hidden>
+        <label for="td-password">Password</label>
+        <input id="td-password" name="password" type="password" required autocomplete="current-password">
+        <button class="button" type="submit">Sign in</button>
+      </div>
+      <div class="td-login-accounts" hidden>
+        <button class="button td-google" type="button">Sign in with Google</button>
+        <button class="button td-microsoft" type="button">Sign in with Microsoft</button>
+        <label for="td-login-email">Or sign in by email</label>
+        <input id="td-login-email" name="email" type="email" required autocomplete="email">
+        <button class="button td-email-link" type="submit">Email me a sign-in link</button>
+      </div>
       <p class="td-login-status" role="status"></p>
     </form>
 
@@ -853,9 +867,9 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=ca71c777dd" defer></script>
+  <script src="../register.js?v=d419e3280a" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=93bbea8991" defer></script>
+  <script src="../td.js?v=7bf6a1ee14" defer></script>
   <script src="../td-contacts.js?v=676314ddb3" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
