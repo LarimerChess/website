@@ -15,8 +15,10 @@ then run the script here and open the URL it prints in that browser.
 Sync calendars Action; --calendar-read for one that can only read them, for Update
 calendar; --gmail-send for one that can only send mail, for the TD expirations check;
 --sheets for one that can only read and edit spreadsheets, for the Archive tournaments
-Action. In Actions the token's JSON comes from the LCCC_GOOGLE_TOKEN environment
-variable instead of a file.
+Action; --firebase for one that can only read and write the Firebase Realtime Database, for
+scripts/firebase_rules.py, migrate_tournaments.py, and the Archive tournaments Action. In
+Actions the token's JSON comes from the LCCC_GOOGLE_TOKEN environment variable instead of a
+file, or LCCC_GOOGLE_FIREBASE_TOKEN for --firebase, since the archive needs both.
 
 Other scripts import credentials() from here, the docs repo's through its own
 scripts/google_auth.py. See docs/plans/google-api-access.md.
@@ -57,15 +59,20 @@ PROFILES = {
     "sheets": (CONFIG / "google-token-sheets.json", IDENTITY + [
         "https://www.googleapis.com/auth/spreadsheets",
     ]),
+    "firebase": (CONFIG / "google-token-firebase.json", IDENTITY + [
+        "https://www.googleapis.com/auth/firebase.database",
+    ]),
 }
+ENV = {"firebase": "LCCC_GOOGLE_FIREBASE_TOKEN"}
 
 
 def credentials(profile="full"):
     token, scopes = PROFILES[profile]
-    if "LCCC_GOOGLE_TOKEN" in os.environ:
-        if not os.environ["LCCC_GOOGLE_TOKEN"].strip():
-            sys.exit("LCCC_GOOGLE_TOKEN is empty. Is the repository secret set, with exactly that name?")
-        creds = Credentials.from_authorized_user_info(token_from_env(os.environ["LCCC_GOOGLE_TOKEN"]), scopes)
+    env = ENV.get(profile, "LCCC_GOOGLE_TOKEN")
+    if env in os.environ:
+        if not os.environ[env].strip():
+            sys.exit(f"{env} is empty. Is the repository secret set, with exactly that name?")
+        creds = Credentials.from_authorized_user_info(token_from_env(os.environ[env], env), scopes)
         creds.refresh(Request())
         return creds
     creds = Credentials.from_authorized_user_file(token, scopes) if token.exists() else None
@@ -91,16 +98,16 @@ def credentials(profile="full"):
     return creds
 
 
-def token_from_env(raw):
+def token_from_env(raw, env="LCCC_GOOGLE_TOKEN"):
     # A token pasted or piped into a secret can pick up stray text around the JSON.
     # Use what lies between the outer braces, and say how much was dropped without
     # printing any of it.
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end < start:
-        sys.exit(f"LCCC_GOOGLE_TOKEN is {len(raw)} characters with no JSON object in it. Set the secret again.")
+        sys.exit(f"{env} is {len(raw)} characters with no JSON object in it. Set the secret again.")
     if start or end < len(raw) - 1:
         print(f"warning: ignored {start} character(s) before and {len(raw) - 1 - end} after the token in"
-              " LCCC_GOOGLE_TOKEN. Set the secret again to clean it up.", file=sys.stderr)
+              f" {env}. Set the secret again to clean it up.", file=sys.stderr)
     return json.loads(raw[start:end + 1])
 
 
@@ -120,6 +127,8 @@ def main():
                        help="sign in for the token that can only send mail")
     which.add_argument("--sheets", action="store_const", const="sheets", dest="profile",
                        help="sign in for the token that can only read and edit spreadsheets")
+    which.add_argument("--firebase", action="store_const", const="firebase", dest="profile",
+                       help="sign in for the token that can only read and write the Firebase database")
     profile = parser.parse_args().profile or "full"
     creds = credentials(profile)
     user = build("oauth2", "v2", credentials=creds).userinfo().get().execute()
