@@ -10,7 +10,8 @@ const LIVE_DB = "https://larimer-county-chess-club-default-rtdb.firebaseio.com";
 // The Firebase web app's config ({ apiKey, authDomain, projectId, appId }, all public), with which TDs
 // sign in to the TD desk by Google, Microsoft, or an emailed link; while it is null, they sign in
 // with the shared password.
-const FIREBASE = null;
+const FIREBASE = { apiKey: "AIzaSyD6-eIPPNpagaX5oF9ioT2Fu4_6YaxxHz4", authDomain: "larimer-county-chess-club.firebaseapp.com",
+  projectId: "larimer-county-chess-club", appId: "1:1048640298130:web:b846ee163e099645b89a4b" };
 
 const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");

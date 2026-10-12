@@ -27,10 +27,11 @@ const pass = (message) => console.log(`ok   ${message}`);
 
 // Wide enough for the menu to fit on one line, so the sticky menu covers nothing the checks click.
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"], defaultViewport: { width: 1100, height: 800 } });
-// register.js pointed at the stand-ins: the script at registration.test, and no live database, which a
-// check that wants one points at its own stand-in.
+// register.js pointed at the stand-ins: the script at registration.test, and no live database or Firebase
+// sign-in, which a check that wants one points at its own stand-in.
 const offline = (source) => source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";')
-  .replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "";');
+  .replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "";')
+  .replace(/^const FIREBASE = (null|\{[^}]*\});$/m, "const FIREBASE = null;");
 const page = await browser.newPage();
 // The live registration script, which can take longer than a navigation may, and the live database, whose
 // stream never lets a page finish loading; these checks need neither.
