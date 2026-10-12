@@ -1251,7 +1251,8 @@ function moveToMonth(sheet, col, rows, nights, month, amount) {
 function ledgerByToken(book) {
   const held = {};
   for (const x of (book || readPayments()).rows) {
-    const h = held[x.Token] ||= { received: 0, entry: 0, rating: 0, card: 0, credit: 0 };
+    if (!held[x.Token]) held[x.Token] = { received: 0, entry: 0, rating: 0, card: 0, credit: 0 };
+    const h = held[x.Token];
     h.received += cents(x.Received);
     h.entry += cents(x["Entry fee"]);
     h.rating += cents(x["Rating fee"]);

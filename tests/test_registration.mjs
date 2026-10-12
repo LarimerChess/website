@@ -111,6 +111,11 @@ test("fees: the round fee for each round an entry covers, an arena's flat fee, a
   eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["18.95", "card"], ["", ""]]);
 });
 
+test("the script avoids syntax Apps Script can't parse, though node can", () => {
+  const source = readFileSync(`${ROOT}scripts/registration.gs`, "utf8");
+  assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
+});
+
 // October 2026's club nights, which the month's fee counts.
 function clubNights(gs) {
   const nights = ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"];
