@@ -7,7 +7,8 @@
  *   a tournament date (2026-11-07), a club night (2026-10-12), or a club night's whole month (2026-10).
  *
  * GET  ?entries=<key>     the public entry list, as JSON
- * GET  ?entries=all       every upcoming tournament date's and club night's list, for /entries/
+ * GET  ?entries=all       every upcoming tournament date's and club night's list, for /entries/, which also
+ *                         keeps a copy in the database's public/entries
  * GET  ?tournaments=current  the tournaments in progress, with posted pairings and results, for /pairings/
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
  * POST event, date, id, last, email (and the trap field website)
@@ -322,7 +323,20 @@ function allEntries() {
     .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, closed: Boolean(e.closed), start: e.closes,
       entries: entries(key, false, read) }));
   cachePut(allEntriesKey(), JSON.stringify(list));
+  publishEntries(list);
   return list;
+}
+
+/** Copies the lists to the database's public/entries, which the Entries page reads before it hears from
+ *  the script, since a call to the script takes a second or more. A copy built just before a change can
+ *  land just after it; the page then corrects it from the script, whose next build here replaces it. */
+function publishEntries(list) {
+  if (!firebaseUrl()) return;
+  try {
+    firebase("PUT", "public/entries", JSON.stringify(list));
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 /** What the TD desk can register for: every club event key whose date hasn't passed. */
@@ -1471,6 +1485,13 @@ function allEntriesKey() {
 function clearEntriesCache() {
   CacheService.getScriptCache().remove("entriesVersion");
   touch("entries");
+  // Rebuilt now, not at the next visit, so the database's copy has the change.
+  if (!firebaseUrl()) return;
+  try {
+    allEntries();
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 // The TD desk asks for these every few seconds and reloads whatever has a new stamp, so a change made

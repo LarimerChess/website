@@ -125,20 +125,48 @@ function showPicker(events) {
     history.replaceState(history.state, "", `?event=${encodeURIComponent(select.value)}`);
   };
   select.addEventListener("change", show);
+  // Redrawn when the script's lists replace the database's copy, so the reader keeps their place.
+  const focused = document.activeElement?.id === "entries-event";
   all.replaceChildren(picker, shown);
   show();
+  if (focused) select.focus();
+}
+
+// The database's copy (see publishEntries in scripts/registration.gs) is shown first, since it comes
+// in a tenth of the time the script takes; the script's lists then replace it if they differ. The
+// copy keeps the events of the day it was built, so the days since are dropped here.
+const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Denver" }).format(new Date());
+let shownLists = null;
+
+function showLists(events) {
+  const text = JSON.stringify(events);
+  if (text === shownLists) return;
+  shownLists = text;
+  allStatus.textContent = events.length ? "" : "No club events are coming up.";
+  if (events.length) showPicker(events);
+  else all.replaceChildren();
 }
 
 function load() {
-  const calendar = fetch("/events.json").then((response) => response.json()).catch(() => []);
+  const calendar = fetch("/events.json").then((response) => response.json()).catch(() => []).then((calendarEvents) => {
+    nights = new Set(calendarEvents.filter((e) => e.page && !(e.tags || []).includes("tournament"))
+      .map((e) => `${e.page.split("/").filter(Boolean).pop()}/${e.start.slice(0, 10)}`));
+  });
+  let answered = false;
+  if (LIVE_DB) {
+    fetch(`${LIVE_DB}/public/entries.json`).then((response) => response.json())
+      .then((text) => text && JSON.parse(text).filter((e) => e.start.slice(0, 10) >= today))
+      .then((events) => calendar.then(() => { if (events && !answered) showLists(events); }))
+      .catch(() => {});
+  }
   return Promise.all([fetch(`${ENDPOINT}?entries=all`).then((response) => response.json()), calendar])
-    .then(([{ events = [] }, calendarEvents]) => {
-      nights = new Set(calendarEvents.filter((e) => e.page && !(e.tags || []).includes("tournament"))
-        .map((e) => `${e.page.split("/").filter(Boolean).pop()}/${e.start.slice(0, 10)}`));
-      allStatus.textContent = events.length ? "" : "No club events are coming up.";
-      if (events.length) showPicker(events);
+    .then(([{ events = [] }]) => {
+      answered = true;
+      showLists(events);
     })
-    .catch(() => { allStatus.textContent = "The entry lists couldn't be loaded. Try again later."; });
+    .catch(() => {
+      if (!shownLists) allStatus.textContent = "The entry lists couldn't be loaded. Try again later.";
+    });
 }
 
 if (!ENDPOINT) {

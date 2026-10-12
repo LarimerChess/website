@@ -11,7 +11,7 @@ How each part works is in the opening comment of its file. This README says wher
 | Home, / | index.html; calendar.js fills the event cards from events.json |
 | Events, /events/ | events/index.html with calendar.js's filters; each club event's page, events/<name>/, is written by scripts/build_pages.py and takes entries with register.js |
 | Scholastic, /scholastic/ | calendar.js, showing the events tagged for youth |
-| Entries, /entries/ | entries.js |
+| Entries, /entries/ | entries.js, which shows the live database's copy of the lists first once LIVE_DB in register.js is set |
 | Pairings and Standings, /pairings/ and /standings/ | pairings.js, with pairing.js for Swiss and quad tournaments, arena.js for arenas, and live.js to follow the live database once LIVE_DB in register.js is set |
 | Results, /results/ | written by scripts/build_results.py; results.js pages the table |
 | TD desk, /td/ (noindex, unlinked) | td.js, td-run.js, td-arena.js, td-contacts.js, pairing.js, arena.js, ratingreport.js, live.js |
@@ -24,7 +24,7 @@ How each part works is in the opening comment of its file. This README says wher
 
 ## The registration script
 
-scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament; once the script property FIREBASE_URL is set, they live in a Firebase Realtime Database instead, which also streams the public copies to the Pairings page and the TD desk (LIVE_DB in register.js; database.rules.json).
+scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament; once the script property FIREBASE_URL is set, they live in a Firebase Realtime Database instead, which also streams the public copies to the Pairings page and the TD desk, and keeps a copy of the entry lists that the Entries page shows while the script answers (LIVE_DB in register.js; database.rules.json).
 
 What the site shows of them is public: names, US Chess IDs, ratings, pairings, and results, minors' included, as US Chess's crosstables show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
 

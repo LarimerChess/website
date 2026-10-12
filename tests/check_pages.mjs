@@ -1062,6 +1062,43 @@ entriesAxe.violations.length ? fail(`Entries page filled: ${entriesAxe.violation
   : pass("Entries page filled has no axe violations");
 await entriesPage.close();
 
+// With LIVE_DB set, the Entries page shows the database's copy of the lists, less the days gone since it
+// was built, while the script is still answering, and then the script's lists.
+const quickPage = await browser.newPage();
+quickPage.on("pageerror", (error) => fail(`JavaScript error on /entries/ from the copy: ${error.message}`));
+let releaseScript;
+const scriptHeld = new Promise((resolve) => { releaseScript = resolve; });
+const copyEvent = (name, entrant) => ({ key: `${name.toLowerCase()}/2099-11-07`, name, label: "Saturday, November 7, 2099",
+  page: `/events/${name.toLowerCase()}/`, start: "2099-11-07T10:00:00-07:00", entries: [{ name: entrant, id: "12345678", rating: "1500" }] });
+const gone = { ...copyEvent("Gone", "Past Player"), key: "gone/2020-01-04", start: "2020-01-04T10:00:00-07:00" };
+await quickPage.setRequestInterception(true);
+quickPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  const cors = { "Access-Control-Allow-Origin": "*" };
+  if (url.pathname === "/register.js") {
+    const source = offline(await (await fetch(base + "/register.js")).text());
+    request.respond({ contentType: "text/javascript", body: source.replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "https://live.test";') });
+  } else if (url.host === "live.test" && url.pathname === "/public/entries.json") {
+    request.respond({ headers: cors, contentType: "application/json", body: JSON.stringify(JSON.stringify([gone, copyEvent("Classic", "Copy Player")])) });
+  } else if (url.host === "registration.test") {
+    await scriptHeld;
+    request.respond({ headers: cors, contentType: "application/json", body: JSON.stringify({ events: [copyEvent("Classic", "Fresh Player")] }) });
+  } else {
+    request.continue();
+  }
+});
+await quickPage.goto(base + "/entries/");
+const fromCopy = await quickPage.waitForSelector(".entries-all tbody tr", { timeout: 3000 }).then(() => quickPage.evaluate(() => ({
+  choices: [...document.querySelectorAll("#entries-event option")].map((o) => o.value),
+  rows: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => r.cells[0].textContent) })), () => null);
+releaseScript();
+const fromScript = await quickPage.waitForFunction(() => document.querySelector(".entries-all tbody tr")?.cells[0].textContent === "Fresh Player",
+  { timeout: 3000 }).then(() => true, () => false);
+JSON.stringify(fromCopy) === JSON.stringify({ choices: ["classic/2099-11-07"], rows: ["Copy Player"] }) && fromScript
+  ? pass("Entries page shows the database's copy, less past days, before the script answers, then the script's lists")
+  : fail(`Entries page from the copy: ${JSON.stringify({ fromCopy, fromScript })}`);
+await quickPage.close();
+
 // A player saved on this device, registered for one club night, switches to its whole month.
 const switchPage = await browser.newPage();
 switchPage.on("pageerror", (error) => fail(`JavaScript error on /entries/ switching: ${error.message}`));

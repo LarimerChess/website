@@ -286,6 +286,36 @@ test("the public copies last six hours, every change clears them, and Refresh re
   eq(JSON.parse(cache[gs.allEntriesKey()])[0].entries.map((e) => e.name), ["Ben"]);
 });
 
+test("the database keeps a copy of the Entries page's lists, rebuilt on each change and on a new day's first visit", () => {
+  const { gs, sheets, cache, db } = load({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Regular rating", "Token"],
+      ["", "classic", "2099-11-07", "11111111", "Ann", "registered", "1900", "t1"]],
+  }, {}, "firebase");
+  gs.clubEvents = () => ({ "classic/2099-11-07": { event: "classic", name: "Classic", kind: "entry", label: "Saturday", first: "2099-11-07",
+    last: "2099-11-07", closes: "2099-11-07T10:00:00-07:00" } });
+  let n = 0;
+  gs.Utilities.getUuid = () => `version${++n}`;
+  const store = gs.CacheService.getScriptCache();
+  gs.CacheService.getScriptCache = () => ({ ...store, remove: (k) => delete cache[k], removeAll: (keys) => keys.forEach((k) => delete cache[k]) });
+  const copied = () => JSON.parse(db.root.public.entries)[0].entries.map((e) => e.name);
+  gs.allEntries();
+  eq(copied(), ["Ann"]);
+  const writes = () => db.calls.filter((c) => c.path === "public/entries").length;
+  const before = writes();
+  gs.allEntries();
+  assert.equal(writes(), before, "a cached list isn't written again");
+  gs.withdraw("t1");
+  eq(copied(), [], "a withdrawal rewrites the copy before the next visit");
+  // A hand edit shows on the next build, such as a new day's or Refresh's.
+  sheets.Entries.data.push(["", "classic", "2099-11-07", "22222222", "Ben", "registered", "1700", "t2"]);
+  gs.refreshCaches();
+  eq(copied(), ["Ben"]);
+  db.failing = true;
+  gs.withdraw("t2");
+  db.failing = false;
+  eq(rowsOf(sheets.Entries).map((r) => r.Status), ["withdrawn", "withdrawn"], "a database that's down doesn't undo a withdrawal");
+});
+
 test("each change gives its kind a new stamp, which the desks poll to reload just that", () => {
   const { gs } = load({
     Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Paid", "Paid on", "Token"],
@@ -754,7 +784,8 @@ test("change stamps go to the database's /changes too, and the sheet store never
   db.calls.length = 0;
   gs.refreshCaches();
   eq(db.root.changes, gs.changes());
-  eq(db.calls.filter((c) => c.method !== "GET").map((c) => [c.method, c.path]), [["PATCH", ""]], "one write for every scope");
+  eq(db.calls.filter((c) => c.method !== "GET").map((c) => [c.method, c.path]), [["PATCH", ""], ["PUT", "public/entries"]],
+    "one write for every scope, then the Entries page's copy");
 
   const sheet = load(tabs());
   sheet.gs.clubEvents = () => ({});
