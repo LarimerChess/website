@@ -2,7 +2,8 @@
 // registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
 // and the address keeps the choice, so a link can open on one event. ENDPOINT comes from register.js,
 // and so do the players saved on this device: a saved player registered for one club night can
-// switch to its whole month here, which the script treats as registering for the month.
+// switch to its whole month here, which the script treats as registering for the month, and one
+// registered for the whole month can switch to just one night, until they have paid.
 
 const allStatus = document.querySelector(".entries-all-status");
 const all = document.querySelector(".entries-all");
@@ -19,18 +20,24 @@ function cell(row, text, tag = "td") {
 // Club nights, the events.json events that aren't tournaments, as the registration script tells them.
 let nights = new Set();
 
-function switchButton(event, player) {
+/** A button that switches the saved player from this night to its whole month, or with toNight, from the
+ *  whole month to just this night. */
+function switchButton(event, player, toNight) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "td-action entries-switch";
   const month = monthFormat.format(new Date(event.start));
-  button.textContent = "Switch to month";
-  button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${player.name || player.id}` }));
+  const who = player.name || player.id;
+  button.textContent = toNight ? "Just this night" : "Switch to month";
+  button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${who}` }));
   button.addEventListener("click", async () => {
-    if (!confirm(`Switch ${player.name || player.id} to every night in ${month}? What was paid for this night counts toward the month.`)) return;
+    const question = toNight ? `Switch ${who} from every night in ${month} to just ${dateFormat.format(new Date(event.start))}?`
+      : `Switch ${who} to every night in ${month}? What was paid for this night counts toward the month.`;
+    if (!confirm(question)) return;
     button.disabled = true;
     const [name, date] = event.key.split("/");
-    const body = new URLSearchParams({ event: name, date: date.slice(0, 7), id: player.id, last: player.last, email: player.email });
+    const body = new URLSearchParams({ ...(toNight ? { action: "toNight" } : {}), event: name, date: toNight ? date : date.slice(0, 7),
+      id: player.id, last: player.last, email: player.email });
     let said;
     try {
       const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
@@ -63,7 +70,7 @@ function eventSection(event) {
   section.append(heading, when);
   // Saved players on this night's list who can switch; one saved from the Pairings page has no last name or email.
   const switchers = nights.has(event.key) && !event.closed && event.page
-    ? savedPlayers().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id && e.for !== "Whole month")) : [];
+    ? savedPlayers().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id)) : [];
   if (event.entries.length) {
     const table = document.createElement("table");
     table.className = "entries";
@@ -89,9 +96,9 @@ function eventSection(event) {
       link.append(tab);
       cell(row, "").append(link);
       cell(row, e.rating || "Unrated");
-      const player = e.for !== "Whole month" && switchers.find((p) => p.id === e.id);
+      const player = switchers.find((p) => p.id === e.id);
       if (month || player) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
-      if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }));
+      if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }, e.for === "Whole month"));
       if (sectioned) cell(row, e.section || "");
     }
     section.append(table);

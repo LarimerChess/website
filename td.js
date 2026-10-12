@@ -64,6 +64,15 @@ async function loadPeople() {
   document.dispatchEvent(new Event("td-contacts"));
 }
 
+function deskButton(text, spoken) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "td-action";
+  button.textContent = text;
+  button.append(hidden(spoken));
+  return button;
+}
+
 function hidden(text) {
   const span = document.createElement("span");
   span.className = "visually-hidden";
@@ -408,15 +417,43 @@ async function showDeskEntries(quiet = false) {
   const owed = entries.filter((e) => !e.paid).reduce((sum, e) => sum + (Number(e.due) || 0), 0);
   const dollars = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   tdEntriesStatus.textContent = entries.length
-    ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${dollars(total("paid"))}. Still owed: $${dollars(owed)}.`
+    ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${dollars(total("paid") - total("refunded"))}. Still owed: $${dollars(owed)}.`
     : "No entries yet.";
   const current = choices.find((c) => c.key === key);
   tdTable.tBodies[0].replaceChildren(...entries.map((e) => {
     const row = document.createElement("tr");
     const lapsed = e.expires && current && e.expires < current.first;
+    const off = [e.credit && `$${e.credit} credit`, e.discount && `$${e.discount} discount`].filter(Boolean).join(" and ");
     for (const text of [e.name, e.id, e.rating || "Unrated", e.for, e.category || "?",
-      e.due === "" ? "?" : `$${e.due}${e.credit ? ` after $${e.credit} credit` : ""}`]) {
+      e.due === "" ? "?" : `$${e.due}${off ? ` after ${off}` : ""}`]) {
       row.insertCell().textContent = text;
+    }
+    const send = async (button, action, fields) => {
+      button.disabled = true;
+      const result = await call(action, { token: e.token, ...fields });
+      deskStatus.textContent = result.message || result.error;
+      showDeskEntries();
+    };
+    // A discount lowers the fee, for a hardship or a scholarship; the club turns no one away.
+    const discount = deskButton("Discount", ` for ${e.name}`);
+    discount.addEventListener("click", () => {
+      const amount = prompt(`Discount for ${e.name} in dollars, up to the fee${e.amount ? `, $${e.amount}` : ""}. 0 removes it.`,
+        e.discount || e.due);
+      if (amount === null) return;
+      const note = Number(amount) ? prompt("Reason, such as hardship (optional)", "") : "";
+      if (note === null) return;
+      send(discount, "discount", { amount, note });
+    });
+    row.cells[5].append(" ", discount);
+    // On a night's list, a whole month can become just this night, as when a player decides at the end
+    // of the night not to come back; what was paid moves to the night, and the rest is refunded.
+    if (e.date?.length === 7 && current?.kind === "night") {
+      const toNight = deskButton("This night only", ` for ${e.name}`);
+      toNight.addEventListener("click", () => {
+        if (!confirm(`Switch ${e.name} from the whole month to ${current.label} only? What was paid moves to the night.`)) return;
+        send(toNight, "toNight", { event: eventName, date });
+      });
+      row.cells[3].append(" ", toNight);
     }
     // A club night's entry can become its month's, which moves the night and credits what was paid for it.
     const month = e.date?.length === 10 && choices.find((c) => c.key === `${eventName}/${e.date.slice(0, 7)}` && c.kind === "month");
@@ -470,6 +507,18 @@ async function showDeskEntries(quiet = false) {
       showDeskEntries();
     });
     paidCell.append(button);
+    if (e.refunded) paidCell.append(` refunded $${e.refunded}`);
+    // A refund goes back the way they paid; the card fee isn't refunded, since the processor keeps it.
+    if (e.refundable) {
+      const refund = deskButton(e.over ? `Refund $${e.over}` : "Refund", ` to ${e.name}`);
+      refund.addEventListener("click", () => {
+        const by = e.paidBy || "cash";
+        const amount = prompt(`Amount refunded to ${e.name} by ${by}, up to $${e.refundable}`, e.over || e.refundable);
+        if (amount === null) return;
+        send(refund, "refund", { amount, by });
+      });
+      paidCell.append(" ", refund);
+    }
     for (const text of [lapsed ? `Expires ${e.expires}` : e.expires ? "Current" : "None", e.email || ""]) {
       row.insertCell().textContent = text;
     }

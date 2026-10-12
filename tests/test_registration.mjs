@@ -122,6 +122,7 @@ const decodeKey = (h) => h.replace(/%(2E|24|23|5B|5D|2F|25)/gi, (_, x) => String
 const US_CHESS = {
   11111111: { floor: 1700, outcomes: ["Win", "Loss", "Draw"] },
   55555555: { floor: 100, outcomes: ["Loss", "Loss"] },
+  66666666: { last: "Ash", outcomes: [] },
 };
 
 // cache: what the script cache holds, such as this minute's count of public posts. props: the
@@ -162,7 +163,7 @@ function load(tabs, cache = {}, store = "sheet") {
     const [, id, games] = url.match(/members\/(\d+)(\/games)?/);
     const m = US_CHESS[id] || { outcomes: [] };
     const body = games ? { items: m.outcomes.map((outcome) => ({ player: { outcome } })) }
-      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [], stateRep: m.state ?? "CO" };
+      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [], stateRep: m.state ?? "CO", lastName: m.last };
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify(body) };
   };
   const context = {
@@ -459,6 +460,79 @@ test("a night paid by card, then the whole month: the night moves to the month a
   assert.equal(gs.markPaid("token2", "", "").message, " is marked unpaid.");
   eq(ledger().at(-1), ["5", "token2", "correction", "cash", "-9.50", "-8", "-1.50", "0", "4"]);
   eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.paid, e.due]), [["", "9.50"]]);
+});
+
+// A whole month registered by 66666666, Ash, who gave ann@example.com; mail holds what was sent.
+function monthOfAsh() {
+  const t = load({ Entries: [] });
+  clubNights(t.gs);
+  t.mail = [];
+  t.gs.MailApp = { sendEmail: (m) => t.mail.push(m) };
+  assert.equal(t.gs.register({ event: "monday-club-night-at-peak", date: "2026-10", id: "66666666", category: "Adult",
+    email: "ann@example.com" }, true).ok, true);
+  t.ledger = () => rowsOf(t.sheets.Payments).map((r) => [r.Token, r.Type, r.Method, r.Received, r["Entry fee"], r["Rating fee"], r.Reverses]);
+  t.public = (fields) => t.gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2026-10-12",
+    id: "66666666", last: "Ash", email: "ann@example.com", ...fields } });
+  return t;
+}
+
+test("a player switches an unpaid whole month to one night from the Entries page, and gets the night's withdraw link", () => {
+  const { gs, sheets, mail } = monthOfAsh();
+  const post = (fields) => gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2026-10-12",
+    id: "66666666", last: "Ash", email: "ann@example.com", ...fields } });
+  assert.match(post({ last: "Birch" }).error, /last name doesn't match/);
+  assert.match(post({ email: "other@example.com" }).error, /email doesn't match/);
+  assert.match(post({ date: "2026-11-02" }).error, /isn't one of the month's nights/);
+  const switched = post({ email: "ANN@example.com" });
+  assert.equal(switched.ok, true, JSON.stringify(switched));
+  assert.match(switched.message, /Due when you arrive: \$7\.50/);
+  eq(rowsOf(sheets.Entries).map((r) => [r.Date, r.Amount, r["Rating fee"], r.Status, r.Email, r.Token]),
+    [["2026-10", "17", "2", "moved to night", "ann@example.com", "token1"],
+      ["2026-10-12", "7.50", "0.50", "registered", "ann@example.com", "token2"]]);
+  assert.match(mail.at(-1).body, /withdraw=token2/);
+  eq(gs.entries("monday-club-night-at-peak/2026-10-19", false), [], "off the month's other nights");
+  assert.match(gs.withdraw("token1"), /switched to one night/);
+  assert.match(post({}).error, /No whole-month registration/, "once is all");
+  eq(rowsOf(sheets.Payments), [], "nothing paid, so nothing to move");
+});
+
+test("a paid month: the player is sent to the TD, who switches it, moving what was paid, and refunds the rest", () => {
+  const { gs, sheets, ledger, public: post } = monthOfAsh();
+  assert.equal(gs.markPaid("token1", "17", "cash").ok, true);
+  assert.match(post({}).error, /has paid for the month, so the TD switches it/);
+  const switched = gs.toNight({ event: "monday-club-night-at-peak", date: "2026-10-12", token: "token1" }, { name: "Ben Bishop" });
+  assert.match(switched.message, /\$9\.50 of what was paid for the month is to be refunded/);
+  eq(rowsOf(sheets.Entries).map((r) => [r.Status, r["Added by"]]), [["moved to night", "TD"], ["registered", "TD (Ben Bishop)"]]);
+  const night = () => gs.entries("monday-club-night-at-peak/2026-10-12", true).map((e) => [e.due, e.over, e.refundable, e.refunded]);
+  eq(night(), [["0", "9.50", "17", ""]]);
+  assert.match(gs.refund("token2", "17.01", "cash", null).error, /At most \$17 can be refunded/);
+  assert.equal(gs.refund("token2", "9.50", "cash", { name: "Ben Bishop" }).message, "Ash was refunded $9.50 by cash.");
+  eq(night(), [["0", "", "7.50", "9.50"]]);
+  eq(ledger(), [
+    ["token1", "payment", "cash", "17", "15", "2", ""],
+    ["token1", "credit", "", "0", "-15", "-2", ""],
+    ["token2", "credit", "", "0", "15", "2", ""],
+    ["token2", "refund", "cash", "-9.50", "-8", "-1.50", ""],
+  ], "the rating fees for the nights not played go back first");
+  assert.equal(rowsOf(sheets.Payments).at(-1).Note, "By Ben Bishop");
+  eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").received.cash, "7.50");
+});
+
+test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {
+  const { gs, sheets, ledger } = monthOfAsh();
+  const due = () => gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.due, e.discount, e.discountNote, e.over]);
+  assert.equal(gs.discount("token1", "5", "Hardship", { name: "Ben Bishop" }).message, "Ash has a $5 discount.");
+  eq(due(), [["12", "5", "Hardship, by Ben Bishop", ""]]);
+  assert.match(gs.discount("token1", "17.50", "", null).error, /can't be more than the fee, \$17/);
+  assert.equal(gs.markPaid("token1", "12", "card").ok, true);
+  assert.equal(gs.discount("token1", "17", "Scholarship", null).ok, true);
+  eq(due(), [["0", "17", "Scholarship", "11.21"]], "what was paid, less the card fee, is now over the fee");
+  assert.equal(gs.refund("token1", "11.21", "card", null).ok, true);
+  assert.equal(gs.markPaid("token1", "", "").ok, true);
+  eq(ledger().slice(-2).map((x) => [x[1], x[3], x[6]]), [["correction", "-12", "1"], ["correction", "11.21", "2"]],
+    "marking unpaid cancels the payment and the refund");
+  assert.equal(gs.discount("token1", "", "", null).message, "Ash's discount is removed.");
+  eq(rowsOf(sheets.Entries).map((r) => [r.Discount, r["Discount note"]]), [["", ""]]);
 });
 
 test("a payment covers the rating fee first, and a card payment's card fee is what the card added", () => {

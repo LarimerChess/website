@@ -1144,8 +1144,10 @@ switchPage.on("request", async (request) => {
       { page: "/events/classic/", start: "2026-11-07T10:00:00-07:00", tags: ["tournament"] }]) });
   } else if (url.host === "registration.test") {
     if (request.method() === "POST") switchCalls.push(Object.fromEntries(new URLSearchParams(request.postData())));
-    const moved = switchCalls.length > 0;
-    const body = request.method() === "POST" ? { ok: true, message: "Night Player is registered for all Mondays in October 2026. Due when you arrive: $9.50." }
+    const moved = switchCalls.length === 1;
+    const body = request.method() === "POST" ? { ok: true, message: switchCalls.length === 1
+      ? "Night Player is registered for all Mondays in October 2026. Due when you arrive: $9.50."
+      : "Night Player is registered for Monday, October 12, 2026 only. Due when you arrive: $7.50." }
       : { events: [
         { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", page: "/events/club-night/", start: "2026-10-12T18:30:00-06:00",
           entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Monday, October 12" },
@@ -1165,12 +1167,20 @@ switchAxe.violations.length ? fail(`Entries page with a switch: ${switchAxe.viol
   : pass("Entries page with a switch has no axe violations");
 await switchPage.click(".entries-switch");
 await switchPage.waitForFunction(() => document.querySelector(".entries-all-status").textContent.includes("all Mondays"));
-const afterSwitch = await switchPage.evaluate(() => ({ buttons: document.querySelectorAll(".entries-switch").length,
-  for: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => r.cells[3].textContent) }));
+const afterSwitch = await switchPage.evaluate(() => ({ buttons: [...document.querySelectorAll(".entries-switch")].map((b) => b.firstChild.textContent),
+  for: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => r.cells[3].firstChild.textContent) }));
 JSON.stringify(switchers) === '["Night Player"]' && JSON.stringify(switchCalls) === JSON.stringify([{ event: "club-night", date: "2026-10", id: "22345678",
-  last: "Player", email: "night@example.com" }]) && afterSwitch.buttons === 0 && afterSwitch.for.includes("Whole month")
+  last: "Player", email: "night@example.com" }]) && JSON.stringify(afterSwitch.buttons) === '["Just this night"]' && afterSwitch.for.includes("Whole month")
   ? pass("Entries page lets a saved player switch a club night to its whole month")
   : fail(`Entries page switch: ${JSON.stringify({ switchers, switchCalls, afterSwitch })}`);
+await switchPage.click(".entries-switch");
+await switchPage.waitForFunction(() => document.querySelector(".entries-all-status").textContent.includes("only"));
+const backToNight = await switchPage.evaluate(() => ({ buttons: [...document.querySelectorAll(".entries-switch")].map((b) => b.firstChild.textContent),
+  for: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => r.cells[3].firstChild.textContent) }));
+JSON.stringify(switchCalls[1]) === JSON.stringify({ action: "toNight", event: "club-night", date: "2026-10-12", id: "22345678", last: "Player",
+  email: "night@example.com" }) && JSON.stringify(backToNight) === JSON.stringify({ buttons: ["Switch to month"], for: ["This night", "This night"] })
+  ? pass("Entries page lets a saved player switch a whole month back to just this night")
+  : fail(`Entries page switch to a night: ${JSON.stringify({ call: switchCalls[1], backToNight })}`);
 await switchPage.select("#entries-event", "classic/2026-11-07");
 (await switchPage.$$(".entries-switch")).length === 0 ? pass("Entries page offers no switch for a tournament")
   : fail("Entries page offers a switch for a tournament");
@@ -1426,6 +1436,58 @@ const twoSections = () => {
 };
 
 // The Pairings page: each section in its own table, with a round menu that starts at the latest round.
+// On a night's list, the desk switches a paid whole month to just the night, refunds what's left over, and
+// gives a discount, each with the entry's token.
+const moneyCalls = [];
+let moneyEntry = { name: "Month Player", id: "22345678", rating: "1400", for: "Whole month", category: "Adult", amount: "17", paid: "17",
+  paidBy: "cash", due: "0", card: "", email: "", expires: "2027-01-31", token: "month1", date: "2026-10", refundable: "17", over: "",
+  refunded: "", discount: "", credit: "" };
+const moneyDesk = await mocked("/td/ switching, refunding, and discounting", (p) => {
+  if (!["login", "choices", "people", "contacts", "entries", "ledger", "incidents", "tournament", "changes"].includes(p.action)) moneyCalls.push(p);
+  if (p.action === "toNight") {
+    moneyEntry = { ...moneyEntry, for: "Monday, October 12", amount: "7.50", paid: "", paidBy: "", token: "night1", date: "2026-10-12",
+      credit: "17", over: "9.50" };
+  }
+  return { login: { ok: true, changes: null },
+    choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" },
+      { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", kind: "night", first: "2026-10-12" }] },
+    people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: [moneyEntry] },
+    ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
+    incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true, message: `${p.action} done` };
+});
+moneyDesk.on("dialog", (d) => d.accept(d.type() !== "prompt" ? undefined : /Reason/.test(d.message()) ? "Hardship" : /Discount/.test(d.message()) ? "5" : d.defaultValue()));
+await moneyDesk.goto(base + "/td/", { waitUntil: "domcontentloaded" });
+await moneyDesk.type("#td-password", "secret");
+await moneyDesk.click(".td-login button");
+await moneyDesk.waitForSelector(".td-entries tbody tr");
+const moneyButtons = () => moneyDesk.$$eval(".td-entries tbody tr button", (b) => b.map((x) => x.firstChild.textContent));
+const moneyMonthButtons = await moneyButtons();
+await moneyDesk.select("#td-event", "club-night/2026-10-12");
+await moneyDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.textContent.startsWith("This night only")));
+const moneyClick = async (text) => {
+  await moneyDesk.$$eval(".td-entries tbody tr button", (b, t) => b.find((x) => x.firstChild.textContent === t).click(), text);
+  await moneyDesk.waitForFunction((n) => document.querySelector(".td-register-status").textContent.endsWith("done"), {}, text);
+  await moneyDesk.$eval(".td-register-status", (s) => { s.textContent = ""; });
+};
+await moneyClick("This night only");
+await moneyDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.textContent.startsWith("Refund $9.50")));
+const moneyNightDue = await moneyDesk.$eval(".td-entries tbody tr", (r) => r.cells[5].firstChild.textContent);
+await moneyClick("Refund $9.50");
+await moneyClick("Discount");
+const moneyAsked = moneyCalls.map(({ action, token, event, date, amount, by, note }) => ({ action, token, event, date, amount, by, note }));
+JSON.stringify(moneyMonthButtons) === JSON.stringify(["Discount", "$17 cash ✓", "Refund", "Incident", "Remove"])
+  && moneyNightDue === "$0 after $17 credit" && JSON.stringify(moneyAsked) === JSON.stringify([
+    { action: "toNight", token: "month1", event: "club-night", date: "2026-10-12" },
+    { action: "refund", token: "night1", amount: "9.50", by: "cash" },
+    { action: "discount", token: "night1", amount: "5", note: "Hardship" }])
+  ? pass("TD desk switches a whole month to the night shown, refunds what's over, and gives a discount with its reason")
+  : fail(`TD desk money: ${JSON.stringify({ moneyMonthButtons, moneyNightDue, asked })}`);
+await moneyDesk.evaluate(axeSource);
+const moneyAxe = await moneyDesk.evaluate(() => axe.run({ include: [".td-entries"] }));
+moneyAxe.violations.length ? fail(`TD desk money buttons: ${moneyAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("TD desk money buttons have no axe violations");
+await moneyDesk.close();
+
 const pairingsPage = await mocked("/pairings/", () => ({ tournaments: twoSections() }));
 await pairingsPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });
 const sectionTables = () => pairingsPage.evaluate(() => [...document.querySelectorAll(".pairings-all h3")].map((h) => {
