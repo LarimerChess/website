@@ -20,7 +20,7 @@
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
- * A TD signs in to the desk with Firebase Authentication (Google, Microsoft, or a link by email), and the
+ * A TD signs in to the desk with Firebase Authentication (Google, or a link by email), and the
  * desk sends the account's ID token. Only verified addresses in the registration Sheet's TDs tab (Email,
  * Name, US Chess ID, Role) whose Role is td, or blank, may use the desk. A request without a token is
  * checked against the TD password instead, until every desk signs in this way.

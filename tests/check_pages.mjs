@@ -506,7 +506,7 @@ const usernameField = await desk.$eval('.td-login input[autocomplete="username"]
 JSON.stringify(offered) === JSON.stringify([["TD desk", "secret"]]) && usernameField === "TD desk"
   ? pass("TD desk offers the password to the browser's password manager after signing in")
   : fail(`TD desk password saving: ${JSON.stringify({ offered, usernameField })}`);
-const accountButtons = await desk.$$(".td-google, .td-microsoft, #td-login-email");
+const accountButtons = await desk.$$(".td-google, #td-login-email");
 !deskHosts.has("www.gstatic.com") && !accountButtons.length
   ? pass("TD desk without FIREBASE signs in by password and loads nothing from Google")
   : fail(`TD desk without FIREBASE: ${JSON.stringify({ hosts: [...deskHosts], accountButtons: accountButtons.length })}`);
@@ -898,8 +898,8 @@ const accountForm = await google.tab.evaluate(() => ({
   email: document.querySelector(".td-login input[type=email]")?.checkVisibility(),
 }));
 !accountForm.password && accountForm.email
-  && JSON.stringify(accountForm.buttons) === JSON.stringify(["Sign in with Google", "Sign in with Microsoft", "Email me a sign-in link"])
-  ? pass("TD desk with Firebase offers Google, Microsoft, and an emailed link, and no password")
+  && JSON.stringify(accountForm.buttons) === JSON.stringify(["Sign in with Google", "Email me a sign-in link"])
+  ? pass("TD desk with Firebase offers Google and an emailed link, and no password")
   : fail(`TD desk Firebase sign-in form: ${JSON.stringify(accountForm)}`);
 await axeBoth(google.tab, "TD desk Firebase sign-in form");
 await google.tab.setViewport({ width: 390, height: 844 });
@@ -942,21 +942,20 @@ await google.tab.evaluate(() => import(performance.getEntriesByType("resource").
   : fail(`TD desk kept the desk open after Firebase ended the session: "${await google.status()}"`);
 await google.tab.close();
 
-// A popup the browser blocks falls back to a redirect, here to Microsoft.
+// A popup the browser blocks falls back to a redirect.
 const blocked = await firebaseDesk("/td/ with a blocked popup", { popupBlocked: true,
-  accounts: { "microsoft.com": { uid: "ada", email: "ada@example.com", token: "token-ada" } } });
+  accounts: { "google.com": { uid: "ada", email: "ada@example.com", token: "token-ada" } } });
 await blocked.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
-await blocked.tab.click(".td-microsoft");
+await blocked.tab.click(".td-google");
 const redirected = await blocked.signedIn();
 const redirectCalls = (await blocked.fakeCalls()).map((c) => c.slice(0, 2).join(" "));
-redirected && redirectCalls.includes("signInWithRedirect microsoft.com")
-  ? pass("TD desk signs in with Microsoft by redirect when the popup is blocked")
+redirected && redirectCalls.includes("signInWithRedirect google.com")
+  ? pass("TD desk signs in with Google by redirect when the popup is blocked")
   : fail(`TD desk redirect: ${JSON.stringify({ redirected, redirectCalls })}`);
 await blocked.tab.close();
 
 const unlisted = await firebaseDesk("/td/ with an unlisted TD", { accounts: {
-  "google.com": { uid: "x", email: "outsider@example.com", token: "token-unlisted" },
-  "microsoft.com": { uid: "u", email: "unverified@example.com", token: "token-unverified" } } });
+  "google.com": { uid: "x", email: "outsider@example.com", token: "token-unlisted" } } });
 await unlisted.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
 await unlisted.tab.click(".td-google");
 const refusedOut = await unlisted.signedOut("isn't one of the club's TDs");
@@ -964,13 +963,17 @@ const refusedFake = (await unlisted.fakeCalls()).filter((c) => c[0] === "signOut
 refusedOut && refusedFake === 1 && !unlisted.calls.some((c) => c.action === "choices")
   ? pass("TD desk signs an unlisted account out of Firebase with the script's message")
   : fail(`TD desk unlisted: ${JSON.stringify({ refusedOut, refusedFake, status: await unlisted.status() })}`);
-await unlisted.tab.click(".td-microsoft");
-const verifyOut = await unlisted.signedOut("Check your email for a link to confirm your address, then sign in again.");
-const verifySent = (await unlisted.fakeCalls()).find((c) => c[0] === "sendEmailVerification");
+await unlisted.tab.close();
+const unconfirmed = await firebaseDesk("/td/ with an unconfirmed address", { accounts: {
+  "google.com": { uid: "u", email: "unverified@example.com", token: "token-unverified" } } });
+await unconfirmed.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
+await unconfirmed.tab.click(".td-google");
+const verifyOut = await unconfirmed.signedOut("Check your email for a link to confirm your address, then sign in again.");
+const verifySent = (await unconfirmed.fakeCalls()).find((c) => c[0] === "sendEmailVerification");
 verifyOut && verifySent?.[1] === "unverified@example.com" && verifySent[2]?.url === base + "/td/"
   ? pass("TD desk asks the provider to confirm an unconfirmed email and says so")
-  : fail(`TD desk verify: ${JSON.stringify({ verifyOut, verifySent, status: await unlisted.status() })}`);
-await unlisted.tab.close();
+  : fail(`TD desk verify: ${JSON.stringify({ verifyOut, verifySent, status: await unconfirmed.status() })}`);
+await unconfirmed.tab.close();
 
 // The emailed link: asked for here, and opened on this device, and on another, which asks for the address.
 const emailed = await firebaseDesk("/td/ by an emailed link", { accounts: { email: { uid: "lin", token: "token-link" } } });

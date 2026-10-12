@@ -1,6 +1,6 @@
 // The TD desk (td/): register players by US Chess ID or name, and remove entries. Once FIREBASE
-// (register.js) is set, TDs sign in with Firebase Authentication, by Google, Microsoft, or a link
-// sent by email, and every call carries the Firebase ID token, which the Apps Script
+// (register.js) is set, TDs sign in with Firebase Authentication, with Google or a link sent by
+// email, and every call carries the Firebase ID token, which the Apps Script
 // (scripts/registration.gs) checks; until then every call carries the shared password, which it
 // checks against its TD_PASSWORD property. ENDPOINT, LIVE_DB, and FIREBASE come from register.js,
 // listenLive from live.js.
@@ -716,7 +716,6 @@ async function startFirebase() {
   login.querySelector(".td-login-password").remove();
   login.querySelector(".td-login-accounts").hidden = false;
   login.querySelector(".td-google").addEventListener("click", () => signInWith(new firebase.GoogleAuthProvider()));
-  login.querySelector(".td-microsoft").addEventListener("click", () => signInWith(new firebase.OAuthProvider("microsoft.com")));
   firebase.getRedirectResult(firebase.auth).catch((error) => { loginStatus.textContent = authProblem(error); });
   if (firebase.isSignInWithEmailLink(firebase.auth, location.href)) {
     let email = "";
