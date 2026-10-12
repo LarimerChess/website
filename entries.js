@@ -1,6 +1,8 @@
 // The Entries page (entries/): the entry list of the upcoming club event the reader picks, from the
 // registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
-// and the address keeps the choice, so a link can open on one event. ENDPOINT comes from register.js.
+// and the address keeps the choice, so a link can open on one event. ENDPOINT comes from register.js,
+// and so do the players saved on this device: a saved player registered for one club night can
+// switch to its whole month here, which the script treats as registering for the month.
 
 const allStatus = document.querySelector(".entries-all-status");
 const all = document.querySelector(".entries-all");
@@ -12,6 +14,35 @@ function cell(row, text, tag = "td") {
   c.textContent = text;
   row.append(c);
   return c;
+}
+
+// Club nights, the events.json events that aren't tournaments, as the registration script tells them.
+let nights = new Set();
+
+function switchButton(event, player) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "td-action entries-switch";
+  const month = monthFormat.format(new Date(event.start));
+  button.textContent = "Switch to month";
+  button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${player.name || player.id}` }));
+  button.addEventListener("click", async () => {
+    if (!confirm(`Switch ${player.name || player.id} to every night in ${month}? What was paid for this night counts toward the month.`)) return;
+    button.disabled = true;
+    const [name, date] = event.key.split("/");
+    const body = new URLSearchParams({ event: name, date: date.slice(0, 7), id: player.id, last: player.last, email: player.email });
+    let said;
+    try {
+      const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
+      said = result.message || result.error;
+      if (result.ok) await load();
+    } catch {
+      said = "The switch didn't go through. Try again, or email president@larimerchess.org.";
+    }
+    button.disabled = false;
+    allStatus.textContent = said;
+  });
+  return button;
 }
 
 function eventSection(event) {
@@ -30,11 +61,14 @@ function eventSection(event) {
   hint.textContent = ` for ${event.name}, ${dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
+  // Saved players on this night's list who can switch; one saved from the Pairings page has no last name or email.
+  const switchers = nights.has(event.key) && !event.closed && event.page
+    ? savedPlayers().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id && e.for !== "Whole month")) : [];
   if (event.entries.length) {
     const table = document.createElement("table");
     table.className = "entries";
     const head = table.createTHead().insertRow();
-    const month = event.entries.some((e) => e.for === "Whole month");
+    const month = event.entries.some((e) => e.for === "Whole month") || switchers.length;
     // Players get sections when the tournament starts.
     const sectioned = event.entries.some((e) => e.section);
     for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(sectioned ? ["Section"] : [])]) {
@@ -55,7 +89,9 @@ function eventSection(event) {
       link.append(tab);
       cell(row, "").append(link);
       cell(row, e.rating || "Unrated");
-      if (month) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
+      const player = e.for !== "Whole month" && switchers.find((p) => p.id === e.id);
+      if (month || player) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
+      if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }));
       if (sectioned) cell(row, e.section || "");
     }
     section.append(table);
@@ -93,14 +129,20 @@ function showPicker(events) {
   show();
 }
 
-if (!ENDPOINT) {
-  allStatus.textContent = "Entries will be listed here once registration opens.";
-} else {
-  fetch(`${ENDPOINT}?entries=all`)
-    .then((response) => response.json())
-    .then(({ events = [] }) => {
+function load() {
+  const calendar = fetch("/events.json").then((response) => response.json()).catch(() => []);
+  return Promise.all([fetch(`${ENDPOINT}?entries=all`).then((response) => response.json()), calendar])
+    .then(([{ events = [] }, calendarEvents]) => {
+      nights = new Set(calendarEvents.filter((e) => e.page && !(e.tags || []).includes("tournament"))
+        .map((e) => `${e.page.split("/").filter(Boolean).pop()}/${e.start.slice(0, 10)}`));
       allStatus.textContent = events.length ? "" : "No club events are coming up.";
       if (events.length) showPicker(events);
     })
     .catch(() => { allStatus.textContent = "The entry lists couldn't be loaded. Try again later."; });
+}
+
+if (!ENDPOINT) {
+  allStatus.textContent = "Entries will be listed here once registration opens.";
+} else {
+  load();
 }

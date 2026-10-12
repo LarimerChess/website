@@ -627,6 +627,58 @@ entriesAxe.violations.length ? fail(`Entries page filled: ${entriesAxe.violation
   : pass("Entries page filled has no axe violations");
 await entriesPage.close();
 
+// A player saved on this device, registered for one club night, switches to its whole month.
+const switchPage = await browser.newPage();
+switchPage.on("pageerror", (error) => fail(`JavaScript error on /entries/ switching: ${error.message}`));
+await switchPage.evaluateOnNewDocument(() => localStorage.setItem("lccc-register-players",
+  JSON.stringify([{ id: "22345678", last: "Player", email: "night@example.com", name: "Night Player" }])));
+switchPage.on("dialog", (d) => d.accept());
+const switchCalls = [];
+await switchPage.setRequestInterception(true);
+switchPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+  } else if (url.pathname === "/events.json") {
+    request.respond({ contentType: "application/json", body: JSON.stringify([
+      { page: "/events/club-night/", start: "2026-10-12T18:30:00-06:00", tags: ["casual"] },
+      { page: "/events/classic/", start: "2026-11-07T10:00:00-07:00", tags: ["tournament"] }]) });
+  } else if (url.host === "registration.test") {
+    if (request.method() === "POST") switchCalls.push(Object.fromEntries(new URLSearchParams(request.postData())));
+    const moved = switchCalls.length > 0;
+    const body = request.method() === "POST" ? { ok: true, message: "Night Player is registered for all Mondays in October 2026. Due when you arrive: $9.50." }
+      : { events: [
+        { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", page: "/events/club-night/", start: "2026-10-12T18:30:00-06:00",
+          entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Monday, October 12" },
+            { name: "Night Player", id: "22345678", rating: "1400", for: moved ? "Whole month" : "Monday, October 12" }] },
+        { key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", page: "/events/classic/", start: "2026-11-07T10:00:00-07:00",
+          entries: [{ name: "Night Player", id: "22345678", rating: "1400", for: "Saturday, November 7" }] }] };
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+  } else {
+    request.continue();
+  }
+});
+await switchPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
+const switchers = await switchPage.$$eval(".entries-switch", (b) => b.map((x) => x.closest("tr").cells[0].textContent));
+await switchPage.evaluate(axeSource);
+const switchAxe = await switchPage.evaluate(() => axe.run());
+switchAxe.violations.length ? fail(`Entries page with a switch: ${switchAxe.violations.map((v) => v.id).join(", ")}`)
+  : pass("Entries page with a switch has no axe violations");
+await switchPage.click(".entries-switch");
+await switchPage.waitForFunction(() => document.querySelector(".entries-all-status").textContent.includes("all Mondays"));
+const afterSwitch = await switchPage.evaluate(() => ({ buttons: document.querySelectorAll(".entries-switch").length,
+  for: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => r.cells[3].textContent) }));
+JSON.stringify(switchers) === '["Night Player"]' && JSON.stringify(switchCalls) === JSON.stringify([{ event: "club-night", date: "2026-10", id: "22345678",
+  last: "Player", email: "night@example.com" }]) && afterSwitch.buttons === 0 && afterSwitch.for.includes("Whole month")
+  ? pass("Entries page lets a saved player switch a club night to its whole month")
+  : fail(`Entries page switch: ${JSON.stringify({ switchers, switchCalls, afterSwitch })}`);
+await switchPage.select("#entries-event", "classic/2026-11-07");
+(await switchPage.$$(".entries-switch")).length === 0 ? pass("Entries page offers no switch for a tournament")
+  : fail("Entries page offers a switch for a tournament");
+await switchPage.close();
+
 // Running a tournament on the TD desk, against a stand-in for the Apps Script that keeps the
 // tournament in memory: start it, check in, pair round one, post it, and enter a result.
 const runPage = await browser.newPage();
