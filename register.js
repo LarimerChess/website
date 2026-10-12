@@ -1,9 +1,12 @@
 // The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
-// The TD desk (td/) loads this too, for ENDPOINT, and the Pairings page, for ENDPOINT and the
-// saved players.
+// The TD desk (td/) loads this too, for ENDPOINT and LIVE_DB, and the Pairings page, for those
+// and the saved players.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
+// The club's Realtime Database (https://….firebaseio.com), which live.js follows; while it is
+// empty, the Pairings and Standings pages load once and the TD desk polls the script.
+const LIVE_DB = "";
 
 const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");

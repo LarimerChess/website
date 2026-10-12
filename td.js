@@ -1,6 +1,6 @@
 // The TD desk (td/): register players by US Chess ID or name, and remove entries. Every call
 // carries the password, which the Apps Script (scripts/registration.gs) checks against its
-// TD_PASSWORD property. ENDPOINT comes from register.js.
+// TD_PASSWORD property. ENDPOINT and LIVE_DB come from register.js, listenLive from live.js.
 
 const login = document.querySelector(".td-login");
 const desk = document.querySelector(".td-desk");
@@ -105,6 +105,7 @@ async function signIn(value) {
   const result = await call("login");
   if (!result.ok) return false;
   seen = result.changes || null;
+  checked = Date.now();
   remember(value);
   login.hidden = true;
   desk.hidden = navEvent.hidden = false;
@@ -522,30 +523,40 @@ incidentForm.addEventListener("submit", async (event) => {
   showDeskEntries();
 });
 
-// Changes from another desk or the website show without a reload: every few seconds the desk asks
-// the script for its change stamps (changes) and reloads what has a new one, holding back what the
-// TD is in the middle of: a menu or field in the entries, or unsaved work in the tournament (runBusy).
+// Changes from another desk or the website show without a reload: the desk follows the change
+// stamps in the live database (LIVE_DB), or else every few seconds asks the script for them
+// (changes), and reloads what has a new one, holding back what the TD is in the middle of: a menu
+// or field in the entries, or unsaved work in the tournament (runBusy). While the stream is
+// down for longer than a check's wait, or has stopped, the desk asks the script again, and asks
+// once a minute even while it's up, in case a stamp is missed.
 const CHECK_EVERY = 10000;
+const CHECK_LIVE_EVERY = 60000;
 let seen = null;
+let checked = 0;
 const pending = new Set();
 
 let checking = false;
 
+function noteChanges(changes) {
+  if (changes && seen) {
+    for (const [kind, stamp] of Object.entries(changes)) {
+      if (String(stamp) === String(seen[kind])) continue;
+      if (kind === "entries") pending.add("entries").add("people").add("run");
+      if (kind === "tournaments") pending.add("run");
+      if (kind === "contacts") pending.add("people");
+    }
+  }
+  if (changes) seen = changes;
+  applyChanges();
+}
+
 async function checkChanges() {
   if (!password || document.hidden || checking) return;
   checking = true;
+  checked = Date.now();
   try {
     const { changes } = await call("changes");
-    if (changes && seen) {
-      for (const [kind, stamp] of Object.entries(changes)) {
-        if (stamp === seen[kind]) continue;
-        if (kind === "entries") pending.add("entries").add("people").add("run");
-        if (kind === "tournaments") pending.add("run");
-        if (kind === "contacts") pending.add("people");
-      }
-    }
-    if (changes) seen = changes;
-    applyChanges();
+    noteChanges(changes);
   } catch {
   } finally {
     checking = false;
@@ -565,8 +576,25 @@ function applyChanges() {
   }
 }
 
-setInterval(checkChanges, CHECK_EVERY);
-document.addEventListener("visibilitychange", checkChanges);
+// When the stream dropped (null while it's up), or 0 once it has stopped for good.
+let streamDown = LIVE_DB ? null : 0;
+if (LIVE_DB) {
+  listenLive("/changes", (changes) => {
+    streamDown = null;
+    if (password && changes) noteChanges(changes);
+  }, (final) => {
+    if (final) streamDown = 0;
+    else streamDown ??= Date.now();
+  });
+}
+const streaming = () => streamDown === null || Date.now() - streamDown < CHECK_EVERY;
+
+setInterval(() => {
+  if (!streaming() || Date.now() - checked >= CHECK_LIVE_EVERY) checkChanges();
+}, CHECK_EVERY);
+document.addEventListener("visibilitychange", () => {
+  if (!streaming()) checkChanges();
+});
 // What was held back loads once the TD leaves the field.
 document.addEventListener("focusout", () => setTimeout(applyChanges));
 
