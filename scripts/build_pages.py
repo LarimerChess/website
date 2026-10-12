@@ -276,7 +276,7 @@ def register_html(events, prices):
         <input id="register-last" name="last" type="text" required autocomplete="family-name">
         <label for="register-email">Email</label>
         <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
-        <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list.</p>
+        <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list; see <a href="/privacy/">Privacy</a>.</p>
         <div class="register-remember" hidden>
           <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
           <label for="register-remember">Remember this player on this device</label>
@@ -399,6 +399,7 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p><a href="/minutes/"{' aria-current="page"' if current == "/minutes/" else ''}>Board minutes</a></p>
+    <p><a href="/privacy/"{' aria-current="page"' if current == "/privacy/" else ''}>Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>{scripts}
 </body>

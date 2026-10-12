@@ -19,7 +19,7 @@ const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
 // The results pages outlive the events, so they come from the sitemap, not events.json.
 const resultsPages = [...readFileSync(new URL("../sitemap.xml", import.meta.url), "utf8")
   .matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
-const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/td/", "/entries/", "/pairings/", "/standings/",
+const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/",
   ...seriesPages, ...resultsPages];
 const failures = [];
 const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
