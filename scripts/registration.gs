@@ -1468,7 +1468,14 @@ function touch(...scopes) {
 function stampChanges(scopes, updates) {
   const stamp = Math.random().toString(36).slice(2, 10);
   CacheService.getScriptCache().putAll(Object.fromEntries(scopes.map((s) => [`changed:${s}`, stamp])), PUBLIC_CACHE);
-  if (firebaseUrl()) firebase("PATCH", "", { ...updates, ...Object.fromEntries(scopes.map((s) => [`changes/${s}`, stamp])) });
+  if (!firebaseUrl()) return;
+  // What changed is saved by now; a database that's down mustn't turn a registration or result into an error.
+  // The desks then catch up by polling, and Refresh rewrites the public copies.
+  try {
+    firebase("PATCH", "", { ...updates, ...Object.fromEntries(scopes.map((s) => [`changes/${s}`, stamp])) });
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function changes() {

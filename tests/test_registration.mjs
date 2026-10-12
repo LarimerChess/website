@@ -761,6 +761,18 @@ test("Refresh rebuilds the database's public copies from its tables and removes 
   assert.equal(JSON.parse(db.root.public.tournaments["classic:2026-11-07"]).status, "finished");
 });
 
+test("a database that's down never turns a registration, payment, or withdrawal into an error", () => {
+  const { gs, db, sheets } = load({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Paid", "Paid on", "Token"],
+      ["", "classic", "2026-11-07", "11111111", "Ann", "registered", "15", "", "", "t1"]],
+  }, {}, "firebase");
+  gs.clubEvents = () => ({});
+  db.failing = true;
+  assert.equal(gs.markPaid("t1", "15", "cash").ok, true);
+  assert.match(gs.withdraw("t1"), /withdrawn|no longer/i);
+  eq(rowsOf(sheets.Entries).map((r) => r.Paid), ["15"]);
+});
+
 test("a database that refuses a write fails the action with the desk's usual error", () => {
   const { gs, db } = reporting({}, "firebase");
   db.failing = true;
