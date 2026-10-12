@@ -24,7 +24,7 @@ How each part works is in the opening comment of its file. This README says wher
 
 ## The registration script
 
-scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament.
+scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament; once the script property FIREBASE_URL is set, they live in a Firebase Realtime Database instead, which also streams the public copies to the Pairings page and the TD desk (LIVE_DB in register.js; database.rules.json).
 
 What the site shows of them is public: names, US Chess IDs, ratings, pairings, and results, minors' included, as US Chess's crosstables show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
 
@@ -126,9 +126,9 @@ Create two Google Calendars in that account: the club's own events, and the comm
 ### 5. Sheets and the registration script
 
 1. Create an empty Google Sheet for running tournaments, Tournaments in progress; the script adds its tabs. Copy its ID from its URL.
-2. Create a Google Sheet for registrations with one tab, Entries; the script adds the rest. Extensions → Apps Script, and replace Code.gs with scripts/registration.gs.
+2. Create a Google Sheet for registrations with one tab, Entries; the script adds the rest. Extensions → Apps Script, and replace Code.gs with scripts/registration.gs, and the manifest (Project Settings → Show "appsscript.json") with scripts/appsscript.json.
 3. In the script's Project Settings → Script properties, add TD_PASSWORD (a password you choose for the TD desk), USCHESS_API_KEY (step 6), and TOURNAMENT_SHEET_ID (the ID from 1).
-4. Run any function, such as checkPassword, and allow what it asks: the spreadsheets, outside requests (your site and US Chess), and sending mail. Google warns the app isn't verified; it's your own, so go ahead (Advanced).
+4. Run any function, such as checkPassword, and allow what it asks: the spreadsheets, outside requests (your site and US Chess), sending mail, and the Firebase database. Google warns the app isn't verified; it's your own, so go ahead (Advanced).
 5. Deploy → New deployment → Web app, executing as you, with access for Anyone. Put its URL, which ends in /exec, in ENDPOINT in register.js, run python scripts/sync_assets.py, and push. Opening the URL should show the plain greeting.
 6. Share both Sheets with your TDs, never publicly.
 

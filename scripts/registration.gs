@@ -1076,12 +1076,17 @@ function reportResult(p) {
 /** Withdraws or expels a player from a round on (28P), or brings them back with an empty round. */
 function setOut(p) {
   const key = `${p.event}/${p.date}`;
-  const t = table("Players");
-  const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
-  if (!line) return { error: "Not a player in this tournament." };
-  setCell(t, line.row, "Out from round", String(p.from || ""));
-  clearTournamentCache(key);
-  return { ok: true, message: p.from ? `${line.Name} is out from round ${p.from}.` : `${line.Name} is back in.` };
+  const lock = lockTournaments();
+  try {
+    const t = table("Players");
+    const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+    if (!line) return { error: "Not a player in this tournament." };
+    setCell(t, line.row, "Out from round", String(p.from || ""));
+    clearTournamentCache(key);
+    return { ok: true, message: p.from ? `${line.Name} is out from round ${p.from}.` : `${line.Name} is back in.` };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** A tournament's sections from its Tournaments row; [] for one started before sections. */
