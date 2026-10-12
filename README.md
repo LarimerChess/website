@@ -1,6 +1,6 @@
 # Larimer County Chess Club
 
-The club's website, larimerchess.org. GitHub Pages serves the main branch as it is; there is no build step, so a push publishes at once.
+The website of the Larimer County Chess Club, a place to play chess in Fort Collins, Colorado: [larimerchess.org](https://larimerchess.org). GitHub Pages serves the main branch as it is; there is no build step, so a push publishes at once.
 
 How each part works is in the opening comment of its file. This README says where things are and what runs them. The private side, the Google Sheets, their setup, and the steps on the day of an event, is in the docs repo's events/registration.md.
 
