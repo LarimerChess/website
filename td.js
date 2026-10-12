@@ -301,6 +301,24 @@ async function showDeskEntries() {
       e.due === "" ? "?" : `$${e.due}${e.credit ? ` after $${e.credit} credit` : ""}`]) {
       row.insertCell().textContent = text;
     }
+    // A club night's entry can become its month's, which moves the night and credits what was paid for it.
+    const month = e.date?.length === 10 && choices.find((c) => c.key === `${eventName}/${e.date.slice(0, 7)}` && c.kind === "month");
+    if (month) {
+      const toMonth = document.createElement("button");
+      toMonth.type = "button";
+      toMonth.className = "td-action td-month";
+      toMonth.textContent = "Whole month";
+      toMonth.append(hidden(` for ${e.name}`));
+      toMonth.addEventListener("click", async () => {
+        if (!confirm(`Change ${e.name} to ${month.label}?`)) return;
+        toMonth.disabled = true;
+        const [, date] = month.key.split("/");
+        const result = await call("register", { event: eventName, date, id: e.id, category: e.category, email: e.email, phone: e.phone || "" });
+        deskStatus.textContent = result.message || result.error;
+        showDeskEntries();
+      });
+      row.cells[3].append(" ", toMonth);
+    }
     // Marking paid asks for the amount, which can differ from the fee under the hardship waiver; by
     // card, it starts from the fee with the card fee.
     const paidCell = row.insertCell();

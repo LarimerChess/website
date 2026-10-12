@@ -465,7 +465,8 @@ desk.on("request", async (request) => {
             email: "test@example.com", phone: "970-555-0100" }] : [] },
           search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
-          entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1" }] },
+          entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1", date: "2026-10" },
+            { name: "Night Player", id: "22345678", rating: "1400", for: "Monday, October 12", category: "Senior (65+)", amount: "5.50", due: "5.50", card: "6.14", email: "night@example.com", phone: "970-555-0102", expires: "2027-01-31", token: "t2", date: "2026-10-12" }] },
           remove: { message: "Test Player is withdrawn." },
           paid: { ok: true, message: "Test Player paid $15." },
           ledger: { ledger: { received: { cash: "15", check: "0", card: "0", other: "0" }, entry: "13", rating: "2", card: "0", games: 6, uschess: "3" } },
@@ -489,7 +490,7 @@ const usernameField = await desk.$eval('.td-login input[autocomplete="username"]
 JSON.stringify(offered) === JSON.stringify([["TD desk", "secret"]]) && usernameField === "TD desk"
   ? pass("TD desk offers the password to the browser's password manager after signing in")
   : fail(`TD desk password saving: ${JSON.stringify({ offered, usernameField })}`);
-await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $16.50"));
+await desk.waitForFunction(() => document.querySelector(".td-entries-status").textContent.includes("Still owed: $22"));
 await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
@@ -545,6 +546,18 @@ for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "ledg
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "17.42" && c.by === "card")
   ? pass("TD desk takes a card payment, starting from the fee with the card fee")
   : fail(`TD desk card payment: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
+const monthButtons = await desk.$$eval(".td-month", (b) => b.map((x) => x.closest("tr").cells[0].textContent));
+const registersBefore = deskCalls.filter((c) => c.action === "register").length;
+await desk.click(".td-month");
+for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "register").length === registersBefore; waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+const toMonth = deskCalls.filter((c) => c.action === "register").at(-1);
+JSON.stringify(monthButtons) === '["Night Player"]' && toMonth.date === "2026-10" && toMonth.id === "22345678"
+  && toMonth.category === "Senior (65+)" && toMonth.email === "night@example.com" && toMonth.phone === "970-555-0102"
+  ? pass("TD desk changes a night's entry to the whole month") : fail(`TD desk to month: ${JSON.stringify({ monthButtons, toMonth })}`);
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("registered"));
+await desk.waitForSelector(".td-month:enabled");
 const money = await desk.$$eval(".td-ledger li", (items) => items.map((i) => i.textContent));
 money.length === 4 && money[0].includes("cash $15") && money[2].includes("$3 for the 6 rated games")
   ? pass("TD desk shows the money received by method and how it splits") : fail(`TD desk Money: ${JSON.stringify(money)}`);

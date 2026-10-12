@@ -271,7 +271,8 @@ function entries(key, td, read) {
         Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
           paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
           credit: credit ? money(credit) : "", due, card: due === "" || due === "0" ? "" : money(cardTotal(Number(due), card)),
-          expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
+          expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token], date: r[col.Date],
+          phone: r[col.Phone] });
       }
       return entry;
     })

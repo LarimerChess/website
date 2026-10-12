@@ -136,6 +136,7 @@ test("a night paid by card, then the whole month: the night moves to the month a
     [["2026-10-05", "7.50", "0.50", "moved to month"], ["2026-10", "17", "2", "registered"]]);
   eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.for, e.due, e.credit, e.card]), [["Whole month", "9.50", "7.50", "10.24"]]);
   eq(gs.entries("monday-club-night-at-peak/2026-10-05", false).map((e) => e.for), ["Whole month"], "listed once, for the month");
+  eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => e.date), ["2026-10"], "the desk gets the date, to offer a night the month");
   assert.match(register("2026-10-12").error, /already registered for the whole month/);
   assert.match(gs.withdraw("token1"), /moved to the whole month/);
 
