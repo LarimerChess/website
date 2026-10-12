@@ -848,7 +848,8 @@ const deskTDs = {
   "token-unverified": { verify: true },
 };
 async function firebaseDesk(label, fake, viewport) {
-  const state = { calls: [], gstatic: [] };
+  // held: a promise by action that its answer waits for.
+  const state = { calls: [], gstatic: [], held: {} };
   const tab = await browser.newPage();
   tab.on("pageerror", (error) => fail(`JavaScript error on ${label}: ${error.message}`));
   if (viewport) await tab.setViewport(viewport);
@@ -866,6 +867,7 @@ async function firebaseDesk(label, fake, viewport) {
     } else if (url.host === "registration.test") {
       const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
       state.calls.push(p);
+      await state.held[p.action];
       const who = deskTDs[p.idToken] || { login: true, error: "Sign in first." };
       const body = !who.ok ? who : {
         login: { ...who, changes: null },
@@ -943,6 +945,29 @@ await google.tab.evaluate(() => import(performance.getEntriesByType("resource").
   : fail(`TD desk kept the desk open after Firebase ended the session: "${await google.status()}"`);
 await google.tab.close();
 
+// The desk asks for the event list while the sign-in is being checked, and for the ledger, incidents,
+// and tournament while the entries are, since each call to the script takes a second or more.
+const eager = await firebaseDesk("/td/ loading at once", { accounts: { "google.com": { uid: "ada", email: "ada@example.com", token: "token-ada" } } });
+const hold = (action) => new Promise((resolve) => { eager.held[action] = new Promise((release) => resolve(release)); });
+const releaseLogin = await hold("login");
+const releaseEntries = await hold("entries");
+const askedFor = async (actions) => {
+  for (let i = 0; i < 60 && !actions.every((a) => eager.calls.some((c) => c.action === a)); i++) await new Promise((r) => setTimeout(r, 50));
+  return actions.every((a) => eager.calls.some((c) => c.action === a));
+};
+await eager.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
+await eager.tab.click(".td-google");
+const choicesEarly = await askedFor(["login", "choices"]);
+releaseLogin();
+const restEarly = await askedFor(["entries", "ledger", "incidents", "tournament"]);
+releaseEntries();
+const eagerIn = await eager.signedIn();
+const eagerRows = await eager.tab.waitForSelector(".td-entries tbody tr", { timeout: 3000 }).then(() => true, () => false);
+choicesEarly && restEarly && eagerIn && eagerRows
+  ? pass("TD desk asks for the events with the sign-in, and for the ledger, incidents, and tournament with the entries")
+  : fail(`TD desk loading at once: ${JSON.stringify({ choicesEarly, restEarly, eagerIn, eagerRows, calls: eager.calls.map((c) => c.action) })}`);
+await eager.tab.close();
+
 // A popup the browser blocks falls back to a redirect.
 const blocked = await firebaseDesk("/td/ with a blocked popup", { popupBlocked: true,
   accounts: { "google.com": { uid: "ada", email: "ada@example.com", token: "token-ada" } } });
@@ -961,7 +986,7 @@ await unlisted.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
 await unlisted.tab.click(".td-google");
 const refusedOut = await unlisted.signedOut("isn't one of the club's TDs");
 const refusedFake = (await unlisted.fakeCalls()).filter((c) => c[0] === "signOut").length;
-refusedOut && refusedFake === 1 && !unlisted.calls.some((c) => c.action === "choices")
+refusedOut && refusedFake === 1
   ? pass("TD desk signs an unlisted account out of Firebase with the script's message")
   : fail(`TD desk unlisted: ${JSON.stringify({ refusedOut, refusedFake, status: await unlisted.status() })}`);
 await unlisted.tab.close();

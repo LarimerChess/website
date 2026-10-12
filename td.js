@@ -97,11 +97,16 @@ async function credentials() {
   return user ? { idToken: await user.getIdToken() } : {};
 }
 
-async function call(action, fields = {}) {
+/** The script's answer to a desk action, without call's handling of a sign-in it refused. */
+async function ask(action, fields = {}) {
   const response = await fetch(ENDPOINT, {
     method: "POST", body: new URLSearchParams({ action, ...(await credentials()), ...fields }),
   });
-  const result = await response.json();
+  return response.json();
+}
+
+async function call(action, fields = {}) {
+  const result = await ask(action, fields);
   const user = firebase?.auth.currentUser;
   if (result.verify && user) {
     await firebase.sendEmailVerification(user, { url: deskAddress() }).catch(() => {});
@@ -125,6 +130,9 @@ function signOut(message = "") {
 
 async function signIn(value = "") {
   password = value;
+  // Each call to the script takes a second or more, so with Firebase the event list is asked for
+  // alongside the sign-in. A password's isn't, since a wrong one would count twice toward the lockout.
+  const early = FIREBASE ? ask("choices").catch(() => ({})) : null;
   const result = await call("login");
   if (!result.ok) {
     if (FIREBASE && !result.login && !result.verify) signOut(result.error || "Sign-in didn't work. Try again.");
@@ -140,7 +148,7 @@ async function signIn(value = "") {
   who.hidden = !td;
   login.hidden = true;
   desk.hidden = navEvent.hidden = false;
-  const { choices: list } = await call("choices");
+  const { choices: list } = await (early || call("choices"));
   choices = list || [];
   const groups = new Map();
   for (const c of choices) {
@@ -390,6 +398,10 @@ async function showDeskEntries(quiet = false) {
   }
   const [eventName, date] = key.split("/");
   if (!quiet) tdEntriesStatus.textContent = "Loading entries…";
+  // None of these waits on the entries, which take the script longest.
+  showLedger(eventName, date);
+  showIncidents(eventName, date);
+  if (!quiet) document.dispatchEvent(new Event("td-choice"));
   const { entries = [] } = await call("entries", { event: eventName, date });
   if (key !== choice.value) return;
   const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
@@ -488,9 +500,6 @@ async function showDeskEntries(quiet = false) {
     return row;
   }));
   tdTable.hidden = !entries.length;
-  showLedger(eventName, date);
-  showIncidents(eventName, date);
-  if (!quiet) document.dispatchEvent(new Event("td-choice"));
 }
 
 async function showLedger(eventName, date) {
@@ -513,6 +522,7 @@ async function showLedger(eventName, date) {
 
 async function showIncidents(eventName, date) {
   const { incidents = [] } = await call("incidents", { event: eventName, date });
+  if (`${eventName}/${date}` !== choice.value) return;
   incidentsStatus.textContent = incidents.length ? "" : "Nothing logged for this.";
   incidentList.replaceChildren(...incidents.map((i) => {
     const item = document.createElement("li");
