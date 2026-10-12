@@ -122,12 +122,12 @@ test("five wrong TD passwords in an hour lock out new devices, but never a devic
   gs.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) };
   const mine = "a1b2c3d4-0000-4000-8000-000000000001";
   assert.equal(gs.checkPassword("right", mine), null, "signing in trusts the device");
+  assert.deepEqual(JSON.parse(props.TD_DEVICES), [mine]);
   for (let i = 0; i < 5; i++) assert.equal(gs.checkPassword("guess", `stranger-device-${i}-0000`), "Wrong password.");
   assert.match(gs.checkPassword("right", "new-device-0000000000"), /^Too many wrong passwords/, "new devices share one count");
-  assert.equal(gs.checkPassword("right", mine), null, "others' guesses don't lock out a trusted device");
-  for (let i = 0; i < 5; i++) gs.checkPassword("typo", mine);
-  assert.match(gs.checkPassword("right", mine), /^Too many wrong passwords/, "its own five wrong ones do");
-  assert.ok(JSON.parse(cache["failedLogins:" + mine]).until <= Date.now() + 3600 * 1000, "the count clears an hour after its first");
+  assert.ok(JSON.parse(cache.failedLogins).until <= Date.now() + 3600 * 1000, "the count clears an hour after its first");
+  for (let i = 0; i < 10; i++) assert.equal(gs.checkPassword("typo", mine), "Wrong password.");
+  assert.equal(gs.checkPassword("right", mine), null, "a trusted device is never locked out, even by its own typos");
 });
 
 // October 2026's club nights, which the month's fee counts.

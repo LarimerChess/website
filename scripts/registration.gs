@@ -80,8 +80,8 @@ const TOURNAMENT_HEADERS = {
 const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "arenaJoin",
   "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
-// Wrong TD passwords allowed in an hour, counted from the first: for each device that has signed in
-// before, and for all other devices together.
+// Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
+// signed in before.
 const FAILED_LOGINS = 5;
 
 function doGet(e) {
@@ -1613,17 +1613,15 @@ function nightLabel(date) {
 /** Null when the TD password is right; otherwise why not. Repeated failures lock the desk for 15 minutes. */
 /**
  * Checks the TD password. Apps Script can't see a visitor's IP address, so the desk sends a random ID
- * it keeps on the device, and a device that has signed in before is trusted: only its own wrong
- * passwords count against it, so no one else can lock it out. Every other device shares one count,
- * which still limits guessing.
+ * it keeps on the device, and a device that has signed in before is trusted and never locked out.
+ * Every other device shares one count of wrong passwords, which limits guessing.
  */
 function checkPassword(password, device) {
   const cache = CacheService.getScriptCache();
   device = /^[\w-]{16,64}$/.test(device || "") ? device : "";
   const trusted = device && trustedDevices().includes(device);
-  const bucket = trusted ? "failedLogins:" + device : "failedLogins";
-  const fails = JSON.parse(cache.get(bucket) || "null") || { count: 0, until: Date.now() + 3600 * 1000 };
-  if (fails.count >= FAILED_LOGINS) {
+  const fails = JSON.parse(cache.get("failedLogins") || "null") || { count: 0, until: Date.now() + 3600 * 1000 };
+  if (!trusted && fails.count >= FAILED_LOGINS) {
     return `Too many wrong passwords. Try again after ${Utilities.formatDate(new Date(fails.until), TZ, "h:mm a")}.`;
   }
   const expected = PropertiesService.getScriptProperties().getProperty("TD_PASSWORD");
@@ -1632,12 +1630,15 @@ function checkPassword(password, device) {
     if (device && !trusted) trustDevice(device);
     return null;
   }
-  fails.count += 1;
-  cache.put(bucket, JSON.stringify(fails), Math.max(1, Math.ceil((fails.until - Date.now()) / 1000)));
+  if (!trusted) {
+    fails.count += 1;
+    cache.put("failedLogins", JSON.stringify(fails), Math.max(1, Math.ceil((fails.until - Date.now()) / 1000)));
+  }
   return expected ? "Wrong password." : "The TD password isn't set up yet.";
 }
 
-/** The devices that have signed in to the TD desk, newest first, in the script property TD_DEVICES. */
+/** The devices that have signed in to the TD desk, newest first, in the script property TD_DEVICES,
+ *  which lasts until someone deletes it. */
 function trustedDevices() {
   try {
     return JSON.parse(PropertiesService.getScriptProperties().getProperty("TD_DEVICES") || "[]");
