@@ -467,6 +467,7 @@ desk.on("request", async (request) => {
             contacts: [{ id: "c1", Name: "Cora Contact", Email: "cora@example.com", Phone: "970-555-0103", Status: "Player", Notes: "", "US Chess ID": "" }] },
           contactSave: { ok: true, id: "c1", message: "Cora Contact is saved." },
           contactDelete: { ok: true, message: "Cora Contact is deleted." },
+          refresh: { ok: true, message: "Refreshed 3 entry lists and 1 tournament." },
           search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1", date: "2026-10" },
@@ -577,6 +578,9 @@ JSON.stringify(contactRows) === '["Cora Contact"]' && saved.id === "c1" && saved
   : fail(`TD desk contacts: ${JSON.stringify({ contactRows, saved, addedContact, addDeleteHidden })}`);
 await desk.waitForFunction(() => !document.querySelector("dialog.td-contact").open);
 await desk.click(".td-contacts-panel summary");
+await desk.click(".td-refresh");
+await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.startsWith("Refreshed"));
+deskCalls.some((c) => c.action === "refresh") ? pass("TD desk refreshes the public pages' copies") : fail("TD desk didn't ask to refresh");
 await desk.$eval("#td-player", (i) => { i.value = ""; i.dispatchEvent(new Event("input")); });
 const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
 sentByDesk.email === "test@example.com" && sentByDesk.phone === "970-555-0100"

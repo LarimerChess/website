@@ -149,6 +149,14 @@ login.addEventListener("submit", async (event) => {
 });
 
 document.querySelector(".td-sign-out").addEventListener("click", () => signOut("Signed out."));
+const refreshButton = document.querySelector(".td-refresh");
+refreshButton.addEventListener("click", async () => {
+  refreshButton.disabled = true;
+  deskStatus.textContent = "Refreshing…";
+  const result = await call("refresh");
+  deskStatus.textContent = result.message || result.error;
+  refreshButton.disabled = false;
+});
 
 // The player search: a combobox whose list fills as you type, by ID or name.
 let searchCount = 0;

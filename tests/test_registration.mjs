@@ -118,6 +118,43 @@ test("the script avoids syntax Apps Script can't parse, though node can", () => 
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
 });
 
+test("the public copies last six hours, every change clears them, and Refresh rebuilds them", () => {
+  const { gs, sheets, cache } = load({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Regular rating", "Token"],
+      ["", "classic", "2026-11-07", "11111111", "Ann", "registered", "1900", "t1"]],
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status"]], Players: [["Key"]], Rounds: [["Key"]], Arena: [["Key"]],
+  });
+  const events = { "classic/2026-11-07": { event: "classic", name: "Classic", kind: "entry", label: "Saturday", first: "2099-11-07",
+    last: "2099-11-07", closes: "2099-11-07T10:00:00-07:00" } };
+  gs.clubEvents = () => events;
+  let n = 0;
+  gs.Utilities.getUuid = () => `version${++n}`;
+  const ttl = {};
+  const store = gs.CacheService.getScriptCache();
+  gs.CacheService.getScriptCache = () => ({ ...store, put: (k, v, seconds) => { cache[k] = v; ttl[k] = seconds; },
+    removeAll: (keys) => keys.forEach((k) => delete cache[k]), remove: (k) => delete cache[k] });
+  const names = () => gs.allEntries()[0].entries.map((e) => e.name);
+  eq(names(), ["Ann"]);
+  assert.equal(ttl[gs.allEntriesKey()], 21600);
+  assert.equal(ttl[gs.entriesKey("classic/2026-11-07")], 21600);
+  const before = gs.allEntriesKey();
+  gs.withdraw("t1");
+  assert.notEqual(gs.allEntriesKey(), before, "a withdrawal starts a new version");
+  eq(names(), []);
+  const listed = gs.allEntriesKey();
+  events["classic/2026-11-14"] = { ...events["classic/2026-11-07"], label: "Another Saturday", first: "2099-11-14" };
+  assert.notEqual(gs.allEntriesKey(), listed, "a new calendar event makes a new copy");
+  const tournamentsBefore = gs.allEntriesKey();
+  gs.clearTournamentCache();
+  assert.notEqual(gs.allEntriesKey(), tournamentsBefore, "a tournament change clears the lists, which show sections");
+  // A hand edit in the Sheet shows only after Refresh.
+  names();
+  sheets.Entries.data.push(["", "classic", "2026-11-07", "22222222", "Ben", "registered", "1700", "t2"]);
+  eq(names(), []);
+  assert.match(gs.refreshCaches().message, /Refreshed 2 entry lists and 0 tournaments/);
+  eq(JSON.parse(cache[gs.allEntriesKey()])[0].entries.map((e) => e.name), ["Ben"]);
+});
+
 test("the desk's contacts: IDs for rows added by hand, saving by heading, formulas kept as text, and deleting", () => {
   const { gs, sheets } = load({
     Contacts: [["Name", "Email", "Phone", "Notes"], ["Ann Ash", "ann@example.com", "970-555-0100", "Board"], ["", "", "", ""],

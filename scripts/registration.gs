@@ -14,7 +14,7 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., password=...  the TD desk: login, choices, history, people, search, contacts, contactSave, contactDelete,
+ * POST action=..., password=...  the TD desk: login, refresh, choices, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
@@ -104,6 +104,7 @@ function doPost(e) {
     }
     switch (p.action) {
       case "login": return json({ ok: true });
+      case "refresh": return json(refreshCaches());
       case "choices": return json({ choices: choices() });
       case "history": return json({ players: history(p.q) });
       case "people": return json({ players: people() });
@@ -203,9 +204,8 @@ function register(p, td) {
     if (event.kind === "month") {
       const nights = mine.filter((r) => r[col.Date].startsWith(p.date + "-"));
       credited = moveToMonth(sheet, col, rows, nights, row, amount);
-      for (const r of nights) clearEntriesCache(p.event, r[col.Date]);
     }
-    clearEntriesCache(p.event, p.date);
+    clearEntriesCache();
   } finally {
     lock.releaseLock();
   }
@@ -245,7 +245,7 @@ function register(p, td) {
  *  includes each night's. The TD desk also gets what only the Sheet should show. */
 function entries(key, td, read) {
   const cache = CacheService.getScriptCache();
-  const cached = !td && cache.get("entries:" + key);
+  const cached = !td && cache.get(entriesKey(key));
   if (cached) return JSON.parse(cached);
   const [event, date] = String(key).split("/");
   const { col, rows } = read || readEntries();
@@ -283,14 +283,14 @@ function entries(key, td, read) {
       return entry;
     })
     .sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0) || a.name.localeCompare(b.name));
-  if (!td) cache.put("entries:" + key, JSON.stringify(list), 60);
+  if (!td) cachePut(entriesKey(key), JSON.stringify(list));
   return list;
 }
 
 /** The public lists for every tournament date and club night still to come, in date order. */
 function allEntries() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get("entries:all");
+  const cached = cache.get(allEntriesKey());
   if (cached) return JSON.parse(cached);
   const read = { ...readEntries(), logged: readIncidents().rows, placed: sectionsByKey() };
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
@@ -299,7 +299,7 @@ function allEntries() {
     .sort(([, a], [, b]) => a.closes.localeCompare(b.closes))
     .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, closed: Boolean(e.closed), start: e.closes,
       entries: entries(key, false, read) }));
-  cache.put("entries:all", JSON.stringify(list), 60);
+  cachePut(allEntriesKey(), JSON.stringify(list));
   return list;
 }
 
@@ -514,7 +514,7 @@ function withdraw(token) {
     if (row.status === MOVED) return `${row.name} moved to the whole month; withdraw from the month instead.`;
     const { sheet, col } = readEntries();
     sheet.getRange(row.index + 2, col.Status + 1).setValue("withdrawn");
-    clearEntriesCache(row.event, row.date);
+    clearEntriesCache();
     return `${row.name} is withdrawn.`;
   } finally {
     lock.releaseLock();
@@ -547,7 +547,7 @@ function logIncident(p) {
   try {
     const { sheet, col } = readIncidents();
     appendText(sheet, col, row);
-    clearEntriesCache(p.event, p.date);
+    clearEntriesCache();
   } finally {
     lock.releaseLock();
   }
@@ -1261,12 +1261,63 @@ function currentTournaments() {
   const cached = cache.get("tournaments");
   if (cached) return JSON.parse(cached);
   const list = table("Tournaments").rows.map((r) => tournament(r.Key, false)).filter(Boolean);
-  cache.put("tournaments", JSON.stringify(list), 30);
+  cachePut("tournaments", JSON.stringify(list));
   return list;
 }
 
+/** Clears the Pairings and Standings pages' copy, and the entry lists, which show each player's section. */
 function clearTournamentCache() {
   CacheService.getScriptCache().remove("tournaments");
+  clearEntriesCache();
+}
+
+// The public pages' copies of the entry lists and tournaments last six hours, the longest Apps Script
+// keeps anything: every change the script makes clears them, so they're only ever stale after an edit
+// made in the Sheet by hand, which the TD desk's Refresh clears.
+const PUBLIC_CACHE = 21600;
+
+/** Caches a public copy. Apps Script refuses a value over 100 KB; then the pages read the Sheet each time. */
+function cachePut(key, value) {
+  try {
+    CacheService.getScriptCache().put(key, value, PUBLIC_CACHE);
+  } catch (err) {
+    console.error(`not cached: ${key}, ${value.length} characters`);
+  }
+}
+
+/** The entry lists' copies are kept under a version, so one change clears them all: a new version. */
+function entriesKey(key) {
+  const cache = CacheService.getScriptCache();
+  let version = cache.get("entriesVersion");
+  if (!version) {
+    version = Utilities.getUuid().slice(0, 8);
+    cache.put("entriesVersion", version, PUBLIC_CACHE);
+  }
+  return `entries:${version}:${key}`;
+}
+
+/** The Entries page's list: by day, since a day's events drop off it at midnight, and by the events
+ *  themselves, so one added to or moved on the calendar shows without waiting for the copy to expire. */
+function allEntriesKey() {
+  const events = JSON.stringify(Object.entries(clubEvents()).map(([key, e]) => [key, e.label, e.closes, e.closed]));
+  let hash = 0;
+  for (let i = 0; i < events.length; i++) hash = (hash * 31 + events.charCodeAt(i)) | 0;
+  return entriesKey(`all:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
+}
+
+function clearEntriesCache() {
+  CacheService.getScriptCache().remove("entriesVersion");
+}
+
+/** The TD desk's Refresh: clears every copy the public pages and the script keep, and builds the
+ *  public pages' copies again from the Sheets. */
+function refreshCaches() {
+  CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion"]);
+  const lists = allEntries().length;
+  const months = Object.entries(clubEvents()).filter(([, e]) => e.kind === "month");
+  for (const [key] of months) entries(key, false);
+  const tournaments = currentTournaments().length;
+  return { ok: true, message: `Refreshed ${lists + months.length} entry lists and ${tournaments} ${tournaments === 1 ? "tournament" : "tournaments"}.` };
 }
 
 /** Records what a player paid at the door and how, or, when amount is empty, marks them unpaid with
@@ -1577,15 +1628,6 @@ function appendText(sheet, col, row) {
   sheet.getRange(last + 1, 1, 1, values.length).setNumberFormat("@").setValues([values]);
 }
 
-function clearEntriesCache(event, date) {
-  const cache = CacheService.getScriptCache();
-  cache.remove("entries:all");
-  const keys = [date, date.slice(0, 7)];
-  if (date.length === 7) {
-    for (const key of Object.keys(clubEvents())) if (key.startsWith(`${event}/${date}-`)) keys.push(key.split("/")[1]);
-  }
-  cache.removeAll(keys.map((d) => `entries:${event}/${d}`));
-}
 
 /** A member from US Chess; null if there is none, undefined if US Chess didn't answer. */
 function lookup(id) {

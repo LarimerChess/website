@@ -554,6 +554,8 @@ section.td-table td { white-space: nowrap; }
       <div class="td-nav-event" hidden>
         <label for="td-event">Event</label>
         <select id="td-event" required></select>
+        <button class="button button-secondary td-refresh" type="button" aria-describedby="td-refresh-hint">Refresh public pages</button>
+        <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About refreshing" aria-describedby="td-refresh-hint">?</button><span id="td-refresh-hint" class="hint-text" role="tooltip">The Entries, Pairings, and Standings pages show a copy that lasts six hours, which every change made on this desk or by a registration replaces at once. After editing the Sheets by hand, refresh to replace the copies now.</span></span>
         <button class="button button-secondary td-sign-out" type="button">Sign out</button>
       </div>
       <ul>
@@ -852,7 +854,7 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=6c989c5e2b" defer></script>
-  <script src="../td.js?v=9a928024f9" defer></script>
+  <script src="../td.js?v=e1e22bc58e" defer></script>
   <script src="../td-contacts.js?v=676314ddb3" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
