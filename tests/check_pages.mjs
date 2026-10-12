@@ -536,8 +536,10 @@ deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "1
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
 await desk.waitForSelector(".td-entries tbody tr td:nth-child(7) select:enabled");
 await desk.select(".td-entries tbody tr td:nth-child(7) select", "card");
+// Paying redraws the entries, and then asks for the Money list; the next click waits for that.
+const ledgerCalls = deskCalls.filter((c) => c.action === "ledger").length;
 await desk.click(".td-entries tbody tr td:nth-child(7) button");
-for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "paid" && c.by === "card"); waited += 100) {
+for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "ledger").length === ledgerCalls; waited += 100) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "17.42" && c.by === "card")
