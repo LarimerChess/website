@@ -50,12 +50,13 @@ const US_CHESS = {
   55555555: { floor: 100, outcomes: ["Loss", "Loss"] },
 };
 
-// cache: what the script cache holds, such as this minute's count of public posts. The
-// registration Sheet's Players tab, US Chess answers kept by ID, is sheets.Registry.
+// cache: what the script cache holds, such as this minute's count of public posts. props: the
+// script properties, such as the US Chess answers kept by ID.
 function load(tabs, cache = {}) {
   const sheets = Object.fromEntries(Object.entries(tabs).map(([name, rows]) => [name, makeSheet(rows)]));
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
-  const registration = { ...book, getSheetByName: (n) => (n === "Players" ? sheets.Registry ||= makeSheet([]) : book.getSheetByName(n)) };
+  const registration = book;
+  const props = { TOURNAMENT_SHEET_ID: "sheet", USCHESS_API_KEY: "key", TD_PASSWORD: "sheet" };
   const fetched = [];
   // The website's ratings.json, the tournaments US Chess has rated.
   const ratings = {};
@@ -73,7 +74,8 @@ function load(tabs, cache = {}) {
     console,
     fetched,
     UrlFetchApp: { fetch: answer, fetchAll: (requests) => requests.map((r) => answer(r.url)) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "sheet" }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
     SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => registration },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {} }) },
@@ -83,7 +85,7 @@ function load(tabs, cache = {}) {
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
-  return { gs: context, sheets, ratings, cache };
+  return { gs: context, sheets, ratings, cache, props };
 }
 
 const heading = (sheet) => sheet.data[0];
@@ -116,10 +118,36 @@ test("the script avoids syntax Apps Script can't parse, though node can", () => 
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
 });
 
+test("an arena's queue lives in a script property, and a restart or a finished arena drops it", () => {
+  const key = "arena/2026-11-07";
+  const at = { event: "arena", date: "2026-11-07" };
+  const { gs, sheets, props } = load({
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+      [key, "arena", "Arena", "arena", "", "running", "2026-11-07 10:00", "white", "", "", ""],
+      ["gone/2026-10-31", "gone", "Gone", "arena", "", "running", "2026-10-31 10:00", "white", "", "", ""]],
+    Players: [["Key", "No.", "US Chess ID", "Name", "Rating"], [key, "1", "11111111", "Ann", "1900"], [key, "2", "22222222", "Ben", "1700"]],
+    Arena: [["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"]],
+  });
+  props.arenaQueues = JSON.stringify({ "gone/2026-10-31": [{ id: "99999999", since: "x" }] });
+  sheets.Tournaments.data.splice(2, 1);
+  assert.equal(gs.arenaJoin({ ...at, id: "11111111" }).ok, true);
+  assert.match(gs.arenaJoin({ ...at, id: "11111111" }).error, /already waiting/);
+  assert.equal(gs.arenaJoin({ ...at, id: "22222222" }).ok, true);
+  eq(Object.keys(JSON.parse(props.arenaQueues)), [key], "a tournament no longer in the spreadsheet loses its queue");
+  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"]);
+  assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222" }]) }).ok, true);
+  eq(gs.tournament(key, true).queue, []);
+  assert.equal(gs.arenaResult({ ...at, game: "1", result: "1-0" }).ok, true);
+  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"], "both wait again after a result");
+  assert.equal(gs.arenaLeave({ ...at, id: "22222222" }).ok, true);
+  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111"]);
+  assert.equal(gs.restartTournament(key).ok, true);
+  eq(JSON.parse(props.arenaQueues), {});
+});
+
 test("five wrong TD passwords in an hour lock out new devices, but never a device that signed in before", () => {
-  const { gs, cache } = load({});
-  const props = { TD_PASSWORD: "right" };
-  gs.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) };
+  const { gs, cache, props } = load({});
+  props.TD_PASSWORD = "right";
   const mine = "a1b2c3d4-0000-4000-8000-000000000001";
   assert.equal(gs.checkPassword("right", mine), null, "signing in trusts the device");
   assert.deepEqual(JSON.parse(props.TD_DEVICES), [mine]);
@@ -222,7 +250,7 @@ test("a quad started before sections, with none of their columns, runs as before
 });
 
 test("a Swiss in two sections: placed by rating, moved up, paired, posted, and scored by section", () => {
-  const { gs, sheets } = load({ Tournaments: [], Players: [], Rounds: [] });
+  const { gs, sheets, props } = load({ Tournaments: [], Players: [], Rounds: [] });
   gs.clubEvents = () => ({ "classic/2026-11-07": { event: "classic", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry" } });
   const entrants = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1450"], ["44444444", "Dee", "1300"],
     ["55555555", "Eve", "1200P"], ["66666666", "Fay", ""]].map(([id, name, rating]) => ({ id, name, rating, out: "" }));
@@ -241,9 +269,8 @@ test("a Swiss in two sections: placed by rating, moved up, paired, posted, and s
   // Each player's floor and prior record from US Chess, kept two weeks in the registration Sheet.
   eq(rowsOf(sheets.Players).map((r) => [r.Name, r.Floor, r["Prior games"], r["Prior sweep"]]),
     [["Ann", "1700", "3", ""], ["Ben", "", "0", ""], ["Cal", "", "0", ""], ["Dee", "", "0", ""], ["Eve", "100", "2", "losses"], ["Fay", "", "0", ""]]);
-  eq(rowsOf(sheets.Registry).find((r) => r["US Chess ID"] === "55555555"),
-    { "US Chess ID": "55555555", Category: "", "Checked on": "", "For the date": "", Floor: "100", "Prior games": "2",
-      "Prior sweep": "losses", "Record checked on": new Date().toISOString().slice(0, 10), State: "CO" });
+  eq(JSON.parse(props["player:55555555"]), { Floor: "100", "Prior games": "2", "Prior sweep": "losses", State: "CO",
+    "Record checked on": new Date().toISOString().slice(0, 10) });
   const asked = gs.fetched.length;
   assert.equal(asked, 12);
   gs.priorRecords(["11111111"]);

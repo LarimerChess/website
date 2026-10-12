@@ -74,7 +74,6 @@ const TOURNAMENT_HEADERS = {
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
-  Queue: ["Key", "US Chess ID", "Since"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
 const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "arenaJoin",
@@ -519,8 +518,8 @@ function readIncidents() {
 // night's month, whose Mondays are one Swiss with a round a night. Its players are the
 // registered entrants when it starts, and later ones added with sync. The TD desk pairs each
 // round with pairing.js and posts it here; results are entered board by board. An arena has no
-// rounds: the desk pairs its games (Arena tab) with arena.js from the players waiting (Queue
-// tab), and they're public as soon as they're paired.
+// rounds: the desk pairs its games (Arena tab) with arena.js from the players waiting (queues()),
+// and they're public as soon as they're paired.
 //
 // A Swiss may have sections, such as Open and Under 1400, each paired and ranked on its own (28A,
 // 29). Tournaments' Sections cell holds them as JSON, [{"name":"Open"},{"name":"Under 1400",
@@ -595,7 +594,7 @@ function tournament(key, td) {
       .sort((a, b) => Number(a.Game) - Number(b.Game))
       .map((r) => ({ game: Number(r.Game), white: r.White, black: r.Black, whitePact: r["White pact"] === "yes",
         blackPact: r["Black pact"] === "yes", result: r.Result, started: r.Started, ended: r.Ended }));
-    result.queue = table("Queue").rows.filter((r) => r.Key === key).map((r) => ({ id: r["US Chess ID"], since: r.Since }));
+    result.queue = queues()[key] || [];
   }
   return result;
 }
@@ -684,6 +683,7 @@ function restartTournament(key) {
       const t = table(name);
       for (const r of t.rows.filter((x) => x.Key === key).reverse()) t.sheet.deleteRow(r.row);
     }
+    setQueue(key, []);
     clearTournamentCache();
     return { ok: true, message: "Deleted. Start it again when ready." };
   } finally {
@@ -1023,11 +1023,11 @@ function arenaJoin(p) {
     if (error) return { error };
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
     if (!player) return { error: "Not a player in this arena. Add new entrants first." };
-    const queue = table("Queue");
-    if (queue.rows.some((r) => r.Key === key && r["US Chess ID"] === p.id)) return { error: `${player.Name} is already waiting.` };
+    const queue = queues()[key] || [];
+    if (queue.some((q) => q.id === p.id)) return { error: `${player.Name} is already waiting.` };
     const playing = table("Arena").rows.some((r) => r.Key === key && !r.Result && (r.White === p.id || r.Black === p.id));
     if (playing) return { error: `${player.Name} is in a game.` };
-    appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": p.id, Since: stamp() });
+    setQueue(key, [...queue, { id: p.id, since: stamp() }]);
     clearTournamentCache();
     return { ok: true, message: `${player.Name} is waiting for a game.` };
   } finally {
@@ -1040,8 +1040,7 @@ function arenaLeave(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const queue = table("Queue");
-    for (const r of queue.rows.filter((x) => x.Key === key && x["US Chess ID"] === p.id).reverse()) queue.sheet.deleteRow(r.row);
+    setQueue(key, (queues()[key] || []).filter((q) => q.id !== p.id));
     clearTournamentCache();
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
     return { ok: true, message: `${player ? player.Name : p.id} is out of the queue.` };
@@ -1064,8 +1063,8 @@ function arenaPair(p) {
     if (info.Cutoff && (p.date.length === 7 ? local.slice(11) >= info.Cutoff : local >= `${p.date} ${info.Cutoff}`)) {
       return { error: `No new games start after ${info.Cutoff}.` };
     }
-    const queue = table("Queue");
-    const waiting = new Set(queue.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
+    const queue = queues()[key] || [];
+    const waiting = new Set(queue.map((q) => q.id));
     const arena = table("Arena");
     let number = arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0);
     const started = [];
@@ -1077,8 +1076,7 @@ function arenaPair(p) {
         "White pact": "", "Black pact": "", Result: "", Started: stamp(), Ended: "" });
       started.push(g.white, g.black);
     }
-    const leaving = queue.rows.filter((r) => r.Key === key && started.includes(r["US Chess ID"]));
-    for (const r of leaving.reverse()) queue.sheet.deleteRow(r.row);
+    setQueue(key, queue.filter((q) => !started.includes(q.id)));
     clearTournamentCache();
     const count = started.length / 2;
     return { ok: true, message: count === games.length ? `Started ${count} game(s).`
@@ -1106,8 +1104,7 @@ function arenaResult(p) {
     const back = [];
     if (!/^0F/.test(p.result)) back.push(line.White);
     if (!/0F$/.test(p.result)) back.push(line.Black);
-    const queue = table("Queue");
-    for (const id of back) appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": id, Since: stamp() });
+    setQueue(key, [...(queues()[key] || []), ...back.map((id) => ({ id, since: stamp() }))]);
     return { ok: true, message: `Game ${p.game} is recorded.` };
   } finally {
     lock.releaseLock();
@@ -1144,13 +1141,31 @@ function arenaCancel(p) {
     if (!line) return { error: "No such game." };
     if (line.Result) return { error: "That game has a result." };
     arena.sheet.deleteRow(line.row);
-    const queue = table("Queue");
-    for (const id of [line.White, line.Black]) appendText(queue.sheet, queue.col, { Key: key, "US Chess ID": id, Since: stamp() });
+    setQueue(key, [...(queues()[key] || []), ...[line.White, line.Black].map((id) => ({ id, since: stamp() }))]);
     clearTournamentCache();
     return { ok: true, message: `Game ${p.game} is taken back.` };
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Each running arena's waiting players, [{ id, since }] by tournament key, from the script property
+ *  arenaQueues: the script alone uses them, and only while the arena runs. */
+function queues() {
+  try {
+    return JSON.parse(PropertiesService.getScriptProperties().getProperty("arenaQueues") || "{}");
+  } catch (err) {
+    return {};
+  }
+}
+
+/** Sets one arena's queue, and drops any tournament's no longer in the spreadsheet. Callers hold the script lock. */
+function setQueue(key, list) {
+  const all = queues();
+  const running = new Set(table("Tournaments").rows.map((r) => r.Key));
+  for (const k of Object.keys(all)) if (k === key || !running.has(k)) delete all[k];
+  if (list.length && running.has(key)) all[key] = list;
+  PropertiesService.getScriptProperties().setProperty("arenaQueues", JSON.stringify(all));
 }
 
 /** Every tournament in the spreadsheet, with only posted rounds, for the public Pairings page. */
@@ -1498,23 +1513,14 @@ function lookup(id) {
  * API key; US Chess doesn't give out birth dates. A member with no birth date on file counts
  * as an adult. "" when it can't be told.
  *
- * The Players tab keeps each answer with the day it was checked, and US Chess is asked again
+ * The script keeps each answer with the day it was checked (knownPlayer), and US Chess is asked again
  * only after a year, or three months for a player under 18, so a birthday in between can leave
  * a player in the old category until then.
  */
 function ageCategory(id, date) {
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  const players = book.getSheetByName("Players") || book.insertSheet("Players");
-  if (!players.getLastRow()) {
-    players.getRange(1, 1, 1, 4).setNumberFormat("@").setValues([["US Chess ID", "Category", "Checked on", "For the date"]]);
-    players.setFrozenRows(1);
-  }
-  const rows = players.getDataRange().getDisplayValues();
-  const index = rows.findIndex((r, i) => i > 0 && r[0] === id);
+  const saved = knownPlayer(id);
   const daysAgo = (days) => Utilities.formatDate(new Date(Date.now() - days * 86400000), TZ, "yyyy-MM-dd");
-  if (index > 0 && rows[index][1] && rows[index][2] > daysAgo(rows[index][1] === "Under 18" ? 91 : 365)) {
-    return rows[index][1];
-  }
+  if (saved.Category && saved["Checked on"] > daysAgo(saved.Category === "Under 18" ? 91 : 365)) return saved.Category;
 
   const key = PropertiesService.getScriptProperties().getProperty("USCHESS_API_KEY");
   if (!key) return "";
@@ -1531,43 +1537,27 @@ function ageCategory(id, date) {
     console.error(err);
     return "";
   }
-  const row = [id, category, Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd"), date];
-  const at = index > 0 ? index + 1 : players.getLastRow() + 1;
-  if (at > players.getMaxRows()) players.insertRowAfter(players.getMaxRows());
-  players.getRange(at, 1, 1, 4).setNumberFormat("@").setValues([row]);
+  rememberPlayer(id, { Category: category, "Checked on": Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd"), "For the date": date });
   return category;
 }
 
 /**
  * For pairing.js's rating estimates: each player's regular-rating floor and their regular-rated
  * games before now, counted to 50 (the formula never needs more), with "wins" or "losses" if they
- * were all one; and for the rating report, the state they represent. The registration Sheet's
- * Players tab keeps each for two weeks, so US Chess is asked again only after that, or sooner for
+ * were all one; and for the rating report, the state they represent. The script keeps each for two
+ * weeks (knownPlayer), so US Chess is asked again only after that, or sooner for
  * a record kept before it had the state; anyone it doesn't answer for is left blank.
  */
 function priorRecords(ids) {
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  const players = book.getSheetByName("Players") || book.insertSheet("Players");
-  const headings = ["US Chess ID", "Category", "Checked on", "For the date", "Floor", "Prior games", "Prior sweep", "Record checked on",
-    "State"];
-  let rows = players.getDataRange().getDisplayValues();
-  const header = rows[0].filter((h) => h.trim());
-  const missing = headings.filter((h) => !header.includes(h));
-  if (missing.length) {
-    players.getRange(1, header.length + 1, 1, missing.length).setNumberFormat("@").setValues([missing]);
-    players.setFrozenRows(1);
-    rows = players.getDataRange().getDisplayValues();
-  }
-  const col = Object.fromEntries(rows[0].map((h, i) => [h.trim(), i]));
   const fresh = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), TZ, "yyyy-MM-dd");
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
   const records = {};
   const stale = [];
   for (const id of [...new Set(ids)]) {
-    const row = rows.find((r, i) => i > 0 && r[col["US Chess ID"]] === id);
-    if (row && row[col["Record checked on"]] > fresh && row[col.State]) {
-      records[id] = { Floor: row[col.Floor], "Prior games": row[col["Prior games"]], "Prior sweep": row[col["Prior sweep"]],
-        State: row[col.State] };
+    const saved = knownPlayer(id);
+    if (saved["Record checked on"] > fresh && saved.State) {
+      records[id] = { Floor: saved.Floor || "", "Prior games": saved["Prior games"] || "", "Prior sweep": saved["Prior sweep"] || "",
+        State: saved.State };
     } else stale.push(id);
   }
   if (!stale.length) return records;
@@ -1582,17 +1572,34 @@ function priorRecords(ids) {
     const outcomes = [...new Set((games.items || []).map((g) => g.player && g.player.outcome))];
     records[id] = { Floor: regular.floor ? String(regular.floor) : "", "Prior games": String((games.items || []).length),
       "Prior sweep": outcomes.length === 1 ? { Win: "wins", Loss: "losses" }[outcomes[0]] || "" : "", State: member.stateRep || "" };
-    let at = rows.findIndex((r, j) => j > 0 && r[col["US Chess ID"]] === id) + 1;
-    if (!at) {
-      at = players.getLastRow() + 1;
-      if (at > players.getMaxRows()) players.insertRowAfter(players.getMaxRows());
-    }
-    const row = rows[0].map((_, j) => (at <= rows.length ? rows[at - 1][j] : ""));
-    for (const [heading, value] of Object.entries({ ...records[id], "US Chess ID": id, "Record checked on": today })) row[col[heading]] = value;
-    players.getRange(at, 1, 1, row.length).setNumberFormat("@").setValues([row]);
-    if (at > rows.length) rows.push(row);
+    rememberPlayer(id, { ...records[id], "Record checked on": today });
   });
   return records;
+}
+
+/** What the script last heard from US Chess about a player, from the script property player:<id>:
+ *  Category, Checked on, and For the date from ageCategory; Floor, Prior games, Prior sweep, State,
+ *  and Record checked on from priorRecords. {} for a player not heard about, or deleted to be asked again. */
+function knownPlayer(id) {
+  try {
+    return JSON.parse(PropertiesService.getScriptProperties().getProperty("player:" + id) || "{}");
+  } catch (err) {
+    return {};
+  }
+}
+
+/** Adds to what's known about a player, and forgets anyone not checked in a year, whom both
+ *  functions would ask about again anyway, so the properties stay within Google's limit. */
+function rememberPlayer(id, fields) {
+  const store = PropertiesService.getScriptProperties();
+  store.setProperty("player:" + id, JSON.stringify({ ...knownPlayer(id), ...fields }));
+  const yearAgo = Utilities.formatDate(new Date(Date.now() - 366 * 86400000), TZ, "yyyy-MM-dd");
+  for (const [name, value] of Object.entries(store.getProperties())) {
+    if (!name.startsWith("player:")) continue;
+    let p = {};
+    try { p = JSON.parse(value); } catch (err) {}
+    if ((p["Checked on"] || "") < yearAgo && (p["Record checked on"] || "") < yearAgo) store.deleteProperty(name);
+  }
 }
 
 /** US Chess keeps some names in capitals; those are shown with only their first letters capitalized. */
