@@ -724,6 +724,54 @@ reloaded && callsOf("tournament") === whileStarting && (await live.$eval("#run-r
   : fail(`TD desk tournament reloads: ${JSON.stringify({ reloaded, before: whileStarting, after: callsOf("tournament") })}`);
 await live.close();
 
+// With LIVE_DB set, the desk follows the change stamps in the database instead of asking the script
+// every ten seconds (here a tenth of a second), and asks again only while the stream is down.
+const followDesk = async (stream) => {
+  const state = { calls: [], stamps: { entries: "a", tournaments: "a", contacts: "a" },
+    entries: [{ ...liveEntries[0], name: "First Player" }] };
+  const tab = await mocked("/td/ following the live database", (p) => {
+    state.calls.push(p);
+    return { login: { ok: true, changes: { ...state.stamps } }, changes: { changes: { ...state.stamps } },
+      choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
+      people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: state.entries },
+      ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
+      incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true };
+  }, null, (path) => (path === "/changes" ? stream(state) : null));
+  await tab.evaluateOnNewDocument(() => {
+    const every = window.setInterval;
+    window.setInterval = (f, ms, ...rest) => every(f, ms === 10000 ? 100 : ms, ...rest);
+  });
+  await tab.goto(base + "/td/", { waitUntil: "domcontentloaded" });
+  await tab.type("#td-password", "secret");
+  await tab.click(".td-login button");
+  await tab.waitForFunction(() => document.querySelectorAll(".td-entries tbody tr").length === 1);
+  state.tab = tab;
+  state.callsOf = (action) => state.calls.filter((c) => c.action === action).length;
+  state.registers = async (name) => {
+    state.entries = [...state.entries, { ...state.entries[0], name, token: name }];
+    state.stamps = { ...state.stamps, entries: name };
+    return tab.waitForFunction((n) => [...document.querySelectorAll(".td-entries tbody tr")].some((r) => r.cells[0].textContent === n),
+      { timeout: 3000 }, name).then(() => true, () => false);
+  };
+  return state;
+};
+const streamed = await followDesk((state) => [["put", { path: "/", data: state.stamps }], ["keep-alive", null]]);
+await new Promise((resolve) => setTimeout(resolve, 1000));
+const polledWhileStreaming = streamed.callsOf("changes");
+const streamedShown = await streamed.registers("Streamed Registrant");
+streamedShown && polledWhileStreaming === 0 && streamed.callsOf("changes") === 0 && streamed.callsOf("people") === 2
+  ? pass("TD desk follows the live database's change stamps, reloads the entries on a new one, and doesn't ask the script every ten seconds")
+  : fail(`TD desk following the database: ${JSON.stringify({ streamedShown, polledWhileStreaming, people: streamed.callsOf("people") })}`);
+await streamed.tab.close();
+const unstreamed = await followDesk(() => null);
+await new Promise((resolve) => setTimeout(resolve, 600));
+const polledWhileDown = unstreamed.callsOf("changes");
+const polledShown = await unstreamed.registers("Polled Registrant");
+polledWhileDown > 2 && polledShown
+  ? pass("TD desk asks the script for changes while the live database refuses the stream")
+  : fail(`TD desk without the stream: ${JSON.stringify({ polledWhileDown, polledShown })}`);
+await unstreamed.tab.close();
+
 // The Entries page, against a stand-in for the Apps Script's ?entries=all.
 const entriesPage = await browser.newPage();
 entriesPage.on("pageerror", (error) => fail(`JavaScript error on /entries/: ${error.message}`));
@@ -1005,8 +1053,10 @@ for (const scheme of ["light", "dark"]) {
 }
 await arenaPage.close();
 
-// A page whose register.js points at a stand-in for the Apps Script; answer(fields) gives each call's JSON.
-async function mocked(label, answer, viewport) {
+// A page whose register.js points at a stand-in for the Apps Script; answer(fields) gives each call's JSON,
+// or a promise of it. With stream, LIVE_DB points at a stand-in for the database too: stream(path) gives
+// the events each connection to a path gets before it closes, as [event, data] pairs, or null to refuse it.
+async function mocked(label, answer, viewport, stream) {
   const tab = await browser.newPage();
   tab.on("pageerror", (error) => fail(`JavaScript error on ${label}: ${error.message}`));
   if (viewport) await tab.setViewport(viewport);
@@ -1014,12 +1064,19 @@ async function mocked(label, answer, viewport) {
   tab.on("request", async (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/register.js") {
-      const source = await (await fetch(base + "/register.js")).text();
+      const source = (await (await fetch(base + "/register.js")).text())
+        .replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";');
       request.respond({ contentType: "text/javascript",
-        body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+        body: stream ? source.replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "https://live.test";') : source });
     } else if (url.host === "registration.test") {
       const fields = Object.fromEntries(new URLSearchParams(request.postData() || url.search));
-      request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(answer(fields)) });
+      request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(await answer(fields)) });
+    } else if (url.host === "live.test") {
+      const events = stream(url.pathname.replace(/\.json$/, ""));
+      // A short retry has EventSource reconnect at once for the next state, as it would after a dropped connection.
+      if (!events) request.respond({ status: 503, headers: { "Access-Control-Allow-Origin": "*" }, contentType: "text/plain", body: "" });
+      else request.respond({ headers: { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" }, contentType: "text/event-stream",
+        body: `retry: 100\n\n${events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("")}` });
     } else {
       request.continue();
     }
@@ -1580,6 +1637,98 @@ JSON.stringify(leaderboard[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1",
   ? pass("Standings page shows an arena's leaderboard") : fail(`Standings page arena: ${JSON.stringify(leaderboard)}`);
 await axeBoth(arenaStandings, "Standings page with an arena");
 await arenaStandings.close();
+
+// With LIVE_DB set, Pairings and Standings follow the database's public copy of the tournaments, each a JSON
+// string of what ?tournaments=current gives for it, and redraw as it changes, keeping the reader's place.
+// Each connection gets the events in liveEvents, then closes, and EventSource reconnects for the next.
+const NODE = "classic:2026-11-07";
+const liveRound = (games) => ({ games: games.map(([white, black, result], i) => ({ board: i + 1, white, black, result, section: "" })),
+  byes: [], out: [], posted: true });
+const liveClassic = (...rounds) => ({ key: "classic/2026-11-07", name: "Classic, Saturday, November 7, 2026", format: "swiss",
+  plannedRounds: 3, status: "running", sections: [], players: fourPlayers(), rounds });
+const roundOne = liveRound([["11111111", "33333333", "1-0"], ["44444444", "22222222", ""]]);
+let liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne)) } }]];
+const liveFetches = [];
+let releaseReport;
+const followed = (label, viewport) => mocked(label, (p) => {
+  liveFetches.push(p);
+  if (p.action === "report") return new Promise((resolve) => { releaseReport = () => resolve({ ok: true, message: "Board 2: 0–1 is reported. The TD will confirm it." }); });
+  return { tournaments: [] };
+}, viewport, (path) => (path === "/public/tournaments" ? liveEvents : null));
+const livePairings = await followed("/pairings/ following the live database");
+await livePairings.evaluateOnNewDocument(() => {
+  localStorage.setItem("lccc-register-players", JSON.stringify([{ id: "22222222", last: "Ben", email: "ben@example.com", name: "Ben" }]));
+});
+await livePairings.goto(base + "/pairings/", { waitUntil: "domcontentloaded" });
+await livePairings.waitForSelector(".report");
+await livePairings.evaluate(() => { window.notReloaded = true; });
+await livePairings.$eval("#report-id", (i) => { i.value = ""; });
+await livePairings.type("#report-id", "3333");
+const roundTwo = liveRound([["22222222", "11111111", ""], ["33333333", "44444444", ""]]);
+liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne)) } }],
+  ["patch", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne, roundTwo)) } }]];
+const newRound = await livePairings.waitForFunction(() => document.querySelector(".pairings-all select")?.value === "2", { timeout: 3000 })
+  .then(() => true, () => false);
+const afterPost = await livePairings.evaluate(() => ({ reloaded: !window.notReloaded, id: document.querySelector("#report-id").value,
+  focused: document.activeElement?.id, rows: [...document.querySelectorAll(".pairings-all tbody tr")].map((r) => r.cells[1].textContent) }));
+newRound && !afterPost.reloaded && afterPost.id === "3333" && afterPost.focused === "report-id" && afterPost.rows[0] === "Ben (1700)"
+  && !liveFetches.some((p) => p.tournaments)
+  ? pass("Pairings page shows a newly posted round from the live database without a reload, keeping a US Chess ID half typed")
+  : fail(`Pairings page following the database: ${JSON.stringify({ newRound, afterPost, liveFetches })}`);
+// A report on its way when a result comes in stays on its way.
+await press(livePairings, ".report button:nth-child(2)");
+await livePairings.waitForFunction(() => document.querySelector(".report [role=status]")?.textContent === "Sending…");
+const roundTwoBoard2 = liveRound([["22222222", "11111111", ""], ["33333333", "44444444", "1-0"]]);
+liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne, roundTwo)) } }],
+  ["put", { path: `/${NODE}`, data: JSON.stringify(liveClassic(roundOne, roundTwoBoard2)) }]];
+const resultShown = await livePairings.waitForFunction(() => document.querySelectorAll(".pairings-all tbody tr")[1]?.cells[3].textContent === "1–0",
+  { timeout: 3000 }).then(() => true, () => false);
+const whileSending = await livePairings.evaluate(() => ({ status: document.querySelector(".report [role=status]")?.textContent,
+  disabled: [...document.querySelectorAll(".report button")].map((b) => b.disabled) }));
+releaseReport?.();
+await livePairings.waitForFunction(() => document.querySelector(".report [role=status]")?.textContent.includes("reported"));
+const sent = await livePairings.evaluate(() => ({ pressed: document.querySelector('.report [aria-pressed="true"]')?.textContent,
+  focused: document.activeElement?.textContent }));
+resultShown && whileSending.status === "Sending…" && whileSending.disabled.join() === "true,true,true"
+  && sent.pressed === "0–1, Ann won" && sent.focused === "0–1, Ann won"
+  ? pass("Pairings page keeps a report on its way when a result comes in from the live database")
+  : fail(`Pairings page result while reporting: ${JSON.stringify({ resultShown, whileSending, sent })}`);
+// A reader who picked an earlier round stays on it when the next is posted.
+await livePairings.select(".pairings-all select", "1");
+await livePairings.focus(".pairings-all select");
+const roundThree = liveRound([["11111111", "44444444", ""], ["22222222", "33333333", ""]]);
+liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne, roundTwoBoard2, roundThree)) } }]];
+const thirdPosted = await livePairings.waitForFunction(() => document.querySelectorAll(".pairings-all select option").length === 3, { timeout: 3000 })
+  .then(() => true, () => false);
+const stayed = await livePairings.evaluate(() => ({ round: document.querySelector(".pairings-all select").value,
+  focused: document.activeElement?.tagName }));
+thirdPosted && stayed.round === "1" && stayed.focused === "SELECT"
+  ? pass("Pairings page keeps the round a reader picked, and the focus, when the next round is posted")
+  : fail(`Pairings page picked round: ${JSON.stringify({ thirdPosted, stayed })}`);
+await livePairings.setViewport(PHONE);
+await fitsPhone(livePairings, "Pairings page following the live database");
+await axeBoth(livePairings, "Pairings page following the live database");
+await livePairings.close();
+
+liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(liveRound([["11111111", "33333333", ""], ["44444444", "22222222", ""]]))) } }]];
+const liveStandings = await followed("/standings/ following the live database");
+await liveStandings.goto(base + "/standings/", { waitUntil: "domcontentloaded" });
+await liveStandings.waitForFunction(() => document.querySelector(".standings-all p")?.textContent.startsWith("Standings appear here"));
+liveEvents = [["put", { path: "/", data: { [NODE]: JSON.stringify(liveClassic(roundOne)) } }]];
+const standingsUpdated = await liveStandings.waitForFunction(() => document.querySelector(".standings-all tbody tr")?.cells[1].textContent === "Ann",
+  { timeout: 3000 }).then(() => true, () => false);
+standingsUpdated ? pass("Standings page updates from the live database when a result comes in")
+  : fail(`Standings page following the database: ${await liveStandings.$eval(".standings-all", (s) => s.textContent.slice(0, 200))}`);
+await liveStandings.close();
+
+const fallback = await mocked("/pairings/ without the live database", (p) => (p.tournaments === "current" ? { tournaments: twoSections() } : {}),
+  null, () => null);
+await fallback.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const fellBack = await fallback.$$eval(".pairings-all h3", (hs) => hs.map((h) => h.textContent));
+JSON.stringify(fellBack) === JSON.stringify(["Open", "Under 1400"])
+  ? pass("Pairings page loads the tournaments from the script when the live database refuses the stream")
+  : fail(`Pairings page fallback: ${JSON.stringify(fellBack)}`);
+await fallback.close();
 
 // With every round in, the desk has no Finish button: it offers the rating report files for MUIR and keeps
 // them in a folder the TD picks (a stand-in here for the browser's folder picker), rewritten when a result

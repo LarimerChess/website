@@ -12,9 +12,9 @@ How each part works is in the opening comment of its file. This README says wher
 | Events, /events/ | events/index.html with calendar.js's filters; each club event's page, events/<name>/, is written by scripts/build_pages.py and takes entries with register.js |
 | Scholastic, /scholastic/ | calendar.js, showing the events tagged for youth |
 | Entries, /entries/ | entries.js |
-| Pairings and Standings, /pairings/ and /standings/ | pairings.js, with pairing.js for Swiss and quad tournaments and arena.js for arenas |
+| Pairings and Standings, /pairings/ and /standings/ | pairings.js, with pairing.js for Swiss and quad tournaments, arena.js for arenas, and live.js to follow the live database once LIVE_DB in register.js is set |
 | Results, /results/ | written by scripts/build_results.py; results.js pages the table |
-| TD desk, /td/ (noindex, unlinked) | td.js, td-run.js, td-arena.js, td-contacts.js, pairing.js, arena.js, ratingreport.js |
+| TD desk, /td/ (noindex, unlinked) | td.js, td-run.js, td-arena.js, td-contacts.js, pairing.js, arena.js, ratingreport.js, live.js |
 | Board minutes, /minutes/ | by hand |
 
 - **Styles.** style.css is copied into every page's <style>, so the first paint doesn't wait on another request. After changing style.css or any page's script, run python scripts/sync_assets.py, which copies it and updates each script link's ?v= stamp so browsers don't pair a new page with a cached old script. Never edit a page's <style> by hand.

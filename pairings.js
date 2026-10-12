@@ -2,8 +2,10 @@
 // section by section, from the registration script's ?tournaments=current. Pairings shows one
 // round at a time, the latest posted unless a reader picks an earlier one; Standings shows the
 // standings after a round, the latest with results unless a reader picks an earlier one. An
-// arena's games and queue are on Pairings, its leaderboard on Standings. ENDPOINT, savedPlayers,
-// and storePlayers come from register.js, Pairing from pairing.js, and Arena from arena.js.
+// arena's games and queue are on Pairings, its leaderboard on Standings. With LIVE_DB set, the
+// pages follow the database's public copy of the same tournaments instead, and redraw as it changes.
+// ENDPOINT, LIVE_DB, savedPlayers, and storePlayers come from register.js, listenLive from live.js,
+// Pairing from pairing.js, and Arena from arena.js.
 
 const pairingsStatus = document.querySelector(".pairings-status");
 const pairingsAll = document.querySelector(".pairings-all");
@@ -48,9 +50,14 @@ function clock(time) {
   return `${(h + 11) % 12 + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** A labelled menu of rounds that redraws what follows it, starting at the chosen one. draw gets
- *  the round and a function that draws it again. */
-function roundMenu(id, label, section, rounds, chosen, draw) {
+// The rounds a reader picked other than the latest, by tournament and section, so a redraw keeps them.
+const picked = new Map();
+
+/** A labelled menu of rounds that redraws what follows it, starting at the one picked before or
+ *  else the latest. draw gets the round. */
+function roundMenu(id, label, section, rounds, memo, draw) {
+  const latest = rounds.at(-1)[0];
+  const chosen = rounds.some(([value]) => value === picked.get(memo)) ? picked.get(memo) : latest;
   const menu = document.createElement("p");
   menu.className = "round-menu";
   const name = Object.assign(document.createElement("label"), { htmlFor: id, textContent: label });
@@ -64,9 +71,13 @@ function roundMenu(id, label, section, rounds, chosen, draw) {
   for (const [value, text] of rounds) select.append(new Option(text, value, false, value === chosen));
   const shown = document.createElement("div");
   shown.className = "round-shown";
-  const redraw = () => shown.replaceChildren(...draw(Number(select.value), redraw));
-  shown.append(...draw(chosen, redraw));
-  select.addEventListener("change", redraw);
+  const redraw = () => shown.replaceChildren(...draw(Number(select.value)));
+  shown.append(...draw(chosen));
+  select.addEventListener("change", () => {
+    if (Number(select.value) === latest) picked.delete(memo);
+    else picked.set(memo, Number(select.value));
+    redraw();
+  });
   menu.append(name, " ", select);
   return [menu, shown];
 }
@@ -92,6 +103,23 @@ function partsOf(t) {
 const found = new Set();
 const mine = () => new Set([...savedPlayers().map((p) => p.id), ...found]);
 const reported = new Map();
+const sending = new Set();
+// Reports this device sent, until the tournament as loaded shows them: where => [side, result].
+const claimed = new Map();
+const whereOf = (t, number, g) => `${t.key}|${number}|${g.section || ""}|${g.board}`;
+// Redraws every tournament, for a change made here; set once the tournaments load.
+let redrawAll = () => {};
+
+function withClaim(t, number, g) {
+  const where = whereOf(t, number, g);
+  const [side, value] = claimed.get(where) || [];
+  if (!side) return g;
+  if (g.reports?.[side] === value) {
+    claimed.delete(where);
+    return g;
+  }
+  return { ...g, reports: { ...g.reports, [side]: value } };
+}
 
 /** The TD's result, or else what the players reported, until the TD confirms it. */
 function shownResult(g) {
@@ -102,35 +130,38 @@ function shownResult(g) {
 }
 
 /** One-tap buttons that report a board's result for the player saved here. */
-function reportBox(t, number, g, name, redraw) {
+function reportBox(t, number, g, name) {
   const id = mine().has(g.white) ? g.white : g.black;
   const side = id === g.white ? "white" : "black";
-  const where = `${t.key}|${number}|${g.section || ""}|${g.board}`;
+  const where = whereOf(t, number, g);
   const box = document.createElement("div");
   box.className = "report";
   const called = (who) => t.players.find((p) => p.id === who)?.name || who;
   box.append(paragraph(`Board ${g.board}: ${name(g.white)} with white, ${name(g.black)} with black. Report the result:`));
   const buttons = document.createElement("p");
   buttons.className = "td-buttons";
-  const status = Object.assign(paragraph(reported.get(where) || ""), { className: "register-hint" });
+  const status = Object.assign(paragraph(sending.has(where) ? "Sending…" : reported.get(where) || ""), { className: "register-hint" });
   status.setAttribute("role", "status");
   for (const [value, text] of [["1-0", `1–0, ${called(g.white)} won`], ["0-1", `0–1, ${called(g.black)} won`], ["1/2-1/2", "½–½, a draw"]]) {
     const button = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: text });
     button.setAttribute("aria-pressed", String(g.reports?.[side] === value));
+    button.disabled = sending.has(where);
     button.addEventListener("click", async () => {
       const [event, date] = t.key.split("/");
       for (const b of buttons.children) b.disabled = true;
       status.textContent = "Sending…";
+      sending.add(where);
       try {
         const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams({ action: "report", event, date, number,
           board: g.board, section: g.section || "", id, result: value }) });
         const result = await response.json();
-        if (result.ok) g.reports = { ...g.reports, [side]: value };
+        if (result.ok) claimed.set(where, [side, value]);
         reported.set(where, result.message || result.error);
       } catch {
         reported.set(where, "The report didn't go through. Try again, or tell the TD.");
       }
-      redraw();
+      sending.delete(where);
+      redrawAll();
       const again = document.querySelector(`.report[data-where="${CSS.escape(where)}"]`);
       (again?.querySelector('[aria-pressed="true"]') || again?.querySelector("button"))?.focus();
     });
@@ -144,7 +175,7 @@ function reportBox(t, number, g, name, redraw) {
 
 /** A form to find a player's board by US Chess ID, which saves the player on this device as the
  * Register form does: the same list, most recent first, with the same Remember choice. */
-function findForm(tournaments, render) {
+function findForm(current, render) {
   const form = document.createElement("form");
   form.className = "register-form report-find";
   const status = Object.assign(paragraph(""), { className: "register-hint" });
@@ -200,7 +231,7 @@ function findForm(tournaments, render) {
     event.preventDefault();
     const id = input.value.trim();
     if (!/^\d{8}$/.test(id)) return void (status.textContent = "A US Chess ID is eight digits.");
-    const player = tournaments.filter((t) => t.status === "running" && t.format !== "arena")
+    const player = current().filter((t) => t.status === "running" && t.format !== "arena")
       .flatMap((t) => t.players).find((p) => p.id === id);
     if (!player) return void (status.textContent = "Nobody with that US Chess ID is playing in a tournament in progress.");
     found.add(id);
@@ -271,18 +302,19 @@ function pairingsSection(t, ti) {
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
     const rounds = s.rounds.map((_, i) => [i + 1, `${i + 1}${of}`]);
-    const draw = (n, redraw) => {
+    const draw = (n) => {
       const round = s.rounds[n - 1];
+      const games = round.games.map((g) => withClaim(t, n, g));
       const shown = [tableOf(["Board", "White", "Black", "Result"],
-        round.games.map((g) => [g.board, name(g.white), name(g.black), shownResult(g)]))];
+        games.map((g) => [g.board, name(g.white), name(g.black), shownResult(g)]))];
       if (round.byes.length) shown.push(paragraph(`Without a game: ${round.byes.map((b) => `${name(b.id)}, ${kind(b)}`).join("; ")}.`));
       if (t.status === "running") {
         const ids = mine();
-        for (const g of round.games) if (!g.result && (ids.has(g.white) || ids.has(g.black))) shown.push(reportBox(t, n, g, name, redraw));
+        for (const g of games) if (!g.result && (ids.has(g.white) || ids.has(g.black))) shown.push(reportBox(t, n, g, name));
       }
       return shown;
     };
-    section.append(...roundMenu(`round-${ti}-${si}`, "Round", several ? s.name : "", rounds, rounds.length, draw));
+    section.append(...roundMenu(`round-${ti}-${si}`, "Round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
   });
   return section;
 }
@@ -360,29 +392,97 @@ function standingsSection(t, ti) {
         rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
           r.performance ?? "", r.estimate ?? ""]), label));
     };
-    section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, rounds.at(-1)[0], draw));
+    section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
   });
   return section;
 }
 
 const onStandings = Boolean(standingsAll);
-if (!ENDPOINT) {
-  pairingsStatus.textContent = `${onStandings ? "Standings" : "Pairings"} will be posted here once tournaments are run online.`;
-} else {
+const shownAll = onStandings ? standingsAll : pairingsAll;
+const sectionOf = onStandings ? standingsSection : pairingsSection;
+let current = [];
+let loaded = false;
+let finder = null;
+// Each tournament's section as last drawn, with the tournament it was drawn from.
+const drawn = new Map();
+
+/** A selector for the focused control that finds its counterpart once redrawn. */
+function focusKey(control) {
+  if (!control || !shownAll.contains(control)) return "";
+  if (control.id) return `#${CSS.escape(control.id)}`;
+  const box = control.closest(".report");
+  if (!box) return "";
+  return `.report[data-where="${CSS.escape(box.dataset.where)}"] .td-buttons > :nth-child(${[...control.parentNode.children].indexOf(control) + 1})`;
+}
+
+/** Draws the tournaments, only those that changed unless all, keeping the reader's place: the
+ *  rounds picked, the scroll, the focus, and the find form as it is, mid-entry or not. */
+function drawTournaments(all = false) {
+  const message = current.length ? "" : onStandings ? "No tournament is in progress. Standings appear here as results come in."
+    : "No tournament is in progress. Pairings appear here as each round is posted.";
+  if (pairingsStatus.textContent !== message) pairingsStatus.textContent = message;
+  const reporting = !onStandings && current.some((t) => t.status === "running" && t.format !== "arena" && t.rounds.length);
+  if (reporting && !finder) {
+    finder = findForm(() => current, () => drawTournaments(true));
+    all = true;
+  }
+  const sections = current.map((t, ti) => {
+    const source = `${ti} ${JSON.stringify(t)}`;
+    const before = drawn.get(t.key);
+    if (!all && before?.source === source) return before.section;
+    const section = sectionOf(t, ti);
+    drawn.set(t.key, { source, section });
+    return section;
+  });
+  const wanted = [...(reporting ? [finder] : []), ...sections];
+  const focused = document.activeElement;
+  const key = focusKey(focused);
+  const y = scrollY;
+  for (const child of [...shownAll.children]) if (!wanted.includes(child)) child.remove();
+  wanted.forEach((node, i) => {
+    if (shownAll.children[i] !== node) shownAll.insertBefore(node, shownAll.children[i] || null);
+  });
+  if (reporting && all) finder.showSaved();
+  if (key && !focused.isConnected) shownAll.querySelector(key)?.focus({ preventScroll: true });
+  if (scrollY !== y) scrollTo(scrollX, y);
+}
+
+function showTournaments(list) {
+  current = list;
+  loaded = true;
+  drawTournaments();
+}
+
+function loadOnce() {
   fetch(`${ENDPOINT}?tournaments=current`)
     .then((response) => response.json())
-    .then(({ tournaments = [] }) => {
-      pairingsStatus.textContent = tournaments.length ? "" : onStandings
-        ? "No tournament is in progress. Standings appear here as results come in."
-        : "No tournament is in progress. Pairings appear here as each round is posted.";
-      if (onStandings) return standingsAll.replaceChildren(...tournaments.map(standingsSection));
-      const reporting = tournaments.some((t) => t.status === "running" && t.format !== "arena" && t.rounds.length);
-      const render = () => {
-        pairingsAll.replaceChildren(...(reporting ? [form] : []), ...tournaments.map(pairingsSection));
-        form.showSaved();
-      };
-      const form = findForm(tournaments, render);
-      render();
-    })
-    .catch(() => { pairingsStatus.textContent = `The ${onStandings ? "standings" : "pairings"} couldn't be loaded. Try again later.`; });
+    .then(({ tournaments = [] }) => showTournaments(tournaments))
+    .catch(() => {
+      if (!loaded) pairingsStatus.textContent = `The ${onStandings ? "standings" : "pairings"} couldn't be loaded. Try again later.`;
+    });
+}
+
+redrawAll = () => drawTournaments(true);
+if (!ENDPOINT) {
+  pairingsStatus.textContent = `${onStandings ? "Standings" : "Pairings"} will be posted here once tournaments are run online.`;
+} else if (!LIVE_DB) {
+  loadOnce();
+} else {
+  // Each tournament is a JSON string of what ?tournaments=current gives for it. A stream that
+  // can't start, or stops for good, leaves the page as the script last served it.
+  let heard = false;
+  const stop = listenLive("/public/tournaments", (value) => {
+    heard = true;
+    showTournaments(Object.values(value || {}).flatMap((text) => {
+      try {
+        return [JSON.parse(text)];
+      } catch {
+        return [];
+      }
+    }));
+  }, (final) => {
+    if (heard && !final) return;
+    stop();
+    loadOnce();
+  });
 }
