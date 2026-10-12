@@ -28,6 +28,9 @@ const pass = (message) => console.log(`ok   ${message}`);
 // Wide enough for the menu to fit on one line, so the sticky menu covers nothing the checks click.
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"], defaultViewport: { width: 1100, height: 800 } });
 const page = await browser.newPage();
+// The live registration script, which can take longer than a navigation may; these checks don't need it.
+await page.setRequestInterception(true);
+page.on("request", (request) => (new URL(request.url()).host.endsWith("script.google.com") ? request.abort() : request.continue()));
 // Every filter group sits in a menu, which has to be opened first. The list shows a page of
 // cards at a time, so the rest are shown before anything is counted. Show more is clicked in
 // the page rather than with page.click, whose scrolling to the button would show more on its own.
