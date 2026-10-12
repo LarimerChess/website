@@ -104,6 +104,7 @@ async function signIn(value) {
   password = value;
   const result = await call("login");
   if (!result.ok) return false;
+  seen = result.changes || null;
   remember(value);
   login.hidden = true;
   desk.hidden = navEvent.hidden = false;
@@ -346,14 +347,16 @@ registerForm.addEventListener("submit", (event) => {
   playerInput.focus();
 });
 
-async function showDeskEntries() {
+/** Shows the chosen event's entries, ledger, and incidents, and has the tournament follow; quietly,
+ *  for another desk's change, it leaves the status line and the tournament alone. */
+async function showDeskEntries(quiet = false) {
   const key = choice.value;
   if (!key) {
     tdEntriesStatus.textContent = "No club events are open.";
     return;
   }
   const [eventName, date] = key.split("/");
-  tdEntriesStatus.textContent = "Loading entries…";
+  if (!quiet) tdEntriesStatus.textContent = "Loading entries…";
   const { entries = [] } = await call("entries", { event: eventName, date });
   if (key !== choice.value) return;
   const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
@@ -454,7 +457,7 @@ async function showDeskEntries() {
   tdTable.hidden = !entries.length;
   showLedger(eventName, date);
   showIncidents(eventName, date);
-  document.dispatchEvent(new Event("td-choice"));
+  if (!quiet) document.dispatchEvent(new Event("td-choice"));
 }
 
 async function showLedger(eventName, date) {
@@ -518,6 +521,54 @@ incidentForm.addEventListener("submit", async (event) => {
   deskStatus.textContent = result.message;
   showDeskEntries();
 });
+
+// Changes from another desk or the website show without a reload: every few seconds the desk asks
+// the script for its change stamps (changes) and reloads what has a new one, holding back what the
+// TD is in the middle of: a menu or field in the entries, or unsaved work in the tournament (runBusy).
+const CHECK_EVERY = 10000;
+let seen = null;
+const pending = new Set();
+
+let checking = false;
+
+async function checkChanges() {
+  if (!password || document.hidden || checking) return;
+  checking = true;
+  try {
+    const { changes } = await call("changes");
+    if (changes && seen) {
+      for (const [kind, stamp] of Object.entries(changes)) {
+        if (stamp === seen[kind]) continue;
+        if (kind === "entries") pending.add("entries").add("people").add("run");
+        if (kind === "tournaments") pending.add("run");
+        if (kind === "contacts") pending.add("people");
+      }
+    }
+    if (changes) seen = changes;
+    applyChanges();
+  } catch {
+  } finally {
+    checking = false;
+  }
+}
+
+function applyChanges() {
+  const field = document.activeElement?.matches("input, select, textarea") ? document.activeElement : null;
+  if (pending.delete("people")) loadPeople();
+  if (pending.has("entries") && !tdTable.contains(field)) {
+    pending.delete("entries");
+    showDeskEntries(true);
+  }
+  if (pending.has("run") && !runBusy()) {
+    pending.delete("run");
+    loadRun();
+  }
+}
+
+setInterval(checkChanges, CHECK_EVERY);
+document.addEventListener("visibilitychange", checkChanges);
+// What was held back loads once the TD leaves the field.
+document.addEventListener("focusout", () => setTimeout(applyChanges));
 
 (async () => {
   const saved = remembered();

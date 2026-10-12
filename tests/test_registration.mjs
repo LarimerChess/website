@@ -78,7 +78,9 @@ function load(tabs, cache = {}) {
       deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
     SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => registration },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {} }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {},
+      getAll: (keys) => Object.fromEntries(keys.filter((k) => k in cache).map((k) => [k, cache[k]])),
+      putAll: (values) => Object.assign(cache, values) }) },
     ContentService: { MimeType: { JSON: "json" }, createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }) },
     Utilities: { formatDate: (d, tz, f) => (f === "yyyy-MM-dd" ? d.toISOString().slice(0, 10) : "2026-10-10 10:00"), getUuid: () => "uuid",
       computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {} },
@@ -153,6 +155,29 @@ test("the public copies last six hours, every change clears them, and Refresh re
   eq(names(), []);
   assert.match(gs.refreshCaches().message, /Refreshed 2 entry lists and 0 tournaments/);
   eq(JSON.parse(cache[gs.allEntriesKey()])[0].entries.map((e) => e.name), ["Ben"]);
+});
+
+test("each change gives its kind a new stamp, which the desks poll to reload just that", () => {
+  const { gs } = load({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Paid", "Paid on", "Token"],
+      ["", "classic", "2026-11-07", "11111111", "Ann", "registered", "15", "", "", "t1"]],
+    Contacts: [["Name", "Email", "Phone", "Notes"]],
+  });
+  gs.clubEvents = () => ({});
+  const changed = (act) => {
+    const before = gs.changes();
+    act();
+    const after = gs.changes();
+    return Object.keys(after).filter((k) => after[k] !== before[k]);
+  };
+  eq(gs.changes(), { entries: "", tournaments: "", contacts: "" });
+  eq(changed(() => gs.markPaid("t1", "15", "cash")), ["entries"]);
+  eq(changed(() => gs.withdraw("t1")), ["entries"]);
+  eq(changed(() => gs.clearTournamentCache()), ["tournaments"]);
+  eq(changed(() => gs.saveContact({ fields: JSON.stringify({ Name: "Ann Ash" }) })), ["contacts"]);
+  eq(changed(() => gs.refreshCaches()), ["entries", "tournaments", "contacts"]);
+  const login = gs.doPost({ parameter: { action: "login", password: "sheet", device: "d1" } });
+  eq(login.changes, gs.changes(), "sign-in starts the desk from the stamps");
 });
 
 test("the desk's contacts: IDs for rows added by hand, saving by heading, formulas kept as text, and deleting", () => {

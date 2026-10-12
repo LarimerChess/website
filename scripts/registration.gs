@@ -103,7 +103,8 @@ function doPost(e) {
       return json({ error: "US Chess has rated this tournament, so it can't change on the desk." });
     }
     switch (p.action) {
-      case "login": return json({ ok: true });
+      case "login": return json({ ok: true, changes: changes() });
+      case "changes": return json({ changes: changes() });
       case "refresh": return json(refreshCaches());
       case "choices": return json({ choices: choices() });
       case "history": return json({ players: history(p.q) });
@@ -429,6 +430,7 @@ function saveContact(p) {
     } else {
       appendText(sheet, col, Object.fromEntries(Object.entries(col).map(([h, i]) => [h, row[i]])));
     }
+    touch("contacts");
     return { ok: true, id, message: `${name} is saved.` };
   } finally {
     lock.releaseLock();
@@ -443,6 +445,7 @@ function deleteContact(id) {
     const index = id ? rows.findIndex((r) => r[col.ID] === id) : -1;
     if (index < 0) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
     sheet.deleteRow(index + 2);
+    touch("contacts");
     return { ok: true, message: `${rows[index][col.Name]} is deleted.` };
   } finally {
     lock.releaseLock();
@@ -1267,8 +1270,8 @@ function currentTournaments() {
 
 /** Clears the Pairings and Standings pages' copy, and the entry lists, which show each player's section. */
 function clearTournamentCache() {
-  CacheService.getScriptCache().remove("tournaments");
-  clearEntriesCache();
+  CacheService.getScriptCache().removeAll(["tournaments", "entriesVersion"]);
+  touch("tournaments");
 }
 
 // The public pages' copies of the entry lists and tournaments last six hours, the longest Apps Script
@@ -1307,12 +1310,29 @@ function allEntriesKey() {
 
 function clearEntriesCache() {
   CacheService.getScriptCache().remove("entriesVersion");
+  touch("entries");
+}
+
+// The TD desk asks for these every few seconds and reloads whatever has a new stamp, so a change made
+// on another desk or on the website shows without a reload. A stamp the cache has dropped reads as
+// "", which costs the desks one reload.
+const CHANGE_SCOPES = ["entries", "tournaments", "contacts"];
+
+function touch(...scopes) {
+  const stamp = Math.random().toString(36).slice(2, 10);
+  CacheService.getScriptCache().putAll(Object.fromEntries(scopes.map((s) => [`changed:${s}`, stamp])), PUBLIC_CACHE);
+}
+
+function changes() {
+  const stamps = CacheService.getScriptCache().getAll(CHANGE_SCOPES.map((s) => `changed:${s}`));
+  return Object.fromEntries(CHANGE_SCOPES.map((s) => [s, stamps[`changed:${s}`] || ""]));
 }
 
 /** The TD desk's Refresh: clears every copy the public pages and the script keep, and builds the
  *  public pages' copies again from the Sheets. */
 function refreshCaches() {
   CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion"]);
+  touch(...CHANGE_SCOPES);
   const lists = allEntries().length;
   const months = Object.entries(clubEvents()).filter(([, e]) => e.kind === "month");
   for (const [key] of months) entries(key, false);
@@ -1356,6 +1376,7 @@ function markPaid(token, amount, by) {
     sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
     sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(amount ? method : "");
+    touch("entries");
     return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}.` : `${row.name} is marked unpaid.` };
   } finally {
     lock.releaseLock();

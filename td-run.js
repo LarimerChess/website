@@ -33,6 +33,7 @@ const RESULTS = [["", "No result"], ["1-0", "1–0"], ["0-1", "0–1"], ["1/2-1/
   ["1F-0F", "1F–0F (black forfeits)"], ["0F-1F", "0F–1F (white forfeits)"], ["0F-0F", "0F–0F (both forfeit)"]];
 let current = null;
 let draft = null;
+let startEdited = false;
 
 const keyParts = () => choice.value.split("/");
 const nameOf = (id) => {
@@ -123,6 +124,7 @@ async function loadRun() {
   const key = choice.value;
   current = null;
   draft = null;
+  startEdited = false;
   if (!key) return;
   runStatus.textContent = "Loading the tournament…";
   const [event, date] = keyParts();
@@ -818,6 +820,16 @@ function renderStandings() {
   }));
 }
 
+/** Whether reloading the tournament would lose the TD's unsaved work: a changed draft, check-in
+ *  choices, sections or a start being filled in, or a field in use. */
+function runBusy() {
+  const field = document.activeElement?.matches("input, select, textarea") && document.activeElement.closest(".run");
+  const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
+  const checkingIn = !runRound.hidden && !runCheckin.hidden
+    && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== "play");
+  return Boolean(field || edited || checkingIn || runSectionsEdit.open || (!runStart.hidden && startEdited));
+}
+
 // The format menu and the hint on starting sit on the status line, outside the form.
 function showStart(shown) {
   runStart.hidden = !shown;
@@ -828,6 +840,7 @@ function showFormatFields() {
   for (const field of runStart.querySelectorAll("[data-format]")) field.hidden = field.dataset.format !== runStart.elements.format.value;
 }
 runStart.elements.format.addEventListener("change", showFormatFields);
+runStart.addEventListener("input", () => { startEdited = true; });
 
 runStart.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -844,7 +857,10 @@ runStart.addEventListener("submit", async (event) => {
   runStatus.textContent = "Starting…";
   const result = await call("start", { event: eventName, date, ...fields });
   runStatus.textContent = result.message || result.error;
-  if (result.ok) loadRun();
+  if (result.ok) {
+    startEdited = false;
+    loadRun();
+  }
 });
 
 document.querySelector(".run-sections-form").addEventListener("submit", async (event) => {

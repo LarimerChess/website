@@ -640,6 +640,87 @@ deskCalls.some((c) => c.action === "remove" && c.token === "t1") ? pass("TD desk
   : fail("TD desk didn't remove the entry");
 await desk.close();
 
+// Changes from another desk or the website, against a stand-in whose change stamps move: the desk
+// reloads what changed, but not while the TD is using a menu in the entries or filling in the start.
+const live = await browser.newPage();
+live.on("pageerror", (error) => fail(`JavaScript error on /td/ following changes: ${error.message}`));
+// The desk checks every ten seconds; here, every tenth of a second.
+await live.evaluateOnNewDocument(() => {
+  const every = window.setInterval;
+  window.setInterval = (f, ms, ...rest) => every(f, ms === 10000 ? 100 : ms, ...rest);
+});
+const liveCalls = [];
+const stamps = { entries: "a", tournaments: "a", contacts: "a" };
+const liveEntries = [{ name: "First Player", id: "11111111", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50",
+  due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1", date: "2026-10" }];
+await live.setRequestInterception(true);
+live.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    const source = await (await fetch(base + "/register.js")).text();
+    request.respond({ contentType: "text/javascript",
+      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+    return;
+  }
+  if (url.host !== "registration.test") return request.continue();
+  const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+  liveCalls.push(p);
+  const body = { login: { ok: true, changes: { ...stamps } }, changes: { changes: { ...stamps } },
+    choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
+    people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: liveEntries },
+    ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
+    incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true };
+  request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+});
+const callsOf = (action) => liveCalls.filter((c) => c.action === action).length;
+const rowNames = () => live.$$eval(".td-entries tbody tr", (rows) => rows.map((r) => r.cells[0].textContent));
+await live.goto(base + "/td/", { waitUntil: "networkidle0" });
+await live.type("#td-password", "secret");
+await live.click(".td-login button");
+await live.waitForFunction(() => document.querySelectorAll(".td-entries tbody tr").length === 1);
+await live.waitForFunction(() => !document.querySelector(".run-start").hidden);
+await new Promise((resolve) => setTimeout(resolve, 500));
+const quiet = { entries: callsOf("entries"), tournament: callsOf("tournament"), people: callsOf("people") };
+quiet.entries === 1 && quiet.tournament === 1 && quiet.people === 1 && callsOf("changes") > 2
+  ? pass("TD desk checks for changes and reloads nothing while nothing changes")
+  : fail(`TD desk reloaded with nothing changed: ${JSON.stringify(quiet)}`);
+
+liveEntries.push({ ...liveEntries[0], name: "Web Registrant", id: "22222222", token: "t2" });
+stamps.entries = "b";
+const shown = await live.waitForFunction(() => [...document.querySelectorAll(".td-entries tbody tr")]
+  .some((r) => r.cells[0].textContent === "Web Registrant"), { timeout: 3000 }).then(() => true, () => false);
+shown && callsOf("people") === 2 ? pass("TD desk shows a registration made elsewhere without a reload")
+  : fail(`TD desk didn't show the new registration: ${JSON.stringify(await rowNames())}`);
+
+await live.focus(".td-entries .td-method");
+liveEntries.push({ ...liveEntries[0], name: "Held Back", id: "33333333", token: "t3" });
+stamps.entries = "c";
+await new Promise((resolve) => setTimeout(resolve, 600));
+const whileChoosing = await rowNames();
+await live.$eval(".td-entries .td-method", (m) => m.blur());
+const afterLeaving = await live.waitForFunction(() => [...document.querySelectorAll(".td-entries tbody tr")]
+  .some((r) => r.cells[0].textContent === "Held Back"), { timeout: 3000 }).then(() => true, () => false);
+!whileChoosing.includes("Held Back") && afterLeaving
+  ? pass("TD desk holds a change back while the TD is choosing how someone paid, and shows it after")
+  : fail(`TD desk changed the entries under the TD: ${JSON.stringify({ whileChoosing, afterLeaving })}`);
+
+const runLoads = callsOf("tournament");
+stamps.tournaments = "b";
+const reloaded = await new Promise((resolve) => {
+  const started = Date.now();
+  const check = () => (callsOf("tournament") > runLoads ? resolve(true) : Date.now() - started > 3000 ? resolve(false) : setTimeout(check, 50));
+  check();
+});
+await live.type("#run-rounds", "5");
+await live.$eval("#run-rounds", (i) => i.blur());
+const whileStarting = callsOf("tournament");
+stamps.tournaments = "c";
+await new Promise((resolve) => setTimeout(resolve, 600));
+reloaded && callsOf("tournament") === whileStarting && (await live.$eval("#run-rounds", (i) => i.value)) === "5"
+  ? pass("TD desk reloads a tournament changed elsewhere, but not over a start being filled in")
+  : fail(`TD desk tournament reloads: ${JSON.stringify({ reloaded, before: whileStarting, after: callsOf("tournament") })}`);
+await live.close();
+
 // The Entries page, against a stand-in for the Apps Script's ?entries=all.
 const entriesPage = await browser.newPage();
 entriesPage.on("pageerror", (error) => fail(`JavaScript error on /entries/: ${error.message}`));
