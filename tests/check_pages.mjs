@@ -1329,6 +1329,9 @@ await handPage.close();
 
 // The menu: on one line at 1100px; on a phone it wraps, without covering the page or scrolling sideways.
 const layout = await browser.newPage();
+// The live registration script can take longer than a page load allows; the layout doesn't need it.
+await layout.setRequestInterception(true);
+layout.on("request", (request) => (new URL(request.url()).host.endsWith("script.google.com") ? request.abort() : request.continue()));
 const failedBefore = failures.length;
 for (const path of pages) {
   await layout.setViewport({ width: 1100, height: 800 });
