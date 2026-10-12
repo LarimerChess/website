@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Archive rated tournaments from the Tournaments in progress spreadsheet, then clear them from it.
+"""Archive rated tournaments from the Firebase database or the Tournaments in progress spreadsheet, then clear them from it.
 
     ~/.local/share/lccc/venv/bin/python scripts/archive_tournaments.py [--dry-run]
     ~/.local/share/lccc/venv/bin/python scripts/archive_tournaments.py --clear [--dry-run]
@@ -11,6 +11,10 @@ Registration entries, payments, and incidents are in the registration spreadshee
 never reads. Nothing in the spreadsheet changes. Run again, it rewrites the files from the
 spreadsheet, so a late correction is kept.
 
+Once there is a database URL (LIVE_DB in register.js, or LCCC_FIREBASE_URL), the rows come from
+its /tables instead, as scripts/firebase_db.py reads them, and the spreadsheet is never read.
+Archives and fingerprints come out the same from either.
+
 --clear is the separate step that deletes a rated tournament's rows from the Tournaments,
 Players, Rounds, and Arena tabs, and only when all of these hold:
   1. its archive here matches the spreadsheet's rows now;
@@ -18,7 +22,8 @@ Players, Rounds, and Arena tabs, and only when all of these hold:
   3. its public results page, https://larimerchess.org/results/<event>-<date>/, answers 200
      and carries the fingerprint of these same rows, which scripts/build_results.py writes
      into it.
-Otherwise it says what it is waiting for and leaves the rows.
+Otherwise it says what it is waiting for and leaves the rows. From the database it deletes the
+same rows from /tables, and the tournament's /queues and /public/tournaments nodes.
 
 --fixture FILE reads the spreadsheet from a JSON file instead of Google ({tab: rows}, each
 tab's first row its headings) and never writes to Google; --ratings FILE reads ratings.json
@@ -37,6 +42,8 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+import firebase_db
 
 ROOT = Path(__file__).resolve().parent.parent
 TOURNAMENT_SHEET = "119cs96Se8ScZJ0B5V2G12Z04IpUOsDB8fvw9ZqEPBcw"
@@ -68,6 +75,28 @@ def rows_of(values):
     header = [h.strip() for h in values[0]]
     return [dict({h: (r[i] if i < len(r) else "") for i, h in enumerate(header) if h}, _row=n)
             for n, r in enumerate(values[1:], 2)]
+
+
+def tournament_headings():
+    """{tab: headings} from registration.gs's TOURNAMENT_HEADERS, since the database keeps no column order."""
+    script = (ROOT / "scripts" / "registration.gs").read_text(encoding="utf-8")
+    block = re.search(r"^const TOURNAMENT_HEADERS = \{(.*?)^\};", script, re.M | re.S)[1]
+    return {tab: json.loads(f"[{names}]") for tab, names in re.findall(r"(\w+): \[([^\]]*)\]", block)}
+
+
+def read_database(db):
+    """{tab: (None, rows)} like read_book, ordered by row ID, with the ID in "_row" and the
+    spreadsheet's columns in its order, "" for a field a row lacks."""
+    tables, known = db.get("tables") or {}, tournament_headings()
+    book = {}
+    for tab in TOURNAMENT_TABS:
+        if tab in tables:
+            stored = [(row_id, firebase_db.decode_row(tables[tab][row_id])) for row_id in sorted(tables[tab])]
+            present = {h for _, r in stored for h in r}
+            headings = [h for h in known.get(tab, []) if h in present]
+            headings += sorted(present - set(headings))
+            book[tab] = (None, [dict({h: r.get(h, "") for h in headings}, _row=row_id) for row_id, r in stored])
+    return book
 
 
 def read_fixture(path):
@@ -209,34 +238,59 @@ def clear(key, service, dry_run):
         return
     log(f"clear {key}: deleting {summary}")
     service.batchUpdate(spreadsheetId=TOURNAMENT_SHEET, body={"requests": requests}).execute()
-    after = read_book(service, TOURNAMENT_SHEET, TOURNAMENT_TABS)
+    check_cleared(key, before, read_book(service, TOURNAMENT_SHEET, TOURNAMENT_TABS), "tab")
+    log(f"clear {key}: deleted {summary}")
+
+
+def clear_database(key, db, dry_run):
+    """Deletes the tournament's rows, queue, and public copy in one write, then checks no other row changed."""
+    before = read_database(db)
+    doomed = {tab: [r["_row"] for r in tab_rows if r.get("Key") == key] for tab, (_, tab_rows) in before.items()}
+    update = {f"tables/{tab}/{row_id}": None for tab, ids in doomed.items() for row_id in ids}
+    update |= {f"queues/{firebase_db.node(key)}": None, f"public/tournaments/{firebase_db.node(key)}": None}
+    summary = ", ".join(f"{len(ids)} from {tab}" for tab, ids in doomed.items() if ids)
+    if dry_run:
+        log(f"clear {key}: would delete {summary}, and its queue and public copy (rows {doomed})")
+        return
+    log(f"clear {key}: deleting {summary}, and its queue and public copy")
+    db.patch("", update)
+    check_cleared(key, before, read_database(db), "table")
+    log(f"clear {key}: deleted {summary}")
+
+
+def check_cleared(key, before, after, kind):
+    # Only filled fields, since a database column that only the deleted rows filled is gone after.
+    filled = lambda tab_rows: [{k: v for k, v in clean(r).items() if v != ""} for r in tab_rows]
     for tab, (_, tab_rows) in before.items():
-        if [clean(r) for r in after[tab][1]] != [clean(r) for r in tab_rows if r.get("Key") != key]:
+        if filled(after.get(tab, (None, []))[1]) != filled(r for r in tab_rows if r.get("Key") != key):
             saved = json.dumps({t: [clean(r) for r in rs] for t, (_, rs) in before.items()}, indent=2,
                                ensure_ascii=False)
             recovery = ROOT / f"results/recovery-{slug(key)}.json"
             recovery.write_text(saved + "\n", encoding="utf-8")
             # An Action's files don't outlast the run, so the rows go in its log as well.
             log(saved)
-            sys.exit(f"clear {key}: after the deletion the {tab} tab isn't what was expected; something else may have "
-                     f"changed it meanwhile. Every row from before is above and in {recovery.relative_to(ROOT)}. "
-                     "Check the tab.")
-    log(f"clear {key}: deleted {summary}")
+            sys.exit(f"clear {key}: after the deletion the {tab} {kind} isn't what was expected; something else may "
+                     f"have changed it meanwhile. Every row from before is above and in {recovery.relative_to(ROOT)}. "
+                     f"Check the {kind}.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--clear", action="store_true",
-                        help="delete archived, published tournaments from the spreadsheet")
+                        help="delete archived, published tournaments from the database or spreadsheet")
     parser.add_argument("--dry-run", action="store_true", help="say what would be written or deleted, and change nothing")
-    parser.add_argument("--fixture", help="read the spreadsheet from this JSON file; Google is never touched")
+    parser.add_argument("--fixture", help="read the spreadsheet from this JSON file; Google and the database are never touched")
     parser.add_argument("--ratings", help="read ratings.json from this file")
     parser.add_argument("--out", type=Path, default=ROOT, help="write the archive under this folder, not this repo")
     args = parser.parse_args()
 
-    service = None
+    service = db = None
+    store = "spreadsheet"
     if args.fixture:
         tournaments = read_fixture(args.fixture)
+    elif firebase_db.database_url():
+        db, store = firebase_db.connect(), "database"
+        tournaments = read_database(db)
     else:
         from googleapiclient.discovery import build
         from google_auth import credentials
@@ -259,20 +313,22 @@ def main():
         record = collect(key, tournaments)
         stored = archive_path(args.out, key)
         if not stored.exists() or json.loads(stored.read_text(encoding="utf-8")) != record:
-            reason = "it isn't archived, or the spreadsheet changed since; run without --clear first"
+            reason = f"it isn't archived, or the {store} changed since; run without --clear first"
         else:
             reason = committed_and_pushed(args.out, key) or published(key, fingerprint(record))
         if reason:
             kept += 1
             log(f"clear {key}: kept, {reason}")
             if os.environ.get("GITHUB_ACTIONS"):
-                print(f"::notice::{key} kept in the spreadsheet: {reason}")
+                print(f"::notice::{key} kept in the {store}: {reason}")
+        elif db:
+            clear_database(key, db, args.dry_run)
         elif service is None:
             log(f"clear {key}: would delete its rows; a fixture never touches Google")
         else:
             clear(key, service, args.dry_run)
     if kept:
-        log(f"{kept} tournament(s) kept in the spreadsheet until the steps above are done")
+        log(f"{kept} tournament(s) kept in the {store} until the steps above are done")
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 |---|---|---|---|
 | Update calendar | hourly | scripts/update_calendar.py, then build_pages.py | LCCC_GOOGLE_CALENDAR_READ_TOKEN |
 | Results | hourly | scripts/rating_check.mjs, build_results.py, and build_pages.py | LCCC_GOOGLE_GMAIL_SEND_TOKEN, LCCC_TD_EMAILS |
-| Archive tournaments | daily, 10:30, 11:30, and 12:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN |
+| Archive tournaments | daily, 10:30, 11:30, and 12:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN, LCCC_GOOGLE_FIREBASE_TOKEN |
 | Sync calendars | daily, 13:15 UTC | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
 | TD expirations | Mondays | scripts/td_expirations.py | USCHESS_API_KEY, LCCC_JUNIOR_TD_IDS, LCCC_GOOGLE_GMAIL_SEND_TOKEN |
 | Date pages | each push that changes a page | build_pages.py, for the sitemap's lastmod dates | |
@@ -45,7 +45,7 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 
 Update calendar fails, naming the event, when an event's calendar metadata is missing or invalid, and leaves events.json alone. A tournament goes from Results to Archive tournaments: once US Chess rates it, rating_check.mjs adds it to ratings.json, the record of what US Chess has rated; build_results.py writes its page; and the archive commits its rows beside the page, then clears them from the spreadsheet.
 
-The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
+The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, --firebase, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
 
 ## Running scripts locally
 
@@ -143,6 +143,7 @@ Make each Google token by running scripts/google_auth.py with the venv's Python,
 | LCCC_GOOGLE_CALENDAR_READ_TOKEN | google_auth.py --calendar-read, google-token-calendar-read.json | Update calendar |
 | LCCC_GOOGLE_CALENDAR_TOKEN | google_auth.py --calendar, google-token-calendar.json | Sync calendars |
 | LCCC_GOOGLE_SHEETS_TOKEN | google_auth.py --sheets, google-token-sheets.json | Archive tournaments |
+| LCCC_GOOGLE_FIREBASE_TOKEN | google_auth.py --firebase, google-token-firebase.json | Archive tournaments, once LIVE_DB in register.js is set |
 | LCCC_GOOGLE_GMAIL_SEND_TOKEN | google_auth.py --gmail-send, google-token-gmail-send.json | Results, TD expirations |
 | USCHESS_API_KEY | A US Chess member creates one on the ratings portal's [API access page](https://ratings.uschess.org/portal/api-access); it shows only once. It is also the script property in step 5. | TD expirations |
 | LCCC_TD_EMAILS | JSON of each TD's US Chess ID and email, {"12345678": "td@example.org"} | Results |

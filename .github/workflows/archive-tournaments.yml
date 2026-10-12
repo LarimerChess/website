@@ -28,6 +28,7 @@ jobs:
         run: python scripts/archive_tournaments.py
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_SHEETS_TOKEN }}
+          LCCC_GOOGLE_FIREBASE_TOKEN: ${{ secrets.LCCC_GOOGLE_FIREBASE_TOKEN }}
       - name: Commit and push the archive
         run: |
           git add results
@@ -41,7 +42,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       # Deletes a tournament's rows only once its archive is pushed and its results page shows the
       # same rows; otherwise the log says what it is waiting for.
-      - name: Clear archived and published tournaments from the spreadsheet
+      - name: Clear archived and published tournaments
         run: python scripts/archive_tournaments.py --clear
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_SHEETS_TOKEN }}
+          LCCC_GOOGLE_FIREBASE_TOKEN: ${{ secrets.LCCC_GOOGLE_FIREBASE_TOKEN }}
