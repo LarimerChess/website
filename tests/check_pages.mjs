@@ -27,10 +27,16 @@ const pass = (message) => console.log(`ok   ${message}`);
 
 // Wide enough for the menu to fit on one line, so the sticky menu covers nothing the checks click.
 const browser = await puppeteer.launch({ executablePath: chrome, args: ["--no-sandbox"], defaultViewport: { width: 1100, height: 800 } });
+// register.js pointed at the stand-ins: the script at registration.test, and no live database, which a
+// check that wants one points at its own stand-in.
+const offline = (source) => source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";')
+  .replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "";');
 const page = await browser.newPage();
-// The live registration script, which can take longer than a navigation may; these checks don't need it.
+// The live registration script, which can take longer than a navigation may, and the live database, whose
+// stream never lets a page finish loading; these checks need neither.
+const outside = (request) => /(^|\.)(script\.google\.com|firebaseio\.com)$/.test(new URL(request.url()).host);
 await page.setRequestInterception(true);
-page.on("request", (request) => (new URL(request.url()).host.endsWith("script.google.com") ? request.abort() : request.continue()));
+page.on("request", (request) => (outside(request) ? request.abort() : request.continue()));
 // Every filter group sits in a menu, which has to be opened first. The list shows a page of
 // cards at a time, so the rest are shown before anything is counted. Show more is clicked in
 // the page rather than with page.click, whose scrolling to the button would show more on its own.
@@ -317,7 +323,7 @@ registration.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
   } else if (url.host === "registration.test") {
     const headers = { "Access-Control-Allow-Origin": "*" };
     if (request.method() === "POST") {
@@ -457,7 +463,7 @@ desk.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
   } else if (url.host === "registration.test") {
     const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
     deskCalls.push(p);
@@ -662,7 +668,7 @@ live.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
     return;
   }
   if (url.host !== "registration.test") return request.continue();
@@ -781,7 +787,7 @@ entriesPage.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
   } else if (url.host === "registration.test") {
     const events = [
       { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", page: "/events/club-night/",
@@ -830,7 +836,7 @@ switchPage.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
   } else if (url.pathname === "/events.json") {
     request.respond({ contentType: "application/json", body: JSON.stringify([
       { page: "/events/club-night/", start: "2026-10-12T18:30:00-06:00", tags: ["casual"] },
@@ -881,7 +887,7 @@ runPage.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
     return;
   }
   if (url.host !== "registration.test") return request.continue();
@@ -968,7 +974,7 @@ arenaPage.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
     return;
   }
   if (url.host !== "registration.test") return request.continue();
@@ -1064,8 +1070,7 @@ async function mocked(label, answer, viewport, stream) {
   tab.on("request", async (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/register.js") {
-      const source = (await (await fetch(base + "/register.js")).text())
-        .replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";');
+      const source = offline(await (await fetch(base + "/register.js")).text());
       request.respond({ contentType: "text/javascript",
         body: stream ? source.replace(/^const LIVE_DB = ".*";$/m, 'const LIVE_DB = "https://live.test";') : source });
     } else if (url.host === "registration.test") {
@@ -1530,7 +1535,7 @@ await handPage.close();
 const layout = await browser.newPage();
 // The live registration script can take longer than a page load allows; the layout doesn't need it.
 await layout.setRequestInterception(true);
-layout.on("request", (request) => (new URL(request.url()).host.endsWith("script.google.com") ? request.abort() : request.continue()));
+layout.on("request", (request) => (outside(request) ? request.abort() : request.continue()));
 const failedBefore = failures.length;
 for (const path of pages) {
   await layout.setViewport({ width: 1100, height: 800 });
@@ -1565,7 +1570,7 @@ quadPage.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     const source = await (await fetch(base + "/register.js")).text();
     request.respond({ contentType: "text/javascript",
-      body: source.replace(/^const ENDPOINT = ".*";$/m, 'const ENDPOINT = "https://registration.test/exec";') });
+      body: offline(source) });
     return;
   }
   if (url.host !== "registration.test") return request.continue();

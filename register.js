@@ -6,7 +6,7 @@
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 // The club's Realtime Database (https://….firebaseio.com), which live.js follows; while it is
 // empty, the Pairings and Standings pages load once and the TD desk polls the script.
-const LIVE_DB = "";
+const LIVE_DB = "https://larimer-county-chess-club-default-rtdb.firebaseio.com";
 
 const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");
