@@ -444,6 +444,8 @@ main > h1:first-child { margin-top: 32px; }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
 .td-incidents, .td-ledger { padding-left: 20px; }
 .entries-all section .entries { margin-bottom: 16px; }
+/* Room for the lists before they load, so the footer doesn't start on screen and jump down. */
+.entries-all { min-height: calc(100vh - 200px); }
 .td-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .td-pact { display: block; font-size: 14px; color: var(--muted); white-space: nowrap; }
 section.td-table { padding: 0; border-bottom: 0; }
