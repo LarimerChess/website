@@ -1,6 +1,6 @@
-// Tests for scripts/registration.gs's running tournaments, against in-memory sheets: a spreadsheet
-// from before sections (a quad mid-event), a Swiss in two sections, quads as sections, and the
-// results players report.
+// Tests for scripts/registration.gs's running tournaments, against in-memory sheets and an in-memory
+// Firebase Realtime Database: a spreadsheet from before sections (a quad mid-event), a Swiss in two
+// sections, quads as sections, and the results players report.
 //   node --test tests/test_registration.mjs
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
@@ -44,6 +44,80 @@ function makeSheet(rows) {
   return sheet;
 }
 
+const DATABASE = "https://lccc-test.firebaseio.com";
+const FORBIDDEN = /[.$#[\]/]/;
+
+// The database's REST API: GET (with shallow), PUT, PATCH (several paths at once), POST, and DELETE, as
+// the president, whose token the script sends. Like the real one, it refuses keys with . $ # [ ] /,
+// and keeps no empty objects. failing makes it answer 500.
+function fakeDatabase() {
+  const db = { root: {}, calls: [], failing: false };
+  const parts = (path) => path.split("/").filter(Boolean);
+  const clean = (value) => {
+    if (value === null || typeof value !== "object") return value;
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (FORBIDDEN.test(k) || !k) throw new Error(`invalid key ${k}`);
+      const c = clean(v);
+      if (c !== null && c !== undefined && !(typeof c === "object" && !Object.keys(c).length)) out[k] = c;
+    }
+    return Object.keys(out).length ? out : null;
+  };
+  const set = (path, value) => {
+    const keys = parts(path);
+    if (keys.some((k) => FORBIDDEN.test(k))) throw new Error(`invalid path ${path}`);
+    value = clean(value);
+    if (!keys.length) {
+      db.root = value || {};
+      return;
+    }
+    const trail = [];
+    let node = db.root;
+    for (const k of keys.slice(0, -1)) {
+      if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
+      trail.push([node, k]);
+      node = node[k];
+    }
+    if (value === null || value === undefined) delete node[keys.at(-1)];
+    else node[keys.at(-1)] = value;
+    for (const [parent, k] of trail.reverse()) if (!Object.keys(parent[k]).length) delete parent[k];
+  };
+  const get = (path) => parts(path).reduce((n, k) => (n && typeof n === "object" ? n[k] : undefined), db.root);
+  const reply = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body ?? null) });
+  db.fetch = (url, options = {}) => {
+    const [, path, query = ""] = url.slice(DATABASE.length).match(/^\/(.*?)\.json(?:\?(.*))?$/);
+    const method = (options.method || "get").toUpperCase();
+    db.calls.push({ method, path, query });
+    if (!/^Bearer \S+$/.test((options.headers || {}).Authorization || "")) return reply(401, { error: "Permission denied" });
+    if (db.failing) return reply(500, { error: "down" });
+    const body = options.payload === undefined ? undefined : JSON.parse(options.payload);
+    try {
+      if (method === "GET") {
+        const value = get(path) ?? null;
+        return reply(200, query.includes("shallow=true") && value && typeof value === "object"
+          ? Object.fromEntries(Object.keys(value).map((k) => [k, true])) : value);
+      }
+      if (method === "PUT") set(path, body);
+      else if (method === "PATCH") for (const [k, v] of Object.entries(body)) set(`${path}/${k}`, v);
+      else if (method === "POST") {
+        const name = `-push${db.calls.length}`;
+        set(`${path}/${name}`, body);
+        return reply(200, { name });
+      } else if (method === "DELETE") set(path, null);
+      else return reply(405, { error: "method" });
+    } catch (err) {
+      return reply(400, { error: err.message });
+    }
+    return reply(200, method === "DELETE" ? null : body);
+  };
+  return db;
+}
+
+const TOURNAMENT_TABS = ["Tournaments", "Players", "Rounds", "Arena"];
+const STORES = ["sheet", "firebase"];
+const encodeKey = (h) => h.replace(/[.$#[\]/%]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+const decodeKey = (h) => h.replace(/%(2E|24|23|5B|5D|2F|25)/gi, (_, x) => String.fromCharCode(parseInt(x, 16)));
+
 // US Chess as the script sees it: a member's regular floor and their regular-rated games' outcomes.
 const US_CHESS = {
   11111111: { floor: 1700, outcomes: ["Win", "Loss", "Draw"] },
@@ -51,16 +125,27 @@ const US_CHESS = {
 };
 
 // cache: what the script cache holds, such as this minute's count of public posts. props: the
-// script properties, such as the US Chess answers kept by ID.
-function load(tabs, cache = {}) {
-  const sheets = Object.fromEntries(Object.entries(tabs).map(([name, rows]) => [name, makeSheet(rows)]));
+// script properties, such as the US Chess answers kept by ID. With store "firebase", the tournament
+// tabs start in the database as the migration leaves them, row IDs r000002 on, and the script uses it.
+function load(tabs, cache = {}, store = "sheet") {
+  const db = fakeDatabase();
+  const inDatabase = (name) => store === "firebase" && TOURNAMENT_TABS.includes(name);
+  for (const [name, [header, ...rows]] of Object.entries(tabs).filter(([name, rows]) => inDatabase(name) && rows.length)) {
+    db.fetch(`${DATABASE}/tables/${name}.json`, { method: "put", headers: { Authorization: "Bearer seed" },
+      payload: JSON.stringify(Object.fromEntries(rows.map((r, i) => [`r${String(i + 2).padStart(6, "0")}`,
+        Object.fromEntries(header.map((h, j) => [encodeKey(h), String(r[j] ?? "")]))]))) });
+  }
+  db.calls.length = 0;
+  const sheets = Object.fromEntries(Object.entries(tabs).filter(([name]) => !inDatabase(name)).map(([name, rows]) => [name, makeSheet(rows)]));
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
   const registration = book;
   const props = { TOURNAMENT_SHEET_ID: "sheet", USCHESS_API_KEY: "key", TD_PASSWORD: "sheet" };
+  if (store === "firebase") props.FIREBASE_URL = DATABASE + "/";
   const fetched = [];
   // The website's ratings.json, the tournaments US Chess has rated.
   const ratings = {};
-  const answer = (url) => {
+  const answer = (url, options) => {
+    if (url.startsWith(DATABASE)) return db.fetch(url, options);
     fetched.push(url);
     if (url.endsWith("/ratings.json")) return { getResponseCode: () => 200, getContentText: () => JSON.stringify(ratings) };
     if (url.endsWith("/prices.json")) return { getResponseCode: () => 200, getContentText: () => readFileSync(`${ROOT}prices.json`, "utf8") };
@@ -73,10 +158,14 @@ function load(tabs, cache = {}) {
   const context = {
     console,
     fetched,
-    UrlFetchApp: { fetch: answer, fetchAll: (requests) => requests.map((r) => answer(r.url)) },
+    UrlFetchApp: { fetch: answer, fetchAll: (requests) => requests.map((r) => answer(r.url, r)) },
+    ScriptApp: { getOAuthToken: () => "president-token", getService: () => ({ getUrl: () => "https://script.example/exec" }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = String(v); },
       deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
-    SpreadsheetApp: { openById: () => book, getActiveSpreadsheet: () => registration },
+    SpreadsheetApp: { openById: () => {
+      if (store === "firebase") throw new Error("the tournament spreadsheet is opened with the database in use");
+      return book;
+    }, getActiveSpreadsheet: () => registration },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove() {}, removeAll() {},
       getAll: (keys) => Object.fromEntries(keys.filter((k) => k in cache).map((k) => [k, cache[k]])),
@@ -87,7 +176,35 @@ function load(tabs, cache = {}) {
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
-  return { gs: context, sheets, ratings, cache, props };
+  const headers = vm.runInContext("TOURNAMENT_HEADERS", context);
+  // A tournament tab's rows in order, from either store, with every heading.
+  const rows = (name) => {
+    if (!inDatabase(name)) return rowsOf(sheets[name]);
+    const stored = (db.root.tables || {})[name] || {};
+    return Object.keys(stored).sort().map((id) => {
+      const r = Object.fromEntries(Object.entries(stored[id]).map(([h, v]) => [decodeKey(h), v]));
+      return { ...Object.fromEntries(headers[name].map((h) => [h, ""])), ...r };
+    });
+  };
+  // An edit made by hand in the Sheet or the database to a tab's row (0 is the first after the
+  // headings), which the script sees in its next execution: fields by heading, or null to delete it.
+  const handEdit = (name, index, fields) => {
+    if (!inDatabase(name)) {
+      const data = sheets[name].data;
+      if (!fields) data.splice(index + 1, 1);
+      else for (const [h, v] of Object.entries(fields)) data[index + 1][data[0].indexOf(h)] = v;
+      return;
+    }
+    const stored = db.root.tables[name];
+    const id = Object.keys(stored).sort()[index];
+    if (!fields) delete stored[id];
+    else for (const [h, v] of Object.entries(fields)) stored[id][encodeKey(h)] = v;
+    vm.runInContext("databaseCopy = null; databaseQueues = null;", context);
+  };
+  // The arena queues by tournament key, from the script property or the database.
+  const queued = () => (store === "sheet" ? JSON.parse(props.arenaQueues || "{}")
+    : Object.fromEntries(Object.entries(db.root.queues || {}).map(([node, text]) => [node.replace(/:/g, "/"), JSON.parse(text)])));
+  return { gs: context, sheets, ratings, cache, props, db, rows, handEdit, queued, store };
 }
 
 const heading = (sheet) => sheet.data[0];
@@ -147,7 +264,7 @@ test("the public copies last six hours, every change clears them, and Refresh re
   events["classic/2026-11-14"] = { ...events["classic/2026-11-07"], label: "Another Saturday", first: "2099-11-14" };
   assert.notEqual(gs.allEntriesKey(), listed, "a new calendar event makes a new copy");
   const tournamentsBefore = gs.allEntriesKey();
-  gs.clearTournamentCache();
+  gs.clearTournamentCache("classic/2026-11-07");
   assert.notEqual(gs.allEntriesKey(), tournamentsBefore, "a tournament change clears the lists, which show sections");
   // A hand edit in the Sheet shows only after Refresh.
   names();
@@ -173,7 +290,7 @@ test("each change gives its kind a new stamp, which the desks poll to reload jus
   eq(gs.changes(), { entries: "", tournaments: "", contacts: "" });
   eq(changed(() => gs.markPaid("t1", "15", "cash")), ["entries"]);
   eq(changed(() => gs.withdraw("t1")), ["entries"]);
-  eq(changed(() => gs.clearTournamentCache()), ["tournaments"]);
+  eq(changed(() => gs.clearTournamentCache("classic/2026-11-07")), ["tournaments"]);
   eq(changed(() => gs.saveContact({ fields: JSON.stringify({ Name: "Ann Ash" }) })), ["contacts"]);
   eq(changed(() => gs.refreshCaches()), ["entries", "tournaments", "contacts"]);
   const login = gs.doPost({ parameter: { action: "login", password: "sheet", device: "d1" } });
@@ -210,32 +327,36 @@ test("the desk's contacts: IDs for rows added by hand, saving by heading, formul
   eq(gs.contacts().contacts.map((c) => c.Name), ["Ben Birch", "Cal Cedar"]);
 });
 
-test("an arena's queue lives in a script property, and a restart or a finished arena drops it", () => {
-  const key = "arena/2026-11-07";
-  const at = { event: "arena", date: "2026-11-07" };
-  const { gs, sheets, props } = load({
-    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
-      [key, "arena", "Arena", "arena", "", "running", "2026-11-07 10:00", "white", "", "", ""],
-      ["gone/2026-10-31", "gone", "Gone", "arena", "", "running", "2026-10-31 10:00", "white", "", "", ""]],
-    Players: [["Key", "No.", "US Chess ID", "Name", "Rating"], [key, "1", "11111111", "Ann", "1900"], [key, "2", "22222222", "Ben", "1700"]],
-    Arena: [["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"]],
+for (const store of STORES) {
+  test(`an arena's queue lives in a script property or the database, and a restart or a finished arena drops it (${store})`, () => {
+    const key = "arena/2026-11-07";
+    const at = { event: "arena", date: "2026-11-07" };
+    const { gs, db, props, handEdit, queued } = load({
+      Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+        [key, "arena", "Arena", "arena", "", "running", "2026-11-07 10:00", "white", "", "", ""],
+        ["gone/2026-10-31", "gone", "Gone", "arena", "", "running", "2026-10-31 10:00", "white", "", "", ""]],
+      Players: [["Key", "No.", "US Chess ID", "Name", "Rating"], [key, "1", "11111111", "Ann", "1900"], [key, "2", "22222222", "Ben", "1700"]],
+      Arena: [["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"]],
+    }, {}, store);
+    const gone = [{ id: "99999999", since: "x" }];
+    if (store === "sheet") props.arenaQueues = JSON.stringify({ "gone/2026-10-31": gone });
+    else db.root.queues = { "gone:2026-10-31": JSON.stringify(gone) };
+    handEdit("Tournaments", 1, null);
+    assert.equal(gs.arenaJoin({ ...at, id: "11111111" }).ok, true);
+    assert.match(gs.arenaJoin({ ...at, id: "11111111" }).error, /already waiting/);
+    assert.equal(gs.arenaJoin({ ...at, id: "22222222" }).ok, true);
+    eq(Object.keys(queued()), [key], "a tournament no longer running loses its queue");
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"]);
+    assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222" }]) }).ok, true);
+    eq(gs.tournament(key, true).queue, []);
+    assert.equal(gs.arenaResult({ ...at, game: "1", result: "1-0" }).ok, true);
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"], "both wait again after a result");
+    assert.equal(gs.arenaLeave({ ...at, id: "22222222" }).ok, true);
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111"]);
+    assert.equal(gs.restartTournament(key).ok, true);
+    eq(queued(), {});
   });
-  props.arenaQueues = JSON.stringify({ "gone/2026-10-31": [{ id: "99999999", since: "x" }] });
-  sheets.Tournaments.data.splice(2, 1);
-  assert.equal(gs.arenaJoin({ ...at, id: "11111111" }).ok, true);
-  assert.match(gs.arenaJoin({ ...at, id: "11111111" }).error, /already waiting/);
-  assert.equal(gs.arenaJoin({ ...at, id: "22222222" }).ok, true);
-  eq(Object.keys(JSON.parse(props.arenaQueues)), [key], "a tournament no longer in the spreadsheet loses its queue");
-  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"]);
-  assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222" }]) }).ok, true);
-  eq(gs.tournament(key, true).queue, []);
-  assert.equal(gs.arenaResult({ ...at, game: "1", result: "1-0" }).ok, true);
-  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"], "both wait again after a result");
-  assert.equal(gs.arenaLeave({ ...at, id: "22222222" }).ok, true);
-  eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111"]);
-  assert.equal(gs.restartTournament(key).ok, true);
-  eq(JSON.parse(props.arenaQueues), {});
-});
+}
 
 test("five wrong TD passwords in an hour lock out new devices, but never a device that signed in before", () => {
   const { gs, cache, props } = load({});
@@ -307,109 +428,118 @@ test("a payment covers the rating fee first, and a card payment's card fee is wh
   eq(gs.allocate(40, "card", 150, 0, card), { "Entry fee": 0, "Rating fee": 0, "Card fee": 40 });
 });
 
-test("a quad started before sections, with none of their columns, runs as before", () => {
-  const key = "alley-cat-quad/2026-10-10";
-  const players = [...Array(8)].map((_, i) => [key, String(i + 1), `9000000${i + 1}`, `P${i + 1}`, String(2000 - i * 100), ""]);
-  const round1 = Pairing.pairQuadRound(players.map((p) => ({ id: p[2], number: Number(p[1]) })), 1).games
-    .map((g) => [key, "1", String(g.board), g.white, g.black, "1-0", "", "2026-10-10 10:05"]);
-  const { gs, sheets } = load({
-    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished"],
-      [key, "alley-cat-quad", "Alley Cat Quad", "quad", "3", "running", "2026-10-10 10:00", "white", ""]],
-    Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round"], ...players],
-    Rounds: [["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted"], ...round1],
+for (const store of STORES) {
+  test(`a quad started before sections, with none of their columns, runs as before (${store})`, () => {
+    const key = "alley-cat-quad/2026-10-10";
+    const players = [...Array(8)].map((_, i) => [key, String(i + 1), `9000000${i + 1}`, `P${i + 1}`, String(2000 - i * 100), ""]);
+    const round1 = Pairing.pairQuadRound(players.map((p) => ({ id: p[2], number: Number(p[1]) })), 1).games
+      .map((g) => [key, "1", String(g.board), g.white, g.black, "1-0", "", "2026-10-10 10:05"]);
+    const { gs, sheets, rows } = load({
+      Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished"],
+        [key, "alley-cat-quad", "Alley Cat Quad", "quad", "3", "running", "2026-10-10 10:00", "white", ""]],
+      Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round"], ...players],
+      Rounds: [["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted"], ...round1],
+    }, {}, store);
+    const t = gs.tournament(key, true);
+    eq(t.sections, []);
+    assert.ok(t.players.every((p) => p.section === ""));
+    assert.equal(t.rounds[0].games.length, 4);
+    // The new desk pairs round 2 as the old one did: boards 1 to 4 through both quads, no section.
+    const parts = Pairing.pairSections({ ...t, rounds: t.rounds });
+    const games = parts.flatMap((s) => s.games.map((g) => ({ ...g, section: s.section })));
+    eq(games.map((g) => g.board), [1, 2, 3, 4]);
+    eq(games, Pairing.pairQuadRound(t.players, 2).games.map((g) => ({ ...g, section: "" })));
+    assert.equal(gs.saveRound({ event: "alley-cat-quad", date: "2026-10-10", number: "2", post: "yes", games: JSON.stringify(games), byes: "[]" }).ok, true);
+    // The old desk sends no section; the new one sends "".
+    assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "3", result: "0-1" }).ok, true);
+    assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "4", section: "", result: "1-0" }).ok, true);
+    const r2 = rows("Rounds").filter((r) => r.Round === "2");
+    eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
+    if (store === "sheet") {
+      eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
+        "State"]);
+      eq(heading(sheets.Tournaments).slice(-3), ["Cutoff", "Sections", "TD"]);
+    }
+    // Its rows are where they were; only headings were added.
+    assert.equal(rows("Players")[4]["No."], "5");
+    eq(gs.sectionsByKey(), {});
   });
-  const t = gs.tournament(key, true);
-  eq(t.sections, []);
-  assert.ok(t.players.every((p) => p.section === ""));
-  assert.equal(t.rounds[0].games.length, 4);
-  // The new desk pairs round 2 as the old one did: boards 1 to 4 through both quads, no section.
-  const parts = Pairing.pairSections({ ...t, rounds: t.rounds });
-  const games = parts.flatMap((s) => s.games.map((g) => ({ ...g, section: s.section })));
-  eq(games.map((g) => g.board), [1, 2, 3, 4]);
-  eq(games, Pairing.pairQuadRound(t.players, 2).games.map((g) => ({ ...g, section: "" })));
-  assert.equal(gs.saveRound({ event: "alley-cat-quad", date: "2026-10-10", number: "2", post: "yes", games: JSON.stringify(games), byes: "[]" }).ok, true);
-  // The old desk sends no section; the new one sends "".
-  assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "3", result: "0-1" }).ok, true);
-  assert.equal(gs.saveResult({ event: "alley-cat-quad", date: "2026-10-10", number: "2", board: "4", section: "", result: "1-0" }).ok, true);
-  const r2 = rowsOf(sheets.Rounds).filter((r) => r.Round === "2");
-  eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
-  eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
-    "State"]);
-  eq(heading(sheets.Tournaments).slice(-3), ["Cutoff", "Sections", "TD"]);
-  // Its rows are where they were; only headings were added.
-  assert.equal(rowsOf(sheets.Players)[4]["No."], "5");
-  eq(gs.sectionsByKey(), {});
-});
+}
 
-test("a Swiss in two sections: placed by rating, moved up, paired, posted, and scored by section", () => {
-  const { gs, sheets, props } = load({ Tournaments: [], Players: [], Rounds: [] });
-  gs.clubEvents = () => ({ "classic/2026-11-07": { event: "classic", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry" } });
-  const entrants = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1450"], ["44444444", "Dee", "1300"],
-    ["55555555", "Eve", "1200P"], ["66666666", "Fay", ""]].map(([id, name, rating]) => ({ id, name, rating, out: "" }));
-  let registered = entrants.slice(0, 5);
-  gs.entries = () => registered;
-  const p = { event: "classic", date: "2026-11-07" };
-  assert.match(gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Open"}]' }).error, /Two sections/);
-  assert.match(gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"U1400","under":"14x"}]' }).error, /rating limit/);
-  const started = gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Under 1400","under":1400}]' });
-  assert.equal(started.ok, true, JSON.stringify(started));
-  const sectionOf = () => Object.fromEntries(rowsOf(sheets.Players).map((r) => [r.Name, r.Section]));
-  eq(sectionOf(), { Ann: "Open", Ben: "Open", Cal: "Open", Dee: "Under 1400", Eve: "Under 1400" });
-  registered = entrants;
-  gs.syncPlayers("classic/2026-11-07");
-  assert.equal(sectionOf().Fay, "Under 1400", "an unrated late entrant goes to the lowest section");
-  // Each player's floor and prior record from US Chess, kept two weeks in the registration Sheet.
-  eq(rowsOf(sheets.Players).map((r) => [r.Name, r.Floor, r["Prior games"], r["Prior sweep"]]),
-    [["Ann", "1700", "3", ""], ["Ben", "", "0", ""], ["Cal", "", "0", ""], ["Dee", "", "0", ""], ["Eve", "100", "2", "losses"], ["Fay", "", "0", ""]]);
-  eq(JSON.parse(props["player:55555555"]), { Floor: "100", "Prior games": "2", "Prior sweep": "losses", State: "CO",
-    "Record checked on": new Date().toISOString().slice(0, 10) });
-  const asked = gs.fetched.length;
-  assert.equal(asked, 12);
-  gs.priorRecords(["11111111"]);
-  assert.equal(gs.fetched.length, asked, "a record checked today isn't asked for again");
-  eq(gs.tournament("classic/2026-11-07", true).players.find((x) => x.id === "55555555"), { id: "55555555", number: 5, name: "Eve",
-    rating: 1200, out: null, section: "Under 1400", floor: 100, games: 2, sweep: "losses", state: "CO" });
-  assert.match(gs.setSection({ ...p, id: "33333333", section: "Under 1400" }).error, /play up, not down/);
-  assert.equal(gs.setSection({ ...p, id: "55555555", section: "Open" }).ok, true);
-  const t = gs.tournament("classic/2026-11-07", true);
-  eq(t.sections, [{ name: "Open" }, { name: "Under 1400", under: 1400 }]);
-  const parts = Pairing.pairSections(t, { coin: t.coin });
-  const games = parts.flatMap((s) => s.games.map((g) => ({ ...g, section: s.section })));
-  const byes = parts.flatMap((s) => s.byes.map((b) => ({ ...b, section: s.section })));
-  // Saved, not posted: a section change deletes it, to be paired again.
-  gs.saveRound({ ...p, number: "1", post: "no", games: JSON.stringify(games), byes: JSON.stringify(byes) });
-  assert.equal(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).ok, true);
-  assert.equal(rowsOf(sheets.Rounds).length, 0);
-  gs.setSection({ ...p, id: "55555555", section: "Open" });
-  gs.saveRound({ ...p, number: "1", post: "yes", games: JSON.stringify(games), byes: JSON.stringify(byes) });
-  assert.match(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).error, /posted/);
-  assert.match(gs.setSections({ ...p, sections: '[{"name":"Open"}]' }).error, /posted/);
-  const rows = rowsOf(sheets.Rounds);
-  eq(rows.filter((r) => r.Black).map((r) => [r.Section, r.Board]), [["Open", "1"], ["Open", "2"], ["Under 1400", "1"]]);
-  eq(rows.filter((r) => !r.Black).length, 0);
-  // Board 1 is in both sections; the result goes to the one named.
-  assert.equal(gs.saveResult({ ...p, number: "1", board: "1", section: "Under 1400", result: "0-1" }).ok, true);
-  eq(rowsOf(sheets.Rounds).filter((r) => r.Black).map((r) => r.Result), ["", "", "0-1"]);
-  const back = gs.tournament("classic/2026-11-07", false);
-  eq(back.rounds[0].games.map((g) => [g.section, g.board]), [["Open", 1], ["Under 1400", 1], ["Open", 2]]);
-  eq(back.rounds[0].games.filter((g) => g.section === "Open").flatMap((g) => [g.white, g.black]).sort(), ["11111111", "22222222", "33333333", "55555555"]);
-  assert.equal(gs.sectionsByKey()["classic/2026-11-07"]["44444444"], "Under 1400");
-});
+for (const store of STORES) {
+  test(`a Swiss in two sections: placed by rating, moved up, paired, posted, and scored by section (${store})`, () => {
+    const { gs, props, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    gs.clubEvents = () => ({ "classic/2026-11-07": { event: "classic", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry" } });
+    const entrants = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1450"], ["44444444", "Dee", "1300"],
+      ["55555555", "Eve", "1200P"], ["66666666", "Fay", ""]].map(([id, name, rating]) => ({ id, name, rating, out: "" }));
+    let registered = entrants.slice(0, 5);
+    gs.entries = () => registered;
+    const p = { event: "classic", date: "2026-11-07" };
+    assert.match(gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Open"}]' }).error, /Two sections/);
+    assert.match(gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"U1400","under":"14x"}]' }).error, /rating limit/);
+    const started = gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Under 1400","under":1400}]' });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    const sectionOf = () => Object.fromEntries(rows("Players").map((r) => [r.Name, r.Section]));
+    eq(sectionOf(), { Ann: "Open", Ben: "Open", Cal: "Open", Dee: "Under 1400", Eve: "Under 1400" });
+    registered = entrants;
+    gs.syncPlayers("classic/2026-11-07");
+    assert.equal(sectionOf().Fay, "Under 1400", "an unrated late entrant goes to the lowest section");
+    // Each player's floor and prior record from US Chess, kept two weeks in the registration Sheet.
+    eq(rows("Players").map((r) => [r.Name, r.Floor, r["Prior games"], r["Prior sweep"]]),
+      [["Ann", "1700", "3", ""], ["Ben", "", "0", ""], ["Cal", "", "0", ""], ["Dee", "", "0", ""], ["Eve", "100", "2", "losses"], ["Fay", "", "0", ""]]);
+    eq(JSON.parse(props["player:55555555"]), { Floor: "100", "Prior games": "2", "Prior sweep": "losses", State: "CO",
+      "Record checked on": new Date().toISOString().slice(0, 10) });
+    const usChess = () => gs.fetched.filter((url) => url.includes("/members/")).length;
+    const asked = usChess();
+    assert.equal(asked, 12);
+    gs.priorRecords(["11111111"]);
+    assert.equal(usChess(), asked, "a record checked today isn't asked for again");
+    eq(gs.tournament("classic/2026-11-07", true).players.find((x) => x.id === "55555555"), { id: "55555555", number: 5, name: "Eve",
+      rating: 1200, out: null, section: "Under 1400", floor: 100, games: 2, sweep: "losses", state: "CO" });
+    assert.match(gs.setSection({ ...p, id: "33333333", section: "Under 1400" }).error, /play up, not down/);
+    assert.equal(gs.setSection({ ...p, id: "55555555", section: "Open" }).ok, true);
+    const t = gs.tournament("classic/2026-11-07", true);
+    eq(t.sections, [{ name: "Open" }, { name: "Under 1400", under: 1400 }]);
+    const parts = Pairing.pairSections(t, { coin: t.coin });
+    const games = parts.flatMap((s) => s.games.map((g) => ({ ...g, section: s.section })));
+    const byes = parts.flatMap((s) => s.byes.map((b) => ({ ...b, section: s.section })));
+    // Saved, not posted: a section change deletes it, to be paired again.
+    gs.saveRound({ ...p, number: "1", post: "no", games: JSON.stringify(games), byes: JSON.stringify(byes) });
+    assert.equal(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).ok, true);
+    assert.equal(rows("Rounds").length, 0);
+    gs.setSection({ ...p, id: "55555555", section: "Open" });
+    gs.saveRound({ ...p, number: "1", post: "yes", games: JSON.stringify(games), byes: JSON.stringify(byes) });
+    assert.match(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).error, /posted/);
+    assert.match(gs.setSections({ ...p, sections: '[{"name":"Open"}]' }).error, /posted/);
+    const lines = rows("Rounds");
+    eq(lines.filter((r) => r.Black).map((r) => [r.Section, r.Board]), [["Open", "1"], ["Open", "2"], ["Under 1400", "1"]]);
+    eq(lines.filter((r) => !r.Black).length, 0);
+    // Board 1 is in both sections; the result goes to the one named.
+    assert.equal(gs.saveResult({ ...p, number: "1", board: "1", section: "Under 1400", result: "0-1" }).ok, true);
+    eq(rows("Rounds").filter((r) => r.Black).map((r) => r.Result), ["", "", "0-1"]);
+    const back = gs.tournament("classic/2026-11-07", false);
+    eq(back.rounds[0].games.map((g) => [g.section, g.board]), [["Open", 1], ["Under 1400", 1], ["Open", 2]]);
+    eq(back.rounds[0].games.filter((g) => g.section === "Open").flatMap((g) => [g.white, g.black]).sort(), ["11111111", "22222222", "33333333", "55555555"]);
+    assert.equal(gs.sectionsByKey()["classic/2026-11-07"]["44444444"], "Under 1400");
+  });
+}
 
-test("quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them", () => {
-  const { gs, sheets } = load({ Tournaments: [], Players: [], Rounds: [] });
-  gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });
-  gs.entries = () => [...Array(8)].map((_, i) => ({ id: `9000001${i}`, name: `Q${i}`, rating: String(2000 - i * 50), out: "" }));
-  gs.startTournament({ event: "quad", date: "2026-11-14", format: "quad" });
-  const players = rowsOf(sheets.Players);
-  eq(players.map((r) => r.Section), ["Quad 1", "Quad 1", "Quad 1", "Quad 1", "Quad 2", "Quad 2", "Quad 2", "Quad 2"]);
-  eq(players.slice(4).map((r) => Number(r["No."])).sort(), [5, 6, 7, 8]);
-  assert.equal(rowsOf(sheets.Tournaments)[0].Sections, '[{"name":"Quad 1"},{"name":"Quad 2"}]');
-  const t = gs.tournament("quad/2026-11-14", true);
-  // The old desk's pairing, from numbers across the quads, still works on these rows.
-  assert.equal(Pairing.pairQuadRound(t.players, 1).games.length, 4);
-  eq(Pairing.pairSections(t).map((s) => [s.section, s.games.map((g) => g.board)]), [["Quad 1", [1, 2]], ["Quad 2", [1, 2]]]);
-});
+for (const store of STORES) {
+  test(`quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });
+    gs.entries = () => [...Array(8)].map((_, i) => ({ id: `9000001${i}`, name: `Q${i}`, rating: String(2000 - i * 50), out: "" }));
+    gs.startTournament({ event: "quad", date: "2026-11-14", format: "quad" });
+    const players = rows("Players");
+    eq(players.map((r) => r.Section), ["Quad 1", "Quad 1", "Quad 1", "Quad 1", "Quad 2", "Quad 2", "Quad 2", "Quad 2"]);
+    eq(players.slice(4).map((r) => Number(r["No."])).sort(), [5, 6, 7, 8]);
+    assert.equal(rows("Tournaments")[0].Sections, '[{"name":"Quad 1"},{"name":"Quad 2"}]');
+    const t = gs.tournament("quad/2026-11-14", true);
+    // The old desk's pairing, from numbers across the quads, still works on these rows.
+    assert.equal(Pairing.pairQuadRound(t.players, 1).games.length, 4);
+    eq(Pairing.pairSections(t).map((s) => [s.section, s.games.map((g) => g.board)]), [["Quad 1", [1, 2]], ["Quad 2", [1, 2]]]);
+  });
+}
 
 test("a player's contact is found by first and last name, a nickname, or not at all when unclear", () => {
   const { gs } = load({ Contacts: [
@@ -428,7 +558,7 @@ test("a player's contact is found by first and last name, a nickname, or not at 
 });
 
 // A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
-function reporting(cache) {
+function reporting(cache, store) {
   const key = "classic/2026-11-07";
   const players = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1500"], ["44444444", "Dee", "1300"]]
     .map(([id, name, rating], i) => [key, String(i + 1), id, name, rating, "", ""]);
@@ -442,92 +572,200 @@ function reporting(cache) {
       [key, "1", "2", "44444444", "22222222", "", "", "2026-11-07 10:05", "", ""],
       [key, "2", "1", "22222222", "11111111", "", "", "", "", ""],
       [key, "2", "2", "33333333", "44444444", "", "", "", "", ""]],
-  }, cache);
+  }, cache, store);
 }
 
-test("a player's report is checked against the posted round, kept apart from the result, and shown as reported", () => {
-  const { gs, sheets } = reporting();
-  const p = { event: "classic", date: "2026-11-07", number: "1", board: "1", section: "" };
-  assert.match(gs.reportResult({ ...p, id: "1111111", result: "1-0" }).error, /eight digits/);
-  assert.match(gs.reportResult({ ...p, id: "11111111", result: "1F-0F" }).error, /Report 1–0/);
-  assert.match(gs.reportResult({ ...p, id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 1/);
-  assert.match(gs.reportResult({ ...p, board: "2", id: "11111111", result: "1-0" }).error, /isn't on board 2/);
-  assert.match(gs.reportResult({ ...p, number: "2", id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 2/, "round 2 isn't posted");
-  assert.match(gs.reportResult({ ...p, event: "arena", id: "11111111", result: "1-0" }).error, /isn't taking results/);
-  assert.match(gs.reportResult({ ...p, event: "nothing", id: "11111111", result: "1-0" }).error, /isn't taking results/);
-  // Sent as the Pairings page sends it, with no password.
-  const sent = gs.doPost({ parameter: { action: "report", ...p, id: "11111111", result: "1-0" } });
-  assert.equal(sent.ok, true, JSON.stringify(sent));
-  assert.match(sent.message, /1–0 is reported/);
-  assert.equal(gs.reportResult({ ...p, id: "33333333", result: "0-1" }).ok, true);
-  eq(heading(sheets.Rounds).slice(-2), ["White report", "Black report"]);
-  const row = rowsOf(sheets.Rounds)[0];
-  eq([row.Result, row["White report"], row["Black report"]], ["", "1-0", "0-1"]);
-  const t = gs.tournament("classic/2026-11-07", false);
-  eq(t.rounds[0].games[0].reports, { white: "1-0", black: "0-1" });
-  assert.equal(t.rounds[0].games[0].result, "");
-  assert.equal(t.rounds[0].games[1].reports, undefined);
-  eq(Pairing.standings(t).map((r) => r.score), [0, 0, 0, 0], "reports don't count in the standings");
-  // A board with the TD's result takes no more reports.
-  assert.equal(gs.saveResult({ ...p, board: "2", result: "1/2-1/2" }).ok, true);
-  assert.match(gs.reportResult({ ...p, board: "2", id: "22222222", result: "0-1" }).error, /already entered/);
-  sheets.Tournaments.data[1][5] = "finished";
-  assert.match(gs.reportResult({ ...p, id: "11111111", result: "1-0" }).error, /isn't taking results/);
+for (const store of STORES) {
+  test(`a player's report is checked against the posted round, kept apart from the result, and shown as reported (${store})`, () => {
+    const { gs, sheets, rows, handEdit } = reporting({}, store);
+    const p = { event: "classic", date: "2026-11-07", number: "1", board: "1", section: "" };
+    assert.match(gs.reportResult({ ...p, id: "1111111", result: "1-0" }).error, /eight digits/);
+    assert.match(gs.reportResult({ ...p, id: "11111111", result: "1F-0F" }).error, /Report 1–0/);
+    assert.match(gs.reportResult({ ...p, id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 1/);
+    assert.match(gs.reportResult({ ...p, board: "2", id: "11111111", result: "1-0" }).error, /isn't on board 2/);
+    assert.match(gs.reportResult({ ...p, number: "2", id: "22222222", result: "1-0" }).error, /isn't on board 1 in round 2/, "round 2 isn't posted");
+    assert.match(gs.reportResult({ ...p, event: "arena", id: "11111111", result: "1-0" }).error, /isn't taking results/);
+    assert.match(gs.reportResult({ ...p, event: "nothing", id: "11111111", result: "1-0" }).error, /isn't taking results/);
+    // Sent as the Pairings page sends it, with no password.
+    const sent = gs.doPost({ parameter: { action: "report", ...p, id: "11111111", result: "1-0" } });
+    assert.equal(sent.ok, true, JSON.stringify(sent));
+    assert.match(sent.message, /1–0 is reported/);
+    assert.equal(gs.reportResult({ ...p, id: "33333333", result: "0-1" }).ok, true);
+    if (store === "sheet") eq(heading(sheets.Rounds).slice(-2), ["White report", "Black report"]);
+    const row = rows("Rounds")[0];
+    eq([row.Result, row["White report"], row["Black report"]], ["", "1-0", "0-1"]);
+    const t = gs.tournament("classic/2026-11-07", false);
+    eq(t.rounds[0].games[0].reports, { white: "1-0", black: "0-1" });
+    assert.equal(t.rounds[0].games[0].result, "");
+    assert.equal(t.rounds[0].games[1].reports, undefined);
+    eq(Pairing.standings(t).map((r) => r.score), [0, 0, 0, 0], "reports don't count in the standings");
+    // A board with the TD's result takes no more reports.
+    assert.equal(gs.saveResult({ ...p, board: "2", result: "1/2-1/2" }).ok, true);
+    assert.match(gs.reportResult({ ...p, board: "2", id: "22222222", result: "0-1" }).error, /already entered/);
+    handEdit("Tournaments", 0, { Status: "finished" });
+    assert.match(gs.reportResult({ ...p, id: "11111111", result: "1-0" }).error, /isn't taking results/);
+  });
+}
+
+for (const store of STORES) {
+  test(`reports are limited like public registrations (${store})`, () => {
+    const minute = Math.floor(Date.now() / 60000);
+    const { gs } = reporting({ [`posts:${minute}`]: "20", [`posts:${minute + 1}`]: "20" }, store);
+    assert.match(gs.reportResult({ event: "classic", date: "2026-11-07", number: "1", board: "1", section: "", id: "11111111", result: "1-0" }).error,
+      /Too many/);
+  });
+}
+
+for (const store of STORES) {
+  test(`the TD confirms agreed reports together, and re-pairing a round clears its reports (${store})`, () => {
+    const { gs, rows, ratings, cache } = reporting({}, store);
+    const p = { event: "classic", date: "2026-11-07", number: "1" };
+    gs.reportResult({ ...p, board: "1", section: "", id: "11111111", result: "1-0" });
+    gs.reportResult({ ...p, board: "2", section: "", id: "22222222", result: "0-1" });
+    // Reports aren't results, so a posted round with only reports can be paired again.
+    const games = [{ board: 1, white: "11111111", black: "22222222", section: "" }, { board: 2, white: "33333333", black: "44444444", section: "" }];
+    const again = gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" });
+    assert.equal(again.ok, true, JSON.stringify(again));
+    const round1 = () => rows("Rounds").filter((r) => r.Round === "1");
+    eq(round1().map((r) => [r.Board, r.White, r.Black, r["White report"], r["Black report"], Boolean(r.Posted)]),
+      [["1", "11111111", "22222222", "", "", true], ["2", "33333333", "44444444", "", "", true]]);
+    assert.equal(gs.tournament("classic/2026-11-07", false).rounds[0].games.some((g) => g.reports), false);
+    // A list with a bad board or result changes nothing.
+    assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 9, section: "", result: "1-0" }]) }).error,
+      /No such board/);
+    assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "2-0" }]) }).error, /Not a result/);
+    eq(round1().map((r) => r.Result), ["", ""]);
+    const both = gs.doPost({ parameter: { action: "results", password: "sheet", ...p,
+      results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 2, section: "", result: "1/2-1/2" }]) } });
+    assert.equal(both.ok, true, JSON.stringify(both));
+    eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
+    // Once a posted round has a confirmed result, it can't be paired again (29G).
+    assert.match(gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" }).error, /has results/);
+    // Once ratings.json lists it, the desk can't change it, and the public JSON names the rated event.
+    ratings["classic/2026-11-07"] = "202611070123";
+    delete cache.rated;
+    const late = gs.doPost({ parameter: { action: "result", password: "sheet", ...p, board: "1", section: "", result: "0-1" } });
+    assert.match(late.error, /US Chess has rated/);
+    eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
+    const shown = gs.tournament("classic/2026-11-07", false);
+    eq([shown.status, shown.usChessEvent], ["rated", "202611070123"]);
+  });
+}
+
+for (const store of STORES) {
+  test(`a Swiss can add rounds or stop early, but not below the rounds paired, and a restart deletes its rows (${store})`, () => {
+    const { gs, rows } = reporting({}, store);
+    const p = { event: "classic", date: "2026-11-07" };
+    assert.match(gs.setRounds({ ...p, rounds: "1" }).error, /2 rounds are paired already/);
+    assert.match(gs.setRounds({ ...p, rounds: "x" }).error, /number from 1 to 99/);
+    assert.match(gs.setRounds({ event: "arena", date: "2026-11-07", rounds: "4" }).error, /Only a Swiss/);
+    assert.equal(gs.setRounds({ ...p, rounds: "5" }).ok, true);
+    assert.equal(rows("Tournaments")[0].Rounds, "5");
+    assert.equal(gs.setRounds({ ...p, rounds: "2" }).ok, true);
+    assert.equal(gs.tournament("classic/2026-11-07", true).plannedRounds, 2);
+    assert.equal(gs.restartTournament("classic/2026-11-07").ok, true);
+    for (const tab of ["Tournaments", "Players", "Rounds"]) assert.equal(rows(tab).filter((r) => r.Key === "classic/2026-11-07").length, 0, tab);
+    eq(rows("Tournaments").map((r) => r.Key), ["arena/2026-11-07"]);
+    assert.match(gs.restartTournament("classic/2026-11-07").error, /No such/);
+  });
+}
+
+test("the database keeps rows by encoded heading, adds them in order after migrated rows, and costs one read an action", () => {
+  const { gs, db, rows } = reporting({}, "firebase");
+  assert.equal(db.root.tables.Players.r000002["No%2E"], "1", "No. is stored as No%2E");
+  const p = { event: "classic", date: "2026-11-07", number: "3", post: "no", byes: "[]" };
+  const games = [{ board: 1, white: "11111111", black: "44444444", section: "" }, { board: 2, white: "33333333", black: "22222222", section: "" }];
+  db.calls.length = 0;
+  assert.equal(gs.saveRound({ ...p, games: JSON.stringify(games) }).ok, true);
+  eq(db.calls.filter((c) => c.method === "GET").map((c) => c.path), ["tables"]);
+  const ids = Object.keys(db.root.tables.Rounds).sort();
+  assert.ok(ids.slice(-2).every((id) => /^s[0-9a-z]{11}$/.test(id)), ids.join());
+  eq(rows("Rounds").slice(-2).map((r) => [r.Round, r.Board, r.Black, r["White report"]]), [["3", "1", "44444444", ""], ["3", "2", "22222222", ""]],
+    "each row has every heading, in the order added");
+  // Pairing it again replaces the rows.
+  assert.equal(gs.saveRound({ ...p, games: JSON.stringify(games.slice(0, 1)) }).ok, true);
+  eq(rows("Rounds").filter((r) => r.Round === "3").map((r) => r.Board), ["1"]);
+  db.calls.length = 0;
+  const results = [{ board: 1, section: "", result: "1-0" }, { board: 2, section: "", result: "1/2-1/2" }];
+  assert.equal(gs.saveResults({ event: "classic", date: "2026-11-07", number: "1", results: JSON.stringify(results) }).ok, true);
+  eq(db.calls.map((c) => [c.method, c.path]), [["GET", "tables"], ["PATCH", "tables/Rounds"], ["PATCH", ""]],
+    "results are one read, one write of the cells, and one of the public copy with the stamp");
+  eq(rows("Rounds").slice(0, 2).map((r) => r.Result), ["1-0", "1/2-1/2"]);
 });
 
-test("reports are limited like public registrations", () => {
-  const minute = Math.floor(Date.now() / 60000);
-  const { gs } = reporting({ [`posts:${minute}`]: "20", [`posts:${minute + 1}`]: "20" });
-  assert.match(gs.reportResult({ event: "classic", date: "2026-11-07", number: "1", board: "1", section: "", id: "11111111", result: "1-0" }).error,
-    /Too many/);
-});
-
-test("the TD confirms agreed reports together, and re-pairing a round clears its reports", () => {
-  const { gs, sheets, ratings, cache } = reporting();
-  const p = { event: "classic", date: "2026-11-07", number: "1" };
-  gs.reportResult({ ...p, board: "1", section: "", id: "11111111", result: "1-0" });
-  gs.reportResult({ ...p, board: "2", section: "", id: "22222222", result: "0-1" });
-  // Reports aren't results, so a posted round with only reports can be paired again.
-  const games = [{ board: 1, white: "11111111", black: "22222222", section: "" }, { board: 2, white: "33333333", black: "44444444", section: "" }];
-  const again = gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" });
-  assert.equal(again.ok, true, JSON.stringify(again));
-  const round1 = () => rowsOf(sheets.Rounds).filter((r) => r.Round === "1");
-  eq(round1().map((r) => [r.Board, r.White, r.Black, r["White report"], r["Black report"], Boolean(r.Posted)]),
-    [["1", "11111111", "22222222", "", "", true], ["2", "33333333", "44444444", "", "", true]]);
-  assert.equal(gs.tournament("classic/2026-11-07", false).rounds[0].games.some((g) => g.reports), false);
-  // A list with a bad board or result changes nothing.
-  assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 9, section: "", result: "1-0" }]) }).error,
-    /No such board/);
-  assert.match(gs.saveResults({ ...p, results: JSON.stringify([{ board: 1, section: "", result: "2-0" }]) }).error, /Not a result/);
-  eq(round1().map((r) => r.Result), ["", ""]);
-  const both = gs.doPost({ parameter: { action: "results", password: "sheet", ...p,
-    results: JSON.stringify([{ board: 1, section: "", result: "1-0" }, { board: 2, section: "", result: "1/2-1/2" }]) } });
-  assert.equal(both.ok, true, JSON.stringify(both));
-  eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
-  // Once a posted round has a confirmed result, it can't be paired again (29G).
-  assert.match(gs.saveRound({ ...p, post: "yes", games: JSON.stringify(games), byes: "[]" }).error, /has results/);
-  // Once ratings.json lists it, the desk can't change it, and the public JSON names the rated event.
-  ratings["classic/2026-11-07"] = "202611070123";
-  delete cache.rated;
-  const late = gs.doPost({ parameter: { action: "result", password: "sheet", ...p, board: "1", section: "", result: "0-1" } });
-  assert.match(late.error, /US Chess has rated/);
-  eq(round1().map((r) => r.Result), ["1-0", "1/2-1/2"]);
-  const shown = gs.tournament("classic/2026-11-07", false);
-  eq([shown.status, shown.usChessEvent], ["rated", "202611070123"]);
-});
-
-test("a Swiss can add rounds or stop early, but not below the rounds paired, and a restart deletes its rows", () => {
-  const { gs, sheets } = reporting();
+test("the database's public copy of a tournament shows posted rounds only, follows each change, and goes with a restart", () => {
+  const { gs, db } = reporting({}, "firebase");
+  const key = "classic/2026-11-07";
+  const copy = () => JSON.parse((db.root.public?.tournaments || {})["classic:2026-11-07"] ?? "null");
+  assert.equal(copy(), null);
   const p = { event: "classic", date: "2026-11-07" };
-  assert.match(gs.setRounds({ ...p, rounds: "1" }).error, /2 rounds are paired already/);
-  assert.match(gs.setRounds({ ...p, rounds: "x" }).error, /number from 1 to 99/);
-  assert.match(gs.setRounds({ event: "arena", date: "2026-11-07", rounds: "4" }).error, /Only a Swiss/);
-  assert.equal(gs.setRounds({ ...p, rounds: "5" }).ok, true);
-  assert.equal(rowsOf(sheets.Tournaments)[0].Rounds, "5");
-  assert.equal(gs.setRounds({ ...p, rounds: "2" }).ok, true);
-  assert.equal(gs.tournament("classic/2026-11-07", true).plannedRounds, 2);
-  assert.equal(gs.restartTournament("classic/2026-11-07").ok, true);
-  for (const tab of ["Tournaments", "Players", "Rounds"]) assert.equal(rowsOf(sheets[tab]).filter((r) => r.Key === "classic/2026-11-07").length, 0, tab);
-  eq(rowsOf(sheets.Tournaments).map((r) => r.Key), ["arena/2026-11-07"]);
-  assert.match(gs.restartTournament("classic/2026-11-07").error, /No such/);
+  gs.saveResult({ ...p, number: "1", board: "2", section: "", result: "0-1" });
+  eq(copy(), gs.tournament(key, false));
+  eq(copy().rounds.map((r) => r.games.map((g) => g.result)), [["", "0-1"]], "round 2 is saved, not posted");
+  eq(gs.currentTournaments().map((t) => t.key), [key, "arena/2026-11-07"], "?tournaments=current still answers");
+  const games = [{ board: 1, white: "22222222", black: "11111111", section: "" }, { board: 2, white: "33333333", black: "44444444", section: "" }];
+  gs.saveRound({ ...p, number: "2", post: "yes", games: JSON.stringify(games), byes: "[]" });
+  assert.equal(copy().rounds.length, 2);
+  assert.ok(copy().rounds[1].posted);
+  gs.setOut({ ...p, id: "44444444", from: "3" });
+  eq(copy().players.find((x) => x.id === "44444444").out, 3);
+  assert.equal(gs.restartTournament(key).ok, true);
+  assert.equal(copy(), null);
+  eq(Object.keys(db.root.tables.Tournaments).length, 1, "the arena is still there");
+});
+
+test("the database keeps an arena's queue as a JSON string, and the public copy shows it", () => {
+  const { gs, db } = reporting({}, "firebase");
+  const at = { event: "arena", date: "2026-11-07" };
+  db.root.tables.Players.r000010 = { Key: "arena/2026-11-07", "No%2E": "1", "US Chess ID": "11111111", Name: "Ann", Rating: "1900" };
+  assert.equal(gs.arenaJoin({ ...at, id: "11111111" }).ok, true);
+  assert.equal(typeof db.root.queues["arena:2026-11-07"], "string");
+  eq(JSON.parse(db.root.queues["arena:2026-11-07"]).map((q) => q.id), ["11111111"]);
+  eq(JSON.parse(db.root.public.tournaments["arena:2026-11-07"]).queue.map((q) => q.id), ["11111111"]);
+  assert.equal(gs.arenaLeave({ ...at, id: "11111111" }).ok, true);
+  assert.equal(db.root.queues, undefined, "an empty queue is removed");
+  eq(JSON.parse(db.root.public.tournaments["arena:2026-11-07"]).queue, []);
+});
+
+test("change stamps go to the database's /changes too, and the sheet store never calls it", () => {
+  const tabs = () => ({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Paid", "Paid on", "Token"],
+      ["", "classic", "2026-11-07", "11111111", "Ann", "registered", "15", "", "", "t1"]],
+    Contacts: [["Name", "Email", "Phone", "Notes"]],
+  });
+  const { gs, db } = load(tabs(), {}, "firebase");
+  gs.clubEvents = () => ({});
+  gs.markPaid("t1", "15", "cash");
+  eq(db.root.changes, { entries: gs.changes().entries });
+  gs.saveContact({ fields: JSON.stringify({ Name: "Ann Ash" }) });
+  gs.clearTournamentCache("classic/2026-11-07");
+  db.calls.length = 0;
+  gs.refreshCaches();
+  eq(db.root.changes, gs.changes());
+  eq(db.calls.filter((c) => c.method !== "GET").map((c) => [c.method, c.path]), [["PATCH", ""]], "one write for every scope");
+
+  const sheet = load(tabs());
+  sheet.gs.clubEvents = () => ({});
+  sheet.gs.markPaid("t1", "15", "cash");
+  sheet.gs.refreshCaches();
+  eq(sheet.db.calls, []);
+});
+
+test("Refresh rebuilds the database's public copies from its tables and removes those of tournaments gone", () => {
+  const { gs, db, handEdit } = reporting({}, "firebase");
+  gs.clubEvents = () => ({});
+  db.root.public = { tournaments: { "gone:2026-01-01": JSON.stringify({ key: "gone/2026-01-01" }) } };
+  handEdit("Tournaments", 0, { Status: "finished" });
+  assert.match(gs.refreshCaches().message, /2 tournaments/);
+  eq(Object.keys(db.root.public.tournaments).sort(), ["arena:2026-11-07", "classic:2026-11-07"]);
+  assert.equal(JSON.parse(db.root.public.tournaments["classic:2026-11-07"]).status, "finished");
+});
+
+test("a database that refuses a write fails the action with the desk's usual error", () => {
+  const { gs, db } = reporting({}, "firebase");
+  db.failing = true;
+  const sent = gs.doPost({ parameter: { action: "result", password: "sheet", event: "classic", date: "2026-11-07", number: "1", board: "1",
+    section: "", result: "1-0" } });
+  assert.match(sent.error, /Something went wrong/);
+  assert.throws(() => gs.tournament("classic/2026-11-07", true), /Firebase GET \/tables: 500/);
 });

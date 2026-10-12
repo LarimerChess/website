@@ -25,11 +25,14 @@
  * them from registering for any club event until the date in Until, or until the row is
  * deleted. Those three email the President, who needs a written account within two days.
  *
- * Deploy as a web app that executes as the club account, with access for anyone. Script
+ * Deploy as a web app that executes as the club account, with access for anyone; its manifest,
+ * with the permissions it needs, is appsscript.json. Script
  * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
  * TOURNAMENT_SHEET_ID, the "Tournaments in progress" spreadsheet that running tournaments
  * keep their players, pairings, and results in until US Chess has rated them and the archive
- * Action clears them; and
+ * Action clears them; FIREBASE_URL, when set, the Firebase Realtime Database that keeps them
+ * instead, with a public copy of each tournament and the desks' change stamps, which the pages
+ * listen to; and
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json: the entry
  * fee, plus its round fee for each rated round (an arena, a flat rating fee), plus the card fee
@@ -623,8 +626,10 @@ function tournamentBook() {
   return SpreadsheetApp.openById(id);
 }
 
-/** A tab of the tournament spreadsheet as rows keyed by heading, with each row's sheet row number. */
+/** A tab of running tournaments as rows keyed by heading, each with its row: a sheet row number, or
+ *  the database's row ID. */
 function table(name) {
+  if (firebaseUrl()) return databaseTable(name);
   const book = tournamentBook();
   const sheet = book.getSheetByName(name) || (TOURNAMENT_HEADERS[name] && book.insertSheet(name));
   let [header, ...rows] = sheet.getDataRange().getDisplayValues();
@@ -636,12 +641,131 @@ function table(name) {
     header = header.concat(missing);
   }
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
-  return { sheet, col, rows: rows.map((r, i) => ({ ...Object.fromEntries(header.map((h, j) => [h.trim(), r[j] || ""])), row: i + 2 })) };
+  return { name, sheet, col, rows: rows.map((r, i) => ({ ...Object.fromEntries(header.map((h, j) => [h.trim(), r[j] || ""])), row: i + 2 })) };
 }
 
 function setCell(t, row, heading, value) {
-  t.sheet.getRange(row, t.col[heading] + 1).setNumberFormat("@").setValue(value);
+  setCells(t, { [row]: { [heading]: value } });
 }
+
+/** Changes cells of several rows, { row: { heading: value } }; the database takes them in one write. */
+function setCells(t, changes) {
+  if (t.sheet) {
+    for (const [row, fields] of Object.entries(changes)) {
+      for (const [heading, value] of Object.entries(fields)) {
+        t.sheet.getRange(Number(row), t.col[heading] + 1).setNumberFormat("@").setValue(value);
+      }
+    }
+    return;
+  }
+  const paths = {};
+  for (const [row, fields] of Object.entries(changes)) {
+    for (const [heading, value] of Object.entries(encodeFields(fields))) paths[`${row}/${heading}`] = value;
+  }
+  if (!Object.keys(paths).length) return;
+  firebase("PATCH", `tables/${t.name}`, paths);
+  for (const [row, fields] of Object.entries(changes)) Object.assign(databaseTables()[t.name][row], fields);
+}
+
+/** Adds rows, objects by heading; headings the tab lacks are left out. */
+function addRows(t, list) {
+  if (t.sheet) {
+    for (const fields of list) appendText(t.sheet, t.col, fields);
+    return;
+  }
+  if (!list.length) return;
+  const added = Object.fromEntries(list.map((fields) => [newRowId(),
+    Object.fromEntries(Object.keys(t.col).map((h) => [h, fields[h] === undefined ? "" : String(fields[h])]))]));
+  firebase("PATCH", `tables/${t.name}`, Object.fromEntries(Object.entries(added).map(([id, r]) => [id, encodeFields(r)])));
+  const stored = databaseTables();
+  stored[t.name] = { ...stored[t.name], ...added };
+}
+
+/** Deletes rows from table(t.name). */
+function deleteRows(t, rows) {
+  if (t.sheet) {
+    for (const r of rows.slice().sort((a, b) => b.row - a.row)) t.sheet.deleteRow(r.row);
+    return;
+  }
+  if (!rows.length) return;
+  firebase("PATCH", `tables/${t.name}`, Object.fromEntries(rows.map((r) => [r.row, null])));
+  for (const r of rows) delete databaseTables()[t.name][r.row];
+}
+
+// The database (FIREBASE_URL) keeps the tables' rows at /tables/{tab}/{row ID}, read once and then kept
+// here, and the arena queues at /queues. Its keys can't hold . $ # [ ] /, so a tournament key's slash
+// is a colon in a node name, and headings such as No. are stored percent-encoded.
+let firebaseBase = null;
+let databaseCopy = null;
+let databaseQueues = null;
+let rowsAdded = 0;
+
+function firebaseUrl() {
+  if (firebaseBase === null) {
+    firebaseBase = (PropertiesService.getScriptProperties().getProperty("FIREBASE_URL") || "").trim().replace(/\/+$/, "");
+  }
+  return firebaseBase;
+}
+
+/** Calls the database's REST API at a path ("" for the root) as the account the script runs as. */
+function firebase(method, path, body, query) {
+  const options = { method: method.toLowerCase(), headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true };
+  if (body !== undefined) {
+    options.contentType = "application/json";
+    options.payload = JSON.stringify(body);
+  }
+  const response = UrlFetchApp.fetch(`${firebaseUrl()}/${path}.json${query ? "?" + query : ""}`, options);
+  if (response.getResponseCode() !== 200) {
+    throw new Error(`Firebase ${method} /${path}: ${response.getResponseCode()} ${response.getContentText().slice(0, 200)}`);
+  }
+  return JSON.parse(response.getContentText());
+}
+
+/** Takes the script lock for a tournament change. The database is read again under it, since another
+ *  execution may have changed it while this one waited. */
+function lockTournaments() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  databaseCopy = null;
+  databaseQueues = null;
+  return lock;
+}
+
+function databaseTables() {
+  if (!databaseCopy) {
+    const stored = firebase("GET", "tables") || {};
+    databaseCopy = Object.fromEntries(Object.entries(stored).map(([name, rows]) => [name,
+      Object.fromEntries(Object.entries(rows || {}).map(([id, r]) => [id,
+        Object.fromEntries(Object.entries(r || {}).map(([h, v]) => [decodeField(h), String(v)]))]))]));
+  }
+  return databaseCopy;
+}
+
+function databaseTable(name) {
+  const stored = databaseTables()[name] || {};
+  const header = [...TOURNAMENT_HEADERS[name]];
+  for (const r of Object.values(stored)) for (const h of Object.keys(r)) if (!header.includes(h)) header.push(h);
+  return { name, col: Object.fromEntries(header.map((h, i) => [h, i])),
+    rows: Object.keys(stored).sort().map((id) => ({ ...Object.fromEntries(header.map((h) => [h, stored[id][h] || ""])), row: id })) };
+}
+
+/** A row ID that sorts after the migrated rows' r000002 and the rows added before it. */
+function newRowId() {
+  return "s" + Date.now().toString(36).padStart(8, "0") + (rowsAdded++).toString(36).padStart(3, "0");
+}
+
+function encodeFields(fields) {
+  const encode = (h) => h.replace(/[.$#[\]/%]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  return Object.fromEntries(Object.entries(fields).map(([h, v]) => [encode(h), v]));
+}
+
+function decodeField(h) {
+  return h.replace(/%(2E|24|23|5B|5D|2F|25)/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+const nodeOf = (key) => key.replace(/\//g, ":");
+const keyOf = (node) => node.replace(/:/g, "/");
 
 /** Everything about a tournament, in pairing.js's shape. Without td, only posted rounds. */
 function tournament(key, td) {
@@ -716,8 +840,7 @@ function startTournament(p) {
   const event = clubEvents()[key];
   if (!event) return { error: "That event isn't open." };
   if (event.kind === "night") return { error: "A club night's Swiss runs for the month; choose the month." };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Tournaments");
     if (t.rows.some((r) => r.Key === key)) return { error: "That tournament has already started." };
@@ -728,10 +851,10 @@ function startTournament(p) {
     if (format === "arena" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return { error: "No new games after what time? Such as 17:30." };
     const defined = format === "swiss" && p.sections !== undefined ? parseSections(p.sections) : { sections: [] };
     if (defined.error) return defined;
-    appendText(t.sheet, t.col, { Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
+    addRows(t, [{ Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
-      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: /^\d{8}$/.test(p.td || "") ? p.td : "" });
+      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: /^\d{8}$/.test(p.td || "") ? p.td : "" }]);
   } finally {
     lock.releaseLock();
   }
@@ -745,8 +868,7 @@ function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
   if (!/^[1-9]\d?$/.test(rounds)) return { error: "Rounds is a number from 1 to 99." };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Tournaments");
     const line = t.rows.find((r) => r.Key === key);
@@ -755,26 +877,25 @@ function setRounds(p) {
     const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
     if (Number(rounds) < paired) return { error: `${paired} rounds are paired already, so it can't have fewer.` };
     setCell(t, line.row, "Rounds", rounds);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: `It plays ${rounds} rounds.` };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Deletes everything the tournament spreadsheet has for a tournament, so it can be started again.
- *  Its entries stay in the registration Sheet. */
+/** Deletes everything the tournament spreadsheet or database has for a tournament, so it can be
+ *  started again. Its entries stay in the registration Sheet. */
 function restartTournament(key) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     if (!table("Tournaments").rows.some((r) => r.Key === key)) return { error: "No such tournament." };
     for (const name of Object.keys(TOURNAMENT_HEADERS)) {
       const t = table(name);
-      for (const r of t.rows.filter((x) => x.Key === key).reverse()) t.sheet.deleteRow(r.row);
+      deleteRows(t, t.rows.filter((x) => x.Key === key));
     }
     setQueue(key, []);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: "Deleted. Start it again when ready." };
   } finally {
     lock.releaseLock();
@@ -784,8 +905,7 @@ function restartTournament(key) {
 /** 30G and 30A: quads are groups of four by rating, and within each the table numbers are drawn by
  *  lot. Each quad is a section; numbers 5 to 8 are still the second quad's. */
 function numberQuads(key) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Players");
     const mine = t.rows.filter((r) => r.Key === key).sort((a, b) => (parseInt(b.Rating) || 0) - (parseInt(a.Rating) || 0));
@@ -799,15 +919,12 @@ function numberQuads(key) {
       }
       const name = `Quad ${g / 4 + 1}`;
       quads.push({ name });
-      group.forEach((r, i) => {
-        setCell(t, r.row, "No.", String(numbers[i]));
-        setCell(t, r.row, "Section", name);
-      });
+      setCells(t, Object.fromEntries(group.map((r, i) => [r.row, { "No.": String(numbers[i]), Section: name }])));
     }
     const info = table("Tournaments");
     const line = info.rows.find((r) => r.Key === key);
     if (line && quads.length) setCell(info, line.row, "Sections", JSON.stringify(quads));
-    clearTournamentCache();
+    clearTournamentCache(key);
   } finally {
     lock.releaseLock();
   }
@@ -816,8 +933,7 @@ function numberQuads(key) {
 /** Adds registered entrants who aren't players yet, numbered after the others (28B), each in the
  *  section their rating puts them in. */
 function syncPlayers(key) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     const defs = info && info.Format !== "quad" ? sectionsOf(info) : [];
@@ -830,16 +946,16 @@ function syncPlayers(key) {
     // Players added before the records were kept get them now.
     const unrecorded = t.rows.filter((r) => r.Key === key && (r["Prior games"] === "" || !r.State));
     const records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
+    const added = [];
     for (const e of entrants) {
       if (have.has(e.id)) continue;
       have.add(e.id);
-      appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
+      added.push({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
         Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "", ...records[e.id] });
     }
-    for (const r of unrecorded) {
-      for (const [heading, value] of Object.entries(records[r["US Chess ID"]] || {})) setCell(t, r.row, heading, value);
-    }
-    clearTournamentCache();
+    addRows(t, added);
+    setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
+    clearTournamentCache(key);
     return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).` : "No new entrants." };
   } finally {
     lock.releaseLock();
@@ -857,15 +973,13 @@ const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
 function saveByeKind(p) {
   if (BYE_KINDS[p.kind] === undefined) return { error: "Not a kind of bye." };
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Rounds");
     const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && r.White === p.id && !r.Black);
     if (!line) return { error: "That player has a game that round, not a bye." };
-    setCell(t, line.row, "Bye kind", p.kind);
-    setCell(t, line.row, "Bye points", String(BYE_KINDS[p.kind]));
-    clearTournamentCache();
+    setCells(t, { [line.row]: { "Bye kind": p.kind, "Bye points": String(BYE_KINDS[p.kind]) } });
+    clearTournamentCache(key);
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -878,27 +992,23 @@ function saveRound(p) {
   const games = JSON.parse(p.games || "[]");
   const byes = JSON.parse(p.byes || "[]");
   if (!round) return { error: "Which round?" };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Rounds");
     const old = t.rows.filter((r) => r.Key === key && Number(r.Round) === round);
     // A saved round can hold forfeits for quad players not here; only a posted round's results block re-pairing.
     if (old.some((r) => r.Result && r.Posted)) return { error: "This round has results; clear them before re-pairing (29G)." };
-    for (const r of old.reverse()) t.sheet.deleteRow(r.row);
+    deleteRows(t, old);
     const posted = p.post === "yes" ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
-    const fresh = table("Rounds");
-    for (const g of games) {
-      appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: String(g.board), White: g.white,
+    addRows(table("Rounds"), [
+      ...games.map((g) => ({ Key: key, Round: String(round), Board: String(g.board), White: g.white,
         Black: g.black, Result: FORFEITS.includes(g.result) ? g.result : "", "Bye points": "", Posted: posted,
-        Section: String(g.section || "") });
-    }
-    for (const b of byes) {
-      appendText(fresh.sheet, fresh.col, { Key: key, Round: String(round), Board: "", White: b.id, Black: "",
+        Section: String(g.section || "") })),
+      ...byes.map((b) => ({ Key: key, Round: String(round), Board: "", White: b.id, Black: "",
         Result: "", "Bye points": String(b.points), Posted: posted, Section: String(b.section || ""),
-        "Bye kind": BYE_KINDS[b.kind] !== undefined ? b.kind : "" });
-    }
-    clearTournamentCache();
+        "Bye kind": BYE_KINDS[b.kind] !== undefined ? b.kind : "" })),
+    ]);
+    clearTournamentCache(key);
     return { ok: true, message: posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.` };
   } finally {
     lock.releaseLock();
@@ -922,14 +1032,13 @@ function saveResults(p) {
   const allowed = ["", "1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
   const list = JSON.parse(p.results || "[]");
   if (!list.length || list.some((x) => !allowed.includes(x.result))) return { error: "Not a result." };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const t = table("Rounds");
     const lines = list.map((x) => boardLine(t, key, p.number, x.board, x.section));
     if (lines.some((line) => !line)) return { error: "No such board." };
-    lines.forEach((line, i) => setCell(t, line.row, "Result", list[i].result));
-    clearTournamentCache();
+    setCells(t, Object.fromEntries(lines.map((line, i) => [line.row, { Result: list[i].result }])));
+    clearTournamentCache(key);
     return { ok: true, message: list.length > 1 ? `${list.length} results are entered.` : "" };
   } finally {
     lock.releaseLock();
@@ -946,8 +1055,7 @@ function reportResult(p) {
   if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
   if (!REPORTS[p.result]) return { error: "Report 1–0, 0–1, or ½–½." };
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     if (!info || info.Format === "arena" || info.Status !== "running" || rated(key)) return { error: "That tournament isn't taking results." };
@@ -958,7 +1066,7 @@ function reportResult(p) {
     }
     if (line.Result) return { error: "The TD has already entered this game's result." };
     setCell(t, line.row, line.White === id ? "White report" : "Black report", p.result);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: `Board ${line.Board}: ${REPORTS[p.result]} is reported. The TD will confirm it.` };
   } finally {
     lock.releaseLock();
@@ -972,7 +1080,7 @@ function setOut(p) {
   const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
   if (!line) return { error: "Not a player in this tournament." };
   setCell(t, line.row, "Out from round", String(p.from || ""));
-  clearTournamentCache();
+  clearTournamentCache(key);
   return { ok: true, message: p.from ? `${line.Name} is out from round ${p.from}.` : `${line.Name} is back in.` };
 }
 
@@ -1022,7 +1130,7 @@ function beforeRoundOne(key) {
   const t = table("Rounds");
   const mine = t.rows.filter((r) => r.Key === key);
   if (mine.some((r) => r.Posted || r.Result)) return "Round 1 is posted, so sections can't change now: a player plays in one section.";
-  for (const r of mine.reverse()) t.sheet.deleteRow(r.row);
+  deleteRows(t, mine);
   return "";
 }
 
@@ -1031,8 +1139,7 @@ function setSections(p) {
   const key = `${p.event}/${p.date}`;
   const parsed = parseSections(p.sections);
   if (parsed.error) return parsed;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const info = table("Tournaments");
     const line = info.rows.find((r) => r.Key === key);
@@ -1042,8 +1149,8 @@ function setSections(p) {
     if (late) return { error: late };
     setCell(info, line.row, "Sections", JSON.stringify(parsed.sections));
     const t = table("Players");
-    for (const r of t.rows.filter((x) => x.Key === key)) setCell(t, r.row, "Section", placeIn(parsed.sections, r.Rating));
-    clearTournamentCache();
+    setCells(t, Object.fromEntries(t.rows.filter((x) => x.Key === key).map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
+    clearTournamentCache(key);
     return { ok: true, message: `Sections: ${parsed.sections.map((s) => s.name).join(", ")}. Everyone is placed by rating.` };
   } finally {
     lock.releaseLock();
@@ -1053,8 +1160,7 @@ function setSections(p) {
 /** Moves a player to another section before round 1. A player may play up, never down. */
 function setSection(p) {
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     if (!info) return { error: "No such tournament." };
@@ -1071,7 +1177,7 @@ function setSection(p) {
     const late = beforeRoundOne(key);
     if (late) return { error: late };
     setCell(t, line.row, "Section", def.name);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: `${line.Name} plays in ${def.name}.` };
   } finally {
     lock.releaseLock();
@@ -1106,8 +1212,7 @@ function runningArena(key) {
 
 function arenaJoin(p) {
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const { error } = runningArena(key);
     if (error) return { error };
@@ -1118,7 +1223,7 @@ function arenaJoin(p) {
     const playing = table("Arena").rows.some((r) => r.Key === key && !r.Result && (r.White === p.id || r.Black === p.id));
     if (playing) return { error: `${player.Name} is in a game.` };
     setQueue(key, [...queue, { id: p.id, since: stamp() }]);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: `${player.Name} is waiting for a game.` };
   } finally {
     lock.releaseLock();
@@ -1127,11 +1232,10 @@ function arenaJoin(p) {
 
 function arenaLeave(p) {
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     setQueue(key, (queues()[key] || []).filter((q) => q.id !== p.id));
-    clearTournamentCache();
+    clearTournamentCache(key);
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
     return { ok: true, message: `${player ? player.Name : p.id} is out of the queue.` };
   } finally {
@@ -1144,8 +1248,7 @@ function arenaLeave(p) {
 function arenaPair(p) {
   const key = `${p.event}/${p.date}`;
   const games = JSON.parse(p.games || "[]");
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const { info, error } = runningArena(key);
     if (error) return { error };
@@ -1158,16 +1261,18 @@ function arenaPair(p) {
     const arena = table("Arena");
     let number = arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0);
     const started = [];
+    const added = [];
     for (const g of games) {
       if (g.white === g.black || !waiting.has(g.white) || !waiting.has(g.black)) continue;
       waiting.delete(g.white);
       waiting.delete(g.black);
-      appendText(arena.sheet, arena.col, { Key: key, Game: String(++number), White: g.white, Black: g.black,
+      added.push({ Key: key, Game: String(++number), White: g.white, Black: g.black,
         "White pact": "", "Black pact": "", Result: "", Started: stamp(), Ended: "" });
       started.push(g.white, g.black);
     }
+    addRows(arena, added);
     setQueue(key, queue.filter((q) => !started.includes(q.id)));
-    clearTournamentCache();
+    clearTournamentCache(key);
     const count = started.length / 2;
     return { ok: true, message: count === games.length ? `Started ${count} game(s).`
       : `Started ${count} of ${games.length} game(s); the others' players were no longer waiting.` };
@@ -1181,20 +1286,22 @@ function arenaPair(p) {
 function arenaResult(p) {
   const key = `${p.event}/${p.date}`;
   if (!ARENA_RESULTS.includes(p.result)) return { error: "Not a result." };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const arena = table("Arena");
     const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
     if (!line) return { error: "No such game." };
-    setCell(arena, line.row, "Result", p.result);
-    clearTournamentCache();
-    if (line.Result) return { ok: true, message: `Game ${p.game} is corrected.` };
-    setCell(arena, line.row, "Ended", stamp());
+    if (line.Result) {
+      setCell(arena, line.row, "Result", p.result);
+      clearTournamentCache(key);
+      return { ok: true, message: `Game ${p.game} is corrected.` };
+    }
+    setCells(arena, { [line.row]: { Result: p.result, Ended: stamp() } });
     const back = [];
     if (!/^0F/.test(p.result)) back.push(line.White);
     if (!/0F$/.test(p.result)) back.push(line.Black);
     setQueue(key, [...(queues()[key] || []), ...back.map((id) => ({ id, since: stamp() }))]);
+    clearTournamentCache(key);
     return { ok: true, message: `Game ${p.game} is recorded.` };
   } finally {
     lock.releaseLock();
@@ -1206,14 +1313,13 @@ function arenaPact(p) {
   const key = `${p.event}/${p.date}`;
   const heading = { white: "White pact", black: "Black pact" }[p.side];
   if (!heading) return { error: "Which side?" };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const arena = table("Arena");
     const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
     if (!line) return { error: "No such game." };
     setCell(arena, line.row, heading, p.on === "yes" ? "yes" : "");
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -1223,16 +1329,15 @@ function arenaPact(p) {
 /** Takes back a pairing made by mistake, before it has a result; both players wait again. */
 function arenaCancel(p) {
   const key = `${p.event}/${p.date}`;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   try {
     const arena = table("Arena");
     const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
     if (!line) return { error: "No such game." };
     if (line.Result) return { error: "That game has a result." };
-    arena.sheet.deleteRow(line.row);
+    deleteRows(arena, [line]);
     setQueue(key, [...(queues()[key] || []), ...[line.White, line.Black].map((id) => ({ id, since: stamp() }))]);
-    clearTournamentCache();
+    clearTournamentCache(key);
     return { ok: true, message: `Game ${p.game} is taken back.` };
   } finally {
     lock.releaseLock();
@@ -1240,8 +1345,22 @@ function arenaCancel(p) {
 }
 
 /** Each running arena's waiting players, [{ id, since }] by tournament key, from the script property
- *  arenaQueues: the script alone uses them, and only while the arena runs. */
+ *  arenaQueues, or the database's /queues: the script alone uses them, and only while the arena runs. */
 function queues() {
+  if (firebaseUrl()) {
+    if (!databaseQueues) {
+      const stored = firebase("GET", "queues") || {};
+      databaseQueues = {};
+      for (const [node, text] of Object.entries(stored)) {
+        try {
+          databaseQueues[keyOf(node)] = JSON.parse(text);
+        } catch (err) {
+          console.error(`queue ${node}: ${err}`);
+        }
+      }
+    }
+    return { ...databaseQueues };
+  }
   try {
     return JSON.parse(PropertiesService.getScriptProperties().getProperty("arenaQueues") || "{}");
   } catch (err) {
@@ -1249,16 +1368,24 @@ function queues() {
   }
 }
 
-/** Sets one arena's queue, and drops any tournament's no longer in the spreadsheet. Callers hold the script lock. */
+/** Sets one arena's queue, and drops any tournament's no longer running. Callers hold the script lock. */
 function setQueue(key, list) {
   const all = queues();
   const running = new Set(table("Tournaments").rows.map((r) => r.Key));
-  for (const k of Object.keys(all)) if (k === key || !running.has(k)) delete all[k];
+  const dropped = Object.keys(all).filter((k) => k === key || !running.has(k));
+  for (const k of dropped) delete all[k];
   if (list.length && running.has(key)) all[key] = list;
-  PropertiesService.getScriptProperties().setProperty("arenaQueues", JSON.stringify(all));
+  if (!firebaseUrl()) {
+    PropertiesService.getScriptProperties().setProperty("arenaQueues", JSON.stringify(all));
+    return;
+  }
+  const changes = Object.fromEntries(dropped.map((k) => [nodeOf(k), null]));
+  if (all[key]) changes[nodeOf(key)] = JSON.stringify(all[key]);
+  if (Object.keys(changes).length) firebase("PATCH", "queues", changes);
+  databaseQueues = all;
 }
 
-/** Every tournament in the spreadsheet, with only posted rounds, for the public Pairings page. */
+/** Every running tournament, with only posted rounds, for the public Pairings page. */
 function currentTournaments() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get("tournaments");
@@ -1268,10 +1395,19 @@ function currentTournaments() {
   return list;
 }
 
-/** Clears the Pairings and Standings pages' copy, and the entry lists, which show each player's section. */
-function clearTournamentCache() {
+/** After a change to the tournament with the key: clears the Pairings and Standings pages' copy, and the
+ *  entry lists, which show each player's section, and rewrites the database's public copy. */
+function clearTournamentCache(key) {
   CacheService.getScriptCache().removeAll(["tournaments", "entriesVersion"]);
-  touch("tournaments");
+  stampChanges(["tournaments"], firebaseUrl() ? publicCopies([key]) : {});
+}
+
+/** The database's public copies of tournaments, { path: JSON or null for one that's gone }, for stampChanges. */
+function publicCopies(keys) {
+  return Object.fromEntries(keys.map((key) => {
+    const shown = tournament(key, false);
+    return [`public/tournaments/${nodeOf(key)}`, shown ? JSON.stringify(shown) : null];
+  }));
 }
 
 // The public pages' copies of the entry lists and tournaments last six hours, the longest Apps Script
@@ -1319,8 +1455,15 @@ function clearEntriesCache() {
 const CHANGE_SCOPES = ["entries", "tournaments", "contacts"];
 
 function touch(...scopes) {
+  stampChanges(scopes, {});
+}
+
+/** New stamps for the scopes. With the database, one write sets them at /changes, which the desks
+ *  listen to, along with updates, { path: value }. */
+function stampChanges(scopes, updates) {
   const stamp = Math.random().toString(36).slice(2, 10);
   CacheService.getScriptCache().putAll(Object.fromEntries(scopes.map((s) => [`changed:${s}`, stamp])), PUBLIC_CACHE);
+  if (firebaseUrl()) firebase("PATCH", "", { ...updates, ...Object.fromEntries(scopes.map((s) => [`changes/${s}`, stamp])) });
 }
 
 function changes() {
@@ -1329,10 +1472,15 @@ function changes() {
 }
 
 /** The TD desk's Refresh: clears every copy the public pages and the script keep, and builds the
- *  public pages' copies again from the Sheets. */
+ *  public pages' copies again from the Sheets, or the database's public copies from its tables. */
 function refreshCaches() {
   CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion"]);
-  touch(...CHANGE_SCOPES);
+  let copies = {};
+  if (firebaseUrl()) {
+    const listed = Object.keys(firebase("GET", "public/tournaments", undefined, "shallow=true") || {}).map(keyOf);
+    copies = publicCopies([...new Set([...listed, ...table("Tournaments").rows.map((r) => r.Key)])]);
+  }
+  stampChanges(CHANGE_SCOPES, copies);
   const lists = allEntries().length;
   const months = Object.entries(clubEvents()).filter(([, e]) => e.kind === "month");
   for (const [key] of months) entries(key, false);
