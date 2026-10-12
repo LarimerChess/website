@@ -442,7 +442,7 @@ main > h1:first-child { margin-top: 32px; }
 .td-action + .td-action { margin-left: 6px; }
 .td-out td { color: var(--muted); }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
-.td-incidents { padding-left: 20px; }
+.td-incidents, .td-ledger { padding-left: 20px; }
 .entries-all section .entries { margin-bottom: 16px; }
 .td-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .td-pact { display: block; font-size: 14px; color: var(--muted); white-space: nowrap; }
@@ -733,6 +733,12 @@ section.td-table td { white-space: nowrap; }
       </section>
 
       <section class="td-panel">
+        <h2>Money</h2>
+        <p>What the Payments tab records for this choice, a month with its nights. Paying by card adds the card fee; marking a player unpaid adds a correction instead of erasing the payment.</p>
+        <ul class="td-ledger"></ul>
+      </section>
+
+      <section class="td-panel">
         <h2>Incidents</h2>
         <p>Warnings, penalties, game losses, expulsions, and bars, under the Safe Play policy, §8. Log one from a player's Incident button. Expelled and removed players drop off that date's entries, so they aren't paired again; barred players can't register. Those three email the President.</p>
         <p class="td-incidents-status" role="status"></p>
@@ -777,7 +783,7 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=6c989c5e2b" defer></script>
-  <script src="../td.js?v=85fbdadf10" defer></script>
+  <script src="../td.js?v=b9065544b4" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
   <script src="../td-run.js?v=43224a0fe4" defer></script>

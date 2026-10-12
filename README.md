@@ -105,7 +105,7 @@ These need your values too:
 | The address that sends and receives the club's mail | PRESIDENT in scripts/rating_check.mjs and scripts/td_expirations.py, and the president@ addresses in scripts/registration.gs and the pages |
 | Your site's URL | SITE in scripts/registration.gs, scripts/build_pages.py, and scripts/archive_tournaments.py |
 | Your US Chess affiliate ID and your TDs' US Chess IDs | scripts/tds.json |
-| Each club event's fees by age | prices.json, by event page name |
+| Each club event's fees by age, and US Chess's rating charge | prices.json, by event page name; the charge under fees.uschess |
 | The time zone, if not Colorado's | every America/Denver: grep -rn America/Denver --exclude-dir=node_modules . |
 
 Then set ratings.json to {}, and delete the club's minutes, results pages, and event pages; the Actions rewrite events.json and the event pages from your calendars.

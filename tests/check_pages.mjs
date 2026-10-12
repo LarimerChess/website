@@ -468,6 +468,7 @@ desk.on("request", async (request) => {
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1" }] },
           remove: { message: "Test Player is withdrawn." },
           paid: { ok: true, message: "Test Player paid $15." },
+          ledger: { ledger: { received: { cash: "15", check: "0", card: "0", other: "0" }, entry: "13", rating: "2", card: "0", games: 6, uschess: "3" } },
           incident: { ok: true, message: "Logged: Game loss, Test Player." },
           incidents: { incidents: [] },
           tournament: { tournament: null } }[p.action];
@@ -531,16 +532,20 @@ whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) =>
   ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
 await desk.click(".td-entries tbody tr td:nth-child(7) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
-deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && !c.by) ? pass("TD desk marks a player paid")
+deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && c.by === "cash") ? pass("TD desk marks a player paid in cash")
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
-await desk.waitForSelector(".td-entries tbody tr td:nth-child(7) button:nth-child(2)");
-await desk.click(".td-entries tbody tr td:nth-child(7) button:nth-child(2)");
+await desk.waitForSelector(".td-entries tbody tr td:nth-child(7) select:enabled");
+await desk.select(".td-entries tbody tr td:nth-child(7) select", "card");
+await desk.click(".td-entries tbody tr td:nth-child(7) button");
 for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "paid" && c.by === "card"); waited += 100) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "17.42" && c.by === "card")
   ? pass("TD desk takes a card payment, starting from the fee with the card fee")
   : fail(`TD desk card payment: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
+const money = await desk.$$eval(".td-ledger li", (items) => items.map((i) => i.textContent));
+money.length === 4 && money[0].includes("cash $15") && money[2].includes("$3 for the 6 rated games")
+  ? pass("TD desk shows the money received by method and how it splits") : fail(`TD desk Money: ${JSON.stringify(money)}`);
 await desk.click(".td-entries tbody tr td:nth-last-child(2) button");
 await desk.waitForSelector("dialog.td-incident[open]");
 await desk.select("#td-action", "Game loss");

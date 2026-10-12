@@ -18,6 +18,7 @@ const incidentDialog = document.querySelector(".td-incident");
 const incidentForm = incidentDialog.querySelector("form");
 const incidentList = document.querySelector(".td-incidents");
 const incidentsStatus = document.querySelector(".td-incidents-status");
+const ledgerList = document.querySelector(".td-ledger");
 let password = "";
 let incidentPlayer = null;
 let player = null;
@@ -297,39 +298,43 @@ async function showDeskEntries() {
     const row = document.createElement("tr");
     const lapsed = e.expires && current && e.expires < current.first;
     for (const text of [e.name, e.id, e.rating || "Unrated", e.for, e.category || "?",
-      e.due === "" ? "?" : `$${e.due}`]) {
+      e.due === "" ? "?" : `$${e.due}${e.credit ? ` after $${e.credit} credit` : ""}`]) {
       row.insertCell().textContent = text;
     }
     // Marking paid asks for the amount, which can differ from the fee under the hardship waiver; by
     // card, it starts from the fee with the card fee.
     const paidCell = row.insertCell();
-    const markPaid = (label, by, start) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "td-action";
-      button.textContent = label;
-      button.append(hidden(e.paid ? ` paid by ${e.name}; mark unpaid` : ` for ${e.name}`));
-      button.addEventListener("click", async () => {
-        let amount = "";
-        if (!e.paid) {
-          amount = prompt(`Amount ${e.name} paid${by ? " by card" : ""}`, start);
-          if (amount === null) return;
-        } else if (!confirm(`Mark ${e.name} unpaid?`)) {
-          return;
-        }
-        button.disabled = true;
-        const result = await call("paid", { token: e.token, amount, by });
-        deskStatus.textContent = result.message || result.error;
-        showDeskEntries();
-      });
-      paidCell.append(button);
-    };
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "td-action";
+    let method;
     if (e.paid) {
-      markPaid(`$${e.paid}${e.paidBy === "card" ? " by card" : ""} ✓`, "", "");
+      button.textContent = `$${e.paid}${e.paidBy ? ` ${e.paidBy}` : ""} ✓`;
+      button.append(hidden(` paid by ${e.name}; mark unpaid`));
     } else {
-      markPaid("Mark paid", "", e.due || "");
-      markPaid("By card", "card", e.card || "");
+      method = document.createElement("select");
+      method.className = "td-method";
+      method.setAttribute("aria-label", `How ${e.name} paid`);
+      for (const m of ["Cash", "Check", "Card", "Other"]) method.add(new Option(m, m.toLowerCase()));
+      paidCell.append(method, " ");
+      button.textContent = "Mark paid";
+      button.append(hidden(` for ${e.name}`));
     }
+    button.addEventListener("click", async () => {
+      let amount = "";
+      const by = method ? method.value : "";
+      if (!e.paid) {
+        amount = prompt(`Amount ${e.name} paid by ${by}`, by === "card" ? e.card : e.due);
+        if (amount === null) return;
+      } else if (!confirm(`Mark ${e.name} unpaid?`)) {
+        return;
+      }
+      button.disabled = true;
+      const result = await call("paid", { token: e.token, amount, by });
+      deskStatus.textContent = result.message || result.error;
+      showDeskEntries();
+    });
+    paidCell.append(button);
     for (const text of [lapsed ? `Expires ${e.expires}` : e.expires ? "Current" : "None", e.email || ""]) {
       row.insertCell().textContent = text;
     }
@@ -360,8 +365,27 @@ async function showDeskEntries() {
     return row;
   }));
   tdTable.hidden = !entries.length;
+  showLedger(eventName, date);
   showIncidents(eventName, date);
   document.dispatchEvent(new Event("td-choice"));
+}
+
+async function showLedger(eventName, date) {
+  const { ledger } = await call("ledger", { event: eventName, date });
+  if (!ledger || `${eventName}/${date}` !== choice.value) return;
+  const r = ledger.received;
+  const lines = [
+    `Received: cash $${r.cash}, check $${r.check}, card $${r.card}, other $${r.other}.`,
+    `Entry fees, Peak's facility donation: $${ledger.entry}.`,
+    `Rating fees: $${ledger.rating}.`
+      + (ledger.games === null ? "" : ` US Chess charges $${ledger.uschess} for the ${ledger.games} rated ${ledger.games === 1 ? "game" : "games"} played so far.`),
+    `Card fees, for the processor: $${ledger.card}.`,
+  ];
+  ledgerList.replaceChildren(...lines.map((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    return item;
+  }));
 }
 
 async function showIncidents(eventName, date) {

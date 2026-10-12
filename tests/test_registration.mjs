@@ -111,6 +111,62 @@ test("fees: the round fee for each round an entry covers, an arena's flat fee, a
   eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["18.95", "card"], ["", ""]]);
 });
 
+// October 2026's club nights, which the month's fee counts.
+function clubNights(gs) {
+  const nights = ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"];
+  const event = (kind, first, label) => ({ event: "monday-club-night-at-peak", name: "Monday Club Night", kind, label, first,
+    last: kind === "month" ? nights.at(-1) : first, closes: "2099-01-01T19:00:00-07:00" });
+  gs.clubEvents = () => ({
+    ...Object.fromEntries(nights.map((d) => [`monday-club-night-at-peak/${d}`, event("night", d, d)])),
+    "monday-club-night-at-peak/2026-10": event("month", nights[0], "all Mondays in October 2026"),
+  });
+  let n = 0;
+  gs.Utilities.getUuid = () => `token${++n}`;
+}
+
+test("a night paid by card, then the whole month: the night moves to the month and its fees, not the card fee, are credited", () => {
+  const { gs, sheets } = load({ Entries: [] });
+  clubNights(gs);
+  const register = (date) => gs.register({ event: "monday-club-night-at-peak", date, id: "11111111", category: "Adult" }, true);
+  assert.equal(register("2026-10-05").ok, true);
+  assert.equal(gs.markPaid("token1", "8.19", "card").message, " paid $8.19 by card.");
+  const month = register("2026-10");
+  assert.match(month.message, /Due when you arrive: \$9\.50 \(adult after \$7\.50 already paid for its nights\)/);
+  eq(rowsOf(sheets.Entries).map((r) => [r.Date, r.Amount, r["Rating fee"], r.Status]),
+    [["2026-10-05", "7.50", "0.50", "moved to month"], ["2026-10", "17", "2", "registered"]]);
+  eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.for, e.due, e.credit, e.card]), [["Whole month", "9.50", "7.50", "10.24"]]);
+  eq(gs.entries("monday-club-night-at-peak/2026-10-05", false).map((e) => e.for), ["Whole month"], "listed once, for the month");
+  assert.match(register("2026-10-12").error, /already registered for the whole month/);
+  assert.match(gs.withdraw("token1"), /moved to the whole month/);
+
+  assert.equal(gs.markPaid("token2", "9.50", "cash").ok, true);
+  const ledger = () => rowsOf(sheets.Payments).map((r) => [r["No."], r.Token, r.Type, r.Method, r.Received, r["Entry fee"], r["Rating fee"],
+    r["Card fee"], r.Reverses]);
+  eq(ledger(), [
+    ["1", "token1", "payment", "card", "8.19", "7", "0.50", "0.69", ""],
+    ["2", "token1", "credit", "", "0", "-7", "-0.50", "0", ""],
+    ["3", "token2", "credit", "", "0", "7", "0.50", "0", ""],
+    ["4", "token2", "payment", "cash", "9.50", "8", "1.50", "0", ""],
+  ]);
+  gs.ratedGames = () => 5;
+  eq(gs.ledgerFor("monday-club-night-at-peak/2026-10"), { received: { cash: "9.50", check: "0", card: "8.19", other: "0" },
+    entry: "15", rating: "2", card: "0.69", games: 5, uschess: "3" });
+
+  // Marking unpaid cancels the payment with a correction; the credit stays.
+  assert.equal(gs.markPaid("token2", "", "").message, " is marked unpaid.");
+  eq(ledger().at(-1), ["5", "token2", "correction", "cash", "-9.50", "-8", "-1.50", "0", "4"]);
+  eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.paid, e.due]), [["", "9.50"]]);
+});
+
+test("a payment covers the rating fee first, and a card payment's card fee is what the card added", () => {
+  const { gs } = load({ Entries: [] });
+  const card = { percent: 2.5, fixed: 0.5 };
+  eq(gs.allocate(1742, "card", 150, 0, card), { "Entry fee": 1500, "Rating fee": 150, "Card fee": 92 });
+  eq(gs.allocate(100, "cash", 150, 0, card), { "Entry fee": 0, "Rating fee": 100, "Card fee": 0 }, "a waiver short of the rating fee");
+  eq(gs.allocate(1500, "check", null, 0, card), { "Entry fee": 1500, "Rating fee": 0, "Card fee": 0 }, "no rating fee known");
+  eq(gs.allocate(40, "card", 150, 0, card), { "Entry fee": 0, "Rating fee": 0, "Card fee": 40 });
+});
+
 test("a quad started before sections, with none of their columns, runs as before", () => {
   const key = "alley-cat-quad/2026-10-10";
   const players = [...Array(8)].map((_, i) => [key, String(i + 1), `9000000${i + 1}`, `P${i + 1}`, String(2000 - i * 100), ""]);

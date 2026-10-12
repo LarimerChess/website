@@ -14,7 +14,7 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid,
+ * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
@@ -34,6 +34,17 @@
  * fee, plus its round fee for each rated round (an arena, a flat rating fee), plus the card fee
  * when paid by card. Players pay when they arrive.
  *
+ * A player who registers for a club night's whole month after registering for some of its nights
+ * moves to the month: those nights' rows get the status "moved to month", and what was paid for
+ * them, less any card fee, is credited to the month, up to its fee.
+ *
+ * The Payments tab is the ledger, and rows are only ever added to it: each payment, each
+ * correction (marking a player unpaid adds one that cancels their payments, named in Reverses),
+ * and each credit (a pair: out of a night, into its month). Each row splits what changed hands
+ * into the entry fee (Peak's facility donation), the rating fee (US Chess and the club's
+ * margin), and the card fee (the processor's), from the fees as they stood when the row was
+ * added, so a later price change never rewrites it. A payment covers the rating fee first.
+ *
  * Invitational club events (calendar metadata access=invitational) and events in the registration
  * Sheet's "Closed events" tab (Event, Name, Start, Format, Rounds, Fee) take registrations only from the TD
  * desk; their entries and pairings are public like any other event's. The tab can also hold an
@@ -45,7 +56,11 @@ const MEMBERS = "https://ratings-api.uschess.org/api/v1/members";
 const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
-  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by"];
+  "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee"];
+const MOVED = "moved to month";
+const PAYMENT_HEADER = ["No.", "Recorded", "Token", "Event", "Date", "US Chess ID", "Name", "Type", "Method", "Received",
+  "Entry fee", "Rating fee", "Card fee", "Reverses", "Note"];
+const METHODS = ["cash", "check", "card", "other"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
 const ACTIONS = ["Warning", "Time penalty", "Game loss", "Expelled from the tournament", "Removed from the venue",
@@ -94,6 +109,7 @@ function doPost(e) {
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
       case "paid": return json(markPaid(p.token, p.amount, p.by));
+      case "ledger": return json({ ledger: ledgerFor(`${p.event}/${p.date}`) });
       case "incident": return json(logIncident(p));
       case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
       case "tournament": return json({ tournament: tournament(`${p.event}/${p.date}`, true) });
@@ -160,30 +176,41 @@ function register(p, td) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   let token;
+  let credited = 0;
   try {
     const { sheet, col, rows } = readEntries();
-    const mine = rows.filter((r) => r[col.Event] === p.event && r[col["US Chess ID"]] === id && r[col.Status] !== "withdrawn");
+    const mine = rows.filter((r) => r[col.Event] === p.event && r[col["US Chess ID"]] === id && active(r[col.Status]));
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
     if (month) return { error: `${name} is already registered for the whole month.` };
     token = Utilities.getUuid();
+    const ratingDue = ratingFee(event, prices().fees);
     const row = {
       Registered: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Event: p.event, Date: p.date,
       "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : money(amount),
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
       "Added by": td ? "TD" : "online", Token: token, Phone: td ? String(p.phone || "").trim() : "",
+      "Rating fee": ratingDue === null ? "" : money(ratingDue),
     };
     appendText(sheet, col, row);
+    if (event.kind === "month") {
+      const nights = mine.filter((r) => r[col.Date].startsWith(p.date + "-"));
+      credited = moveToMonth(sheet, col, rows, nights, row, amount);
+      for (const r of nights) clearEntriesCache(p.event, r[col.Date]);
+    }
     clearEntriesCache(p.event, p.date);
   } finally {
     lock.releaseLock();
   }
 
   const card = prices().fees.card;
-  const due = amount === null ? "The TD will confirm the fee when you arrive."
+  const owed = amount === null ? null : Math.round((amount - credited) * 100) / 100;
+  const credit = credited ? ` after $${money(credited)} already paid for its nights` : "";
+  const due = owed === null ? "The TD will confirm the fee when you arrive."
     : amount === 0 ? `No fee (${category.toLowerCase()}).`
-    : `Due when you arrive: $${money(amount)} (${category.toLowerCase()})`
+    : owed === 0 ? `Nothing more is due: what was paid for its nights covers it.`
+    : `Due when you arrive: $${money(owed)} (${category.toLowerCase()}${credit})`
       + `. Paying by card adds ${card.percent}% + $${money(card.fixed)}.`;
   const lapsed = member.expirationDate && member.expirationDate < event.first
     ? `The US Chess membership expires ${member.expirationDate}, before this event. Renew it before you play.`
@@ -227,8 +254,9 @@ function entries(key, td, read) {
     return bar ? "Barred from club events" : "";
   };
   const card = td && prices().fees.card;
+  const ledger = td && ledgerByToken();
   const list = rows
-    .filter((r) => r[col.Event] === event && r[col.Status] !== "withdrawn" && (r[col.Date] === date
+    .filter((r) => r[col.Event] === event && active(r[col.Status]) && (r[col.Date] === date
       || (date.length === 7 && r[col.Date].startsWith(date + "-"))
       || (date.length === 10 && r[col.Date] === date.slice(0, 7))))
     .map((r) => ({ r, out: outReason(r[col["US Chess ID"]]) }))
@@ -238,10 +266,11 @@ function entries(key, td, read) {
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       if (td) {
-        const due = r[col.Amount];
-        Object.assign(entry, { out, category: r[col.Category], amount: due, paid: r[col.Paid],
+        const credit = ((ledger[r[col.Token]] || {}).credit || 0) / 100;
+        const due = r[col.Amount] === "" ? "" : money(Math.max(0, Math.round((Number(r[col.Amount]) - credit) * 100) / 100));
+        Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
           paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
-          due, card: due === "" ? "" : money(cardTotal(Number(due), card)),
+          credit: credit ? money(credit) : "", due, card: due === "" || due === "0" ? "" : money(cardTotal(Number(due), card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token] });
       }
       return entry;
@@ -368,6 +397,7 @@ function withdrawPage(token) {
 button { font: inherit; padding: 10px 20px; }</style></head><body>
 <? if (!row) { ?><p>No registration matches this link. Questions: president@larimerchess.org</p>
 <? } else if (row.status === "withdrawn") { ?><p><?= row.name ?> is already withdrawn from <?= what ?>.</p>
+<? } else if (row.status === moved) { ?><p><?= row.name ?> moved to the whole month. To withdraw, use the link in the month's confirmation email.</p>
 <? } else { ?><p>Withdraw <?= row.name ?> from <?= what ?>?</p>
 <button id="go" data-token="<?= token ?>">Withdraw</button><p id="done" role="status"></p>
 <script>
@@ -380,6 +410,7 @@ button { font: inherit; padding: 10px 20px; }</style></head><body>
 </script><? } ?></body></html>`);
   const event = row && clubEvents()[`${row.event}/${row.date}`];
   page.row = row;
+  page.moved = MOVED;
   page.what = event ? `${event.name}, ${event.label}` : row && `${row.event}, ${row.date}`;
   page.token = token;
   return page.evaluate().setTitle("Withdraw | Larimer County Chess Club");
@@ -391,6 +422,7 @@ function withdraw(token) {
   try {
     const row = findToken(token);
     if (!row) return "No registration matches this.";
+    if (row.status === MOVED) return `${row.name} moved to the whole month; withdraw from the month instead.`;
     const { sheet, col } = readEntries();
     sheet.getRange(row.index + 2, col.Status + 1).setValue("withdrawn");
     clearEntriesCache(row.event, row.date);
@@ -706,6 +738,8 @@ function syncPlayers(key) {
     const unrecorded = t.rows.filter((r) => r.Key === key && (r["Prior games"] === "" || !r.State));
     const records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
     for (const e of entrants) {
+      if (have.has(e.id)) continue;
+      have.add(e.id);
       appendText(t.sheet, t.col, { Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
         Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "", ...records[e.id] });
     }
@@ -1130,25 +1164,154 @@ function clearTournamentCache() {
   CacheService.getScriptCache().remove("tournaments");
 }
 
-/** Records what a player paid at the door, and whether by card, or clears it when amount is empty. */
+/** Records what a player paid at the door and how, or, when amount is empty, marks them unpaid with
+ *  corrections that cancel their payments. */
 function markPaid(token, amount, by) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
+  // The desk before payment methods sent nothing for a payment that wasn't by card.
+  const method = by || "cash";
+  if (!METHODS.includes(method)) return { error: "Choose how they paid." };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const row = findToken(token);
     if (!row) return { error: "No registration matches this." };
-    const { sheet, col } = readEntries();
+    const { sheet, col, rows } = readEntries();
+    const r = rows[row.index];
+    const book = readPayments();
+    const mine = book.rows.filter((x) => x.Token === token);
+    if (amount) {
+      const event = clubEvents()[`${row.event}/${row.date}`];
+      const listed = r[col["Rating fee"]];
+      const fee = listed !== "" ? Number(listed) : event ? ratingFee(event, prices().fees) : null;
+      const split = allocate(cents(amount), method, fee === null ? null : cents(fee), sum(mine, "Rating fee"), prices().fees.card);
+      addPayment(book, token, partyOf(r, col), { Type: "payment", Method: method, Received: cents(amount), ...split,
+        Note: fee === null ? "Rating fee unknown, so all of it counted as entry fee." : "" });
+    } else {
+      const reversed = new Set(mine.map((x) => x.Reverses).filter(Boolean));
+      for (const x of mine.filter((x) => x.Type === "payment" && !reversed.has(x["No."]))) {
+        addPayment(book, token, partyOf(r, col), { Type: "correction", Method: x.Method, Received: -cents(x.Received),
+          "Entry fee": -cents(x["Entry fee"]), "Rating fee": -cents(x["Rating fee"]), "Card fee": -cents(x["Card fee"]),
+          Reverses: x["No."], Note: "Marked unpaid" });
+      }
+    }
     const when = amount ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
     sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
-    const card = amount && by === "card";
-    sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(card ? "card" : "");
-    return { ok: true, message: amount ? `${row.name} paid $${amount}${card ? " by card" : ""}.` : `${row.name} is marked unpaid.` };
+    sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(amount ? method : "");
+    return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}.` : `${row.name} is marked unpaid.` };
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Splits a payment, in cents: the card fee is what paying by card added to the base, the
+ *  largest amount whose card total fits in what was received; of the base, the rating fee
+ *  still unpaid comes first, and the rest is entry fee. */
+function allocate(received, method, ratingDue, ratingPaid, card) {
+  let base = received;
+  if (method === "card") {
+    base = Math.max(0, Math.floor((received - card.fixed * 100) / (1 + card.percent / 100)));
+    while (Math.round(cardTotal((base + 1) / 100, card) * 100) <= received) base++;
+  }
+  const rating = ratingDue === null ? 0 : Math.min(base, Math.max(0, ratingDue - ratingPaid));
+  return { "Entry fee": base - rating, "Rating fee": rating, "Card fee": received - base };
+}
+
+/** Moves a player's nights to the month they just registered for: marks them moved and credits
+ *  their entry and rating fees, never a card fee, to the month, up to its amount. Returns the
+ *  credit in dollars. */
+function moveToMonth(sheet, col, rows, nights, month, amount) {
+  const book = readPayments();
+  const held = ledgerByToken(book);
+  let room = amount === null ? Infinity : cents(amount);
+  let total = 0;
+  for (const r of nights) {
+    sheet.getRange(rows.indexOf(r) + 2, col.Status + 1).setNumberFormat("@").setValue(MOVED);
+    const h = held[r[col.Token]];
+    if (!h) continue;
+    const rating = Math.max(0, Math.min(h.rating, room));
+    room -= rating;
+    const entry = Math.max(0, Math.min(h.entry, room));
+    room -= entry;
+    if (!rating && !entry) continue;
+    addPayment(book, r[col.Token], partyOf(r, col), { Type: "credit", "Entry fee": -entry, "Rating fee": -rating,
+      Note: `To the whole month, ${month.Token}` });
+    addPayment(book, month.Token, month, { Type: "credit", "Entry fee": entry, "Rating fee": rating,
+      Note: `From ${nightLabel(r[col.Date])}, ${r[col.Token]}` });
+    total += rating + entry;
+  }
+  return total / 100;
+}
+
+/** What each registration holds in the ledger, in cents: received, entry, rating, card, and credit
+ *  (what credits moved in, or out when negative). */
+function ledgerByToken(book) {
+  const held = {};
+  for (const x of (book || readPayments()).rows) {
+    const h = held[x.Token] ||= { received: 0, entry: 0, rating: 0, card: 0, credit: 0 };
+    h.received += cents(x.Received);
+    h.entry += cents(x["Entry fee"]);
+    h.rating += cents(x["Rating fee"]);
+    h.card += cents(x["Card fee"]);
+    if (x.Type === "credit") h.credit += cents(x["Entry fee"]) + cents(x["Rating fee"]);
+  }
+  return held;
+}
+
+/** The ledger's totals for a key, for the TD desk: received by method, and how it splits. A month
+ *  includes its nights. For a tournament, US Chess's charge for the rated games played so far,
+ *  while the tournament spreadsheet still has them. */
+function ledgerFor(key) {
+  const [event, date] = String(key).split("/");
+  const rows = readPayments().rows.filter((x) => x.Event === event
+    && (x.Date === date || (date.length === 7 && x.Date.startsWith(date + "-"))));
+  const total = (field, keep) => money(rows.filter(keep || (() => true)).reduce((n, x) => n + cents(x[field]), 0) / 100);
+  const received = Object.fromEntries(METHODS.map((m) => [m, total("Received", (x) => x.Method === m)]));
+  const games = ratedGames(key);
+  const uschess = prices().fees.uschess;
+  return { received, entry: total("Entry fee"), rating: total("Rating fee"), card: total("Card fee"), games,
+    uschess: games === null ? "" : money(Math.max(uschess.minimum, Math.round(games * uschess.game * 100) / 100)) };
+}
+
+/** Games played over the board in a tournament, which US Chess rates; null when there's no tournament. */
+function ratedGames(key) {
+  if (!table("Tournaments").rows.some((r) => r.Key === key)) return null;
+  const played = (r) => r.Key === key && r.White && r.Black && ["1-0", "0-1", "1/2-1/2"].includes(r.Result);
+  return table("Rounds").rows.filter(played).length + table("Arena").rows.filter(played).length;
+}
+
+/** The Payments tab as rows keyed by heading. */
+function readPayments() {
+  const { sheet, col, rows } = readTab("Payments", PAYMENT_HEADER);
+  return { sheet, col, rows: rows.map((r) => Object.fromEntries(Object.entries(col).map(([h, i]) => [h, r[i]]))) };
+}
+
+/** Adds a ledger row; amounts are in cents. */
+function addPayment(book, token, party, fields) {
+  const row = { "No.": String(book.rows.length + 1), Recorded: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Token: token,
+    Event: party.Event, Date: party.Date, "US Chess ID": party["US Chess ID"], Name: party.Name, Method: "", Reverses: "", Note: "" };
+  for (const [h, v] of Object.entries(fields)) row[h] = typeof v === "number" ? money(v / 100) : v;
+  for (const h of ["Received", "Entry fee", "Rating fee", "Card fee"]) if (row[h] === undefined) row[h] = "0";
+  appendText(book.sheet, book.col, row);
+  book.rows.push(row);
+}
+
+function partyOf(r, col) {
+  return Object.fromEntries(["Event", "Date", "US Chess ID", "Name"].map((h) => [h, r[col[h]]]));
+}
+
+function sum(rows, field) {
+  return rows.reduce((n, x) => n + cents(x[field]), 0);
+}
+
+function cents(amount) {
+  return Math.round(Number(amount || 0) * 100);
+}
+
+function active(status) {
+  return status !== "withdrawn" && status !== MOVED;
 }
 
 function findToken(token) {
@@ -1276,15 +1439,20 @@ function money(n) {
 
 /** The Entries tab, its columns by heading (so TDs can reorder them), and its rows. */
 function readEntries() {
+  return readTab("Entries", HEADER);
+}
+
+/** A tab of the registration Sheet, made when it's missing and given any missing headings. */
+function readTab(name, headings) {
   const book = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = book.getSheetByName("Entries");
+  let sheet = book.getSheetByName(name);
   if (!sheet) {
-    sheet = book.insertSheet("Entries");
+    sheet = book.insertSheet(name);
     sheet.setFrozenRows(1);
   }
   let [header, ...rows] = sheet.getDataRange().getDisplayValues();
   header = header.map((h) => h.trim());
-  const missing = HEADER.filter((h) => !header.includes(h));
+  const missing = headings.filter((h) => !header.includes(h));
   if (missing.length) {
     const start = header.filter(Boolean).length;
     sheet.getRange(1, start + 1, 1, missing.length).setNumberFormat("@").setValues([missing]);
