@@ -60,9 +60,21 @@ function remember(value) {
   try { value ? sessionStorage.setItem("tdPassword", value) : sessionStorage.removeItem("tdPassword"); } catch {}
 }
 
+// A random ID that stays on this device, so the registration script can trust a device that has
+// signed in before and not lock it out for anyone else's wrong passwords.
+function deviceId() {
+  try {
+    let id = localStorage.getItem("lccc-td-device");
+    if (!id) localStorage.setItem("lccc-td-device", id = crypto.randomUUID());
+    return id;
+  } catch {
+    return "";
+  }
+}
+
 async function call(action, fields = {}) {
   const response = await fetch(ENDPOINT, {
-    method: "POST", body: new URLSearchParams({ action, password, ...fields }),
+    method: "POST", body: new URLSearchParams({ action, password, device: deviceId(), ...fields }),
   });
   const result = await response.json();
   if (result.login) signOut(result.error);

@@ -80,7 +80,9 @@ const TOURNAMENT_HEADERS = {
 const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "arenaJoin",
   "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
-const FAILED_LOGINS = 10;
+// Wrong TD passwords allowed in an hour, counted from the first: for each device that has signed in
+// before, and for all other devices together.
+const FAILED_LOGINS = 5;
 
 function doGet(e) {
   if (e.parameter.tournaments === "current") return json({ tournaments: currentTournaments() });
@@ -95,7 +97,7 @@ function doPost(e) {
     const p = e.parameter;
     if (!p.action) return json(register(p, false));
     if (p.action === "report") return json(reportResult(p));
-    const denied = checkPassword(p.password);
+    const denied = checkPassword(p.password, p.device);
     if (denied) return json({ error: denied, login: true });
     if (TOURNAMENT_WRITES.includes(p.action) && rated(`${p.event}/${p.date}`)) {
       return json({ error: "US Chess has rated this tournament, so it can't change on the desk." });
@@ -1609,15 +1611,50 @@ function nightLabel(date) {
 }
 
 /** Null when the TD password is right; otherwise why not. Repeated failures lock the desk for 15 minutes. */
-function checkPassword(password) {
+/**
+ * Checks the TD password. Apps Script can't see a visitor's IP address, so the desk sends a random ID
+ * it keeps on the device, and a device that has signed in before is trusted: only its own wrong
+ * passwords count against it, so no one else can lock it out. Every other device shares one count,
+ * which still limits guessing.
+ */
+function checkPassword(password, device) {
   const cache = CacheService.getScriptCache();
-  const fails = Number(cache.get("failedLogins") || 0);
-  if (fails >= FAILED_LOGINS) return "Too many wrong passwords. Try again in 15 minutes.";
+  device = /^[\w-]{16,64}$/.test(device || "") ? device : "";
+  const trusted = device && trustedDevices().includes(device);
+  const bucket = trusted ? "failedLogins:" + device : "failedLogins";
+  const fails = JSON.parse(cache.get(bucket) || "null") || { count: 0, until: Date.now() + 3600 * 1000 };
+  if (fails.count >= FAILED_LOGINS) {
+    return `Too many wrong passwords. Try again after ${Utilities.formatDate(new Date(fails.until), TZ, "h:mm a")}.`;
+  }
   const expected = PropertiesService.getScriptProperties().getProperty("TD_PASSWORD");
   const digest = (s) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s || ""));
-  if (expected && String(digest(password)) === String(digest(expected))) return null;
-  cache.put("failedLogins", String(fails + 1), 900);
+  if (expected && String(digest(password)) === String(digest(expected))) {
+    if (device && !trusted) trustDevice(device);
+    return null;
+  }
+  fails.count += 1;
+  cache.put(bucket, JSON.stringify(fails), Math.max(1, Math.ceil((fails.until - Date.now()) / 1000)));
   return expected ? "Wrong password." : "The TD password isn't set up yet.";
+}
+
+/** The devices that have signed in to the TD desk, newest first, in the script property TD_DEVICES. */
+function trustedDevices() {
+  try {
+    return JSON.parse(PropertiesService.getScriptProperties().getProperty("TD_DEVICES") || "[]");
+  } catch (err) {
+    return [];
+  }
+}
+
+function trustDevice(device) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const list = [device, ...trustedDevices().filter((d) => d !== device)].slice(0, 100);
+    PropertiesService.getScriptProperties().setProperty("TD_DEVICES", JSON.stringify(list));
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function underLimit() {

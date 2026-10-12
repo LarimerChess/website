@@ -2,6 +2,7 @@
 
     python scripts/build_results.py              # from the registration script's ?tournaments=current
     python scripts/build_results.py --from FILE  # from a saved copy of that JSON
+    python scripts/build_results.py --archives   # also rewrite each page from its archive.json
     python scripts/build_results.py --check      # fail if results/index.html or sitemap.xml is out of date
 
 - Each rated tournament gets results/<slug>/, the slug being its key with "/" as "-"
@@ -12,6 +13,8 @@
   results, and the page links to US Chess's crosstable.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
   kept after the Archive tournaments Action clears it from there. Nothing here deletes a page.
+  --archives rewrites a cleared tournament's page from the rows its archive.json kept, such as
+  after the page gains a column.
 - results/index.html lists every page under results/, newest first, and sitemap.xml gets an
   entry for each. build_pages.py dates them like any other page.
 
@@ -192,6 +195,10 @@ def table(headings, rows, label, cls="entries"):
             "          </tbody>\n        </table>\n      </section>")
 
 
+def performance_text(r):
+    return "" if r.get("performance") is None else str(r["performance"])
+
+
 def withdrawals(t):
     return "".join(f"\n      <p>{escaped(p['name'])} withdrew from round {p['out']}.</p>"
                    for p in sorted(t["players"], key=lambda p: p["number"]) if p.get("out"))
@@ -206,10 +213,11 @@ def swiss_standings(s, label):
     order = standings(s)
     rounds = round_cells(s, order)
     rows = [[str(i), escaped(r["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]], score_text(r["score"]),
-             score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]), score_text(r["opposition"])]
+             score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]), score_text(r["opposition"]),
+             performance_text(r)]
             for i, r in enumerate(order, 1)]
     return table(["Place", "Name", "Rating", *round_headings(s), "Score", "Median", "Solkoff", "Cumulative",
-                  "Opp. cumulative"], rows, label) + withdrawals(s)
+                  "Opp. cumulative", "Performance"], rows, label) + withdrawals(s)
 
 
 def swiss_main(t):
@@ -229,12 +237,13 @@ def quad_main(t):
         order = standings(q, "quadStandings")
         rounds = round_cells(q, order)
         rows = [[str(r["place"]), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
-                 score_text(r["score"]), score_text(r["sonnebornBerger"])]
+                 score_text(r["score"]), score_text(r["sonnebornBerger"]), performance_text(r)]
                 for r in order]
         name = q["name"]
         out.append(f"""<section id="{anchor(name)}">
       <h2>{escaped(name)}</h2>
-      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger"], rows, f"{name} standings")}{withdrawals(q)}
+      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger", "Performance"], rows,
+             f"{name} standings")}{withdrawals(q)}
     </section>""")
     return "\n\n    ".join(out)
 
@@ -289,9 +298,12 @@ def results_page(t):
     rated = (f'<p>US Chess rated it as event <a href="https://ratings.uschess.org/event/{html.escape(event)}" target="_blank" '
              f'rel="noopener">{escaped(event)}<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>\n\n    '
              if event else "")
+    performance = ("" if form == "arena" else "\n\n    <p>Performance is the rating that Elo's formula expects to make each player's "
+                   "score against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above "
+                   "or below those opponents' average.</p>")
     main = f"""<h1>{escaped(name)}</h1>
 
-    {rated}{body}
+    {rated}{body}{performance}
 
     <p><a href="/results/">All tournament results</a></p>"""
     return page_html(f"{name} results", description, f"{SITE}/results/{slug(t['key'])}/", main,
@@ -343,6 +355,39 @@ def sitemap(text, paths, today):
     return text[:entries[-1].end()] + new + text[entries[-1].end():]
 
 
+def from_archive(record):
+    """A tournament as the registration script's ?tournaments=current gives it, from the spreadsheet
+    rows archive_tournaments.py kept: posted rounds only, as the public sees them."""
+    info = record["tournament"]
+    number = lambda v: int(v) if re.fullmatch(r"\d+", v or "") else None
+    players = sorted(({"id": r["US Chess ID"], "number": int(r["No."]), "name": r["Name"],
+                       "rating": int(re.match(r"\d+", r["Rating"]).group()) if re.match(r"\d+", r.get("Rating") or "") else None,
+                       "out": number(r.get("Out from round")), "section": r.get("Section") or "", "floor": number(r.get("Floor")),
+                       "games": number(r.get("Prior games")), "sweep": r.get("Prior sweep") or ""}
+                      for r in record["players"]), key=lambda p: p["number"])
+    lines = [r for r in record["rounds"] if r.get("Posted")]
+    rounds = []
+    for n in range(1, max((int(r["Round"]) for r in lines), default=0) + 1):
+        here = [r for r in lines if int(r["Round"]) == n]
+        rounds.append({
+            "games": [{"board": int(r["Board"]), "white": r["White"], "black": r["Black"], "result": r["Result"],
+                       "section": r.get("Section") or ""} for r in sorted((r for r in here if r["Black"]), key=lambda r: int(r["Board"]))],
+            "byes": [{"id": r["White"], "points": float(r.get("Bye points") or 0), "section": r.get("Section") or "",
+                      "kind": r.get("Bye kind") or ""} for r in here if not r["Black"]],
+            "out": [p["id"] for p in players if p["out"] and p["out"] <= n]})
+    try:
+        defined = [x for x in json.loads(info.get("Sections") or "[]") if x and x.get("name")]
+    except ValueError:
+        defined = []
+    t = {"key": record["key"], "event": info["Event"], "name": info["Name"], "format": info["Format"], "rounds": rounds,
+         "status": info["Status"], "sections": defined, "players": players}
+    if info["Format"] == "arena":
+        t["games"] = [{"game": int(r["Game"]), "white": r["White"], "black": r["Black"], "whitePact": r.get("White pact") == "yes",
+                       "blackPact": r.get("Black pact") == "yes", "result": r["Result"]}
+                      for r in sorted(record["arena"], key=lambda r: int(r["Game"]))]
+    return t
+
+
 def main(args):
     check = "--check" in args
     writes = {}
@@ -353,6 +398,10 @@ def main(args):
         else:
             tournaments = fetch(endpoint()) if endpoint() else []
         ratings = json.loads((ROOT / "ratings.json").read_text(encoding="utf-8"))
+        if "--archives" in args:
+            live = {t["key"] for t in tournaments}
+            tournaments += [t for t in (from_archive(json.loads(f.read_text(encoding="utf-8")))
+                                        for f in sorted(RESULTS.glob("*/archive.json"))) if t["key"] not in live]
         for t in tournaments:
             if t["key"] in ratings:
                 t = {**t, "status": "rated", "usChessEvent": t.get("usChessEvent") or ratings[t["key"]]}

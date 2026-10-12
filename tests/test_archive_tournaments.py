@@ -39,6 +39,15 @@ class Fingerprint(unittest.TestCase):
             with self.subTest(key):
                 self.assertEqual(at.fingerprint(at.collect(key, SHEETS)), br.fingerprint(TOURNAMENTS[key]))
 
+    def test_rebuilds_the_results_page(self):
+        """A page rewritten from its archive shows what the page written from the script showed."""
+        for key in ["first-saturday-classic/2026-11-07", "monday-club-night-at-peak/2026-10",
+                    "knightmare-arena-classical/2026-10-31", "second-saturday-sections/2026-12-12"]:
+            with self.subTest(key):
+                rated = {**TOURNAMENTS[key], "status": "rated", "usChessEvent": "202611070001"}
+                rebuilt = {**br.from_archive(at.collect(key, SHEETS)), "status": "rated", "usChessEvent": "202611070001"}
+                self.assertEqual(br.results_page(rebuilt), br.results_page(rated))
+
 
 class Archive(unittest.TestCase):
     def test_keeps_only_the_tournament_spreadsheet(self):

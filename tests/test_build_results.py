@@ -85,7 +85,9 @@ class Standings(unittest.TestCase):
         self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/monday-club-night-at-peak-2026-10/">', page)
         self.assertIn("Sam Spruce withdrew from round 3.", page)
         self.assertIn('<th scope="col">Round 3</th><th scope="col">Score</th><th scope="col">Median</th>', page)
-        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 2)  # the withdrawal and the link to all results
+        self.assertIn('<th scope="col">Opp. cumulative</th><th scope="col">Performance</th>', page)
+        # The withdrawal, what performance means, and the link to all results.
+        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 3)
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
@@ -114,7 +116,7 @@ class Quads(unittest.TestCase):
         self.assertIn("<h2>Quad 2</h2>", page)
         self.assertIn("<td>X4", page)
         self.assertEqual(page.count("<table"), 2)  # one per quad
-        self.assertIn('Score</th><th scope="col">Sonneborn-Berger</th></tr>', page)
+        self.assertIn('Score</th><th scope="col">Sonneborn-Berger</th><th scope="col">Performance</th></tr>', page)
 
 
 class Sections(unittest.TestCase):
