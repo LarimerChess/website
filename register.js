@@ -102,6 +102,7 @@ function fillIn(p) {
   idField.value = p.id;
   form.elements.last.value = p.last;
   form.elements.email.value = p.email;
+  form.elements.phone.value = p.phone || "";
   const menu = dateField.tagName === "SELECT";
   // A player saved on the Pairings page, to report results, has only an ID and name.
   status.textContent = p.last ? `${playerName(p)} is filled in. ${menu ? "Choose the date, then press" : "Press"} Register.`
@@ -197,7 +198,8 @@ if (!dateField) {
       const already = result.error?.match(/^(.+?) is already registered\b/);
       if ((result.ok || already) && rememberChoice?.checked && savedBox) {
         const name = result.name || result.message?.match(/^(.+?) is registered\b/)?.[1] || already?.[1] || "";
-        savePlayer({ id: body.get("id").trim(), last: body.get("last").trim(), email: body.get("email").trim(), name });
+        savePlayer({ id: body.get("id").trim(), last: body.get("last").trim(), email: body.get("email").trim(),
+          phone: body.get("phone")?.trim() || "", name });
       }
       if (result.ok) {
         idField.value = "";

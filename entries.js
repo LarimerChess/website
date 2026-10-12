@@ -61,11 +61,13 @@ function eventSection(event) {
     + (event.entries.length === 1 ? "1 player registered." : `${event.entries.length || "No"} players registered.`);
   const register = document.createElement("a");
   register.className = "button";
-  register.href = `${event.page}?date=${event.key.split("/")[1]}#register`;
+  // A club night's Register opens on its whole month, which is what most players come for.
+  const night = nights.has(event.key);
+  register.href = `${event.page}?date=${event.key.split("/")[1].slice(0, night ? 7 : 10)}#register`;
   register.textContent = "Register";
   const hint = document.createElement("span");
   hint.className = "visually-hidden";
-  hint.textContent = ` for ${event.name}, ${dateFormat.format(new Date(event.start))}`;
+  hint.textContent = ` for ${event.name}, ${night ? `all of ${monthFormat.format(new Date(event.start))}` : dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
   // Saved players on this night's list who can switch; one saved from the Pairings page has no last name or email.

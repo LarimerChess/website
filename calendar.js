@@ -140,7 +140,8 @@ function organizerLine(event) {
 }
 
 // Registering is the site's main call to action, so every club event offers it: on the card,
-// and at the top and bottom of the details. It opens the Register form on the event's page.
+// and at the top and bottom of the details. It opens the Register form on the event's page, on the
+// tournament's date, or for a club night, its whole month, which is what most players come for.
 // An invitational, which only the TD registers players for, says so instead (where note is set).
 function registerLink(event, className, { note = false } = {}) {
   if (!event.page || event.organizer !== CLUB) return null;
@@ -148,8 +149,11 @@ function registerLink(event, className, { note = false } = {}) {
     return note ? el("p", "event-meta", "Invitational: registration is closed.") : null;
   }
   const link = el("a", className, "Register");
-  link.append(spoken(` for ${event.title}, ${longDate.format(new Date(event.start))}`));
-  link.href = `${event.page}?date=${event.start.slice(0, 10)}#register`;
+  const start = new Date(event.start);
+  const night = !(event.tags || []).includes("tournament");
+  link.append(spoken(night ? ` for ${event.title}, all ${weekday.format(start)}s in ${monthHeading.format(start)}`
+    : ` for ${event.title}, ${longDate.format(start)}`));
+  link.href = `${event.page}?date=${event.start.slice(0, night ? 7 : 10)}#register`;
   return link;
 }
 

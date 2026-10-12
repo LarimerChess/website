@@ -277,6 +277,9 @@ def register_html(events, prices):
         <label for="register-email">Email</label>
         <input id="register-email" name="email" type="email" required autocomplete="email" aria-describedby="register-email-hint">
         <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list; see <a href="/privacy/">Privacy</a>.</p>
+        <label for="register-phone">Phone (optional)</label>
+        <input id="register-phone" name="phone" type="tel" autocomplete="tel" aria-describedby="register-phone-hint">
+        <p id="register-phone-hint" class="register-hint">So the tournament director can reach you. For a player under 18, a parent's or guardian's. Never shown on the entry list.</p>
         <div class="register-remember" hidden>
           <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
           <label for="register-remember">Remember this player on this device</label>

@@ -11,8 +11,8 @@
  *                         keeps a copy in the database's public/entries
  * GET  ?tournaments=current  the tournaments in progress, with posted pairings and results, for /pairings/
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
- * POST event, date, id, last, email (and the trap field website)
- *                         registers a player, then emails the amount due and a withdraw link
+ * POST event, date, id, last, email, phone (optional; and the trap field website)
+ *                         registers a player, notes them in the Contacts tab, then emails the amount due and a withdraw link
  * POST action=toNight, event, date, id, last, email
  *                         switches a player's unpaid whole month to the one night on date
  * POST action=report, event, date, number, board, section, id, result
@@ -202,6 +202,9 @@ function register(p, td, signedIn) {
     return { error: "Check the email address." };
   }
 
+  const phone = phoneNumber(p.phone);
+  if (phone === null) return { error: "Enter a 10-digit phone number, or leave it blank." };
+
   const member = lookup(id);
   if (member === null) return { error: "US Chess has no member with that ID." };
   if (!member) return { error: "US Chess didn't answer. Try again in a few minutes." };
@@ -234,7 +237,7 @@ function register(p, td, signedIn) {
       "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : money(amount),
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
-      "Added by": !td ? "online" : signedIn ? `TD (${signedIn.name})` : "TD", Token: token, Phone: td ? String(p.phone || "").trim() : "",
+      "Added by": !td ? "online" : signedIn ? `TD (${signedIn.name})` : "TD", Token: token, Phone: phone,
       "Rating fee": ratingDue === null ? "" : money(ratingDue),
     };
     appendText(sheet, col, row);
@@ -247,6 +250,7 @@ function register(p, td, signedIn) {
     lock.releaseLock();
   }
 
+  noteContact({ name, id, email, phone, minor: category === "Under 18" });
   const card = prices().fees.card;
   const owed = amount === null ? null : Math.round((amount - credited) * 100) / 100;
   const credit = credited ? ` after $${money(credited)} already paid for its nights` : "";
@@ -410,21 +414,101 @@ function contactFor(name, id) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Contacts");
     contactRows = sheet ? sheet.getDataRange().getDisplayValues() : [[]];
   }
-  const words = (s) => String(s).toLowerCase().normalize("NFD").replace(/[^a-z\s()-]/g, "").split(/\s+/).filter(Boolean);
-  const player = words(name.replace(/\(.*?\)/g, " "));
-  if (player.length < 2) return null;
   const [header, ...rows] = contactRows;
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
   if (col.Name === undefined) return null;
   const byId = id && col["US Chess ID"] !== undefined && rows.filter((r) => r[col["US Chess ID"]] === id);
   if (byId && byId.length === 1) return { email: byId[0][col.Email], phone: byId[0][col.Phone] };
-  const matches = rows.filter((r) => {
-    const all = words(r[col.Name]);
-    const plain = all.filter((w) => !w.startsWith("("));
-    const firsts = [plain[0], ...all.filter((w) => w.startsWith("(")).map((w) => w.replace(/[()]/g, ""))];
-    return plain.length >= 2 && plain.at(-1) === player.at(-1) && firsts.includes(player[0]);
-  });
+  const matches = rows.filter((r) => namesMatch(r[col.Name], name));
   return matches.length === 1 ? { email: matches[0][col.Email], phone: matches[0][col.Phone] } : null;
+}
+
+/** Whether a contact's name is the player's: the same last name, and the first name or a nickname in
+ *  parentheses the same as the player's first. Never for a name of one word. */
+function namesMatch(contact, player) {
+  const words = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[^a-z\s()-]/g, "").split(/\s+/).filter(Boolean);
+  const theirs = words(String(player || "").replace(/\(.*?\)/g, " "));
+  const all = words(contact);
+  const plain = all.filter((w) => !w.startsWith("("));
+  const firsts = [plain[0], ...all.filter((w) => w.startsWith("(")).map((w) => w.replace(/[()]/g, ""))];
+  return theirs.length >= 2 && plain.length >= 2 && plain.at(-1) === theirs.at(-1) && firsts.includes(theirs[0]);
+}
+
+/**
+ * Keeps the Contacts tab up with a registration: the contact with the player's US Chess ID, or else
+ * the one whose name matches, gets whatever it was missing (name, email, phone, ID), an email or phone
+ * it didn't have goes in Other emails or Other phones, and a Contact, Sheridan list, or Prospective
+ * becomes a Player. With no such contact, a nameless one with the email is taken, except for a player
+ * under 18, whose email is a parent's or guardian's; with none of those, the player is added. Nothing
+ * a contact already has is overwritten, and with several matches nothing changes. Registration never
+ * fails over it, and a Sheet without a Contacts tab doesn't get one.
+ */
+function noteContact(player) {
+  try {
+    if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Contacts")) return;
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+      const live = rows.map((r, index) => ({ r, index })).filter(({ r }) => r.some(Boolean));
+      const email = String(player.email || "").toLowerCase();
+      const emailsOf = (r) => [r[col.Email], ...(col["Other emails"] === undefined ? [] : r[col["Other emails"]].split(/[,;]\s*/))]
+        .map((e) => e.trim().toLowerCase()).filter(Boolean);
+      const digits = (t) => String(t || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+      const phonesOf = (r) => [r[col.Phone], ...(col["Other phones"] === undefined ? [] : r[col["Other phones"]].split(/[,;]\s*/))]
+        .map(digits).filter(Boolean);
+      const tries = [
+        live.filter(({ r }) => r[col["US Chess ID"]] === player.id),
+        live.filter(({ r }) => namesMatch(r[col.Name], player.name)),
+        player.minor || !email ? [] : live.filter(({ r }) => !r[col.Name].trim() && emailsOf(r).includes(email)),
+      ];
+      const found = tries.find((matches) => matches.length);
+      if (found && found.length > 1) {
+        console.warn(`Contacts: ${found.length} contacts could be ${player.id}; none changed.`);
+        return;
+      }
+      if (!found) {
+        appendText(sheet, col, { Name: player.name, Email: player.email, Phone: player.phone, Status: "Player", "US Chess ID": player.id,
+          ID: Utilities.getUuid(), Notes: `Added at registration, ${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}`
+            + (player.minor ? "; under 18, so the email is a parent's or guardian's" : "") + "." });
+        touch("contacts");
+        return;
+      }
+      const { r, index } = found[0];
+      const changes = {};
+      const fill = (heading, value) => {
+        if (col[heading] !== undefined && value && !r[col[heading]].trim()) changes[heading] = value;
+      };
+      fill("Name", player.name);
+      fill("Email", player.email);
+      fill("Phone", player.phone);
+      fill("US Chess ID", player.id);
+      if (col.ID !== undefined && !r[col.ID].trim()) changes.ID = Utilities.getUuid();
+      const add = (heading, value) => {
+        if (col[heading] !== undefined) changes[heading] = [r[col[heading]].trim(), value].filter(Boolean).join(", ");
+      };
+      if (email && !changes.Email && !emailsOf(r).includes(email)) add("Other emails", player.email);
+      if (player.phone && !changes.Phone && !phonesOf(r).includes(digits(player.phone))) add("Other phones", player.phone);
+      if (col.Status !== undefined && ["", "Contact", "Sheridan list", "Prospective"].includes(r[col.Status].trim())) changes.Status = "Player";
+      for (const [heading, value] of Object.entries(changes)) {
+        sheet.getRange(index + 2, col[heading] + 1).setNumberFormat("@").setValue(value);
+      }
+      if (Object.keys(changes).length) touch("contacts");
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+/** A phone number as the Contacts tab writes them, 970-555-0123: "" for none, null for one that
+ *  isn't ten digits (after a leading 1). */
+function phoneNumber(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return /^\d{10}$/.test(digits) && !/[^\d\s().+-]/.test(raw) ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}` : null;
 }
 
 // Headings the desk's Contacts section needs; the tab's others are its own, and the desk shows them all.

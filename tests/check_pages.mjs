@@ -306,12 +306,19 @@ if (clubCard) {
   await clubCard.$eval(".event-open", (b) => b.click());
   const dialogLinks = await page.$$eval("dialog.event-dialog .event-register", (a) => a.map((x) => x.getAttribute("href")));
   const otherCards = await page.$$eval(".event:not(.event-club) .event-card-register", (a) => a.length);
-  /^\/events\/[^/]+\/\?date=\d{4}-\d\d-\d\d#register$/.test(cardLink || "") && dialogLinks.length === 2
+  const clubTags = await clubCard.evaluate((c) => c.dataset.tags.split(" "));
+  (clubTags.includes("tournament") ? /^\/events\/[^/]+\/\?date=\d{4}-\d\d-\d\d#register$/ : /^\/events\/[^/]+\/\?date=\d{4}-\d\d#register$/)
+    .test(cardLink || "") && dialogLinks.length === 2
     && dialogLinks.every((h) => h === cardLink) && otherCards === 0
     ? pass(`club cards and their details offer Register (${cardLink})`)
     : fail(`Register links: card ${cardLink}, details ${JSON.stringify(dialogLinks)}, on other cards ${otherCards}`);
   await page.keyboard.press("Escape");
 }
+const cardDates = await page.$$eval(".event-club .event-card-register", (a) => a.map((x) => ({
+  tournament: x.closest(".event").dataset.tags.split(" ").includes("tournament"), date: new URL(x.href).searchParams.get("date") })));
+const wrongDates = cardDates.filter((c) => !(c.tournament ? /^\d{4}-\d\d-\d\d$/ : /^\d{4}-\d\d$/).test(c.date));
+cardDates.some((c) => !c.tournament) && !wrongDates.length ? pass("club night cards' Register opens on the whole month, and tournaments' on their date")
+  : fail(`Register dates on club cards: ${JSON.stringify(wrongDates.length ? wrongDates : cardDates)}`);
 
 // Registration, against a stand-in for the Apps Script: register.js is served with its
 // ENDPOINT pointed at it, whatever the real one is.
@@ -352,17 +359,19 @@ if (registerPath) {
   await registration.type("#register-id", "12345678");
   await registration.type("#register-last", "Player");
   await registration.type("#register-email", "test@example.com");
+  await registration.type("#register-phone", "970 555 0123");
   await registration.click(".register-form button[type=submit]");
   await registration.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
   const sent = posted[0] || {};
   sent.event === registerPath.split("/").filter(Boolean).pop() && /^\d{4}-\d\d(-\d\d)?$/.test(sent.date)
-    && sent.id === "12345678" && sent.last === "Player" && sent.email === "test@example.com" && !sent.website
+    && sent.id === "12345678" && sent.last === "Player" && sent.email === "test@example.com" && sent.phone === "970 555 0123" && !sent.website
     && !("uschess-id" in sent) ? pass(`${registerPath} sends the registration`) : fail(`${registerPath} sent ${JSON.stringify(sent)}`);
 
   // Remembered players: a second registration goes first in the list, and after a reload
   // each fills the form in one tap and can be forgotten.
   await registration.type("#register-id", "87654321");
   await registration.type("#register-last", "Kid");
+  await registration.$eval("#register-phone", (p) => { p.value = ""; });
   await registration.click(".register-form button[type=submit]");
   await registration.waitForFunction(() => document.querySelector(".register-status").textContent.startsWith("Test Kid"));
   await registration.reload({ waitUntil: "networkidle0" });
@@ -376,8 +385,9 @@ if (registerPath) {
   await registration.click(".register-saved li:nth-child(2) .register-pick");
   const filled = await registration.evaluate(() => ({ id: document.querySelector("#register-id").value,
     last: document.querySelector("#register-last").value, email: document.querySelector("#register-email").value,
-    website: document.querySelector("#register-website").value, focus: document.activeElement.matches("#register-date, button[type=submit]") }));
-  filled.id === "12345678" && filled.last === "Player" && filled.email === "test@example.com" && !filled.website && filled.focus
+    phone: document.querySelector("#register-phone").value, website: document.querySelector("#register-website").value, focus: document.activeElement.matches("#register-date, button[type=submit]") }));
+  filled.id === "12345678" && filled.last === "Player" && filled.email === "test@example.com" && filled.phone === "970 555 0123"
+    && !filled.website && filled.focus
     && posted.length === 2 ? pass(`${registerPath} fills in a saved player without registering`) : fail(`${registerPath} filled ${JSON.stringify(filled)}`);
   for (const scheme of ["light", "dark"]) {
     await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
@@ -1161,6 +1171,9 @@ switchPage.on("request", async (request) => {
 });
 await switchPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
 const switchers = await switchPage.$$eval(".entries-switch", (b) => b.map((x) => x.closest("tr").cells[0].textContent));
+const nightRegister = await switchPage.$eval(".entries-all a.button", (a) => a.getAttribute("href"));
+nightRegister === "/events/club-night/?date=2026-10#register" ? pass("Entries page's Register for a club night opens on its whole month")
+  : fail(`Entries page Register for a club night: ${nightRegister}`);
 await switchPage.evaluate(axeSource);
 const switchAxe = await switchPage.evaluate(() => axe.run());
 switchAxe.violations.length ? fail(`Entries page with a switch: ${switchAxe.violations.map((v) => v.id).join(", ")}`)

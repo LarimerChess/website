@@ -122,7 +122,7 @@ const decodeKey = (h) => h.replace(/%(2E|24|23|5B|5D|2F|25)/gi, (_, x) => String
 const US_CHESS = {
   11111111: { floor: 1700, outcomes: ["Win", "Loss", "Draw"] },
   55555555: { floor: 100, outcomes: ["Loss", "Loss"] },
-  66666666: { last: "Ash", outcomes: [] },
+  66666666: { first: "Ann", last: "Ash", outcomes: [] },
 };
 
 // cache: what the script cache holds, such as this minute's count of public posts. props: the
@@ -163,7 +163,7 @@ function load(tabs, cache = {}, store = "sheet") {
     const [, id, games] = url.match(/members\/(\d+)(\/games)?/);
     const m = US_CHESS[id] || { outcomes: [] };
     const body = games ? { items: m.outcomes.map((outcome) => ({ player: { outcome } })) }
-      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [], stateRep: m.state ?? "CO", lastName: m.last };
+      : { ratings: m.floor ? [{ ratingSystem: "R", floor: m.floor }] : [], stateRep: m.state ?? "CO", firstName: m.first, lastName: m.last };
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify(body) };
   };
   const context = {
@@ -506,7 +506,7 @@ test("a paid month: the player is sent to the TD, who switches it, moving what w
   const night = () => gs.entries("monday-club-night-at-peak/2026-10-12", true).map((e) => [e.due, e.over, e.refundable, e.refunded]);
   eq(night(), [["0", "9.50", "17", ""]]);
   assert.match(gs.refund("token2", "17.01", "cash", null).error, /At most \$17 can be refunded/);
-  assert.equal(gs.refund("token2", "9.50", "cash", { name: "Ben Bishop" }).message, "Ash was refunded $9.50 by cash.");
+  assert.equal(gs.refund("token2", "9.50", "cash", { name: "Ben Bishop" }).message, "Ann Ash was refunded $9.50 by cash.");
   eq(night(), [["0", "", "7.50", "9.50"]]);
   eq(ledger(), [
     ["token1", "payment", "cash", "17", "15", "2", ""],
@@ -521,7 +521,7 @@ test("a paid month: the player is sent to the TD, who switches it, moving what w
 test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {
   const { gs, sheets, ledger } = monthOfAsh();
   const due = () => gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.due, e.discount, e.discountNote, e.over]);
-  assert.equal(gs.discount("token1", "5", "Hardship", { name: "Ben Bishop" }).message, "Ash has a $5 discount.");
+  assert.equal(gs.discount("token1", "5", "Hardship", { name: "Ben Bishop" }).message, "Ann Ash has a $5 discount.");
   eq(due(), [["12", "5", "Hardship, by Ben Bishop", ""]]);
   assert.match(gs.discount("token1", "17.50", "", null).error, /can't be more than the fee, \$17/);
   assert.equal(gs.markPaid("token1", "12", "card").ok, true);
@@ -531,7 +531,7 @@ test("a discount lowers what's due, up to the whole fee, and a refund after one 
   assert.equal(gs.markPaid("token1", "", "").ok, true);
   eq(ledger().slice(-2).map((x) => [x[1], x[3], x[6]]), [["correction", "-12", "1"], ["correction", "11.21", "2"]],
     "marking unpaid cancels the payment and the refund");
-  assert.equal(gs.discount("token1", "", "", null).message, "Ash's discount is removed.");
+  assert.equal(gs.discount("token1", "", "", null).message, "Ann Ash's discount is removed.");
   eq(rowsOf(sheets.Entries).map((r) => [r.Discount, r["Discount note"]]), [["", ""]]);
 });
 
@@ -671,6 +671,55 @@ test("a player's contact is found by first and last name, a nickname, or not at 
   assert.equal(gs.contactFor("Anthony Whitt").email, "tony@example.com");
   assert.equal(gs.contactFor("Sam Lee"), null, "two contacts share the name");
   assert.equal(gs.contactFor("Steven Smith"), null);
+});
+
+test("a registration fills in its contact, adds a new one, and never overwrites or guesses", () => {
+  const { gs, sheets } = load({ Contacts: [
+    ["Name", "Email", "Phone", "Status", "Role", "Other emails", "Other phones", "Events", "Last event", "On email list", "Notes", "US Chess ID", "ID"],
+    ["Steven Garverick", "steven@example.com", "", "Contact", "", "", "", "3", "", "yes", "", "", "c1"],
+    ["Anthony (Tony) Whitt", "", "970-555-0101", "Core member", "Treasurer", "", "", "", "", "", "", "", "c2"],
+    ["", "nameless@example.com", "", "Sheridan list", "", "", "", "", "", "", "", "", "c3"],
+    ["", "parent@example.com", "", "Sheridan list", "", "", "", "", "", "", "", "", "c4"],
+    ["Sam Lee", "sam1@example.com", "", "Player", "", "", "", "", "", "", "", "", "c5"],
+    ["Sam Lee", "sam2@example.com", "", "Player", "", "", "", "", "", "", "", "", "c6"],
+  ] });
+  let n = 0;
+  gs.Utilities.getUuid = () => `new${++n}`;
+  const contacts = () => rowsOf(sheets.Contacts).map((r) => [r.Name, r.Email, r.Phone, r.Status, r["Other emails"], r["Other phones"], r["US Chess ID"]]);
+  const before = contacts();
+  gs.noteContact({ name: "Steven Garverick", id: "11111111", email: "STEVEN@example.com", phone: "970-555-0102", minor: false });
+  gs.noteContact({ name: "Tony Whitt", id: "22222222", email: "tony@example.com", phone: "970-555-0103", minor: false });
+  gs.noteContact({ name: "Dmitry Petrov", id: "33333333", email: "nameless@example.com", phone: "", minor: false });
+  gs.noteContact({ name: "Kid Player", id: "44444444", email: "parent@example.com", phone: "", minor: true });
+  gs.noteContact({ name: "Sam Lee", id: "55555555", email: "sam3@example.com", phone: "", minor: false });
+  gs.noteContact({ name: "Steven Garverick", id: "11111111", email: "steve.g@example.com", phone: "", minor: false });
+  eq(contacts(), [
+    ["Steven Garverick", "steven@example.com", "970-555-0102", "Player", "steve.g@example.com", "", "11111111"],
+    ["Anthony (Tony) Whitt", "tony@example.com", "970-555-0101", "Core member", "", "970-555-0103", "22222222"],
+    ["Dmitry Petrov", "nameless@example.com", "", "Player", "", "", "33333333"],
+    before[3],
+    before[4],
+    before[5],
+    ["Kid Player", "parent@example.com", "", "Player", "", "", "44444444"],
+  ], "found by name, then by ID; a nameless contact only by an adult's email; two Sam Lees, so neither");
+  eq(rowsOf(sheets.Contacts).map((r) => [r.Events, r["On email list"], r.Role, r.ID]).slice(0, 2), [["3", "yes", "", "c1"], ["", "", "Treasurer", "c2"]]);
+  assert.match(rowsOf(sheets.Contacts).at(-1).Notes, /^Added at registration, \d{4}-\d\d-\d\d; under 18, so the email is a parent's or guardian's\.$/);
+  assert.equal(rowsOf(sheets.Contacts).at(-1).ID, "new1");
+});
+
+test("the registration form's phone is optional, kept as 970-555-0123, and goes to the contact", () => {
+  const { gs, sheets } = load({ Entries: [], Contacts: [["Name", "Email", "Phone", "Status", "US Chess ID", "ID"]] });
+  clubNights(gs);
+  gs.MailApp = { sendEmail: () => {} };
+  const register = (phone, td = true) => gs.register({ event: "monday-club-night-at-peak", date: "2026-10-12", id: "66666666", last: "Ash",
+    category: "Adult", email: "ann@example.com", phone }, td);
+  assert.match(register("555-0123", false).error, /10-digit phone number/);
+  assert.match(register("970-555-0123 ext. 4").error, /10-digit phone number/);
+  assert.equal(register("+1 (970) 555.0123").ok, true);
+  eq(rowsOf(sheets.Entries).map((r) => r.Phone), ["970-555-0123"]);
+  eq(rowsOf(sheets.Contacts).map((r) => [r.Name, r.Email, r.Phone, r.Status, r["US Chess ID"]]),
+    [["Ann Ash", "ann@example.com", "970-555-0123", "Player", "66666666"]]);
+  eq([gs.phoneNumber(""), gs.phoneNumber("9705550123"), gs.phoneNumber("=9705550123")], ["", "970-555-0123", null]);
 });
 
 // A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
