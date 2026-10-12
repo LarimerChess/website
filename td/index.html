@@ -456,8 +456,25 @@ section.td-table td { white-space: nowrap; }
 .wallchart td { vertical-align: top; }
 .table-note { margin: 4px 0 16px; font-size: 15px; color: var(--muted); max-width: 52em; }
 .wallchart td small { display: block; font-size: 14px; color: var(--muted); }
-.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
-.run-sections legend { padding: 0; font-weight: 600; }
+.field-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 12px; position: relative; }
+.register-form .field-row label { margin-top: 0; }
+.field-row input:not([type=time]) { width: 6em; }
+.field-row #run-report-control { width: 9em; }
+.run-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; position: relative; margin: 16px 0 0; }
+.run-top .field-row { margin-left: 8px; }
+.run-start, .run-report { max-width: 40em; }
+.run-top .run-status { margin: 0; }
+.run-top label { font-weight: 600; }
+.run-top .field-row { margin-top: 0; position: static; }
+.run-top select { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.run-top select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hint-button { font: inherit; font-size: 13px; font-weight: 700; line-height: 1; width: 22px; height: 22px; padding: 0; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 50%; cursor: help; vertical-align: middle; }
+.hint-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint-text { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 6px); width: max-content; max-width: min(28em, calc(100vw - 32px)); padding: 8px 10px; font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
+.hint:hover .hint-text, .hint-button:focus-visible + .hint-text, .hint-button[aria-expanded="true"] + .hint-text { display: block; }
+.hint[data-dismissed] .hint-text { display: none; }
+.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
+.run-sections legend { position: relative; padding: 0; font-weight: 600; }
 .run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
 .run-section-row input { width: 100%; box-sizing: border-box; }
@@ -564,34 +581,47 @@ section.td-table td { white-space: nowrap; }
       <div class="td-grid">
       <section class="td-panel run">
         <h2 class="run-heading">Run the tournament</h2>
-        <p class="run-status" role="status"></p>
-        <form class="register-form run-start" hidden>
-          <label for="run-format">Format</label>
-          <select id="run-format" name="format">
-            <option value="swiss">Swiss (US Chess rules 27 to 29)</option>
-            <option value="quad">Quads (round robins of four, 30G)</option>
-            <option value="arena">Arena</option>
-          </select>
-          <p class="run-format-set" hidden></p>
-          <label for="run-rounds" data-format="swiss">Rounds</label>
-          <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint" data-format="swiss">
-          <p id="run-rounds-hint" class="register-hint" data-format="swiss">For a club night's month, one round a night.</p>
-          <label for="run-cutoff" data-format="arena" hidden>No new games after</label>
-          <input id="run-cutoff" name="cutoff" type="time" value="17:30" data-format="arena" hidden>
-          <label for="run-coin" data-format="swiss">Coin toss: board one's higher-rated player has</label>
-          <select id="run-coin" name="coin" data-format="swiss">
-            <option value="white">White</option>
-            <option value="black">Black</option>
-          </select>
+        <div class="run-top">
+          <p class="run-status" role="status"></p>
+          <span class="hint run-start-only" hidden><button class="hint-button" type="button" aria-expanded="false" aria-label="About starting" aria-describedby="run-start-hint">?</button><span id="run-start-hint" class="hint-text" role="tooltip">Starting adds everyone registered; later entrants can be added before any round.</span></span>
+          <span class="field-row run-start-only" hidden>
+            <label for="run-format">Format</label>
+            <select id="run-format" name="format" form="run-start">
+              <option value="swiss">Swiss</option>
+              <option value="quad">Quads</option>
+              <option value="arena">Arena</option>
+            </select>
+            <span class="run-format-set" hidden></span>
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the formats" aria-describedby="run-format-hint">?</button><span id="run-format-hint" class="hint-text" role="tooltip">Swiss: US Chess rules 27 to 29. Quads: round robins of four, 30G. Arena: players wait in a queue and are paired as they finish games, until the cutoff.</span></span>
+          </span>
+        </div>
+        <form id="run-start" class="register-form run-start" hidden>
+          <div class="field-row" data-format="swiss">
+            <label for="run-rounds">Rounds</label>
+            <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint">
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About rounds" aria-describedby="run-rounds-hint">?</button><span id="run-rounds-hint" class="hint-text" role="tooltip">For a club night's month, one round a night.</span></span>
+          </div>
+          <div class="field-row" data-format="arena" hidden>
+            <label for="run-cutoff">No new games after</label>
+            <input id="run-cutoff" name="cutoff" type="time" value="17:30">
+          </div>
+          <div class="field-row" data-format="swiss">
+            <label for="run-coin">Coin toss: board one's higher-rated player has</label>
+            <select id="run-coin" name="coin">
+              <option value="white">White</option>
+              <option value="black">Black</option>
+            </select>
+          </div>
           <fieldset class="run-sections" data-format="swiss">
-            <legend>Sections</legend>
-            <p class="register-hint">Each section is paired and ranked on its own. A player goes in the section with the lowest limit their rating is under, unrated players too, and can be moved up before round 1. Leave the limit empty for an open section.</p>
+            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About sections" aria-describedby="run-sections-hint">?</button><span id="run-sections-hint" class="hint-text" role="tooltip">Each section is paired and ranked on its own. A player goes in the section with the lowest limit their rating is under, unrated players too, and can be moved up before round 1. Leave the limit empty for an open section.</span></span></legend>
             <div class="run-section-rows"></div>
             <p><button class="button button-secondary run-section-add" type="button">Add a section</button></p>
           </fieldset>
-          <label for="run-td">Chief TD</label>
-          <select id="run-td" name="td" aria-describedby="run-td-hint"></select>
-          <p id="run-td-hint" class="register-hint">Gets a reminder each morning, from the second morning after play ends, until US Chess has rated the tournament.</p>
+          <div class="field-row">
+            <label for="run-td">Chief TD</label>
+            <select id="run-td" name="td" aria-describedby="run-td-hint"></select>
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the chief TD" aria-describedby="run-td-hint">?</button><span id="run-td-hint" class="hint-text" role="tooltip">Gets a reminder each morning, from the second morning after play ends, until US Chess has rated the tournament.</span></span>
+          </div>
           <button class="button" type="submit">Start the tournament</button>
         </form>
         <div class="run-round" hidden>
@@ -634,11 +664,15 @@ section.td-table td { white-space: nowrap; }
           <div class="register-form run-report" hidden>
             <h3>Rating report</h3>
             <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; until then, from the second morning after play ends, the chief TD and the President get a reminder each morning.</p>
-            <label for="run-report-td">Chief TD</label>
-            <select id="run-report-td"></select>
-            <label for="run-report-control">Time control</label>
-            <input id="run-report-control" type="text" autocomplete="off" placeholder="G/70;d10" aria-describedby="run-report-control-hint">
-            <p id="run-report-control-hint" class="register-hint">As US Chess writes it, from the event's calendar description when it's still listed.</p>
+            <div class="field-row">
+              <label for="run-report-td">Chief TD</label>
+              <select id="run-report-td"></select>
+            </div>
+            <div class="field-row">
+              <label for="run-report-control">Time control</label>
+              <input id="run-report-control" type="text" autocomplete="off" placeholder="G/70;d10" aria-describedby="run-report-control-hint">
+              <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the time control" aria-describedby="run-report-control-hint">?</button><span id="run-report-control-hint" class="hint-text" role="tooltip">As US Chess writes it, from the event's calendar description when it's still listed.</span></span>
+            </div>
             <p class="register-hint run-report-folder-hint">The desk can keep the files in a folder on this computer: it rewrites them whenever the tournament loads with every result in, and deletes them when a round or result is missing, or the tournament is restarted, so a file never holds results the desk no longer has.</p>
             <p><button class="button run-report-folder" type="button">Keep the files in a folder</button></p>
             <p class="run-report-folder-status" role="status"></p>
@@ -783,10 +817,10 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=6c989c5e2b" defer></script>
-  <script src="../td.js?v=75a470b579" defer></script>
+  <script src="../td.js?v=f0770df2f0" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
-  <script src="../td-run.js?v=43224a0fe4" defer></script>
+  <script src="../td-run.js?v=666014f8c8" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=8f428b91c9" defer></script>
 </body>

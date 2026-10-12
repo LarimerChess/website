@@ -469,8 +469,25 @@ section.td-table td { white-space: nowrap; }
 .wallchart td { vertical-align: top; }
 .table-note { margin: 4px 0 16px; font-size: 15px; color: var(--muted); max-width: 52em; }
 .wallchart td small { display: block; font-size: 14px; color: var(--muted); }
-.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
-.run-sections legend { padding: 0; font-weight: 600; }
+.field-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 12px; position: relative; }
+.register-form .field-row label { margin-top: 0; }
+.field-row input:not([type=time]) { width: 6em; }
+.field-row #run-report-control { width: 9em; }
+.run-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; position: relative; margin: 16px 0 0; }
+.run-top .field-row { margin-left: 8px; }
+.run-start, .run-report { max-width: 40em; }
+.run-top .run-status { margin: 0; }
+.run-top label { font-weight: 600; }
+.run-top .field-row { margin-top: 0; position: static; }
+.run-top select { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.run-top select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hint-button { font: inherit; font-size: 13px; font-weight: 700; line-height: 1; width: 22px; height: 22px; padding: 0; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 50%; cursor: help; vertical-align: middle; }
+.hint-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint-text { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 6px); width: max-content; max-width: min(28em, calc(100vw - 32px)); padding: 8px 10px; font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
+.hint:hover .hint-text, .hint-button:focus-visible + .hint-text, .hint-button[aria-expanded="true"] + .hint-text { display: block; }
+.hint[data-dismissed] .hint-text { display: none; }
+.run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
+.run-sections legend { position: relative; padding: 0; font-weight: 600; }
 .run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
 .run-section-row input { width: 100%; box-sizing: border-box; }

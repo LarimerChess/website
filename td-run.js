@@ -138,7 +138,8 @@ async function loadRun() {
 }
 
 function renderRun() {
-  runStart.hidden = runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
+  showStart(false);
+  runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
   if (current && current.status !== "rated") {
     runManage.hidden = false;
     runPlanned.hidden = current.format !== "swiss";
@@ -150,7 +151,7 @@ function renderRun() {
       runStatus.textContent = "A club night's Swiss runs for the whole month. Choose the month to start or run it.";
       return;
     }
-    runStatus.textContent = "Not started. Starting adds everyone registered; later entrants can be added before any round.";
+    runStatus.textContent = "Not started.";
     if (selectedChoice?.kind === "month") {
       const nights = choices.filter((c) => c.key.startsWith(`${choice.value}-`)).length;
       runStart.elements.rounds.value = nights || "";
@@ -159,17 +160,17 @@ function renderRun() {
     }
     // An event whose calendar settings say how it's run starts that way; otherwise the TD chooses.
     const formatMenu = runStart.elements.format;
-    const set = runStart.querySelector(".run-format-set");
+    const set = document.querySelector(".run-format-set");
     const fixed = Boolean(selectedChoice?.format);
     if (fixed) {
       formatMenu.value = selectedChoice.format;
       set.textContent = `Format: ${formatMenu.selectedOptions[0].textContent}, set by the event.`;
     }
-    formatMenu.hidden = runStart.querySelector('[for="run-format"]').hidden = fixed;
+    formatMenu.hidden = document.querySelector('[for="run-format"]').hidden = fixed;
     fillTds(runStart.elements.td, choice.value, "");
     set.hidden = !fixed;
     showFormatFields();
-    runStart.hidden = false;
+    showStart(true);
     return;
   }
   const t = current;
@@ -815,6 +816,12 @@ function renderStandings() {
     });
     return sectionTable("run-standings", [...(quad ? QUAD_HEADINGS : SWISS_HEADINGS), hidden("Withdraw")], rows, s.name, parts.length > 1);
   }));
+}
+
+// The format menu and the hint on starting sit on the status line, outside the form.
+function showStart(shown) {
+  runStart.hidden = !shown;
+  for (const part of document.querySelectorAll(".run-start-only")) part.hidden = !shown;
 }
 
 function showFormatFields() {

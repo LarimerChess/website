@@ -19,6 +19,27 @@ const incidentForm = incidentDialog.querySelector("form");
 const incidentList = document.querySelector(".td-incidents");
 const incidentsStatus = document.querySelector(".td-incidents-status");
 const ledgerList = document.querySelector(".td-ledger");
+
+// The ? buttons show their explanation on hover or focus. A tap keeps it open until another tap
+// anywhere, and Escape hides any shown until the pointer or focus comes to it again.
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".hint-button");
+  for (const open of document.querySelectorAll('.hint-button[aria-expanded="true"]')) {
+    if (open !== button) open.setAttribute("aria-expanded", "false");
+  }
+  if (button) button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true"));
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  for (const hint of document.querySelectorAll(".hint")) {
+    hint.dataset.dismissed = "";
+    hint.querySelector(".hint-button").setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("pointerenter", (event) => {
+  if (event.target.classList?.contains("hint")) event.target.removeAttribute("data-dismissed");
+}, true);
+document.addEventListener("focusin", (event) => event.target.closest?.(".hint")?.removeAttribute("data-dismissed"));
 let password = "";
 let incidentPlayer = null;
 let player = null;

@@ -720,6 +720,20 @@ await runPage.goto(base + "/td/", { waitUntil: "networkidle0" });
 await runPage.type("#td-password", "secret");
 await runPage.click(".td-login button");
 await runPage.waitForSelector(".run-start:not([hidden])");
+// Explanations sit behind ? buttons: a tap shows one, Escape hides it. The format menu is on the status line.
+const hintShown = () => runPage.$eval("#run-sections-hint", (h) => getComputedStyle(h).display !== "none");
+const hiddenAtFirst = !(await hintShown());
+await runPage.click('.run-sections .hint-button');
+const shownOnTap = await hintShown();
+await runPage.keyboard.press("Escape");
+await runPage.mouse.move(0, 0);
+const hiddenOnEscape = !(await hintShown());
+const sameLine = await runPage.evaluate(() => {
+  const middle = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return r.top + r.height / 2; };
+  return [middle(".run-status") - middle("#run-format"), middle('[for="run-td"]') - middle("#run-td")];
+});
+hiddenAtFirst && shownOnTap && hiddenOnEscape && sameLine.every((d) => Math.abs(d) < 8) ? pass("TD desk start form puts menus beside their labels and explanations behind ? buttons")
+  : fail(`TD desk start form: ${JSON.stringify({ hiddenAtFirst, shownOnTap, hiddenOnEscape, sameLine })}`);
 await runPage.type("#run-rounds", "3");
 await press(runPage, ".run-start button[type=submit]");
 await runPage.waitForSelector(".run-round:not([hidden]) .run-pair");
@@ -808,8 +822,8 @@ await arenaPage.type("#td-password", "secret");
 await arenaPage.click(".td-login button");
 await arenaPage.waitForSelector(".run-start:not([hidden])");
 await arenaPage.select("#run-format", "arena");
-const startFields = await arenaPage.evaluate(() => ({ cutoff: !document.querySelector("#run-cutoff").hidden,
-  rounds: !document.querySelector("#run-rounds").hidden, value: document.querySelector("#run-cutoff").value }));
+const startFields = await arenaPage.evaluate(() => ({ cutoff: document.querySelector("#run-cutoff").checkVisibility(),
+  rounds: document.querySelector("#run-rounds").checkVisibility(), value: document.querySelector("#run-cutoff").value }));
 startFields.cutoff && !startFields.rounds && startFields.value === "17:30"
   ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
 await press(arenaPage, ".run-start button[type=submit]");
