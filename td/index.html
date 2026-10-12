@@ -460,6 +460,9 @@ section.td-table td { white-space: nowrap; }
 .register-form .field-row label { margin-top: 0; }
 .field-row input:not([type=time]) { width: 6em; }
 .field-row #run-report-control { width: 9em; }
+.field-row #td-contacts-search { width: 16em; max-width: 100%; }
+.td-contacts-tools { max-width: none; }
+.td-contact-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .run-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; position: relative; margin: 16px 0 0; }
 .run-top .field-row { margin-left: 8px; }
 .run-start, .run-report { max-width: 40em; }
@@ -736,7 +739,7 @@ section.td-table td { white-space: nowrap; }
             <!-- [html-validate-disable-next prefer-native-element -- a select can't search as you type] -->
             <ul id="td-players" class="td-players" role="listbox" aria-label="Matching players" hidden></ul>
           </div>
-          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Players who have registered before come up first; an eight-digit ID not among them is looked up at US Chess.</p>
+          <p id="td-player-hint" class="register-hint">US Chess ID, or first or last name. Players who have registered before, then the club's contacts, come up as you type; an eight-digit ID not among them, or a contact picked from the list, is looked up at US Chess.</p>
           <p class="td-uschess" hidden><button class="button button-secondary td-search-uschess" type="button">Search US Chess</button></p>
           <p class="td-chosen" role="status"></p>
           <label for="td-category">Fee category</label>
@@ -778,8 +781,39 @@ section.td-table td { white-space: nowrap; }
         <p class="td-incidents-status" role="status"></p>
         <ul class="td-incidents"></ul>
       </section>
+
+      <section class="td-panel td-span">
+        <h2>Contacts</h2>
+        <details class="td-contacts-panel">
+          <summary>Contacts</summary>
+          <div class="register-form td-contacts-tools">
+            <div class="field-row">
+              <label for="td-contacts-search">Search</label>
+              <input id="td-contacts-search" type="search" autocomplete="off" spellcheck="false">
+              <button class="td-action td-contacts-add" type="button">Add a contact</button>
+              <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About contacts" aria-describedby="td-contacts-hint">?</button><span id="td-contacts-hint" class="hint-text" role="tooltip">The registration Sheet's Contacts tab, the club's only list of everyone it knows. Changes here save to the Sheet, which keeps its version history; edits made in the Sheet show here after the desk reloads. A contact's US Chess ID lets the player search find them by it.</span></span>
+            </div>
+          </div>
+          <p class="td-contacts-status" role="status"></p>
+          <div class="td-table">
+            <table class="entries td-contacts" hidden>
+              <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col"><span class="visually-hidden">Edit</span></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
       </div>
     </div>
+
+    <dialog class="event-dialog td-contact" aria-labelledby="td-contact-title">
+      <form class="register-form event-dialog-body" method="dialog">
+        <h2 id="td-contact-title">Contact</h2>
+        <div class="td-contact-fields"></div>
+        <p class="td-contact-status" role="status"></p>
+        <p><button class="button" type="submit" value="save">Save</button> <button class="button button-secondary td-contact-delete" type="button">Delete</button> <button class="button button-secondary" type="button" value="cancel">Cancel</button></p>
+      </form>
+    </dialog>
 
     <dialog class="event-dialog td-incident" aria-labelledby="td-incident-title">
       <form class="register-form event-dialog-body" method="dialog">
@@ -818,7 +852,8 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=6c989c5e2b" defer></script>
-  <script src="../td.js?v=ed716b18ae" defer></script>
+  <script src="../td.js?v=9a928024f9" defer></script>
+  <script src="../td-contacts.js?v=676314ddb3" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
   <script src="../td-run.js?v=666014f8c8" defer></script>

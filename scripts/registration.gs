@@ -14,7 +14,8 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., password=...  the TD desk: login, choices, history, search, register, entries, remove, paid, ledger,
+ * POST action=..., password=...  the TD desk: login, choices, history, people, search, contacts, contactSave, contactDelete,
+ *                               register, entries, remove, paid, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
@@ -105,6 +106,10 @@ function doPost(e) {
       case "login": return json({ ok: true });
       case "choices": return json({ choices: choices() });
       case "history": return json({ players: history(p.q) });
+      case "people": return json({ players: people() });
+      case "contacts": return json(contacts());
+      case "contactSave": return json(saveContact(p));
+      case "contactDelete": return json(deleteContact(p.id));
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
@@ -308,40 +313,42 @@ function choices() {
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
 }
 
-/** Players who have registered before, by US Chess ID or by every word of a name, each as of their
- *  latest registration: the TD desk looks here first, so most searches never reach US Chess. */
+/** Players who have registered before, by US Chess ID or by every word of a name. The desk before it
+ *  searched as you type asked this on each keystroke. */
 function history(q) {
   q = String(q || "").trim().toLowerCase();
   if (q.length < 2) return [];
   const words = q.split(/\s+/);
+  return people().filter((p) => (/^\d+$/.test(q) ? p.id.startsWith(q) : words.every((w) => p.name.toLowerCase().includes(w))))
+    .slice(0, 12);
+}
+
+/** Everyone who has registered, each as of their latest registration, with their contact's email and
+ *  phone when the registration has none: the TD desk loads these once and searches them as the TD
+ *  types, so most searches never reach US Chess. */
+function people() {
   const { col, rows } = readEntries();
   const latest = new Map();
   for (const r of rows) {
-    const id = r[col["US Chess ID"]];
-    if (id) latest.set(id, r);
+    if (r[col["US Chess ID"]]) latest.set(r[col["US Chess ID"]], r);
   }
-  return [...latest.values()]
-    .filter((r) => /^\d+$/.test(q) ? r[col["US Chess ID"]].startsWith(q)
-      : words.every((w) => r[col.Name].toLowerCase().includes(w)))
-    .slice(0, 12)
-    .map((r) => ({ id: r[col["US Chess ID"]], name: r[col.Name], state: "", rating: r[col["Regular rating"]],
-      expires: r[col["Membership expires"]], known: true }))
-    .map((p) => {
-      const last = latest.get(p.id);
-      const contact = contactFor(p.name);
-      return { ...p, email: last[col.Email] || contact?.email || "", phone: last[col.Phone] || contact?.phone || "" };
-    });
+  return [...latest.values()].map((r) => {
+    const contact = contactFor(r[col.Name], r[col["US Chess ID"]]);
+    return { id: r[col["US Chess ID"]], name: r[col.Name], state: "", rating: r[col["Regular rating"]],
+      expires: r[col["Membership expires"]], known: true, email: r[col.Email] || contact?.email || "",
+      phone: r[col.Phone] || contact?.phone || "" };
+  });
 }
 
 /**
- * The club contact, from the Sheet's Contacts tab (the club's contact list), whose first and last
- * names match a player's; null if none or several.
+ * The club contact, from the Sheet's Contacts tab (the club's contact list), with the player's US
+ * Chess ID, or else whose first and last names match the player's; null if none or several.
  * A nickname in parentheses, as in "Anthony (Tony) Whitt", matches as a first name too. Only the
  * TD desk reads contacts.
  */
 let contactRows = null;
 
-function contactFor(name) {
+function contactFor(name, id) {
   if (!name) return null;
   if (!contactRows) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Contacts");
@@ -353,6 +360,8 @@ function contactFor(name) {
   const [header, ...rows] = contactRows;
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
   if (col.Name === undefined) return null;
+  const byId = id && col["US Chess ID"] !== undefined && rows.filter((r) => r[col["US Chess ID"]] === id);
+  if (byId && byId.length === 1) return { email: byId[0][col.Email], phone: byId[0][col.Phone] };
   const matches = rows.filter((r) => {
     const all = words(r[col.Name]);
     const plain = all.filter((w) => !w.startsWith("("));
@@ -360,6 +369,84 @@ function contactFor(name) {
     return plain.length >= 2 && plain.at(-1) === player.at(-1) && firsts.includes(player[0]);
   });
   return matches.length === 1 ? { email: matches[0][col.Email], phone: matches[0][col.Phone] } : null;
+}
+
+// Headings the desk's Contacts section needs; the tab's others are its own, and the desk shows them all.
+const CONTACT_HEADINGS = ["Name", "Email", "Phone", "US Chess ID", "ID"];
+
+/** The Contacts tab for the desk's Contacts section: its headings but ID, and each contact. A contact
+ *  added in the Sheet by hand gets its ID here. */
+function contacts() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const headings = Object.keys(col).filter((h) => h && h !== "ID");
+    const list = [];
+    rows.forEach((r, i) => {
+      if (!r.some(Boolean)) return;
+      if (!r[col.ID]) {
+        r[col.ID] = Utilities.getUuid();
+        sheet.getRange(i + 2, col.ID + 1).setNumberFormat("@").setValue(r[col.ID]);
+      }
+      list.push({ id: r[col.ID], ...Object.fromEntries(headings.map((h) => [h, r[col[h]]])) });
+    });
+    return { headings, contacts: list };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Adds a contact, or changes the one with p.id, from p.fields, JSON by heading; headings it leaves
+ *  out keep their values. */
+function saveContact(p) {
+  let fields;
+  try {
+    fields = JSON.parse(p.fields || "{}");
+  } catch (err) {
+    return { error: "The contact didn't arrive whole. Try again." };
+  }
+  const name = String(fields.Name || "").trim();
+  if (!name) return { error: "A contact needs a name." };
+  if (fields["US Chess ID"] && !/^\d{8}$/.test(String(fields["US Chess ID"]).trim())) return { error: "A US Chess ID is eight digits." };
+  // A leading = + - or @ would make the Sheet read the cell as a formula.
+  const plain = (v) => {
+    const text = String(v ?? "").trim();
+    return /^[=+\-@]/.test(text) ? "'" + text : text;
+  };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const index = p.id ? rows.findIndex((r) => r[col.ID] === p.id) : -1;
+    if (p.id && index < 0) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
+    const row = index >= 0 ? [...rows[index]] : new Array(Object.keys(col).length).fill("");
+    for (const [h, i] of Object.entries(col)) if (h !== "ID" && h in fields) row[i] = plain(fields[h]);
+    const id = index >= 0 ? p.id : Utilities.getUuid();
+    row[col.ID] = id;
+    if (index >= 0) {
+      sheet.getRange(index + 2, 1, 1, row.length).setNumberFormat("@").setValues([row]);
+    } else {
+      appendText(sheet, col, Object.fromEntries(Object.entries(col).map(([h, i]) => [h, row[i]])));
+    }
+    return { ok: true, id, message: `${name} is saved.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteContact(id) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const index = id ? rows.findIndex((r) => r[col.ID] === id) : -1;
+    if (index < 0) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
+    sheet.deleteRow(index + 2);
+    return { ok: true, message: `${rows[index][col.Name]} is deleted.` };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** US Chess members by ID or name, Colorado first, for the TD desk's search. */

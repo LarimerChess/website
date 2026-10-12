@@ -118,6 +118,36 @@ test("the script avoids syntax Apps Script can't parse, though node can", () => 
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
 });
 
+test("the desk's contacts: IDs for rows added by hand, saving by heading, formulas kept as text, and deleting", () => {
+  const { gs, sheets } = load({
+    Contacts: [["Name", "Email", "Phone", "Notes"], ["Ann Ash", "ann@example.com", "970-555-0100", "Board"], ["", "", "", ""],
+      ["Ben Birch", "ben@example.com", "", ""]],
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Email", "Phone"],
+      ["", "classic", "2026-11-07", "11111111", "Ann Ash", "registered", "", ""]],
+  });
+  let n = 0;
+  gs.Utilities.getUuid = () => `c${++n}`;
+  const book = gs.contacts();
+  eq(book.headings, ["Name", "Email", "Phone", "Notes", "US Chess ID"]);
+  eq(book.contacts.map((c) => [c.id, c.Name]), [["c1", "Ann Ash"], ["c2", "Ben Birch"]], "a blank row gets no ID");
+  eq(heading(sheets.Contacts), ["Name", "Email", "Phone", "Notes", "US Chess ID", "ID"]);
+  eq(gs.people().map((p) => [p.name, p.email, p.phone]), [["Ann Ash", "ann@example.com", "970-555-0100"]], "a registration takes its contact's email and phone");
+
+  assert.equal(gs.saveContact({ id: "c2", fields: JSON.stringify({ Name: "Ben Birch", Phone: "+1 970 555 0101", "US Chess ID": "22222222" }) }).ok, true);
+  const ben = rowsOf(sheets.Contacts).find((r) => r.ID === "c2");
+  eq([ben.Email, ben.Phone, ben["US Chess ID"]], ["ben@example.com", "'+1 970 555 0101", "22222222"], "headings left out keep their values");
+  assert.equal(gs.saveContact({ fields: JSON.stringify({ Name: "Cal Cedar", Notes: "=HYPERLINK(1)" }) }).id, "c3");
+  eq(rowsOf(sheets.Contacts).at(-1).Notes, "'=HYPERLINK(1)");
+  assert.match(gs.saveContact({ fields: JSON.stringify({ Name: " " }) }).error, /needs a name/);
+  assert.match(gs.saveContact({ fields: JSON.stringify({ Name: "Dee", "US Chess ID": "123" }) }).error, /eight digits/);
+  assert.match(gs.saveContact({ id: "gone", fields: JSON.stringify({ Name: "Dee" }) }).error, /no longer in the Sheet/);
+  // contactFor keeps the tab it read for the rest of a request, so a fresh one sees the ID just saved.
+  const fresh = load({ Contacts: sheets.Contacts.data }).gs;
+  assert.equal(fresh.contactFor("Benjamin Birch", "22222222").email, "ben@example.com", "a contact's US Chess ID finds them whatever the name");
+  assert.equal(gs.deleteContact("c1").ok, true);
+  eq(gs.contacts().contacts.map((c) => c.Name), ["Ben Birch", "Cal Cedar"]);
+});
+
 test("an arena's queue lives in a script property, and a restart or a finished arena drops it", () => {
   const key = "arena/2026-11-07";
   const at = { event: "arena", date: "2026-11-07" };

@@ -461,8 +461,12 @@ desk.on("request", async (request) => {
     const body = p.password !== "secret" ? { error: "Wrong password.", login: true }
       : { login: { ok: true },
           choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
-          history: { players: /test|1234/i.test(p.q || "") ? [{ id: "12345678", name: "Test Player", state: "", rating: "1500", expires: "2027-01-31", known: true,
-            email: "test@example.com", phone: "970-555-0100" }] : [] },
+          people: { players: [{ id: "12345678", name: "Test Player", state: "", rating: "1500", expires: "2027-01-31", known: true,
+            email: "test@example.com", phone: "970-555-0100" }] },
+          contacts: { headings: ["Name", "Email", "Phone", "Status", "Notes", "US Chess ID"],
+            contacts: [{ id: "c1", Name: "Cora Contact", Email: "cora@example.com", Phone: "970-555-0103", Status: "Player", Notes: "", "US Chess ID": "" }] },
+          contactSave: { ok: true, id: "c1", message: "Cora Contact is saved." },
+          contactDelete: { ok: true, message: "Cora Contact is deleted." },
           search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
           entries: { entries: [{ name: "Test Player", id: "12345678", rating: "1500", for: "Whole month", category: "Adult", amount: "16.50", due: "16.50", card: "17.42", email: "", expires: "2027-01-31", token: "t1", date: "2026-10" },
@@ -523,6 +527,56 @@ const askedForId = deskCalls.filter((c) => c.action === "search").length - searc
 askedWhileTyping === 0 && askedOnPress === 1 && askedForId === 2
   ? pass("TD desk searches past registrations first, and US Chess only for a new ID or when asked")
   : fail(`TD desk US Chess searches: while typing ${askedWhileTyping}, on press ${askedOnPress}, for an ID ${askedForId}`);
+// Typing searches what loaded at sign-in, never the script; a contact who hasn't registered is looked up at US Chess.
+await desk.$eval("#td-player", (i) => { i.value = ""; });
+await desk.type("#td-player", "cora");
+await desk.waitForFunction(() => [...document.querySelectorAll("#td-players [role=option]")].some((o) => o.textContent.includes("Cora Contact")));
+const contactOption = await desk.$eval("#td-players [role=option]", (o) => o.textContent);
+await desk.keyboard.press("ArrowDown");
+await desk.keyboard.press("Enter");
+for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "search" && c.q === "Cora Contact"); waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+!deskCalls.some((c) => c.action === "history") && deskCalls.some((c) => c.action === "people") && contactOption.includes("contact")
+  && deskCalls.some((c) => c.action === "search" && c.q === "Cora Contact")
+  ? pass("TD desk searches its loaded players and contacts as you type, and looks a contact up at US Chess")
+  : fail(`TD desk local search: ${JSON.stringify({ contactOption, calls: deskCalls.map((c) => c.action) })}`);
+// The Contacts section: search, edit, add, and delete.
+await desk.click(".td-contacts-panel summary");
+await desk.type("#td-contacts-search", "cora");
+const contactRows = await desk.$$eval(".td-contacts tbody tr", (rows) => rows.map((r) => r.cells[0].textContent));
+await desk.click(".td-contacts tbody tr button");
+await desk.waitForSelector("dialog.td-contact[open]");
+const phoneField = await desk.$('dialog.td-contact [name="Phone"]');
+await phoneField.click({ clickCount: 3 });
+await phoneField.type("970-555-0199");
+await desk.click('dialog.td-contact [value="save"]');
+await desk.waitForFunction(() => document.querySelector(".td-contacts-status").textContent.includes("saved"));
+const saved = deskCalls.filter((c) => c.action === "contactSave").at(-1) || {};
+const savedFields = JSON.parse(saved.fields || "{}");
+await desk.click(".td-contacts-add");
+await desk.waitForSelector("dialog.td-contact[open]");
+const addDeleteHidden = await desk.$eval(".td-contact-delete", (b) => b.hidden);
+await desk.type('dialog.td-contact [name="Name"]', "New Person");
+await desk.click('dialog.td-contact [value="save"]');
+for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "contactSave").length < 2; waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+const addedContact = deskCalls.filter((c) => c.action === "contactSave").at(-1) || {};
+await desk.waitForFunction(() => !document.querySelector("dialog.td-contact").open);
+await desk.click(".td-contacts tbody tr button");
+await desk.waitForSelector("dialog.td-contact[open]");
+await desk.click(".td-contact-delete");
+for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "contactDelete"); waited += 100) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+JSON.stringify(contactRows) === '["Cora Contact"]' && saved.id === "c1" && savedFields.Phone === "970-555-0199" && savedFields.Name === "Cora Contact"
+  && addDeleteHidden && addedContact.id === "" && JSON.parse(addedContact.fields || "{}").Name === "New Person"
+  && deskCalls.some((c) => c.action === "contactDelete" && c.id === "c1")
+  ? pass("TD desk searches, edits, adds, and deletes contacts")
+  : fail(`TD desk contacts: ${JSON.stringify({ contactRows, saved, addedContact, addDeleteHidden })}`);
+await desk.waitForFunction(() => !document.querySelector("dialog.td-contact").open);
+await desk.click(".td-contacts-panel summary");
 await desk.$eval("#td-player", (i) => { i.value = ""; i.dispatchEvent(new Event("input")); });
 const sentByDesk = deskCalls.find((c) => c.action === "register") || {};
 sentByDesk.email === "test@example.com" && sentByDesk.phone === "970-555-0100"

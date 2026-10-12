@@ -44,6 +44,17 @@ let password = "";
 let incidentPlayer = null;
 let player = null;
 let choices = [];
+// Everyone who has registered, and the club's contacts ({ headings, contacts }), loaded at sign-in so
+// the player search runs here as the TD types. They stay in this page's memory only.
+let people = [];
+let contactBook = { headings: [], contacts: [] };
+
+async function loadPeople() {
+  const [{ players = [] }, book] = await Promise.all([call("people"), call("contacts")]);
+  people = players;
+  if (book.contacts) contactBook = book;
+  document.dispatchEvent(new Event("td-contacts"));
+}
 
 function hidden(text) {
   const span = document.createElement("span");
@@ -110,6 +121,7 @@ async function signIn(value) {
     return group;
   }));
   showDeskEntries();
+  loadPeople();
   return true;
 }
 
@@ -139,7 +151,6 @@ login.addEventListener("submit", async (event) => {
 document.querySelector(".td-sign-out").addEventListener("click", () => signOut("Signed out."));
 
 // The player search: a combobox whose list fills as you type, by ID or name.
-let searchTimer;
 let searchCount = 0;
 let active = -1;
 
@@ -162,6 +173,11 @@ function closeList() {
 }
 
 function choose(p) {
+  // A contact who hasn't registered is looked up at US Chess, by ID if the contact has one.
+  if (p.contact) {
+    playerInput.value = p.name;
+    return searchUsChess(p.id || p.name, `US Chess has no member ${p.id ? "with that ID" : "by that name"}.`);
+  }
   player = p;
   playerInput.value = `${p.name} (${p.id})`;
   const current = choices.find((c) => c.key === choice.value);
@@ -182,7 +198,8 @@ function showPlayers(players, empty) {
     const option = document.createElement("li");
     option.id = `td-player-${i}`;
     option.setAttribute("role", "option");
-    option.textContent = `${p.name} · ${p.id} · ${p.rating || "unrated"}` + (p.known ? " · registered before" : ` · ${p.state || "–"}`);
+    option.textContent = p.contact ? `${p.name} · ${p.id || "no US Chess ID"} · contact, look up at US Chess`
+      : `${p.name} · ${p.id} · ${p.rating || "unrated"}` + (p.known ? " · registered before" : ` · ${p.state || "–"}`);
     option.addEventListener("mousedown", (e) => { e.preventDefault(); choose(p); });
     option.player = p;
     return option;
@@ -198,43 +215,51 @@ function showPlayers(players, empty) {
   setActive(-1);
 }
 
-// US Chess is asked only for a full eight-digit ID nobody here has registered with, or when the
-// TD presses Search US Chess for a name; everything else comes from our own registrations.
-playerInput.addEventListener("input", () => {
-  player = null;
-  chosen.textContent = "";
-  uschessRow.hidden = true;
-  clearTimeout(searchTimer);
-  const q = playerInput.value.trim();
-  if (q.length < 2) return closeList();
-  if (/^\d{9,}$/.test(q)) return showPlayers([], "A US Chess ID is eight digits.");
-  searchTimer = setTimeout(async () => {
-    const mine = ++searchCount;
-    const { players = [] } = await call("history", { q });
-    if (mine !== searchCount) return;
-    if (/^\d{8}$/.test(q) && !players.some((p) => p.id === q)) {
-      const found = await call("search", { q });
-      if (mine !== searchCount) return;
-      return showPlayers(found.players || [], "US Chess has no member with that ID.");
-    }
-    showPlayers(players, /^\d+$/.test(q) ? "Keep typing: a US Chess ID is eight digits." : "Nobody by that name has registered here before.");
-    if (!/^\d+$/.test(q)) {
-      uschessButton.textContent = `Search US Chess for “${q}”`;
-      uschessRow.hidden = false;
-    }
-  }, 300);
-});
+/** Past registrations, then contacts not among them, matching an ID's digits or every word of a name. */
+function localMatches(q) {
+  const words = q.toLowerCase().split(/\s+/);
+  const digits = /^\d+$/.test(q);
+  const hit = (name, id) => (digits ? (id || "").startsWith(q) : words.every((w) => name.toLowerCase().includes(w)));
+  const known = new Set(people.map((p) => p.id));
+  const contacts = contactBook.contacts
+    .filter((c) => c.Name && !known.has(c["US Chess ID"]) && hit(c.Name, c["US Chess ID"]))
+    .map((c) => ({ name: c.Name, id: c["US Chess ID"] || "", email: c.Email || "", phone: c.Phone || "", contact: true }));
+  return [...people.filter((p) => hit(p.name, p.id)), ...contacts].slice(0, 12);
+}
 
-uschessButton.addEventListener("click", async () => {
-  const q = playerInput.value.trim();
+async function searchUsChess(q, empty) {
   const mine = ++searchCount;
   uschessButton.disabled = true;
   try {
     const { players = [] } = await call("search", { q });
-    if (mine === searchCount) showPlayers(players, "US Chess has nobody by that name.");
+    if (mine === searchCount) showPlayers(players, empty);
   } finally {
     uschessButton.disabled = false;
   }
+}
+
+// US Chess is asked only for a full eight-digit ID nobody here has registered with, for a contact
+// picked from the list, or when the TD presses Search US Chess for a name; everything else is
+// searched here, in what loaded at sign-in.
+playerInput.addEventListener("input", () => {
+  player = null;
+  chosen.textContent = "";
+  uschessRow.hidden = true;
+  const q = playerInput.value.trim();
+  ++searchCount;
+  if (q.length < 2) return closeList();
+  if (/^\d{9,}$/.test(q)) return showPlayers([], "A US Chess ID is eight digits.");
+  const found = localMatches(q);
+  if (/^\d{8}$/.test(q) && !found.some((p) => p.id === q)) return searchUsChess(q, "US Chess has no member with that ID.");
+  showPlayers(found, /^\d+$/.test(q) ? "Keep typing: a US Chess ID is eight digits." : "Nobody by that name has registered here or is a contact.");
+  if (!/^\d+$/.test(q)) {
+    uschessButton.textContent = `Search US Chess for “${q}”`;
+    uschessRow.hidden = false;
+  }
+});
+
+uschessButton.addEventListener("click", async () => {
+  await searchUsChess(playerInput.value.trim(), "US Chess has nobody by that name.");
   playerInput.focus();
 });
 
@@ -265,7 +290,10 @@ function save(job, item) {
       item.className = result.ok ? "td-save-done" : "td-save-failed";
       item.replaceChildren(result.message || result.error);
       deskStatus.textContent = result.message || result.error;
-      if (result.ok) showDeskEntries();
+      if (result.ok) {
+        showDeskEntries();
+        loadPeople();
+      }
       else retry(job, item);
     })
     .catch(() => {
