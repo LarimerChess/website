@@ -14,11 +14,16 @@
  *                         registers a player, then emails the amount due and a withdraw link
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., password=...  the TD desk: login, refresh, choices, history, people, search, contacts, contactSave, contactDelete,
+ * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
+ *
+ * A TD signs in to the desk with Firebase Authentication (Google, Microsoft, or a link by email), and the
+ * desk sends the account's ID token. Only verified addresses in the registration Sheet's TDs tab (Email,
+ * Name, US Chess ID, Role) whose Role is td, or blank, may use the desk. A request without a token is
+ * checked against the TD password instead, until every desk signs in this way.
  *
  * The Incidents tab logs TD actions under the Safe Play policy, §8. Expelled or removed from
  * the venue takes a player off that date's entries, so they aren't paired again; barred keeps
@@ -27,7 +32,8 @@
  *
  * Deploy as a web app that executes as the club account, with access for anyone; its manifest,
  * with the permissions it needs, is appsscript.json. Script
- * properties (Project Settings → Script properties): TD_PASSWORD for the TD desk, and
+ * properties (Project Settings → Script properties): FIREBASE_API_KEY, the Firebase web app's public API
+ * key, which checks the desk's sign-ins; TD_PASSWORD, for a desk that sends no token; and
  * TOURNAMENT_SHEET_ID, the "Tournaments in progress" spreadsheet that running tournaments
  * keep their players, pairings, and results in until US Chess has rated them and the archive
  * Action clears them; FIREBASE_URL, when set, the Firebase Realtime Database that keeps them
@@ -86,6 +92,10 @@ const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
 // signed in before.
 const FAILED_LOGINS = 5;
+const IDENTITY_LOOKUP = "https://identitytoolkit.googleapis.com/v1/accounts:lookup";
+const TD_HEADINGS = ["Email", "Name", "US Chess ID", "Role"];
+// Roles in the TDs tab that may use the desk; a blank Role is "td".
+const DESK_ROLES = ["td"];
 
 function doGet(e) {
   if (e.parameter.tournaments === "current") return json({ tournaments: currentTournaments() });
@@ -100,13 +110,21 @@ function doPost(e) {
     const p = e.parameter;
     if (!p.action) return json(register(p, false));
     if (p.action === "report") return json(reportResult(p));
-    const denied = checkPassword(p.password, p.device);
-    if (denied) return json({ error: denied, login: true });
+    let td = null;
+    if (p.idToken) {
+      const signedIn = signedInTd(p.idToken);
+      if (signedIn.error) return json(signedIn);
+      td = signedIn.td;
+    } else {
+      const denied = checkPassword(p.password, p.device);
+      if (denied) return json({ error: denied, login: true });
+    }
     if (TOURNAMENT_WRITES.includes(p.action) && rated(`${p.event}/${p.date}`)) {
       return json({ error: "US Chess has rated this tournament, so it can't change on the desk." });
     }
     switch (p.action) {
-      case "login": return json({ ok: true, changes: changes() });
+      case "login": return json(td ? { ok: true, changes: changes(), td } : { ok: true, changes: changes() });
+      case "whoami": return json({ td });
       case "changes": return json({ changes: changes() });
       case "refresh": return json(refreshCaches());
       case "choices": return json({ choices: choices() });
@@ -116,15 +134,15 @@ function doPost(e) {
       case "contactSave": return json(saveContact(p));
       case "contactDelete": return json(deleteContact(p.id));
       case "search": return json({ players: search(p.q) });
-      case "register": return json(register(p, true));
+      case "register": return json(register(p, true, td));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
       case "paid": return json(markPaid(p.token, p.amount, p.by));
       case "ledger": return json({ ledger: ledgerFor(`${p.event}/${p.date}`) });
-      case "incident": return json(logIncident(p));
+      case "incident": return json(logIncident(p, td));
       case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
       case "tournament": return json({ tournament: tournament(`${p.event}/${p.date}`, true) });
-      case "start": return json(startTournament(p));
+      case "start": return json(startTournament(p, td));
       case "sync": return json(syncPlayers(`${p.event}/${p.date}`));
       case "sections": return json(setSections(p));
       case "section": return json(setSection(p));
@@ -151,8 +169,8 @@ function doPost(e) {
 
 /** Registers a player. From the TD desk (td), the ID was picked from a search, so no last
  *  name is checked, email is optional, registration stays open through the event, and the
- *  TD may set the category instead of taking it from US Chess. */
-function register(p, td) {
+ *  TD may set the category instead of taking it from US Chess. signedIn is the TD, when known. */
+function register(p, td, signedIn) {
   // Bots fill in every field; people never see this one.
   if (!td && p.website) return { ok: true, message: "Thanks." };
   if (!td && !underLimit()) return { error: "Too many registrations right now. Try again in a minute." };
@@ -201,7 +219,7 @@ function register(p, td) {
       "US Chess ID": id, Name: name, Category: category || "", Amount: amount === null ? "" : money(amount),
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
-      "Added by": td ? "TD" : "online", Token: token, Phone: td ? String(p.phone || "").trim() : "",
+      "Added by": !td ? "online" : signedIn ? `TD (${signedIn.name})` : "TD", Token: token, Phone: td ? String(p.phone || "").trim() : "",
       "Rating fee": ratingDue === null ? "" : money(ratingDue),
     };
     appendText(sheet, col, row);
@@ -527,8 +545,9 @@ function withdraw(token) {
   }
 }
 
-/** Logs a TD action from the desk. Taking a player off a date needs that date, not a whole month. */
-function logIncident(p) {
+/** Logs a TD action from the desk. Taking a player off a date needs that date, not a whole month.
+ *  The TD named is the one the desk sends, or else the TD signed in. */
+function logIncident(p, signedIn) {
   const key = `${p.event}/${p.date}`;
   const event = clubEvents()[key];
   if (!event) return { error: "That event isn't open." };
@@ -537,7 +556,7 @@ function logIncident(p) {
     return { error: "Choose the night it happened, not the whole month." };
   }
   const reason = String(p.reason || "").trim();
-  const tdName = String(p.td || "").trim();
+  const tdName = String(p.td || "").trim() || (signedIn ? signedIn.name : "");
   if (!reason || !tdName) return { error: "Say what happened and who you are." };
   const until = String(p.until || "").trim();
   if (until && !/^\d{4}-\d\d-\d\d$/.test(until)) return { error: "Until is a date, such as 2027-01-31." };
@@ -835,7 +854,7 @@ function rated(key) {
   return Boolean(ratedEvents()[key]);
 }
 
-function startTournament(p) {
+function startTournament(p, signedIn) {
   const key = `${p.event}/${p.date}`;
   const event = clubEvents()[key];
   if (!event) return { error: "That event isn't open." };
@@ -854,7 +873,7 @@ function startTournament(p) {
     addRows(t, [{ Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
-      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: /^\d{8}$/.test(p.td || "") ? p.td : "" }]);
+      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "" }]);
   } finally {
     lock.releaseLock();
   }
@@ -1486,7 +1505,7 @@ function changes() {
 /** The TD desk's Refresh: clears every copy the public pages and the script keep, and builds the
  *  public pages' copies again from the Sheets, or the database's public copies from its tables. */
 function refreshCaches() {
-  CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion"]);
+  CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion", "tds"]);
   let copies = {};
   if (firebaseUrl()) {
     const listed = Object.keys(firebase("GET", "public/tournaments", undefined, "shallow=true") || {}).map(keyOf);
@@ -1925,6 +1944,74 @@ function rating(member, system) {
 
 function nightLabel(date) {
   return Utilities.formatDate(new Date(date + "T12:00:00Z"), TZ, "EEEE, MMMM d");
+}
+
+/** The TD a Firebase ID token signs in, { td: { email, name, usChessId } }, or why not, { error, login, verify }.
+ *  Only a verified address counts, since anyone can make a Firebase account with any address. */
+function signedInTd(idToken) {
+  const user = firebaseUser(idToken);
+  if (user.error) return user;
+  if (!user.emailVerified) return { error: "Confirm your email address first; we've sent you a link.", login: true, verify: true };
+  const email = user.email.toLowerCase();
+  const pick = (list) => {
+    const mine = list.filter((t) => t.emails.includes(email));
+    return mine.find((t) => DESK_ROLES.includes(t.role)) || mine[0];
+  };
+  let listed = pick(tdList(false));
+  if (!listed || !DESK_ROLES.includes(listed.role)) listed = pick(tdList(true));
+  if (!listed) return { error: `${user.email} isn't on the club's list of TDs. Ask the president to add you.`, login: true };
+  if (!DESK_ROLES.includes(listed.role)) {
+    return { error: `${user.email} is on the club's list, but not as a TD. Ask the president to add you as one.`, login: true };
+  }
+  return { td: { email: user.email, name: listed.name || user.name || user.email, usChessId: listed.usChessId } };
+}
+
+/** The Firebase account an ID token belongs to, { email, emailVerified, name }, or { error, login }. Google's
+ *  answer is kept under the token's hash until the token expires, or an hour at most; an unverified one isn't,
+ *  so confirming the address takes effect at once. */
+function firebaseUser(idToken) {
+  const expired = { error: "Your sign-in has expired. Sign in again.", login: true };
+  let exp = 0;
+  try {
+    const part = String(idToken).split(".")[1];
+    const bytes = Utilities.base64DecodeWebSafe(part + "===".slice((part.length + 3) % 4));
+    exp = Number(JSON.parse(Utilities.newBlob(bytes).getDataAsString()).exp) || 0;
+  } catch (err) {
+    return expired;
+  }
+  const seconds = Math.min(3600, Math.floor(exp - Date.now() / 1000));
+  if (seconds < 1) return expired;
+  const cache = CacheService.getScriptCache();
+  const key = "idToken:" + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(idToken)));
+  const kept = cache.get(key);
+  if (kept) return JSON.parse(kept);
+  const apiKey = PropertiesService.getScriptProperties().getProperty("FIREBASE_API_KEY");
+  if (!apiKey) return { error: "Sign-in isn't set up yet.", login: true };
+  const response = UrlFetchApp.fetch(`${IDENTITY_LOOKUP}?key=${encodeURIComponent(apiKey)}`, { method: "post",
+    contentType: "application/json", payload: JSON.stringify({ idToken }), muteHttpExceptions: true });
+  const code = response.getResponseCode();
+  if (code !== 200 && code !== 400) {
+    console.error(`Firebase sign-in check: ${code} ${response.getContentText()}`);
+    return { error: "Your sign-in couldn't be checked just now. Try again in a minute." };
+  }
+  const user = code === 200 && (JSON.parse(response.getContentText()).users || [])[0];
+  const outcome = user && user.email ? { email: user.email, emailVerified: user.emailVerified === true, name: user.displayName || "" }
+    : expired;
+  if (outcome.emailVerified || outcome === expired) cache.put(key, JSON.stringify(outcome), seconds);
+  return outcome;
+}
+
+/** The registration Sheet's TDs tab, kept for five minutes: each row's addresses (an Email cell may hold several),
+ *  Name, US Chess ID, and Role. fresh reads the tab again. */
+function tdList(fresh) {
+  const cache = CacheService.getScriptCache();
+  const kept = !fresh && cache.get("tds");
+  if (kept) return JSON.parse(kept);
+  const { col, rows } = readTab("TDs", TD_HEADINGS);
+  const list = rows.map((r) => ({ emails: r[col.Email].toLowerCase().split(/[\s,;]+/).filter(Boolean), name: r[col.Name].trim(),
+    usChessId: r[col["US Chess ID"]].trim(), role: r[col.Role].trim().toLowerCase() || "td" })).filter((t) => t.emails.length);
+  cache.put("tds", JSON.stringify(list), 300);
+  return list;
 }
 
 /** Null when the TD password is right; otherwise why not. Repeated failures lock the desk for 15 minutes. */

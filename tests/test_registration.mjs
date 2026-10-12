@@ -139,13 +139,23 @@ function load(tabs, cache = {}, store = "sheet") {
   const sheets = Object.fromEntries(Object.entries(tabs).filter(([name]) => !inDatabase(name)).map(([name, rows]) => [name, makeSheet(rows)]));
   const book = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet([])) };
   const registration = book;
-  const props = { TOURNAMENT_SHEET_ID: "sheet", USCHESS_API_KEY: "key", TD_PASSWORD: "sheet" };
+  const props = { TOURNAMENT_SHEET_ID: "sheet", USCHESS_API_KEY: "key", TD_PASSWORD: "sheet", FIREBASE_API_KEY: "web-key" };
   if (store === "firebase") props.FIREBASE_URL = DATABASE + "/";
   const fetched = [];
   // The website's ratings.json, the tournaments US Chess has rated.
   const ratings = {};
+  // Firebase Authentication's accounts:lookup: the account each ID token belongs to; a token not here is invalid.
+  const accounts = {};
+  const lookups = [];
   const answer = (url, options) => {
     if (url.startsWith(DATABASE)) return db.fetch(url, options);
+    if (url.startsWith("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=")) {
+      const { idToken } = JSON.parse(options.payload);
+      lookups.push(idToken);
+      const user = accounts[idToken];
+      return { getResponseCode: () => (user ? 200 : 400),
+        getContentText: () => JSON.stringify(user ? { users: [user] } : { error: { message: "INVALID_ID_TOKEN" } }) };
+    }
     fetched.push(url);
     if (url.endsWith("/ratings.json")) return { getResponseCode: () => 200, getContentText: () => JSON.stringify(ratings) };
     if (url.endsWith("/prices.json")) return { getResponseCode: () => 200, getContentText: () => readFileSync(`${ROOT}prices.json`, "utf8") };
@@ -172,7 +182,9 @@ function load(tabs, cache = {}, store = "sheet") {
       putAll: (values) => Object.assign(cache, values) }) },
     ContentService: { MimeType: { JSON: "json" }, createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }) },
     Utilities: { formatDate: (d, tz, f) => (f === "yyyy-MM-dd" ? d.toISOString().slice(0, 10) : "2026-10-10 10:00"), getUuid: () => "uuid",
-      computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {} },
+      computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {},
+      base64DecodeWebSafe: (s) => [...Buffer.from(s, "base64url")], base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString("base64url"),
+      newBlob: (bytes) => ({ getDataAsString: () => Buffer.from(bytes).toString("utf8") }) },
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
@@ -204,7 +216,7 @@ function load(tabs, cache = {}, store = "sheet") {
   // The arena queues by tournament key, from the script property or the database.
   const queued = () => (store === "sheet" ? JSON.parse(props.arenaQueues || "{}")
     : Object.fromEntries(Object.entries(db.root.queues || {}).map(([node, text]) => [node.replace(/:/g, "/"), JSON.parse(text)])));
-  return { gs: context, sheets, ratings, cache, props, db, rows, handEdit, queued, store };
+  return { gs: context, sheets, ratings, cache, props, db, rows, handEdit, queued, store, accounts, lookups };
 }
 
 const heading = (sheet) => sheet.data[0];
@@ -780,4 +792,100 @@ test("a database that refuses a write fails the action with the desk's usual err
     section: "", result: "1-0" } });
   assert.match(sent.error, /Something went wrong/);
   assert.throws(() => gs.tournament("classic/2026-11-07", true), /Firebase GET \/tables: 500/);
+});
+
+// An ID token as Firebase makes one: only its payload's exp matters to the script, which leaves the signature to Google.
+const idToken = (name, seconds = 3600) => ["header", Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))
+  .toString("base64url"), name].join(".");
+
+function signIn(tabs = {}) {
+  const t = load({ Entries: [HEADER_ROW], ...tabs });
+  const account = (email, emailVerified = true) => ({ localId: email, email, emailVerified, displayName: "Google Name", providerUserInfo: [] });
+  Object.assign(t.accounts, {
+    [idToken("ann")]: account("Ann@Example.org"),
+    [idToken("second")]: account("ann.work@example.com"),
+    [idToken("rowtwo")]: account("ann@school.edu"),
+    [idToken("stranger")]: account("stranger@example.org"),
+    [idToken("unverified")]: account("ann@example.org", false),
+    [idToken("player")]: account("pat@example.org"),
+  });
+  const post = (fields) => t.gs.doPost({ parameter: fields });
+  return { ...t, post };
+}
+const HEADER_ROW = ["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Added by", "Token"];
+const TDS = [["Email", "Name", "US Chess ID", "Role"],
+  ["ann@example.org; ann.work@example.com", "Ann Ash", "11111111", ""],
+  ["ann@school.edu", "Ann Ash", "11111111", "TD"],
+  ["pat@example.org", "Pat Pawn", "22222222", "player"]];
+const ANN = { email: "Ann@Example.org", name: "Ann Ash", usChessId: "11111111" };
+
+test("a TD signs in with a Firebase ID token from any of their addresses, and the token is checked once", () => {
+  const { post, lookups, cache, gs } = signIn({ TDs: TDS });
+  const login = post({ action: "login", idToken: idToken("ann"), password: "wrong" });
+  eq(login, { ok: true, changes: gs.changes(), td: ANN }, "the password is ignored");
+  eq(post({ action: "whoami", idToken: idToken("ann") }), { td: ANN });
+  eq(lookups, [idToken("ann")], "one lookup for two requests");
+  assert.ok(Object.keys(cache).some((k) => k.startsWith("idToken:")));
+  eq(post({ action: "whoami", idToken: idToken("second") }).td, { ...ANN, email: "ann.work@example.com" }, "two addresses in one cell");
+  eq(post({ action: "whoami", idToken: idToken("rowtwo") }).td, { ...ANN, email: "ann@school.edu" }, "one person on two rows");
+});
+
+test("Firebase sign-ins that aren't a TD's are refused, with what to do", () => {
+  const { post } = signIn({ TDs: TDS });
+  eq(post({ action: "login", idToken: idToken("stranger") }),
+    { error: "stranger@example.org isn't on the club's list of TDs. Ask the president to add you.", login: true });
+  eq(post({ action: "login", idToken: idToken("unverified") }),
+    { error: "Confirm your email address first; we've sent you a link.", login: true, verify: true });
+  eq(post({ action: "login", idToken: idToken("forged") }), { error: "Your sign-in has expired. Sign in again.", login: true });
+  eq(post({ action: "login", idToken: "not a token" }), { error: "Your sign-in has expired. Sign in again.", login: true });
+  eq(post({ action: "login", idToken: idToken("ann", -60) }), { error: "Your sign-in has expired. Sign in again.", login: true });
+  const player = post({ action: "entries", idToken: idToken("player"), event: "classic", date: "2026-11-07" });
+  assert.equal(player.login, true);
+  assert.match(player.error, /^pat@example\.org is on the club's list, but not as a TD/);
+});
+
+test("a token's check is kept no longer than the token lasts, and an unverified one not at all", () => {
+  const { gs, post, cache, lookups, accounts } = signIn({ TDs: TDS });
+  const ttl = {};
+  const store = gs.CacheService.getScriptCache();
+  gs.CacheService.getScriptCache = () => ({ ...store, put: (k, v, seconds) => { cache[k] = v; ttl[k] = seconds; } });
+  post({ action: "whoami", idToken: idToken("ann") });
+  const short = idToken("ann", 600);
+  accounts[short] = accounts[idToken("ann")];
+  post({ action: "whoami", idToken: short });
+  const kept = Object.entries(ttl).filter(([k]) => k.startsWith("idToken:")).map(([, s]) => s);
+  assert.ok(kept[0] <= 3600 && kept[0] > 3590, "an hour at most");
+  assert.ok(kept[1] <= 600 && kept[1] > 590, "no longer than the token");
+  lookups.length = 0;
+  post({ action: "whoami", idToken: idToken("unverified") });
+  post({ action: "whoami", idToken: idToken("unverified") });
+  assert.equal(lookups.length, 2);
+  assert.equal(ttl.tds, 300);
+});
+
+test("the TDs tab is added when it's missing, and a TD added since it was read is let in", () => {
+  const { post, sheets, accounts } = signIn();
+  assert.match(post({ action: "login", idToken: idToken("ann") }).error, /isn't on the club's list of TDs/);
+  eq(sheets.TDs.data, [["Email", "Name", "US Chess ID", "Role"]]);
+  sheets.TDs.data.push(["ANN@example.org", "Ann Ash", "11111111", ""]);
+  accounts[idToken("again")] = accounts[idToken("ann")];
+  eq(post({ action: "login", idToken: idToken("again") }).td, ANN, "the cached tab is read again before refusing");
+});
+
+test("the signed-in TD is recorded where the desk doesn't name one, and the password still signs in without a token", () => {
+  const { post, gs, sheets } = signIn({ TDs: TDS });
+  gs.clubEvents = () => ({ "classic/2026-11-07": { event: "classic", name: "Classic", kind: "entry", label: "Saturday", first: "2099-11-07",
+    last: "2099-11-07", closes: "2099-11-07T10:00:00-07:00" } });
+  gs.MailApp = { sendEmail: () => {} };
+  const p = { event: "classic", date: "2026-11-07", id: "33333333", action_taken: "Warning", reason: "Phone rang" };
+  assert.equal(post({ action: "incident", idToken: idToken("ann"), ...p }).ok, true);
+  assert.equal(post({ action: "incident", idToken: idToken("ann"), ...p, td: "Ben Bishop" }).ok, true);
+  eq(rowsOf(sheets.Incidents).map((r) => r.TD), ["Ann Ash", "Ben Bishop"]);
+  assert.equal(post({ action: "register", idToken: idToken("ann"), event: "classic", date: "2026-11-07", id: "44444444" }).ok, true);
+  eq(rowsOf(sheets.Entries).map((r) => r["Added by"]), ["TD (Ann Ash)"]);
+
+  eq(post({ action: "login", password: "sheet", device: "device-0000000000" }), { ok: true, changes: gs.changes() });
+  eq(post({ action: "whoami", password: "sheet", device: "device-0000000000" }), { td: null });
+  assert.equal(post({ action: "incident", password: "sheet", ...p }).error, "Say what happened and who you are.");
+  eq(post({ action: "login", password: "wrong", device: "device-0000000000" }), { error: "Wrong password.", login: true });
 });
