@@ -533,6 +533,20 @@ test("what's paid over the fee can be a donation, kept out of the fees and refun
   eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").donation, "0");
 });
 
+test("a payment short of the fee leaves the rest owed, which a later payment, by any method, collects", () => {
+  const { gs, sheets, ledger } = monthOfAsh();
+  const owed = () => gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.paid, e.paidBy, e.due, e.balance, e.card]);
+  assert.equal(gs.markPaid("token1", "10", "cash").message, "Ann Ash paid $10 by cash. $7 is still due.");
+  eq(owed(), [["10", "cash", "17", "7", "7.68"]]);
+  assert.equal(gs.markPaid("token1", "7.68", "card").message, "Ann Ash paid $7.68 by card.");
+  eq(owed(), [["17.68", "cash, card", "17", "0", ""]]);
+  eq(ledger(), [["token1", "payment", "cash", "10", "8", "2", ""], ["token1", "payment", "card", "7.68", "7", "0", ""]],
+    "the rating fee came out of the first payment");
+  assert.equal(gs.markPaid("token1", "", "").ok, true);
+  eq(owed(), [["", "", "17", "17", "17.93"]], "marking unpaid cancels both");
+  eq(rowsOf(sheets.Entries).map((r) => r["Paid on"]), [""]);
+});
+
 test("a donation apart from any entry, from a contact or anonymous, and each contact's total with what they gave over their fees", () => {
   const { gs, sheets } = monthOfAsh();
   gs.markPaid("token1", "22", "cash", true);

@@ -45,7 +45,8 @@
  * USCHESS_API_KEY, the club's US Chess API key, which tells whether a player is under 18 or
  * 65 or older on the event's date. Fees for each come from the website's prices.json: the entry
  * fee, plus its round fee for each rated round (an arena, a flat rating fee), plus the card fee
- * when paid by card. Players pay when they arrive.
+ * when paid by card. Players pay when they arrive, all at once or in parts: a payment short of what's
+ * due leaves the rest owed, for the TD to collect with another payment.
  *
  * A player who registers for a club night's whole month after registering for some of its nights
  * moves to the month: those nights' rows get the status "moved to month", and what was paid for
@@ -324,9 +325,12 @@ function entries(key, td, read) {
         const fee = r[col.Amount] === "" ? null : cents(r[col.Amount]) - off;
         const due = fee === null ? "" : money(Math.max(0, fee - held.credit) / 100);
         const kept = held.entry + held.rating;
+        // A refund gives back what's over the fee, so it never adds to what's still owed.
+        const balance = fee === null ? "" : money(Math.max(0, fee - kept - held.refunded) / 100);
         Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
           paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
-          credit: credit ? money(credit) : "", due, card: due === "" || due === "0" ? "" : money(cardTotal(Number(due), card)),
+          credit: credit ? money(credit) : "", due, balance,
+          card: balance === "" || balance === "0" ? "" : money(cardTotal(Number(balance), card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token], date: r[col.Date],
           phone: r[col.Phone], discount: off ? money(off / 100) : "", discountNote: r[col["Discount note"]] || "",
           refunded: held.refunded ? money(held.refunded / 100) : "", donation: held.donation ? money(held.donation / 100) : "", refundable: kept > 0 ? money(kept / 100) : "",
@@ -1658,7 +1662,7 @@ function refreshCaches() {
 }
 
 /** Records what a player paid at the door and how, or, when amount is empty, marks them unpaid with
- *  corrections that cancel their payments. */
+ *  corrections that cancel their payments. Paid is the total of their payments, and Paid by each way they paid. */
 function markPaid(token, amount, by, donate) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
@@ -1701,13 +1705,20 @@ function markPaid(token, amount, by, donate) {
       }
     }
     const when = amount ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
-    sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
+    const paid = amount ? money((cents(r[col.Paid]) + cents(amount)) / 100) : "";
+    const before = String(r[col["Paid by"]] || "").split(", ").filter(Boolean);
+    const by = amount ? [...new Set([...before, method])].join(", ") : "";
+    sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(paid);
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
-    sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(amount ? method : "");
+    sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(by);
     // A contact's Donated total counts donations made with entries too.
     touch("entries", ...(donation || mine.some((x) => cents(x.Donation)) ? ["contacts"] : []));
+    if (!amount) return { ok: true, message: `${row.name} is marked unpaid.` };
     const gift = donation ? `, with a $${money(donation / 100)} donation` : "";
-    return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}${gift}.` : `${row.name} is marked unpaid.` };
+    const held = ledgerByToken(book)[token];
+    const short = r[col.Amount] === "" ? 0 : cents(r[col.Amount]) - cents(r[col.Discount]) - held.entry - held.rating - held.refunded;
+    const rest = short > 0 ? ` $${money(short / 100)} is still due.` : "";
+    return { ok: true, message: `${row.name} paid $${amount} by ${method}${gift}.${rest}` };
   } finally {
     lock.releaseLock();
   }

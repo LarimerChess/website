@@ -414,7 +414,9 @@ async function showDeskEntries(quiet = false) {
   const { entries = [] } = await call("entries", { event: eventName, date });
   if (key !== choice.value) return;
   const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
-  const owed = entries.filter((e) => !e.paid).reduce((sum, e) => sum + (Number(e.due) || 0), 0);
+  // A script from before part payments sends no balance.
+  for (const e of entries) if (!("balance" in e)) e.balance = e.paid ? "0" : e.due;
+  const owed = total("balance");
   const dollars = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   tdEntriesStatus.textContent = entries.length
     ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${dollars(total("paid") - total("refunded"))}. Still owed: $${dollars(owed)}.`
@@ -489,53 +491,42 @@ async function showDeskEntries(quiet = false) {
       row.cells[3].append(" ", toMonth);
     }
     // Marking paid asks for the amount, which can differ from the fee under the hardship waiver; by
-    // card, it starts from the fee with the card fee.
+    // card, it starts from the fee with the card fee. Paying less leaves the rest owed, for another payment.
     const paidCell = row.insertCell();
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "td-action";
-    let method;
     if (e.paid) {
-      button.textContent = `$${e.paid}${e.paidBy ? ` ${e.paidBy}` : ""} ✓`;
-      button.append(hidden(` paid by ${e.name}; mark unpaid`));
-    } else {
-      method = document.createElement("select");
+      const unpaid = deskButton(`$${e.paid}${e.paidBy ? ` ${e.paidBy}` : ""} ✓`, ` paid by ${e.name}; mark unpaid`);
+      unpaid.addEventListener("click", () => {
+        if (confirm(`Mark ${e.name} unpaid?`)) send(unpaid, "paid", { amount: "", by: "" });
+      });
+      paidCell.append(unpaid);
+    }
+    if (!e.paid || Number(e.balance) > 0) {
+      const method = document.createElement("select");
       method.className = "td-method";
       method.setAttribute("aria-label", `How ${e.name} paid`);
       for (const m of ["Cash", "Check", "Card", "Other"]) method.add(new Option(m, m.toLowerCase()));
-      paidCell.append(method, " ");
-      button.textContent = "Mark paid";
-      button.append(hidden(` for ${e.name}`));
-    }
-    button.addEventListener("click", async () => {
-      let amount = "";
-      let donate = "";
-      const by = method ? method.value : "";
-      if (!e.paid) {
-        const owed = by === "card" ? e.card || e.due : e.due;
-        amount = prompt(`Amount ${e.name} paid by ${by}`, owed);
+      const pay = deskButton(e.paid ? "Add payment" : "Mark paid", ` for ${e.name}`);
+      pay.addEventListener("click", () => {
+        const by = method.value;
+        const owed = by === "card" ? e.card || e.balance : e.balance;
+        const amount = prompt(`Amount ${e.name} paid by ${by}`, owed);
         if (amount === null) return;
         const over = Number(amount.replace(/^\$/, "")) - Number(owed);
-        if (owed !== "" && over > 0.005) {
-          donate = confirm(`That is $${dollars(over)} more than the $${owed} due. OK records it as ${e.name}'s donation to the club;`
+        const donate = owed !== "" && over > 0.005
+          && confirm(`That is $${dollars(over)} more than the $${owed} due. OK records it as ${e.name}'s donation to the club;`
             + " Cancel counts it toward the fee, to refund.") ? "1" : "";
-        }
-      } else if (!confirm(`Mark ${e.name} unpaid?`)) {
-        return;
-      }
-      button.disabled = true;
-      const result = await call("paid", { token: e.token, amount, by, donate });
-      deskStatus.textContent = result.message || result.error;
-      showDeskEntries();
-    });
-    paidCell.append(button);
+        send(pay, "paid", { amount, by, donate });
+      });
+      if (e.paid) paidCell.append(` $${e.balance} due `);
+      paidCell.append(method, " ", pay);
+    }
     if (e.donation) paidCell.append(` + $${e.donation} donation`);
     if (e.refunded) paidCell.append(` refunded $${e.refunded}`);
     // A refund goes back the way they paid; the card fee isn't refunded, since the processor keeps it.
     if (e.refundable) {
       const refund = deskButton(e.over ? `Refund $${e.over}` : "Refund", ` to ${e.name}`);
       refund.addEventListener("click", () => {
-        const by = e.paidBy || "cash";
+        const by = e.paidBy.split(", ").at(-1) || "cash";
         const amount = prompt(`Amount refunded to ${e.name} by ${by}, up to $${e.refundable}`, e.over || e.refundable);
         if (amount === null) return;
         send(refund, "refund", { amount, by });

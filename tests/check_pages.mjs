@@ -1544,6 +1544,45 @@ JSON.stringify(giftCalls) === JSON.stringify([{ amount: "22", by: "cash", donate
   : fail(`TD desk donation: ${JSON.stringify({ giftCalls, giftAsked, giftPaid, giftMoney })}`);
 await giftDesk.close();
 
+// Paying part of the fee: the row shows what's still due and takes another payment, which can be by another method.
+let partEntry = { name: "Part Player", id: "42345678", rating: "1500", for: "Monday, October 12", category: "Adult", amount: "17", paid: "",
+  paidBy: "", due: "17", balance: "17", card: "17.93", email: "", expires: "2027-01-31", token: "part1", date: "2026-10-12", refundable: "",
+  over: "", refunded: "", discount: "", credit: "", donation: "" };
+const partCalls = [];
+const partAsked = [];
+const partDesk = await mocked("/td/ part payments", (p) => {
+  if (p.action === "paid") {
+    partCalls.push({ amount: p.amount, by: p.by, donate: p.donate });
+    partEntry = partCalls.length === 1 ? { ...partEntry, paid: "10", paidBy: "cash", balance: "7", card: "7.68", refundable: "10" }
+      : { ...partEntry, paid: "17.68", paidBy: "cash, card", balance: "0", card: "", refundable: "17" };
+  }
+  return { login: { ok: true, changes: null },
+    choices: { choices: [{ key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", kind: "night", first: "2026-10-12" }] },
+    people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: [partEntry] },
+    ledger: { ledger: giftLedger }, incidents: { incidents: [] }, tournament: { tournament: null }, paid: { ok: true, message: "paid done" } }[p.action]
+    || { ok: true };
+});
+partDesk.on("dialog", (d) => { partAsked.push(d.message()); d.accept(partCalls.length ? d.defaultValue() : "10"); });
+await partDesk.goto(base + "/td/", { waitUntil: "domcontentloaded" });
+await partDesk.type("#td-password", "secret");
+await partDesk.click(".td-login button");
+await partDesk.waitForSelector(".td-entries tbody tr");
+const partClick = (label) => partDesk.$$eval(".td-entries tbody tr button", (b, label) => b.find((x) => x.firstChild.textContent === label).click(), label);
+await partClick("Mark paid");
+await partDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.firstChild.textContent === "Add payment"));
+const partShort = await partDesk.$eval(".td-entries tbody tr td:nth-child(8)", (c) => c.textContent);
+const partOwed = await partDesk.$eval(".td-entries-status", (s) => s.textContent);
+await partDesk.select(".td-entries .td-method", "card");
+await partClick("Add payment");
+await partDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(8)").textContent.includes("cash, card"));
+const partDone = await partDesk.$$eval(".td-entries tbody tr td:nth-child(8) :is(button, select)", (b) => b.map((x) => x.firstChild?.textContent ?? ""));
+JSON.stringify(partCalls) === JSON.stringify([{ amount: "10", by: "cash", donate: "" }, { amount: "7.68", by: "card", donate: "" }])
+  && partShort.startsWith("$10 cash ✓ paid by Part Player; mark unpaid $7 due") && partOwed.includes("Still owed: $7.")
+  && partAsked[1] === "Amount Part Player paid by card" && partDone.length === 2 && partDone[0] === "$17.68 cash, card ✓"
+  ? pass("TD desk takes part of the fee, shows what's still due, and collects the rest with another payment")
+  : fail(`TD desk part payment: ${JSON.stringify({ partCalls, partShort, partOwed, partAsked, partDone })}`);
+await partDesk.close();
+
 // A donation apart from any entry: from a contact, on their row, or anonymous, by the Contacts tools.
 let giveBook = { headings: ["Name", "US Chess ID"], contacts: [{ id: "c1", Name: "Cora Contact", "US Chess ID": "12345678", donated: "5" }], anonymous: "" };
 const giveCalls = [];
