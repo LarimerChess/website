@@ -444,7 +444,7 @@ async function showDeskEntries(quiet = false) {
       if (note === null) return;
       send(discount, "discount", { amount, note });
     });
-    row.cells[5].append(" ", discount);
+    row.insertCell().append(discount);
     // On a night's list, a whole month can become just this night, as when a player decides at the end
     // of the night not to come back; what was paid moves to the night, and the rest is refunded.
     if (e.date?.length === 7 && current?.kind === "night") {
@@ -454,6 +454,21 @@ async function showDeskEntries(quiet = false) {
         send(toNight, "toNight", { event: eventName, date });
       });
       row.cells[3].append(" ", toNight);
+    }
+    // On the month's list, the TD picks the night. Only nights still to come can be picked, since the
+    // script knows a night from events.json, which drops it once it has passed.
+    const nights = e.date?.length === 7 && current?.kind === "month"
+      ? choices.filter((c) => c.kind === "night" && c.key.startsWith(`${eventName}/${e.date}-`)) : [];
+    if (nights.length) {
+      const night = document.createElement("select");
+      night.setAttribute("aria-label", `Night for ${e.name}`);
+      for (const c of nights) night.add(new Option(c.label.replace(/, \d{4}$/, ""), c.key.split("/")[1]));
+      const toNight = deskButton("One night only", ` for ${e.name}`);
+      toNight.addEventListener("click", () => {
+        if (!confirm(`Switch ${e.name} from the whole month to ${night.selectedOptions[0].text} only? What was paid moves to the night.`)) return;
+        send(toNight, "toNight", { event: eventName, date: night.value });
+      });
+      row.cells[3].append(" ", night, " ", toNight);
     }
     // A club night's entry can become its month's, which moves the night and credits what was paid for it.
     const month = e.date?.length === 10 && choices.find((c) => c.key === `${eventName}/${e.date.slice(0, 7)}` && c.kind === "month");

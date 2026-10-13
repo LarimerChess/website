@@ -615,15 +615,15 @@ sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
 whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) => c.action === "register").length === 2
   ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
-await desk.click(".td-entries tbody tr td:nth-child(7) button");
+await desk.click(".td-entries tbody tr td:nth-child(8) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && c.by === "cash") ? pass("TD desk marks a player paid in cash")
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
-await desk.waitForSelector(".td-entries tbody tr td:nth-child(7) select:enabled");
-await desk.select(".td-entries tbody tr td:nth-child(7) select", "card");
+await desk.waitForSelector(".td-entries tbody tr td:nth-child(8) select:enabled");
+await desk.select(".td-entries tbody tr td:nth-child(8) select", "card");
 // Paying redraws the entries, and then asks for the Money list; the next click waits for that.
 const ledgerCalls = deskCalls.filter((c) => c.action === "ledger").length;
-await desk.click(".td-entries tbody tr td:nth-child(7) button");
+await desk.click(".td-entries tbody tr td:nth-child(8) button");
 for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "ledger").length === ledgerCalls; waited += 100) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
@@ -1452,9 +1452,10 @@ const twoSections = () => {
 // On a night's list, the desk switches a paid whole month to just the night, refunds what's left over, and
 // gives a discount, each with the entry's token.
 const moneyCalls = [];
-let moneyEntry = { name: "Month Player", id: "22345678", rating: "1400", for: "Whole month", category: "Adult", amount: "17", paid: "17",
+const monthEntry = { name: "Month Player", id: "22345678", rating: "1400", for: "Whole month", category: "Adult", amount: "17", paid: "17",
   paidBy: "cash", due: "0", card: "", email: "", expires: "2027-01-31", token: "month1", date: "2026-10", refundable: "17", over: "",
   refunded: "", discount: "", credit: "" };
+let moneyEntry = monthEntry;
 const moneyDesk = await mocked("/td/ switching, refunding, and discounting", (p) => {
   if (!["login", "choices", "people", "contacts", "entries", "ledger", "incidents", "tournament", "changes"].includes(p.action)) moneyCalls.push(p);
   if (p.action === "toNight") {
@@ -1463,7 +1464,8 @@ const moneyDesk = await mocked("/td/ switching, refunding, and discounting", (p)
   }
   return { login: { ok: true, changes: null },
     choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" },
-      { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", kind: "night", first: "2026-10-12" }] },
+      { key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", kind: "night", first: "2026-10-12" },
+      { key: "club-night/2026-10-19", name: "Club Night", label: "Monday, October 19, 2026", kind: "night", first: "2026-10-19" }] },
     people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: [moneyEntry] },
     ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
     incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true, message: `${p.action} done` };
@@ -1475,6 +1477,12 @@ await moneyDesk.click(".td-login button");
 await moneyDesk.waitForSelector(".td-entries tbody tr");
 const moneyButtons = () => moneyDesk.$$eval(".td-entries tbody tr button", (b) => b.map((x) => x.firstChild.textContent));
 const moneyMonthButtons = await moneyButtons();
+const moneyNights = await moneyDesk.$$eval(".td-entries tbody tr select[aria-label^=Night] option", (o) => o.map((x) => x.textContent));
+await moneyDesk.select(".td-entries select[aria-label^=Night]", "2026-10-19");
+await moneyDesk.$$eval(".td-entries tbody tr button", (b) => b.find((x) => x.firstChild.textContent === "One night only").click());
+await moneyDesk.waitForFunction(() => document.querySelector(".td-register-status").textContent.endsWith("done"));
+await moneyDesk.$eval(".td-register-status", (s) => { s.textContent = ""; });
+moneyEntry = monthEntry;
 await moneyDesk.select("#td-event", "club-night/2026-10-12");
 await moneyDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.textContent.startsWith("This night only")));
 const moneyClick = async (text) => {
@@ -1488,13 +1496,14 @@ const moneyNightDue = await moneyDesk.$eval(".td-entries tbody tr", (r) => r.cel
 await moneyClick("Refund $9.50");
 await moneyClick("Discount");
 const moneyAsked = moneyCalls.map(({ action, token, event, date, amount, by, note }) => ({ action, token, event, date, amount, by, note }));
-JSON.stringify(moneyMonthButtons) === JSON.stringify(["Discount", "$17 cash ✓", "Refund", "Incident", "Remove"])
-  && moneyNightDue === "$0 after $17 credit" && JSON.stringify(moneyAsked) === JSON.stringify([
+JSON.stringify(moneyMonthButtons) === JSON.stringify(["One night only", "Discount", "$17 cash ✓", "Refund", "Incident", "Remove"])
+  && JSON.stringify(moneyNights) === JSON.stringify(["Monday, October 12", "Monday, October 19"]) && moneyNightDue === "$0 after $17 credit" && JSON.stringify(moneyAsked) === JSON.stringify([
+    { action: "toNight", token: "month1", event: "club-night", date: "2026-10-19" },
     { action: "toNight", token: "month1", event: "club-night", date: "2026-10-12" },
     { action: "refund", token: "night1", amount: "9.50", by: "cash" },
     { action: "discount", token: "night1", amount: "5", note: "Hardship" }])
-  ? pass("TD desk switches a whole month to the night shown, refunds what's over, and gives a discount with its reason")
-  : fail(`TD desk money: ${JSON.stringify({ moneyMonthButtons, moneyNightDue, asked })}`);
+  ? pass("TD desk switches a whole month to a night picked on the month's list or to the night shown, refunds what's over, and gives a discount with its reason")
+  : fail(`TD desk money: ${JSON.stringify({ moneyMonthButtons, moneyNights, moneyNightDue, moneyAsked })}`);
 await moneyDesk.evaluate(axeSource);
 const moneyAxe = await moneyDesk.evaluate(() => axe.run({ include: [".td-entries"] }));
 moneyAxe.violations.length ? fail(`TD desk money buttons: ${moneyAxe.violations.map((v) => v.id).join(", ")}`)
