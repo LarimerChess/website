@@ -1497,7 +1497,7 @@ await moneyClick("Refund $9.50");
 await moneyClick("Discount");
 const moneyAsked = moneyCalls.map(({ action, token, event, date, amount, by, note }) => ({ action, token, event, date, amount, by, note }));
 JSON.stringify(moneyMonthButtons) === JSON.stringify(["One night only", "Discount", "$17 cash ✓", "Refund", "Incident", "Remove"])
-  && JSON.stringify(moneyNights) === JSON.stringify(["Monday, October 12", "Monday, October 19"]) && moneyNightDue === "$0 after $17 credit" && JSON.stringify(moneyAsked) === JSON.stringify([
+  && JSON.stringify(moneyNights) === JSON.stringify(["October 12", "October 19"]) && moneyNightDue === "$0 after $17 credit" && JSON.stringify(moneyAsked) === JSON.stringify([
     { action: "toNight", token: "month1", event: "club-night", date: "2026-10-19" },
     { action: "toNight", token: "month1", event: "club-night", date: "2026-10-12" },
     { action: "refund", token: "night1", amount: "9.50", by: "cash" },
@@ -1509,6 +1509,40 @@ const moneyAxe = await moneyDesk.evaluate(() => axe.run({ include: [".td-entries
 moneyAxe.violations.length ? fail(`TD desk money buttons: ${moneyAxe.violations.map((v) => v.id).join(", ")}`)
   : pass("TD desk money buttons have no axe violations");
 await moneyDesk.close();
+
+// Paying over the fee: the desk asks whether the rest is a donation, then shows it on the row and in the money.
+let giftEntry = { name: "Gift Player", id: "32345678", rating: "1500", for: "Monday, October 12", category: "Adult", amount: "17", paid: "",
+  paidBy: "", due: "17", card: "17.80", email: "", expires: "2027-01-31", token: "gift1", date: "2026-10-12", refundable: "", over: "",
+  refunded: "", discount: "", credit: "", donation: "" };
+let giftLedger = { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", donation: "0", games: null, uschess: "0" };
+const giftCalls = [];
+const giftAsked = [];
+const giftDesk = await mocked("/td/ donation", (p) => {
+  if (p.action === "paid") {
+    giftCalls.push({ amount: p.amount, by: p.by, donate: p.donate });
+    giftEntry = { ...giftEntry, paid: "22", paidBy: "cash", donation: "5", refundable: "17" };
+    giftLedger = { ...giftLedger, received: { ...giftLedger.received, cash: "22" }, entry: "15", rating: "2", donation: "5" };
+  }
+  return { login: { ok: true, changes: null },
+    choices: { choices: [{ key: "club-night/2026-10-12", name: "Club Night", label: "Monday, October 12, 2026", kind: "night", first: "2026-10-12" }] },
+    people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: [giftEntry] }, ledger: { ledger: giftLedger },
+    incidents: { incidents: [] }, tournament: { tournament: null }, paid: { ok: true, message: "paid done" } }[p.action] || { ok: true };
+});
+giftDesk.on("dialog", (d) => { giftAsked.push(d.message()); d.accept(d.type() === "prompt" ? "22" : undefined); });
+await giftDesk.goto(base + "/td/", { waitUntil: "domcontentloaded" });
+await giftDesk.type("#td-password", "secret");
+await giftDesk.click(".td-login button");
+await giftDesk.waitForSelector(".td-entries tbody tr");
+await giftDesk.$$eval(".td-entries tbody tr button", (b) => b.find((x) => x.firstChild.textContent === "Mark paid").click());
+await giftDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(8)").textContent.includes("donation"));
+await giftDesk.waitForFunction(() => document.querySelector(".td-ledger").textContent.includes("Donations"));
+const giftPaid = await giftDesk.$eval(".td-entries tbody tr td:nth-child(8)", (c) => c.textContent);
+const giftMoney = await giftDesk.$eval(".td-ledger", (l) => l.lastElementChild.textContent);
+JSON.stringify(giftCalls) === JSON.stringify([{ amount: "22", by: "cash", donate: "1" }]) && /\$5 more than the \$17 due/.test(giftAsked[1])
+  && giftPaid.includes("mark unpaid + $5 donation") && giftMoney === "Donations to the club: $5."
+  ? pass("TD desk records what's paid over the fee as the player's donation and shows it on the row and in the money")
+  : fail(`TD desk donation: ${JSON.stringify({ giftCalls, giftAsked, giftPaid, giftMoney })}`);
+await giftDesk.close();
 
 const pairingsPage = await mocked("/pairings/", () => ({ tournaments: twoSections() }));
 await pairingsPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });

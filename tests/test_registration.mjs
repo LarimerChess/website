@@ -454,7 +454,7 @@ test("a night paid by card, then the whole month: the night moves to the month a
   ]);
   gs.ratedGames = () => 5;
   eq(gs.ledgerFor("monday-club-night-at-peak/2026-10"), { received: { cash: "9.50", check: "0", card: "8.19", other: "0" },
-    entry: "15", rating: "2", card: "0.69", games: 5, uschess: "3" });
+    entry: "15", rating: "2", card: "0.69", donation: "0", games: 5, uschess: "3" });
 
   // Marking unpaid cancels the payment with a correction; the credit stays.
   assert.equal(gs.markPaid("token2", "", "").message, " is marked unpaid.");
@@ -518,6 +518,19 @@ test("a paid month: the player is sent to the TD, who switches it, moving what w
   ], "the rating fees for the nights not played go back first");
   assert.equal(rowsOf(sheets.Payments).at(-1).Note, "By Ben Bishop");
   eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").received.cash, "7.50");
+});
+
+test("what's paid over the fee can be a donation, kept out of the fees and refunds and credited to the player", () => {
+  const { gs, sheets } = monthOfAsh();
+  const gifts = () => rowsOf(sheets.Payments).map((r) => [r.Type, r.Received, r["Entry fee"], r["Rating fee"], r.Donation, r.Name, r["US Chess ID"]]);
+  assert.equal(gs.markPaid("token1", "22", "cash", true).message, "Ann Ash paid $22 by cash, with a $5 donation.");
+  eq(gifts(), [["payment", "22", "15", "2", "5", "Ann Ash", "66666666"]]);
+  eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.due, e.donation, e.over, e.refundable]), [["17", "5", "", "17"]]);
+  eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").donation, "5");
+  gs.markPaid("token1", "", "");
+  eq(gifts().at(-1), ["correction", "-22", "-15", "-2", "-5", "Ann Ash", "66666666"], "marking unpaid takes the donation back too");
+  assert.equal(gs.markPaid("token1", "17", "cash", true).message, "Ann Ash paid $17 by cash.", "nothing over, nothing donated");
+  eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").donation, "0");
 });
 
 test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {

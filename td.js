@@ -462,7 +462,7 @@ async function showDeskEntries(quiet = false) {
     if (nights.length) {
       const night = document.createElement("select");
       night.setAttribute("aria-label", `Night for ${e.name}`);
-      for (const c of nights) night.add(new Option(c.label.replace(/, \d{4}$/, ""), c.key.split("/")[1]));
+      for (const c of nights) night.add(new Option(c.label.replace(/^\w+, |, \d{4}$/g, ""), c.key.split("/")[1]));
       const toNight = deskButton("One night only", ` for ${e.name}`);
       toNight.addEventListener("click", () => {
         if (!confirm(`Switch ${e.name} from the whole month to ${night.selectedOptions[0].text} only? What was paid moves to the night.`)) return;
@@ -509,19 +509,27 @@ async function showDeskEntries(quiet = false) {
     }
     button.addEventListener("click", async () => {
       let amount = "";
+      let donate = "";
       const by = method ? method.value : "";
       if (!e.paid) {
-        amount = prompt(`Amount ${e.name} paid by ${by}`, by === "card" ? e.card : e.due);
+        const owed = by === "card" ? e.card || e.due : e.due;
+        amount = prompt(`Amount ${e.name} paid by ${by}`, owed);
         if (amount === null) return;
+        const over = Number(amount.replace(/^\$/, "")) - Number(owed);
+        if (owed !== "" && over > 0.005) {
+          donate = confirm(`That is $${dollars(over)} more than the $${owed} due. OK records it as ${e.name}'s donation to the club;`
+            + " Cancel counts it toward the fee, to refund.") ? "1" : "";
+        }
       } else if (!confirm(`Mark ${e.name} unpaid?`)) {
         return;
       }
       button.disabled = true;
-      const result = await call("paid", { token: e.token, amount, by });
+      const result = await call("paid", { token: e.token, amount, by, donate });
       deskStatus.textContent = result.message || result.error;
       showDeskEntries();
     });
     paidCell.append(button);
+    if (e.donation) paidCell.append(` + $${e.donation} donation`);
     if (e.refunded) paidCell.append(` refunded $${e.refunded}`);
     // A refund goes back the way they paid; the card fee isn't refunded, since the processor keeps it.
     if (e.refundable) {
@@ -576,6 +584,7 @@ async function showLedger(eventName, date) {
     `Rating fees: $${ledger.rating}.`
       + (ledger.games === null ? "" : ` US Chess charges $${ledger.uschess} for the ${ledger.games} rated ${ledger.games === 1 ? "game" : "games"} played so far.`),
     `Card fees, for the processor: $${ledger.card}.`,
+    ...(Number(ledger.donation) ? [`Donations to the club: $${ledger.donation}.`] : []),
   ];
   ledgerList.replaceChildren(...lines.map((text) => {
     const item = document.createElement("li");

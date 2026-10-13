@@ -62,7 +62,9 @@
  * and each credit (a pair: out of a night, into its month). Each row splits what changed hands
  * into the entry fee (Peak's facility donation), the rating fee (US Chess and the club's
  * margin), and the card fee (the processor's), from the fees as they stood when the row was
- * added, so a later price change never rewrites it. A payment covers the rating fee first.
+ * added, so a later price change never rewrites it. A payment covers the rating fee first. What a
+ * player pays over the fee, the TD can make a donation to the club: the payment's Donation, kept out of
+ * the entry fee and never refunded, and credited to the player by their name and US Chess ID on the row.
  *
  * Invitational club events (calendar metadata access=invitational) and events in the registration
  * Sheet's "Closed events" tab (Event, Name, Start, Format, Rounds, Fee) take registrations only from the TD
@@ -80,7 +82,7 @@ const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category"
 const MOVED = "moved to month";
 const TO_NIGHT = "moved to night";
 const PAYMENT_HEADER = ["No.", "Recorded", "Token", "Event", "Date", "US Chess ID", "Name", "Type", "Method", "Received",
-  "Entry fee", "Rating fee", "Card fee", "Reverses", "Note"];
+  "Entry fee", "Rating fee", "Card fee", "Reverses", "Note", "Donation"];
 const METHODS = ["cash", "check", "card", "other"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
@@ -150,7 +152,7 @@ function doPost(e) {
       case "register": return json(register(p, true, td));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
-      case "paid": return json(markPaid(p.token, p.amount, p.by));
+      case "paid": return json(markPaid(p.token, p.amount, p.by, p.donate === "1"));
       case "refund": return json(refund(p.token, p.amount, p.by, td));
       case "discount": return json(discount(p.token, p.amount, p.note, td));
       case "toNight": return json(toNight(p, td || { name: "" }));
@@ -314,7 +316,7 @@ function entries(key, td, read) {
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       if (td) {
-        const held = ledger[r[col.Token]] || { entry: 0, rating: 0, credit: 0, refunded: 0 };
+        const held = ledger[r[col.Token]] || { entry: 0, rating: 0, donation: 0, credit: 0, refunded: 0 };
         const credit = held.credit / 100;
         const off = cents(r[col.Discount]);
         const fee = r[col.Amount] === "" ? null : cents(r[col.Amount]) - off;
@@ -325,7 +327,7 @@ function entries(key, td, read) {
           credit: credit ? money(credit) : "", due, card: due === "" || due === "0" ? "" : money(cardTotal(Number(due), card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token], date: r[col.Date],
           phone: r[col.Phone], discount: off ? money(off / 100) : "", discountNote: r[col["Discount note"]] || "",
-          refunded: held.refunded ? money(held.refunded / 100) : "", refundable: kept > 0 ? money(kept / 100) : "",
+          refunded: held.refunded ? money(held.refunded / 100) : "", donation: held.donation ? money(held.donation / 100) : "", refundable: kept > 0 ? money(kept / 100) : "",
           over: fee !== null && kept > fee ? money((kept - fee) / 100) : "" });
       }
       return entry;
@@ -1650,7 +1652,7 @@ function refreshCaches() {
 
 /** Records what a player paid at the door and how, or, when amount is empty, marks them unpaid with
  *  corrections that cancel their payments. */
-function markPaid(token, amount, by) {
+function markPaid(token, amount, by, donate) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
   // The desk before payment methods sent nothing for a payment that wasn't by card.
@@ -1665,11 +1667,22 @@ function markPaid(token, amount, by) {
     const r = rows[row.index];
     const book = readPayments();
     const mine = book.rows.filter((x) => x.Token === token);
+    let donation = 0;
     if (amount) {
       const event = clubEvents()[`${row.event}/${row.date}`];
       const listed = r[col["Rating fee"]];
       const fee = listed !== "" ? Number(listed) : event ? ratingFee(event, prices().fees) : null;
       const split = allocate(cents(amount), method, fee === null ? null : cents(fee), sum(mine, "Rating fee"), prices().fees.card);
+      if (donate) {
+        if (r[col.Amount] === "") return { error: "The fee isn't known, so what's over it can't be told. Set the category first." };
+        const owed = Math.max(0, cents(r[col.Amount]) - cents(r[col.Discount]) - sum(mine, "Entry fee") - sum(mine, "Rating fee"));
+        donation = Math.max(0, split["Entry fee"] + split["Rating fee"] - owed);
+        // The rating fee is covered first, so what's over the fee is in the entry fee unless that is short.
+        const fromEntry = Math.min(donation, split["Entry fee"]);
+        split["Entry fee"] -= fromEntry;
+        split["Rating fee"] -= donation - fromEntry;
+        split.Donation = donation;
+      }
       addPayment(book, token, partyOf(r, col), { Type: "payment", Method: method, Received: cents(amount), ...split,
         Note: fee === null ? "Rating fee unknown, so all of it counted as entry fee." : "" });
     } else {
@@ -1677,7 +1690,7 @@ function markPaid(token, amount, by) {
       for (const x of mine.filter((x) => (x.Type === "payment" || x.Type === "refund") && !reversed.has(x["No."]))) {
         addPayment(book, token, partyOf(r, col), { Type: "correction", Method: x.Method, Received: -cents(x.Received),
           "Entry fee": -cents(x["Entry fee"]), "Rating fee": -cents(x["Rating fee"]), "Card fee": -cents(x["Card fee"]),
-          Reverses: x["No."], Note: "Marked unpaid" });
+          Donation: -cents(x.Donation), Reverses: x["No."], Note: "Marked unpaid" });
       }
     }
     const when = amount ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
@@ -1685,7 +1698,8 @@ function markPaid(token, amount, by) {
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
     sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(amount ? method : "");
     touch("entries");
-    return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}.` : `${row.name} is marked unpaid.` };
+    const gift = donation ? `, with a $${money(donation / 100)} donation` : "";
+    return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}${gift}.` : `${row.name} is marked unpaid.` };
   } finally {
     lock.releaseLock();
   }
@@ -1865,19 +1879,20 @@ function moveToMonth(sheet, col, rows, nights, month, amount) {
   return total / 100;
 }
 
-/** What each registration holds in the ledger, in cents: received, entry, rating, card, credit
+/** What each registration holds in the ledger, in cents: received, entry, rating, card, donation, credit
  *  (what credits moved in, or out when negative), and refunded. */
 function ledgerByToken(book) {
   const held = {};
   const rows = (book || readPayments()).rows;
   const reversed = new Set(rows.map((x) => x.Reverses).filter(Boolean));
   for (const x of rows) {
-    if (!held[x.Token]) held[x.Token] = { received: 0, entry: 0, rating: 0, card: 0, credit: 0, refunded: 0 };
+    if (!held[x.Token]) held[x.Token] = { received: 0, entry: 0, rating: 0, card: 0, donation: 0, credit: 0, refunded: 0 };
     const h = held[x.Token];
     h.received += cents(x.Received);
     h.entry += cents(x["Entry fee"]);
     h.rating += cents(x["Rating fee"]);
     h.card += cents(x["Card fee"]);
+    h.donation += cents(x.Donation);
     if (x.Type === "credit") h.credit += cents(x["Entry fee"]) + cents(x["Rating fee"]);
     if (x.Type === "refund" && !reversed.has(x["No."])) h.refunded -= cents(x.Received);
   }
@@ -1895,7 +1910,7 @@ function ledgerFor(key) {
   const received = Object.fromEntries(METHODS.map((m) => [m, total("Received", (x) => x.Method === m)]));
   const games = ratedGames(key);
   const uschess = prices().fees.uschess;
-  return { received, entry: total("Entry fee"), rating: total("Rating fee"), card: total("Card fee"), games,
+  return { received, entry: total("Entry fee"), rating: total("Rating fee"), card: total("Card fee"), donation: total("Donation"), games,
     uschess: games === null ? "" : money(Math.max(uschess.minimum, Math.round(games * uschess.game * 100) / 100)) };
 }
 
@@ -1917,7 +1932,7 @@ function addPayment(book, token, party, fields) {
   const row = { "No.": String(book.rows.length + 1), Recorded: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Token: token,
     Event: party.Event, Date: party.Date, "US Chess ID": party["US Chess ID"], Name: party.Name, Method: "", Reverses: "", Note: "" };
   for (const [h, v] of Object.entries(fields)) row[h] = typeof v === "number" ? money(v / 100) : v;
-  for (const h of ["Received", "Entry fee", "Rating fee", "Card fee"]) if (row[h] === undefined) row[h] = "0";
+  for (const h of ["Received", "Entry fee", "Rating fee", "Card fee", "Donation"]) if (row[h] === undefined) row[h] = "0";
   appendText(book.sheet, book.col, row);
   book.rows.push(row);
 }
