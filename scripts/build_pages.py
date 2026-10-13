@@ -5,8 +5,8 @@
 
 - events/index.html gets schema.org Event data for every club event.
 - Each club event gets its own page at its "page" path (events/<name>/), with its
-  next date, its calendar description, a Register form and entry list (register.js), and its
-  Event data. A page whose event has left
+  next date, its calendar description, a Register form and entry list (register.js) when it is
+  US Chess rated, and its Event data. A page whose event has left
   events.json is deleted.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
   the day what it shows last changed. Every other page's lastmod is the day of the last
@@ -311,7 +311,8 @@ def series_page(events, prices):
     p = e["place"]
     city = p.get("city") or e["city"] or "Fort Collins"
     url = SITE + e["page"]
-    kind = "tournament" if "tournament" in e["tags"] else "club night"
+    rated = "rated" in e["tags"]
+    kind = "tournament" if "tournament" in e["tags"] else "club night" if rated else "class"
     title = f"{name} | {city} Chess {kind.title()}"
     if len(title) > 70:
         title = name
@@ -325,8 +326,9 @@ def series_page(events, prices):
                  '<span class="visually-hidden"> (opens in a new tab)</span></a></address>')
     else:
         where = f"<p>{escaped(e['location'])}</p>"
+    register = f"{register_html(events, prices)}\n\n    " if rated else ""
     main = f"""<h1>{escaped(name)}</h1>
-    <p>A US Chess rated {kind} of the {CLUB} in {escaped(city)}, Colorado.
+    <p>A {"US Chess rated" if rated else "free"} {kind} of the {CLUB} in {escaped(city)}, Colorado.
       Next: <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
 
     <section id="details">
@@ -334,9 +336,7 @@ def series_page(events, prices):
       {description_html(e["description"])}
     </section>
 
-    {register_html(events, prices)}
-
-    <section id="where">
+    {register}<section id="where">
       <h2>Where</h2>
       {where}
     </section>
@@ -344,7 +344,7 @@ def series_page(events, prices):
     <p><a href="/events/">All chess events in Fort Collins and Larimer County</a></p>"""
     stamp = hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]
     return page_html(title, description, url, main, head=data_script(events),
-                     scripts=f'<script src="../../register.js?v={stamp}" defer></script>')
+                     scripts=f'<script src="../../register.js?v={stamp}" defer></script>' if rated else "")
 
 
 def page_html(title, description, url, main, head="", scripts="", depth=2, current=None, main_attributes="",

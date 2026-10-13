@@ -67,8 +67,9 @@ def problems(meta):
             found.append(f"{field} is {value!r}, expected one of {', '.join(sorted(allowed))}")
         elif not isinstance(allowed, set) and not allowed.fullmatch(value):
             found.append(f"{field} is {value!r}, expected {allowed.pattern}")
-    if meta.get("organizer") == CLUB and meta.get("rated") == "no":
-        found.append("rated is 'no', but every club event is US Chess rated")
+    # An unrated club event, such as a class, takes no registration, so there is no fee to collect.
+    if meta.get("organizer") == CLUB and meta.get("rated") == "no" and meta.get("cost") != "free":
+        found.append("rated is 'no', but a club event that isn't US Chess rated must be free")
     if meta.get("cost") == "free-youth" and "youth" in meta.get("reduced", "").split(","):
         found.append("reduced has youth, but cost free-youth already says players under 18 play free")
     if meta.get("organizer") == CLUB and meta.get("run_by") == "hide":

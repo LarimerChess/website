@@ -25,7 +25,7 @@ Round times
 
 Questions: president@larimerchess.org
 larimerchess.org"""
-CLASSIC = {"title": "First Saturday Classic", "organizer": bp.CLUB, "tags": ["tournament", "club"], "price": "15",
+CLASSIC = {"title": "First Saturday Classic", "organizer": bp.CLUB, "tags": ["tournament", "club", "rated"], "price": "15",
            "page": "/events/first-saturday-classic/", "start": "2026-11-07T10:00:00-07:00",
            "end": "2026-11-07T19:00:00-07:00", "allDay": False, "place": PEAK, "city": "Fort Collins",
            "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA", "description": DESCRIPTION}
@@ -105,6 +105,17 @@ class Invitational(unittest.TestCase):
         self.assertIn('<p class="register-invitational">', page)
         self.assertIn('id="entries"', page)
         self.assertNotIn("data-invitational", bp.register_html([CLASSIC], {"fees": Fees.FEES}))
+
+
+class Unrated(unittest.TestCase):
+    def test_a_free_class_has_no_register_form(self):
+        beginners = {**CLASSIC, "title": "Chess for Beginners at Peak", "tags": ["all-ages", "club", "free"], "price": "0",
+                     "page": "/events/chess-for-beginners-at-peak/"}
+        page = bp.series_page([beginners], {"fees": Fees.FEES})
+        self.assertIn("A free class of the Larimer County Chess Club", page)
+        self.assertNotIn('id="register"', page)
+        self.assertNotIn("register.js", page)
+        self.assertIn('id="register"', bp.series_page([CLASSIC], {"fees": Fees.FEES}))
 
 
 class EventData(unittest.TestCase):

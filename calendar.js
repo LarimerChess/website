@@ -143,8 +143,9 @@ function organizerLine(event) {
 // and at the top and bottom of the details. It opens the Register form on the event's page, on the
 // tournament's date, or for a club night, its whole month, which is what most players come for.
 // An invitational, which only the TD registers players for, says so instead (where note is set).
+// An unrated club event, such as a class, takes no registration.
 function registerLink(event, className, { note = false } = {}) {
-  if (!event.page || event.organizer !== CLUB) return null;
+  if (!registers(event)) return null;
   if ((event.tags || []).includes("invitational")) {
     return note ? el("p", "event-meta", "Invitational: registration is closed.") : null;
   }
@@ -155,6 +156,10 @@ function registerLink(event, className, { note = false } = {}) {
     : ` for ${event.title}, ${longDate.format(start)}`));
   link.href = `${event.page}?date=${event.start.slice(0, night ? 7 : 10)}#register`;
   return link;
+}
+
+function registers(event) {
+  return Boolean(event.page) && event.organizer === CLUB && (event.tags || []).includes("rated");
 }
 
 // Text with its web addresses made into links, built as nodes so nothing in it is read as HTML.
@@ -539,7 +544,7 @@ function holdInView() {
 // tournament. Through a month's second Monday, the club night card asks players to register
 // for the month; after it, to drop in.
 function nextUp(events, now) {
-  const club = events.filter((e) => e.organizer === CLUB && e.page && new Date(e.start) > now);
+  const club = events.filter((e) => registers(e) && new Date(e.start) > now);
   const monday = club.find((e) => !e.tags.includes("tournament"));
   const saturday = club.find((e) => e.tags.includes("tournament") && !e.tags.includes("invitational"));
   const name = (e) => e.title.replace(CLUB, "").trim();

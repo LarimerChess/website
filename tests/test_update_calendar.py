@@ -110,7 +110,8 @@ class BadMetadata(unittest.TestCase):
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "reduced": "youth"}),
                          ["reduced has youth, but cost free-youth already says players under 18 play free"])
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "rated": "no"}),
-                         ["rated is 'no', but every club event is US Chess rated"])
+                         ["rated is 'no', but a club event that isn't US Chess rated must be free"])
+        self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "rated": "no", "cost": "free", "format": "other"}), [])
         self.assertEqual(uc.problems({**CLUB_TOURNAMENT, "run_by": "hide"}),
                          ["run_by is 'hide', but the site finds club events by their organizer"])
         self.assertEqual(uc.problems({**MEETUP, "run_by": "no"}), ["run_by is 'no', expected one of hide, show"])

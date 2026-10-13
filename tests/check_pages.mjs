@@ -179,9 +179,10 @@ const wrongLines = lines.filter((card, i) => {
 wrongLines.length === 0 ? pass("each card's Run by line and Details link match its event")
   : fail(`Run by or Details wrong on: ${[...new Set(wrongLines.map((c) => c.title))].join(", ")}`);
 
-const rated = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated"));
-rated.length === 0 ? pass("every club event is tagged rated")
-  : fail(`club events not tagged rated: ${[...new Set(rated.map((e) => e.title))].join(", ")}`);
+const unratedPaid = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated")
+  && !(e.tags || []).includes("free"));
+unratedPaid.length === 0 ? pass("every club event is tagged rated, or free")
+  : fail(`club events neither rated nor free: ${[...new Set(unratedPaid.map((e) => e.title))].join(", ")}`);
 
 const described = upcoming.findIndex((e) => e.description);
 await page.focus(`.event:nth-of-type(1) .event-open`);
@@ -283,14 +284,27 @@ await page.goto(base + "/", { waitUntil: "networkidle0" });
 const homeCards = await page.$$eval(".event", (c) => c.length);
 homeCards > 0 && homeCards <= 6 ? pass(`home page shows ${homeCards} events`) : fail(`home page shows ${homeCards} events`);
 
-// Every club event's card, and its details at the top and bottom, offer Register.
+// Every rated club event's card, and its details at the top and bottom, offer Register; an unrated one, such as a class, doesn't.
 await page.goto(base + "/events/", { waitUntil: "networkidle0" });
 const invitationalIds = new Set(events.filter((e) => (e.tags || []).includes("invitational")).map((e) => e.title));
+const unratedIds = new Set(events.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated")).map((e) => e.title));
 const clubCards = await page.$$(".event-club");
 let clubCard = null;
 for (const card of clubCards) {
   const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
-  if (!invitationalIds.has(title)) { clubCard = card; break; }
+  if (!invitationalIds.has(title) && !unratedIds.has(title)) { clubCard = card; break; }
+}
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!unratedIds.has(title)) continue;
+  await card.$eval(".event-open", (b) => b.click());
+  const offered = await page.$$eval("dialog.event-dialog .event-register", (a) => a.length)
+    + await card.$$eval(".event-card-register", (a) => a.length);
+  await page.keyboard.press("Escape");
+  offered === 0
+    ? pass(`the unrated ${title} offers no Register`)
+    : fail(`unrated card ${title} offers Register`);
+  break;
 }
 for (const card of clubCards) {
   const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
@@ -432,7 +446,7 @@ if (registerPath) {
 
 // The home page's register cards. Through a month's second Monday the club night card asks
 // players to register for the month, then to drop in; the clock is set an hour before each case.
-const clubNights = clubEvents.filter((e) => !e.tags.includes("tournament"));
+const clubNights = clubEvents.filter((e) => !e.tags.includes("tournament") && e.tags.includes("rated"));
 const ordinal = (e) => Math.ceil(Number(e.start.slice(8, 10)) / 7);
 for (const [night, expected] of [[clubNights.find((e) => ordinal(e) <= 2), /^Register for /],
                                  [clubNights.find((e) => ordinal(e) > 2), /^Drop in /]]) {

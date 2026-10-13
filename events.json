@@ -59,7 +59,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -400,6 +400,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-10-19T17:30:00-06:00",
+  "end": "2026-10-19T18:30:00-06:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -430,7 +459,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -799,6 +828,35 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-10-26T17:30:00-06:00",
+  "end": "2026-10-26T18:30:00-06:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -829,7 +887,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -1228,6 +1286,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-11-02T17:30:00-07:00",
+  "end": "2026-11-02T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1258,7 +1345,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -1657,6 +1744,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-11-09T17:30:00-07:00",
+  "end": "2026-11-09T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -1687,7 +1803,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -2083,6 +2199,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-11-16T17:30:00-07:00",
+  "end": "2026-11-16T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -2113,7 +2258,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -2484,6 +2629,35 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-11-23T17:30:00-07:00",
+  "end": "2026-11-23T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -2514,7 +2688,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -2690,6 +2864,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-11-30T17:30:00-07:00",
+  "end": "2026-11-30T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -2720,7 +2923,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
@@ -3147,6 +3350,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-12-07T17:30:00-07:00",
+  "end": "2026-12-07T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -3177,7 +3409,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -3546,6 +3778,35 @@
   "description": "Cost: $99 for the fall semester, $120 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for McGraw Elementary students in grades 1–5 (kindergarteners on request), Mondays 2:30 – 3:15 PM in the Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mcgraw/\n\nMcGraw Elementary School\n4800 Hinsdale Dr, Fort Collins, CO 80526"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-12-14T17:30:00-07:00",
+  "end": "2026-12-14T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -3576,7 +3837,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -3866,6 +4127,35 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-12-21T17:30:00-07:00",
+  "end": "2026-12-21T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -3896,7 +4186,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -4046,6 +4336,35 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2026-12-28T17:30:00-07:00",
+  "end": "2026-12-28T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -4076,7 +4395,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -4285,6 +4604,35 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
+  "title": "Chess for Beginners at Peak",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "all-ages",
+   "club",
+   "free",
+   "weekly"
+  ],
+  "url": "",
+  "price": "0",
+  "pairing": "",
+  "rounds": "",
+  "page": "/events/chess-for-beginners-at-peak/",
+  "start": "2027-01-04T17:30:00-07:00",
+  "end": "2027-01-04T18:30:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
   "title": "Monday Club Night at Peak",
   "calendar": "club",
   "organizer": "Larimer County Chess Club",
@@ -4315,7 +4663,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",

@@ -2033,7 +2033,8 @@ function clubEvents() {
     };
   };
   for (const e of events.sort((a, b) => a.start.localeCompare(b.start))) {
-    if (!e.page) continue;
+    // An unrated club event, such as a class, takes no registration.
+    if (!e.page || !e.tags.includes("rated")) continue;
     const name = e.page.split("/").filter(Boolean).pop();
     const start = new Date(e.start);
     const day = Utilities.formatDate(start, TZ, "EEEE, MMMM d, yyyy");
