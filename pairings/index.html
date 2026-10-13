@@ -489,6 +489,8 @@ section.td-table td { white-space: nowrap; }
 .hint-text { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 6px); width: max-content; max-width: min(28em, calc(100vw - 32px)); padding: 8px 10px; font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
 .hint:hover .hint-text, .hint-button:focus-visible + .hint-text, .hint-button[aria-expanded="true"] + .hint-text { display: block; }
 .hint[data-dismissed] .hint-text { display: none; }
+/* A hint shown as a popover, over a box that scrolls; pairings.js places it by its button. */
+.hint-pop:popover-open { display: block; position: fixed; inset: auto; margin: 0; }
 .run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
 .run-sections legend { position: relative; padding: 0; font-weight: 600; }
 .run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
@@ -597,6 +599,6 @@ section.td-table td { white-space: nowrap; }
   <script src="../live.js?v=d1a40ee2c6" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
-  <script src="../pairings.js?v=405b269991" defer></script>
+  <script src="../pairings.js?v=da4a09ccb3" defer></script>
 </body>
 </html>

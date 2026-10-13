@@ -1613,16 +1613,35 @@ const standingsTables = () => standingsPage.evaluate(() => [...document.querySel
 const now = await standingsTables();
 JSON.stringify(now.map((s) => [s.name, s.after, s.options, s.rows.length])) === JSON.stringify([
   ["Open", "2", ["1", "2 (in progress)"], 4], ["Under 1400", "1", ["1"], 3]])
-  && now[0].head.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Median|Solkoff|Cumulative|Opp. cumulative|Performance|Est. rating*"
+  && now[0].head.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Median|Solkoff|Cumulative|Opp. cumulative|Performance|Est. rating ?"
   && now[0].rows.slice(0, 2).every((r) => r[3] === "1.5")
-  && now.every((s) => s.note === "* Est. rating estimate")
+  && now.every((s) => s.note === "")
   // Each round: the result, the opponent's place, and the color; Cal and Dee's game has no result yet.
   && now[0].rows.map((r) => `${r[1]} ${r[4]}, ${r[5]}`).join("|") === "Ann W3 w, D2 b|Ben W4 b, D1 w|Cal L1 b, 4 w|Dee L2 w, 3 b"
   && now[1].rows.map((r) => `${r[1]} ${r[4]}`).join("|") === "Gus B|Eve D3 w|Fay D2 b"
-  && now.flatMap((s) => s.rows.map((r) => `${r[1]} ${r[s.head.indexOf("Performance")]} ${r[s.head.indexOf("Est. rating*")]}`)).join("|")
+  && now.flatMap((s) => s.rows.map((r) => `${r[1]} ${r[s.head.indexOf("Performance")]} ${r[s.head.indexOf("Est. rating ?")]}`)).join("|")
     === "Ann 1891 1996|Ben 1941 1813|Cal 1200 1596|Dee 1000 1494|Gus  |Eve 1200 1293|Fay 1300 1207"
   ? pass("Standings page shows each section after its latest round with results: rounds, the 34E tiebreaks, performance, and estimated ratings")
   : fail(`Standings page: ${JSON.stringify(now)}`);
+// Est. rating's ? shows its explanation over the table on hover, keeps it while the pointer moves onto it, and Escape hides it.
+const tipShown = () => standingsPage.evaluate(() => {
+  const tip = document.getElementById("estimate-tip");
+  const at = tip.getBoundingClientRect();
+  return { open: tip.matches(":popover-open"), text: tip.textContent.slice(0, 21), inside: at.left >= 0 && at.right <= innerWidth,
+    expanded: document.querySelector(".standings-all th .hint-button").getAttribute("aria-expanded") };
+});
+await standingsPage.hover(".standings-all th .hint-button");
+const tipHover = await tipShown();
+await standingsPage.hover("#estimate-tip");
+await new Promise((resolve) => setTimeout(resolve, 400));
+const tipKept = await tipShown();
+await standingsPage.keyboard.press("Escape");
+const tipGone = await tipShown();
+tipHover.open && tipHover.inside && tipHover.text === "Est. rating estimates" && tipHover.expanded === "true" && tipKept.open
+  && !tipGone.open && tipGone.expanded === "false"
+  ? pass("Standings page's Est. rating ? shows its explanation over the table, keeps it under the pointer, and hides it on Escape")
+  : fail(`Standings page Est. rating hint: ${JSON.stringify({ tipHover, tipKept, tipGone })}`);
+await standingsPage.mouse.move(0, 0);
 await standingsPage.select(".standings-all select", "1");
 const afterOne = await standingsTables();
 afterOne[0].after === "1" && afterOne[0].rows[0][1] === "Ann" && afterOne[0].rows[0][3] === "1"
@@ -1642,7 +1661,7 @@ const quadStandingsPage = await mocked("/standings/ with quads", () => {
 });
 await quadStandingsPage.goto(base + "/standings/", { waitUntil: "networkidle0" });
 const quadHead = await quadStandingsPage.$$eval(".standings-all th", (cells) => cells.map((c) => c.textContent));
-quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Sonneborn-Berger|Head-to-head|Performance|Est. rating*"
+quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Sonneborn-Berger|Head-to-head|Performance|Est. rating ?"
   ? pass("Standings page ranks a quad by score, Sonneborn-Berger, and head-to-head (34F)") : fail(`Standings page quad: ${JSON.stringify(quadHead)}`);
 await quadStandingsPage.close();
 

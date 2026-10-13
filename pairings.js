@@ -20,7 +20,7 @@ function tableOf(headings, rows, label) {
   for (const h of headings) {
     const th = document.createElement("th");
     th.scope = "col";
-    th.textContent = h;
+    th.append(h);
     head.append(th);
   }
   const body = table.createTBody();
@@ -324,21 +324,63 @@ function headToHead(r, rows) {
   return rows.some((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger) ? r.headToHead : "";
 }
 
-const ROUNDS = "Each round shows the result (W win, L loss, D draw, X win by forfeit, F loss by forfeit, B full-point bye, "
-  + "H half-point bye, U not played), the opponent's place in the table, and the color played (w or b). A game still "
-  + "being played shows only the opponent and color.";
-const ESTIMATE = "* Est. rating estimates the regular rating US Chess will give each player for the games played so far, by its "
+const ESTIMATE = "Est. rating estimates the regular rating US Chess will give each player for the games played so far, by its "
   + "published formula, from their rating as entered, their floor, and their rated games before the event. Checked against US "
   + "Chess's own ratings of a 63-player section, it was within a point for three players in four and within 10 for most of the "
   + "rest. It is further off for an unrated player, whom US Chess starts from their age or another rating, for a rating that "
   + "changed after the player entered, and for players over 2200 in some time controls. The official rating comes from US Chess "
   + "once the event is rated.";
 
-/** A standings table with the estimate's footnote under it. */
-function withNote(table) {
-  const note = paragraph(ESTIMATE);
-  note.className = "table-note";
-  return [table, note];
+// The Est. rating heading's ? shows ESTIMATE in a popover, since the table's sideways scrolling would clip a
+// tooltip inside it. It shows on hover, focus, or a tap, stays while the pointer is on it, and Escape hides it.
+let estimateTip = null;
+let tipFor = null;
+let tipTimer = 0;
+
+function estimateHeading() {
+  if (!estimateTip) {
+    estimateTip = Object.assign(document.createElement("div"), { id: "estimate-tip", className: "hint-text hint-pop", textContent: ESTIMATE });
+    estimateTip.popover = "manual";
+    estimateTip.setAttribute("role", "tooltip");
+    estimateTip.addEventListener("pointerenter", () => clearTimeout(tipTimer));
+    estimateTip.addEventListener("pointerleave", hideTip);
+    document.body.append(estimateTip);
+    document.addEventListener("keydown", (event) => event.key === "Escape" && hideTip());
+    document.addEventListener("click", (event) => !event.target.closest(".hint-button, .hint-pop") && hideTip());
+    addEventListener("scroll", hideTip, { capture: true, passive: true });
+  }
+  const button = Object.assign(document.createElement("button"), { type: "button", className: "hint-button", textContent: "?" });
+  button.setAttribute("aria-label", "About Est. rating");
+  button.setAttribute("aria-describedby", estimateTip.id);
+  button.setAttribute("aria-expanded", "false");
+  button.addEventListener("pointerenter", () => showTip(button));
+  button.addEventListener("pointerleave", () => { tipTimer = setTimeout(hideTip, 300); });
+  button.addEventListener("focus", () => showTip(button));
+  button.addEventListener("blur", hideTip);
+  button.addEventListener("click", () => showTip(button));
+  const heading = document.createDocumentFragment();
+  heading.append("Est. rating ", button);
+  return heading;
+}
+
+/** Opens the tip under the button, or over it near the bottom of the window, inside the window's edges. */
+function showTip(button) {
+  clearTimeout(tipTimer);
+  if (tipFor && tipFor !== button) tipFor.setAttribute("aria-expanded", "false");
+  tipFor = button;
+  button.setAttribute("aria-expanded", "true");
+  if (!estimateTip.matches(":popover-open")) estimateTip.showPopover();
+  const at = button.getBoundingClientRect();
+  const { offsetWidth: width, offsetHeight: height } = estimateTip;
+  estimateTip.style.left = `${Math.max(16, Math.min(at.right - width, innerWidth - width - 16))}px`;
+  estimateTip.style.top = `${at.bottom + 6 + height > innerHeight ? Math.max(8, at.top - 6 - height) : at.bottom + 6}px`;
+}
+
+function hideTip() {
+  clearTimeout(tipTimer);
+  if (estimateTip?.matches(":popover-open")) estimateTip.hidePopover();
+  tipFor?.setAttribute("aria-expanded", "false");
+  tipFor = null;
 }
 
 /** A player's rounds, each as the result, the opponent's place in the table, and the color: "W4 b". */
@@ -347,9 +389,6 @@ function roundCells(t, rows) {
   const rounds = Pairing.roundByRound(t);
   return (id) => rounds.get(id).map((x) => `${x.code}${x.opponent ? place.get(x.opponent) : ""}${x.color ? ` ${x.color}` : ""}`);
 }
-
-const PERFORMANCE = "Performance is the rating that Elo's formula expects to make each player's score in the games played so far against "
-  + "rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above or below those opponents' average.";
 
 function standingsSection(t, ti) {
   const section = document.createElement("section");
@@ -362,10 +401,11 @@ function standingsSection(t, ti) {
     section.append(paragraph("Standings appear here once round 1 has results."));
     return section;
   }
-  section.append(paragraph(quad
-    ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). Players tied on all three share a place."
-    : "Ties are broken in the US Chess default order (34E): modified median, Solkoff, cumulative, and cumulative of opposition."),
-  paragraph(ROUNDS), paragraph(PERFORMANCE));
+  // A Swiss's tiebreaks are in the page's opening paragraph.
+  if (quad) {
+    section.append(paragraph("Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). "
+      + "Players tied on all three share a place."));
+  }
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
@@ -381,16 +421,16 @@ function standingsSection(t, ti) {
       if (quad) {
         const rows = Pairing.quadStandings(sofar);
         const cells = roundCells(sofar, rows);
-        return withNote(tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating*"],
+        return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", estimateHeading()],
           rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, headToHead(r, rows),
-            r.performance ?? "", r.estimate ?? ""]), label));
+            r.performance ?? "", r.estimate ?? ""]), label)];
       }
       const rows = Pairing.standings(sofar);
       const cells = roundCells(sofar, rows);
-      return withNote(tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
-        "Est. rating*"],
+      return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
+        estimateHeading()],
         rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
-          r.performance ?? "", r.estimate ?? ""]), label));
+          r.performance ?? "", r.estimate ?? ""]), label)];
     };
     section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
   });
