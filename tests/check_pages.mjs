@@ -859,7 +859,7 @@ export async function signInWithEmailLink(a, email, href) {
 }
 export function onAuthStateChanged(a, listener) {
   listeners.push(listener);
-  setTimeout(() => listener(auth.currentUser));
+  if (!fake.stalled) setTimeout(() => listener(auth.currentUser));
   return () => listeners.splice(listeners.indexOf(listener), 1);
 }
 export async function sendEmailVerification(user, settings) { log("sendEmailVerification", user.email, settings); }
@@ -991,6 +991,16 @@ choicesEarly && restEarly && eagerIn && eagerRows
   ? pass("TD desk asks for the events with the sign-in, and for the ledger, incidents, and tournament with the entries")
   : fail(`TD desk loading at once: ${JSON.stringify({ choicesEarly, restEarly, eagerIn, eagerRows, calls: eager.calls.map((c) => c.action) })}`);
 await eager.tab.close();
+
+// On a phone, Firebase can hang looking for a saved sign-in and never report one; the form shows anyway.
+const stalled = await firebaseDesk("/td/ with Firebase stalled", { stalled: true, accounts: {} }, { width: 390, height: 844 });
+await stalled.tab.goto(base + "/td/", { waitUntil: "load" });
+const stalledForm = await stalled.tab.waitForFunction(() => !document.querySelector(".td-login").hidden
+  && document.querySelector(".td-google").checkVisibility()
+  && document.querySelector(".td-login-status").textContent.includes("taking too long"), { timeout: 9000 }).then(() => true, () => false);
+stalledForm ? pass("TD desk shows the sign-in form when Firebase never reports a saved sign-in")
+  : fail(`TD desk stayed blank while Firebase stalled: "${await stalled.status()}"`);
+await stalled.tab.close();
 
 // A popup the browser blocks falls back to a redirect.
 const blocked = await firebaseDesk("/td/ with a blocked popup", { popupBlocked: true,

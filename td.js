@@ -709,6 +709,7 @@ document.addEventListener("focusout", () => setTimeout(applyChanges));
 // reload signs the desk in again through onAuthStateChanged.
 const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.19.0";
 const EMAIL_KEY = "lccc-td-email";
+const SIGN_IN_PATIENCE = 6000;
 const loginStatus = login.querySelector(".td-login-status");
 // The page's address without the sign-in link's query, for links back to it.
 const deskAddress = () => new URL(location.pathname, location.href).href;
@@ -778,16 +779,23 @@ function spentLink(error) {
 }
 
 async function startFirebase() {
+  login.querySelector(".td-login-password").remove();
+  // The form waits for Firebase to say whether this browser is still signed in, which on a phone can
+  // never come: Safari's storage can hang after the tab has slept. So after a while it shows anyway.
+  const stalled = setTimeout(() => {
+    if (!login.hidden || signedIn) return;
+    login.hidden = false;
+    loginStatus.textContent = "Sign-in is taking too long. Reload the page, or close this tab and open the desk again.";
+  }, SIGN_IN_PATIENCE);
   try {
     const [app, sdk] = await Promise.all([import(`${FIREBASE_SDK}/firebase-app.js`), import(`${FIREBASE_SDK}/firebase-auth.js`)]);
     firebase = { ...sdk, auth: sdk.getAuth(app.initializeApp(FIREBASE)) };
   } catch {
+    clearTimeout(stalled);
     login.hidden = false;
-    login.querySelector(".td-login-password").remove();
     loginStatus.textContent = "Couldn't load the sign-in service. Check the connection, then reload the page.";
     return;
   }
-  login.querySelector(".td-login-password").remove();
   login.querySelector(".td-login-accounts").hidden = false;
   login.querySelector(".td-google").addEventListener("click", () => signInWith(new firebase.GoogleAuthProvider()));
   firebase.getRedirectResult(firebase.auth).catch((error) => { loginStatus.textContent = authProblem(error); });
@@ -802,6 +810,7 @@ async function startFirebase() {
     }
   }
   firebase.onAuthStateChanged(firebase.auth, async (user) => {
+    clearTimeout(stalled);
     // Firebase ends a session itself when the account is disabled, or when another tab signs out.
     if (!user) {
       if (signedIn) signOut("Your sign-in has ended. Sign in again.");
