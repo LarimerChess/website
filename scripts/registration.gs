@@ -65,6 +65,7 @@
  * added, so a later price change never rewrites it. A payment covers the rating fee first. What a
  * player pays over the fee, the TD can make a donation to the club: the payment's Donation, kept out of
  * the entry fee and never refunded, and credited to the player by their name and US Chess ID on the row.
+ * A donation apart from any entry, from a contact or anonymous, is a row of its own (giveDonation).
  *
  * Invitational club events (calendar metadata access=invitational) and events in the registration
  * Sheet's "Closed events" tab (Event, Name, Start, Format, Rounds, Fee) take registrations only from the TD
@@ -146,6 +147,7 @@ function doPost(e) {
       case "history": return json({ players: history(p.q) });
       case "people": return json({ players: people() });
       case "contacts": return json(contacts());
+      case "donation": return json(giveDonation(p, td));
       case "contactSave": return json(saveContact(p));
       case "contactDelete": return json(deleteContact(p.id));
       case "search": return json({ players: search(p.q) });
@@ -517,7 +519,8 @@ function phoneNumber(text) {
 // Headings the desk's Contacts section needs; the tab's others are its own, and the desk shows them all.
 const CONTACT_HEADINGS = ["Name", "Email", "Phone", "US Chess ID", "ID"];
 
-/** The Contacts tab for the desk's Contacts section: its headings but ID, and each contact. A contact
+/** The Contacts tab for the desk's Contacts section: its headings but ID, and each contact with what
+ *  they have donated, by their ID or their US Chess ID; and what was donated anonymously. A contact
  *  added in the Sheet by hand gets its ID here. */
 function contacts() {
   const lock = LockService.getScriptLock();
@@ -525,6 +528,8 @@ function contacts() {
   try {
     const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
     const headings = Object.keys(col).filter((h) => h && h !== "ID");
+    const gifts = readPayments().rows.filter((x) => cents(x.Donation));
+    const given = (keep) => money(gifts.filter(keep).reduce((n, x) => n + cents(x.Donation), 0) / 100);
     const list = [];
     rows.forEach((r, i) => {
       if (!r.some(Boolean)) return;
@@ -532,9 +537,11 @@ function contacts() {
         r[col.ID] = Utilities.getUuid();
         sheet.getRange(i + 2, col.ID + 1).setNumberFormat("@").setValue(r[col.ID]);
       }
-      list.push({ id: r[col.ID], ...Object.fromEntries(headings.map((h) => [h, r[col[h]]])) });
+      const id = r[col.ID], uschess = r[col["US Chess ID"]];
+      list.push({ id, ...Object.fromEntries(headings.map((h) => [h, r[col[h]]])),
+        donated: given((x) => x.Token === id || (uschess && x["US Chess ID"] === uschess)) });
     });
-    return { headings, contacts: list };
+    return { headings, contacts: list, anonymous: given((x) => x.Type === "donation" && !x.Token) };
   } finally {
     lock.releaseLock();
   }
@@ -1697,7 +1704,8 @@ function markPaid(token, amount, by, donate) {
     sheet.getRange(row.index + 2, col.Paid + 1).setNumberFormat("@").setValue(amount);
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
     sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(amount ? method : "");
-    touch("entries");
+    // A contact's Donated total counts donations made with entries too.
+    touch("entries", ...(donation || mine.some((x) => cents(x.Donation)) ? ["contacts"] : []));
     const gift = donation ? `, with a $${money(donation / 100)} donation` : "";
     return { ok: true, message: amount ? `${row.name} paid $${amount} by ${method}${gift}.` : `${row.name} is marked unpaid.` };
   } finally {
@@ -1779,6 +1787,39 @@ function toNight(p, td) {
     });
   }
   return { ok: true, message: `${name} is registered for ${night.label} only. ${owed}` };
+}
+
+/** Records a donation to the club apart from any entry, from the contact p.contact or, with none,
+ *  anonymous: the ledger row's Token is the contact's ID and its Event blank. A negative amount
+ *  corrects a mistake. By card, the card fee comes out of what was given. */
+function giveDonation(p, td) {
+  const amount = String(p.amount || "").trim().replace(/^\$/, "");
+  if (!/^-?\d+(\.\d\d)?$/.test(amount) || !cents(amount)) return { error: "Enter the amount given, such as 20." };
+  const method = p.by || "cash";
+  if (!METHODS.includes(method)) return { error: "Choose how it was given." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    let party = { Event: "", Date: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd"), "US Chess ID": "", Name: "Anonymous" };
+    if (p.contact) {
+      const { col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+      const r = rows.find((x) => x[col.ID] === p.contact);
+      if (!r) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
+      party = { ...party, "US Chess ID": r[col["US Chess ID"]], Name: r[col.Name] };
+    }
+    const received = cents(amount);
+    const split = allocate(Math.abs(received), method, 0, 0, prices().fees.card);
+    const sign = Math.sign(received);
+    const note = [String(p.note || "").trim(), td && td.name ? `By ${td.name}` : ""].filter(Boolean).join(". ");
+    addPayment(readPayments(), p.contact || "", party, { Type: sign > 0 ? "donation" : "correction", Method: method, Received: received,
+      "Card fee": sign * split["Card fee"], Donation: sign * split["Entry fee"], Note: note });
+    touch("contacts");
+    const gift = money(split["Entry fee"] / 100);
+    return { ok: true, message: sign > 0 ? `Recorded a $${gift} donation from ${party.Name}${split["Card fee"] ? ", after the card fee" : ""}.`
+      : `Took $${gift} off ${party.Name}'s donations.` };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Records money paid back to a player, by how it went back. It comes from the rating fee the entry no

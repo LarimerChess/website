@@ -1,6 +1,6 @@
 // The TD desk's Contacts section: the registration Sheet's Contacts tab, searched as you type, with
 // each contact added, changed, or deleted through the registration script (contacts, contactSave,
-// contactDelete). td.js loads the contacts at sign-in into contactBook and says so with a
+// contactDelete), and donations to the club from a contact or anonymous (donation). td.js loads the contacts at sign-in into contactBook and says so with a
 // "td-contacts" event; call() and hidden() come from it too.
 
 const contactsPanel = document.querySelector(".td-contacts-panel");
@@ -11,6 +11,7 @@ const contactDialog = document.querySelector(".td-contact");
 const contactForm = contactDialog.querySelector("form");
 const contactStatus = contactDialog.querySelector(".td-contact-status");
 const contactDelete = contactDialog.querySelector(".td-contact-delete");
+const anonymousTotal = document.querySelector(".td-contacts-anonymous");
 const SHOWN = 100;
 let editing = null;
 
@@ -27,6 +28,14 @@ function showContacts() {
   contactsTable.tBodies[0].replaceChildren(...found.slice(0, SHOWN).map((c) => {
     const row = document.createElement("tr");
     for (const heading of ["Name", "US Chess ID", "Email", "Phone", "Status", "Role"]) row.insertCell().textContent = c[heading] || "";
+    row.insertCell().textContent = Number(c.donated) ? `$${c.donated}` : "";
+    const give = document.createElement("button");
+    give.type = "button";
+    give.className = "td-action";
+    give.textContent = "Donation";
+    give.append(hidden(` from ${c.Name}`));
+    give.addEventListener("click", () => recordDonation(c, give));
+    row.insertCell().append(give);
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "td-action";
@@ -37,6 +46,27 @@ function showContacts() {
     return row;
   }));
   contactsTable.hidden = !found.length;
+  anonymousTotal.textContent = Number(contactBook.anonymous) ? `Anonymous donations so far: $${contactBook.anonymous}.` : "";
+}
+
+/** Asks for a donation's amount, how it was given, and a note, and records it for the contact, or
+ *  with none, as anonymous. */
+async function recordDonation(contact, button) {
+  const from = contact ? contact.Name : "an anonymous donor";
+  const amount = prompt(`Amount given by ${from}, as received; a negative amount corrects a mistake`, "");
+  if (!amount) return;
+  const by = prompt("How it was given: cash, check, card, or other", "cash");
+  if (by === null) return;
+  const note = prompt("Note, such as a check number or what it is for (optional)", "");
+  if (note === null) return;
+  button.disabled = true;
+  const result = await call("donation", { contact: contact?.id || "", amount, by: by.trim().toLowerCase(), note });
+  button.disabled = false;
+  if (!result.ok) {
+    contactsStatus.textContent = result.error;
+    return;
+  }
+  await reloadContacts(result.message);
 }
 
 /** The dialog for a contact, or a new one: a field for each of the tab's headings. */
@@ -92,5 +122,7 @@ contactDelete.addEventListener("click", async () => {
 
 contactForm.querySelector('[value="cancel"]').addEventListener("click", () => contactDialog.close());
 document.querySelector(".td-contacts-add").addEventListener("click", () => openContact(null));
+const anonymous = document.querySelector(".td-contacts-give");
+anonymous.addEventListener("click", () => recordDonation(null, anonymous));
 contactsSearch.addEventListener("input", showContacts);
 document.addEventListener("td-contacts", showContacts);

@@ -813,13 +813,15 @@ section.td-table td { white-space: nowrap; }
               <label for="td-contacts-search">Search</label>
               <input id="td-contacts-search" type="search" autocomplete="off" spellcheck="false">
               <button class="td-action td-contacts-add" type="button">Add a contact</button>
+              <button class="td-action td-contacts-give" type="button">Anonymous donation</button>
               <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About contacts" aria-describedby="td-contacts-hint">?</button><span id="td-contacts-hint" class="hint-text" role="tooltip">The registration Sheet's Contacts tab, the club's only list of everyone it knows. Changes here save to the Sheet, which keeps its version history; edits made in the Sheet show here after the desk reloads. A contact's US Chess ID lets the player search find them by it.</span></span>
             </div>
           </div>
+          <p class="td-contacts-anonymous"></p>
           <p class="td-contacts-status" role="status"></p>
           <div class="td-table">
             <table class="entries td-contacts" hidden>
-              <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col"><span class="visually-hidden">Edit</span></th></tr></thead>
+              <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Donated</th><th scope="col"><span class="visually-hidden">Donation</span></th><th scope="col"><span class="visually-hidden">Edit</span></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -876,7 +878,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../register.js?v=dc8ab5ced9" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
   <script src="../td.js?v=fb82c1efbd" defer></script>
-  <script src="../td-contacts.js?v=676314ddb3" defer></script>
+  <script src="../td-contacts.js?v=e28e0908c5" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
   <script src="../td-run.js?v=c4465fa6ed" defer></script>

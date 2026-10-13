@@ -533,6 +533,29 @@ test("what's paid over the fee can be a donation, kept out of the fees and refun
   eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").donation, "0");
 });
 
+test("a donation apart from any entry, from a contact or anonymous, and each contact's total with what they gave over their fees", () => {
+  const { gs, sheets } = monthOfAsh();
+  gs.markPaid("token1", "22", "cash", true);
+  assert.equal(gs.saveContact({ fields: JSON.stringify({ Name: "Ann Ash", "US Chess ID": "66666666" }) }).ok, true);
+  const ash = () => gs.contacts().contacts.find((c) => c.Name === "Ann Ash");
+  eq(ash().donated, "5", "found by US Chess ID");
+  assert.equal(gs.giveDonation({ contact: ash().id, amount: "20", by: "check", note: "Check 101" }, { name: "Ben Bishop" }).message,
+    "Recorded a $20 donation from Ann Ash.");
+  const row = rowsOf(sheets.Payments).at(-1);
+  eq([row.Type, row.Token, row.Event, row.Name, row["US Chess ID"], row.Method, row.Received, row.Donation, row["Entry fee"], row.Note],
+    ["donation", ash().id, "", "Ann Ash", "66666666", "check", "20", "20", "0", "Check 101. By Ben Bishop"]);
+  eq(ash().donated, "25");
+  assert.match(gs.giveDonation({ amount: "17.42", by: "card" }, null).message, /^Recorded a \$16\.50 donation from Anonymous, after the card fee\.$/);
+  eq(gs.contacts().anonymous, "16.50");
+  assert.equal(gs.giveDonation({ contact: ash().id, amount: "-5", by: "check" }, null).message, "Took $5 off Ann Ash's donations.");
+  eq(rowsOf(sheets.Payments).at(-1).Type, "correction");
+  eq(ash().donated, "20");
+  eq(gs.ledgerFor("monday-club-night-at-peak/2026-10").donation, "5", "an event's money leaves out donations apart from it");
+  assert.match(gs.giveDonation({ amount: "0" }, null).error, /Enter the amount/);
+  assert.match(gs.giveDonation({ contact: "gone", amount: "5" }, null).error, /no longer in the Sheet/);
+  assert.equal(gs.doPost({ parameter: { action: "donation", password: "sheet", amount: "1" } }).ok, true, "the desk's action");
+});
+
 test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {
   const { gs, sheets, ledger } = monthOfAsh();
   const due = () => gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.due, e.discount, e.discountNote, e.over]);

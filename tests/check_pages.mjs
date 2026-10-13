@@ -572,7 +572,7 @@ for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "searc
 await desk.click(".td-contacts-panel summary");
 await desk.type("#td-contacts-search", "cora");
 const contactRows = await desk.$$eval(".td-contacts tbody tr", (rows) => rows.map((r) => r.cells[0].textContent));
-await desk.click(".td-contacts tbody tr button");
+await desk.click(".td-contacts tbody tr td:last-child button");
 await desk.waitForSelector("dialog.td-contact[open]");
 const phoneField = await desk.$('dialog.td-contact [name="Phone"]');
 await phoneField.click({ clickCount: 3 });
@@ -591,7 +591,7 @@ for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "cont
 }
 const addedContact = deskCalls.filter((c) => c.action === "contactSave").at(-1) || {};
 await desk.waitForFunction(() => !document.querySelector("dialog.td-contact").open);
-await desk.click(".td-contacts tbody tr button");
+await desk.click(".td-contacts tbody tr td:last-child button");
 await desk.waitForSelector("dialog.td-contact[open]");
 await desk.click(".td-contact-delete");
 for (let waited = 0; waited < 5000 && !deskCalls.some((c) => c.action === "contactDelete"); waited += 100) {
@@ -1543,6 +1543,38 @@ JSON.stringify(giftCalls) === JSON.stringify([{ amount: "22", by: "cash", donate
   ? pass("TD desk records what's paid over the fee as the player's donation and shows it on the row and in the money")
   : fail(`TD desk donation: ${JSON.stringify({ giftCalls, giftAsked, giftPaid, giftMoney })}`);
 await giftDesk.close();
+
+// A donation apart from any entry: from a contact, on their row, or anonymous, by the Contacts tools.
+let giveBook = { headings: ["Name", "US Chess ID"], contacts: [{ id: "c1", Name: "Cora Contact", "US Chess ID": "12345678", donated: "5" }], anonymous: "" };
+const giveCalls = [];
+const giveDesk = await mocked("/td/ donations from contacts", (p) => {
+  if (p.action === "donation") {
+    giveCalls.push({ contact: p.contact, amount: p.amount, by: p.by, note: p.note });
+    giveBook = p.contact ? { ...giveBook, contacts: [{ ...giveBook.contacts[0], donated: "25" }] } : { ...giveBook, anonymous: "40" };
+    return { ok: true, message: "donation done" };
+  }
+  return { login: { ok: true, changes: null }, choices: { choices: [] }, people: { players: [] }, contacts: giveBook,
+    entries: { entries: [] }, incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true };
+});
+const giveAnswers = [];
+giveDesk.on("dialog", (d) => d.accept(giveAnswers.shift()));
+await giveDesk.goto(base + "/td/", { waitUntil: "domcontentloaded" });
+await giveDesk.type("#td-password", "secret");
+await giveDesk.click(".td-login button");
+await giveDesk.waitForSelector(".td-contacts tbody tr");
+await giveDesk.click(".td-contacts-panel summary");
+const giveBefore = await giveDesk.$eval(".td-contacts tbody tr", (r) => r.cells[6].textContent);
+giveAnswers.push("20", "Check", "Check 101");
+await giveDesk.$$eval(".td-contacts tbody tr button", (b) => b.find((x) => x.firstChild.textContent === "Donation").click());
+await giveDesk.waitForFunction(() => document.querySelector(".td-contacts tbody tr").cells[6].textContent === "$25");
+giveAnswers.push("40", "cash", "");
+await giveDesk.click(".td-contacts-give");
+await giveDesk.waitForFunction(() => document.querySelector(".td-contacts-anonymous").textContent === "Anonymous donations so far: $40.");
+JSON.stringify(giveCalls) === JSON.stringify([{ contact: "c1", amount: "20", by: "check", note: "Check 101" }, { contact: "", amount: "40", by: "cash", note: "" }])
+  && giveBefore === "$5"
+  ? pass("TD desk records a donation from a contact or an anonymous one, and shows each contact's total and the anonymous one")
+  : fail(`TD desk contact donations: ${JSON.stringify({ giveCalls, giveBefore })}`);
+await giveDesk.close();
 
 const pairingsPage = await mocked("/pairings/", () => ({ tournaments: twoSections() }));
 await pairingsPage.goto(base + "/pairings/", { waitUntil: "networkidle0" });
