@@ -500,9 +500,11 @@ test("a paid month: the player is sent to the TD, who switches it, moving what w
   const { gs, sheets, ledger, public: post } = monthOfAsh();
   assert.equal(gs.markPaid("token1", "17", "cash").ok, true);
   assert.match(post({}).error, /has paid for the month, so the TD switches it/);
-  const switched = gs.toNight({ event: "monday-club-night-at-peak", date: "2026-10-12", token: "token1" }, { name: "Ben Bishop" });
+  // From the desk, which sends the entry's token and its sign-in, not the player's ID.
+  const switched = gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2026-10-12", token: "token1",
+    password: "sheet" } });
   assert.match(switched.message, /\$9\.50 of what was paid for the month is to be refunded/);
-  eq(rowsOf(sheets.Entries).map((r) => [r.Status, r["Added by"]]), [["moved to night", "TD"], ["registered", "TD (Ben Bishop)"]]);
+  eq(rowsOf(sheets.Entries).map((r) => [r.Status, r["Added by"]]), [["moved to night", "TD"], ["registered", "TD"]]);
   const night = () => gs.entries("monday-club-night-at-peak/2026-10-12", true).map((e) => [e.due, e.over, e.refundable, e.refunded]);
   eq(night(), [["0", "9.50", "17", ""]]);
   assert.match(gs.refund("token2", "17.01", "cash", null).error, /At most \$17 can be refunded/);

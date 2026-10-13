@@ -121,7 +121,8 @@ function doPost(e) {
     const p = e.parameter;
     if (!p.action) return json(register(p, false));
     if (p.action === "report") return json(reportResult(p));
-    if (p.action === "toNight") return json(toNight(p, null));
+    // The Entries page's switch; the desk's carries its sign-in and comes through below.
+    if (p.action === "toNight" && !p.idToken && !p.password) return json(toNight(p, null));
     let td = null;
     if (p.idToken) {
       const signedIn = signedInTd(p.idToken);
