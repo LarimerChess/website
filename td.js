@@ -6,6 +6,7 @@
 // listenLive from live.js.
 
 const login = document.querySelector(".td-login");
+const loginStatus = login.querySelector(".td-login-status");
 const desk = document.querySelector(".td-desk");
 // The event menu is in the menu bar, since the whole desk shows that one event.
 const navEvent = document.querySelector(".td-nav-event");
@@ -133,8 +134,15 @@ function signOut(message = "") {
   td = null;
   if (firebase?.auth.currentUser) firebase.signOut(firebase.auth).catch(() => {});
   desk.hidden = navEvent.hidden = true;
+  showLogin(message);
+}
+
+/** Shows the sign-in form's status, and its buttons only when ask is set: the desk shows them only
+ *  once it knows the TD has to sign in, not while it is still checking a sign-in. */
+function showLogin(message = loginStatus.textContent, ask = true) {
   login.hidden = false;
-  login.querySelector(".td-login-status").textContent = message;
+  loginStatus.textContent = message;
+  for (const part of login.querySelectorAll(".td-login-password, .td-login-accounts")) part.hidden = !ask;
 }
 
 async function signIn(value = "") {
@@ -186,8 +194,7 @@ function offerToSave(value) {
 login.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (firebase) return emailLink();
-  const status = login.querySelector(".td-login-status");
-  status.textContent = "Signing in…";
+  loginStatus.textContent = "Signing in…";
   try {
     const value = login.elements.password.value;
     if (await signIn(value)) {
@@ -195,7 +202,7 @@ login.addEventListener("submit", async (event) => {
       login.reset();
     }
   } catch {
-    status.textContent = "Couldn't reach the registration service. Try again.";
+    loginStatus.textContent = "Couldn't reach the registration service. Try again.";
   }
 });
 
@@ -710,7 +717,6 @@ document.addEventListener("focusout", () => setTimeout(applyChanges));
 const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.19.0";
 const EMAIL_KEY = "lccc-td-email";
 const SIGN_IN_PATIENCE = 6000;
-const loginStatus = login.querySelector(".td-login-status");
 // The page's address without the sign-in link's query, for links back to it.
 const deskAddress = () => new URL(location.pathname, location.href).href;
 
@@ -781,29 +787,28 @@ function spentLink(error) {
 async function startFirebase() {
   login.querySelector(".td-login-password").remove();
   // The form waits for Firebase to say whether this browser is still signed in, which on a phone can
-  // never come: Safari's storage can hang after the tab has slept. So after a while it shows anyway.
+  // never come: Safari's storage can hang after the tab has slept. So after a while it says so.
   const stalled = setTimeout(() => {
     if (!login.hidden || signedIn) return;
-    login.hidden = false;
-    loginStatus.textContent = "Sign-in is taking too long. Reload the page, or close this tab and open the desk again.";
+    showLogin("Sign-in is taking too long. Reload the page, or close this tab and open the desk again.", false);
   }, SIGN_IN_PATIENCE);
   try {
     const [app, sdk] = await Promise.all([import(`${FIREBASE_SDK}/firebase-app.js`), import(`${FIREBASE_SDK}/firebase-auth.js`)]);
     firebase = { ...sdk, auth: sdk.getAuth(app.initializeApp(FIREBASE)) };
   } catch {
     clearTimeout(stalled);
-    login.hidden = false;
-    loginStatus.textContent = "Couldn't load the sign-in service. Check the connection, then reload the page.";
+    showLogin("Couldn't load the sign-in service. Check the connection, then reload the page.", false);
     return;
   }
-  login.querySelector(".td-login-accounts").hidden = false;
   login.querySelector(".td-google").addEventListener("click", () => signInWith(new firebase.GoogleAuthProvider()));
-  firebase.getRedirectResult(firebase.auth).catch((error) => { loginStatus.textContent = authProblem(error); });
+  // Firebase can report no one signed in before a Google redirect or an emailed link has finished
+  // signing someone in, so the buttons wait for those.
+  const finishing = [firebase.getRedirectResult(firebase.auth).catch((error) => { loginStatus.textContent = authProblem(error); })];
   if (firebase.isSignInWithEmailLink(firebase.auth, location.href)) {
     let email = "";
     try { email = localStorage.getItem(EMAIL_KEY) || ""; } catch {}
     if (email) {
-      finishEmailLink(email).catch(spentLink).catch((error) => { loginStatus.textContent = authProblem(error); });
+      finishing.push(finishEmailLink(email).catch(spentLink).catch((error) => { loginStatus.textContent = authProblem(error); }));
     } else {
       loginStatus.textContent = "Enter the email address the sign-in link was sent to, to finish signing in.";
       login.querySelector(".td-email-link").textContent = "Finish signing in";
@@ -813,13 +818,13 @@ async function startFirebase() {
     clearTimeout(stalled);
     // Firebase ends a session itself when the account is disabled, or when another tab signs out.
     if (!user) {
-      if (signedIn) signOut("Your sign-in has ended. Sign in again.");
-      login.hidden = false;
+      if (signedIn) return signOut("Your sign-in has ended. Sign in again.");
+      await Promise.all(finishing);
+      if (!firebase.auth.currentUser) showLogin();
       return;
     }
     if (signedIn) return;
-    login.hidden = false;
-    loginStatus.textContent = "Signing in…";
+    showLogin("Signing in…", false);
     try {
       if (await signIn()) loginStatus.textContent = "";
     } catch {
@@ -834,9 +839,6 @@ if (FIREBASE) {
   login.querySelector(".td-login-accounts").remove();
   (async () => {
     const saved = remembered();
-    if (!saved || !(await signIn(saved).catch(() => false))) {
-      login.hidden = false;
-      if (!saved) loginStatus.textContent = "";
-    }
+    if (!saved || !(await signIn(saved).catch(() => false))) showLogin(saved ? undefined : "");
   })();
 }

@@ -364,7 +364,8 @@ registration.on("request", async (request) => {
     request.continue();
   }
 });
-const registerPath = seriesPages.find((p) => clubEvents.filter((e) => e.page === p).length > 1) || seriesPages[0];
+// Free events have no Register form.
+const registerPath = seriesPages.find((p) => clubEvents.filter((e) => e.page === p && !e.tags?.includes("free")).length > 1) || seriesPages[0];
 if (registerPath) {
   await registration.goto(base + registerPath, { waitUntil: "networkidle0" });
   const rows = await registration.$$eval(".entries tbody tr", (r) => r.map((x) => x.textContent));
@@ -877,6 +878,13 @@ async function firebaseDesk(label, fake, viewport) {
   const tab = await browser.newPage();
   tab.on("pageerror", (error) => fail(`JavaScript error on ${label}: ${error.message}`));
   if (viewport) await tab.setViewport(viewport);
+  // Whether a sign-in button has shown since the page loaded, checked whenever something is shown or hidden.
+  await tab.evaluateOnNewDocument(() => {
+    window.sawSignIn = false;
+    new MutationObserver(() => {
+      if (document.querySelector(".td-google")?.checkVisibility()) window.sawSignIn = true;
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["hidden"] });
+  });
   await tab.setRequestInterception(true);
   tab.on("request", async (request) => {
     const url = new URL(request.url());
@@ -910,6 +918,7 @@ async function firebaseDesk(label, fake, viewport) {
   state.tab = tab;
   state.fakeCalls = () => tab.evaluate(() => JSON.parse(sessionStorage.getItem("fakeCalls") || "[]"));
   state.status = () => tab.$eval(".td-login-status", (s) => s.textContent);
+  state.sawSignIn = () => tab.evaluate(() => window.sawSignIn);
   state.signedIn = () => tab.waitForSelector(".td-desk:not([hidden])", { timeout: 3000 }).then(() => true, () => false);
   state.signedOut = (text) => tab.waitForFunction((t) => !document.querySelector(".td-login").hidden
     && document.querySelector(".td-desk").hidden && document.querySelector(".td-login-status").textContent.includes(t), { timeout: 3000 }, text)
@@ -952,8 +961,10 @@ incidentTd === "Ada Director" ? pass("TD desk fills in the incident's TD from th
 await google.tab.click('dialog.td-incident [value="cancel"]');
 await google.tab.reload({ waitUntil: "networkidle0" });
 const keptIn = await google.signedIn();
-keptIn && google.calls.filter((c) => c.action === "login").length === 2
-  ? pass("TD desk stays signed in with Firebase across a reload") : fail("TD desk with Firebase signed out on reload");
+const keptQuietly = !(await google.sawSignIn());
+keptIn && keptQuietly && google.calls.filter((c) => c.action === "login").length === 2
+  ? pass("TD desk stays signed in with Firebase across a reload, without showing the sign-in buttons")
+  : fail(`TD desk with Firebase on reload: ${JSON.stringify({ keptIn, keptQuietly })}`);
 await google.tab.click(".td-sign-out");
 const outAfter = await google.signedOut("Signed out.");
 const outFake = (await google.fakeCalls()).some((c) => c[0] === "signOut");
@@ -992,14 +1003,15 @@ choicesEarly && restEarly && eagerIn && eagerRows
   : fail(`TD desk loading at once: ${JSON.stringify({ choicesEarly, restEarly, eagerIn, eagerRows, calls: eager.calls.map((c) => c.action) })}`);
 await eager.tab.close();
 
-// On a phone, Firebase can hang looking for a saved sign-in and never report one; the form shows anyway.
+// On a phone, Firebase can hang looking for a saved sign-in and never report one; the desk says so,
+// without the buttons, since the TD may well be signed in.
 const stalled = await firebaseDesk("/td/ with Firebase stalled", { stalled: true, accounts: {} }, { width: 390, height: 844 });
 await stalled.tab.goto(base + "/td/", { waitUntil: "load" });
 const stalledForm = await stalled.tab.waitForFunction(() => !document.querySelector(".td-login").hidden
-  && document.querySelector(".td-google").checkVisibility()
+  && !document.querySelector(".td-google").checkVisibility()
   && document.querySelector(".td-login-status").textContent.includes("taking too long"), { timeout: 9000 }).then(() => true, () => false);
-stalledForm ? pass("TD desk shows the sign-in form when Firebase never reports a saved sign-in")
-  : fail(`TD desk stayed blank while Firebase stalled: "${await stalled.status()}"`);
+stalledForm ? pass("TD desk says so, without sign-in buttons, when Firebase never reports a saved sign-in")
+  : fail(`TD desk while Firebase stalled: "${await stalled.status()}"`);
 await stalled.tab.close();
 
 // A popup the browser blocks falls back to a redirect.
@@ -1008,10 +1020,11 @@ const blocked = await firebaseDesk("/td/ with a blocked popup", { popupBlocked: 
 await blocked.tab.goto(base + "/td/", { waitUntil: "networkidle0" });
 await blocked.tab.click(".td-google");
 const redirected = await blocked.signedIn();
+const redirectQuiet = !(await blocked.sawSignIn());
 const redirectCalls = (await blocked.fakeCalls()).map((c) => c.slice(0, 2).join(" "));
-redirected && redirectCalls.includes("signInWithRedirect google.com")
+redirected && redirectQuiet && redirectCalls.includes("signInWithRedirect google.com")
   ? pass("TD desk signs in with Google by redirect when the popup is blocked")
-  : fail(`TD desk redirect: ${JSON.stringify({ redirected, redirectCalls })}`);
+  : fail(`TD desk redirect: ${JSON.stringify({ redirected, redirectQuiet, redirectCalls })}`);
 await blocked.tab.close();
 
 const unlisted = await firebaseDesk("/td/ with an unlisted TD", { accounts: {
@@ -1045,14 +1058,15 @@ const linkSent = (await emailed.fakeCalls()).find((c) => c[0] === "sendSignInLin
 const linkKept = await emailed.tab.evaluate(() => localStorage.getItem("lccc-td-email"));
 await emailed.tab.goto(base + "/td/?apiKey=test-key&mode=signIn&oobCode=abc", { waitUntil: "networkidle0" });
 const linkedIn = await emailed.signedIn();
+const linkQuiet = !(await emailed.sawSignIn());
 const completed = (await emailed.fakeCalls()).find((c) => c[0] === "signInWithEmailLink");
 const cleaned = await emailed.tab.evaluate(() => ({ search: location.search, kept: localStorage.getItem("lccc-td-email") }));
 linkSent?.[1] === "link@example.com" && linkSent[2]?.url === base + "/td/" && linkSent[2]?.handleCodeInApp === true && linkKept === "link@example.com"
-  && linkedIn && JSON.stringify(completed) === JSON.stringify(["signInWithEmailLink", "link@example.com", "abc"])
+  && linkedIn && linkQuiet && JSON.stringify(completed) === JSON.stringify(["signInWithEmailLink", "link@example.com", "abc"])
   && cleaned.search === "" && cleaned.kept === null
   && (await emailed.tab.$eval(".td-who", (w) => w.textContent)) === "Signed in as Lin Kemail"
   ? pass("TD desk sends a sign-in link and signs in when it's opened")
-  : fail(`TD desk email link: ${JSON.stringify({ linkSent, linkKept, linkedIn, completed, cleaned })}`);
+  : fail(`TD desk email link: ${JSON.stringify({ linkSent, linkKept, linkedIn, linkQuiet, completed, cleaned })}`);
 await emailed.tab.click(".td-sign-out");
 await emailed.signedOut("Signed out.");
 await emailed.tab.goto(base + "/td/?apiKey=test-key&mode=signIn&oobCode=def", { waitUntil: "networkidle0" });
