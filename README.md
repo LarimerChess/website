@@ -26,7 +26,7 @@ How each part works is in the opening comment of its file. This README says wher
 
 scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament; once the script property FIREBASE_URL is set, they live in a Firebase Realtime Database instead, which also streams the public copies to the Pairings page and the TD desk, and keeps a copy of the entry lists that the Entries page shows while the script answers (LIVE_DB in register.js; database.rules.json).
 
-What the site shows of them is public: names, US Chess IDs, ratings, pairings, and results, minors' included, as US Chess's crosstables show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
+What the site shows of them is public: names, US Chess IDs, ratings, pairings, results, and the byes players asked for, minors' included, as US Chess's crosstables and wall charts show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
 
 Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensions → Apps Script, then Deploy → Manage deployments → Edit → New version, which keeps the URL. Only the president's account can deploy it.
 
