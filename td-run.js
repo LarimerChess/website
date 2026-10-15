@@ -1033,8 +1033,13 @@ runPlanned.addEventListener("submit", async (e) => {
 });
 
 document.querySelector(".run-restart").addEventListener("click", async () => {
-  if (!confirm("Restart the tournament? This deletes its players, pairings, and results, and the rating report files in its folder. "
-    + "Entries stay registered.")) return;
+  const typed = prompt(`Restart ${current.name}? This deletes its players, pairings, and results, and the rating report files in its folder. `
+    + "Entries stay registered. Type the tournament's name to restart it.", "");
+  if (typed === null) return;
+  if (typed.trim().toLowerCase() !== current.name.trim().toLowerCase()) {
+    runStatus.textContent = `That isn't ${current.name}, so nothing was restarted.`;
+    return;
+  }
   const [event, date] = keyParts();
   const result = await call("restart", { event, date });
   if (result.ok) {

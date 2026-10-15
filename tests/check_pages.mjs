@@ -2789,7 +2789,9 @@ await donePage.evaluateOnNewDocument(() => {
     } };
   window.showDirectoryPicker = async () => folder;
 });
-donePage.on("dialog", (dialog) => dialog.accept());
+// What the TD types when Restart asks for the tournament's name.
+let typedName = "";
+donePage.on("dialog", (dialog) => dialog.accept(dialog.type() === "prompt" ? typedName : undefined));
 await signIn(donePage);
 await donePage.waitForFunction(() => document.querySelectorAll(".run-report-download").length === 3);
 const kept = () => donePage.evaluate(() => Object.keys(window.keptFiles).sort().join(","));
@@ -2814,6 +2816,12 @@ doneDesk.held.rounds[2].games[1].result = "";
 await reload();
 const goneWhenMissing = (await kept()) === "" && await donePage.$eval(".run-report", (d) => d.hidden);
 doneDesk.held.rounds = JSON.parse(JSON.stringify(keptRounds));
+typedName = "Slow";
+await press(donePage, ".run-restart");
+const wrongName = { status: await donePage.$eval(".run-status", (p) => p.textContent), held: Boolean(doneDesk.held) };
+wrongName.held && wrongName.status === "That isn't Classic, so nothing was restarted."
+  ? pass("TD desk won't restart a tournament unless its name is typed") : fail(`TD desk restart with the wrong name: ${JSON.stringify(wrongName)}`);
+typedName = " classic ";
 await press(donePage, ".run-restart");
 await donePage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Deleted"));
 await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 0);
