@@ -123,6 +123,7 @@ const US_CHESS = {
   11111111: { floor: 1700, outcomes: ["Win", "Loss", "Draw"] },
   55555555: { floor: 100, outcomes: ["Loss", "Loss"] },
   66666666: { first: "Ann", last: "Ash", outcomes: [] },
+  77777777: { first: "Ben", last: "Birch", outcomes: [] },
 };
 
 // cache: what the script cache holds, such as this minute's count of public posts. props: the
@@ -625,8 +626,8 @@ for (const store of STORES) {
     eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
     if (store === "sheet") {
       eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
-        "State"]);
-      eq(heading(sheets.Tournaments).slice(-3), ["Cutoff", "Sections", "TD"]);
+        "State", "Byes"]);
+      eq(heading(sheets.Tournaments).slice(-4), ["Cutoff", "Sections", "TD", "Round dates"]);
     }
     // Its rows are where they were; only headings were added.
     assert.equal(rows("Players")[4]["No."], "5");
@@ -1094,4 +1095,248 @@ test("the signed-in TD is recorded where the desk doesn't name one, and the pass
   eq(post({ action: "whoami", password: "sheet", device: "device-0000000000" }), { td: null });
   assert.equal(post({ action: "incident", password: "sheet", ...p }).error, "Say what happened and who you are.");
   eq(post({ action: "login", password: "wrong", device: "device-0000000000" }), { error: "Wrong password.", login: true });
+});
+
+// Half-point byes asked for in advance. classic/2026-11-07 is a four-round Swiss; quad, arena, and open (a Swiss whose
+// format and rounds aren't set) are other tournament dates; October 2099's club nights fall on the dates in NIGHTS, all
+// still to come. Ann Ash, 66666666, and Ben Birch, 77777777, register online, their ages already checked.
+const NIGHTS = ["2099-10-05", "2099-10-12", "2099-10-19", "2099-10-26"];
+
+function byes(tabs = {}, store = "sheet") {
+  const t = load({ Entries: [], ...tabs }, {}, store);
+  const day = (event, date, label, fields) => ({ event, name: event, kind: "entry", label, first: date, last: date,
+    closes: "2099-01-01T10:00:00-07:00", format: "swiss", rounds: "4", ...fields });
+  const club = (kind, first, label) => ({ event: "monday-club-night-at-peak", name: "Monday Club Night", kind, label, first,
+    last: kind === "month" ? NIGHTS.at(-1) : first, closes: "2099-10-26T18:30:00-06:00", format: "swiss", rounds: "" });
+  t.events = {
+    "classic/2026-11-07": day("classic", "2026-11-07", "Saturday, November 7, 2026"),
+    "quad/2026-11-14": day("quad", "2026-11-14", "Saturday, November 14, 2026", { format: "quad", rounds: "" }),
+    "arena/2026-10-31": day("arena", "2026-10-31", "Saturday, October 31, 2026", { format: "arena", rounds: "" }),
+    "open/2026-11-21": day("open", "2026-11-21", "Saturday, November 21, 2026", { format: "", rounds: "" }),
+    ...Object.fromEntries(NIGHTS.map((d) => [`monday-club-night-at-peak/${d}`, club("night", d, d)])),
+    "monday-club-night-at-peak/2099-10": club("month", NIGHTS[0], "all Mondays in October 2099"),
+  };
+  t.gs.clubEvents = () => t.events;
+  const cache = t.gs.CacheService.getScriptCache();
+  t.gs.CacheService.getScriptCache = () => ({ ...cache, remove: (k) => delete t.cache[k], removeAll: (keys) => keys.forEach((k) => delete t.cache[k]) });
+  t.mail = [];
+  t.gs.MailApp = { sendEmail: (m) => t.mail.push(m) };
+  for (const id of ["66666666", "77777777"]) {
+    t.props[`player:${id}`] = JSON.stringify({ Category: "Adult", "Checked on": new Date().toISOString().slice(0, 10) });
+  }
+  let n = 0;
+  t.gs.Utilities.getUuid = () => `token${++n}`;
+  // The patterns the messages name dates with. Each date is noon UTC, the same day in Denver.
+  const words = { "EEEE, MMMM d": { weekday: "long", month: "long", day: "numeric" }, "MMMM d": { month: "long", day: "numeric" },
+    MMMM: { month: "long" } };
+  const plain = t.gs.Utilities.formatDate;
+  t.gs.Utilities.formatDate = (d, tz, f) => (words[f] ? d.toLocaleDateString("en-US", { timeZone: "UTC", ...words[f] }) : plain(d, tz, f));
+  t.register = (fields, td = false) => t.gs.register({ event: "classic", date: "2026-11-07", id: "66666666", last: "Ash",
+    email: "ann@example.com", ...fields }, td);
+  // As the Entries page sends it, without a sign-in, and as the desk does, by the entry's token.
+  t.post = (fields) => t.gs.doPost({ parameter: { action: "byes", event: "classic", date: "2026-11-07", id: "66666666", last: "Ash",
+    email: "ann@example.com", ...fields } });
+  t.desk = (fields) => t.gs.doPost({ parameter: { action: "byes", password: "sheet", ...fields } });
+  t.entryByes = () => rowsOf(t.sheets.Entries).map((r) => r.Byes);
+  t.playerByes = () => t.rows("Players").map((r) => r.Byes);
+  return t;
+}
+
+test("byes asked for when registering: one online, any on the desk, a month's by night, and none for a night, a quad, or an arena", () => {
+  const { gs, sheets, mail, register } = byes();
+  const refused = (fields) => register(fields).error;
+  assert.equal(refused({ byes: "2, 4" }), "One half-point bye per player; ask the TD for more.");
+  assert.equal(refused({ byes: "5" }), "Not a round of this tournament.");
+  assert.equal(refused({ byes: "two" }), "Not a round of this tournament.");
+  assert.equal(refused({ event: "open", date: "2026-11-21", byes: "2" }), "The number of rounds isn't set yet; tell the TD.");
+  assert.equal(refused({ event: "quad", date: "2026-11-14", byes: "2" }), "This tournament has no byes; a game a player misses is forfeited.");
+  assert.equal(refused({ event: "arena", date: "2026-10-31", byes: "2" }), "An arena has no byes.");
+  assert.equal(refused({ event: "monday-club-night-at-peak", date: "2099-10-12", byes: "2099-10-12" }),
+    "A single night has no byes; register for the whole month to miss a night.");
+  assert.equal(refused({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2" }), "Not a night of this month.");
+  eq(rowsOf(sheets.Entries), [], "nothing refused is saved");
+
+  assert.equal(register({ byes: "3" }).message, "Ann Ash is registered for Saturday, November 7, 2026. Byes asked for: round 3."
+    + " The TD will confirm the fee when you arrive. A confirmation is on its way to ann@example.com.");
+  assert.equal(mail[0].body.split("\n\n")[1], "Byes asked for: round 3. To change them, go to"
+    + " https://larimerchess.org/entries/?event=classic/2026-11-07 on the device you registered from, or email president@larimerchess.org.");
+  const desk = gs.register({ event: "classic", date: "2026-11-07", id: "77777777", category: "Adult", email: "ben@example.com", byes: "4, 2, 4" }, true);
+  assert.match(desk.message, /^Ben Birch is registered for Saturday, November 7, 2026\. Byes asked for: rounds 2 and 4\. /);
+  assert.equal(mail[1].body.split("\n\n")[1], "Byes asked for: rounds 2 and 4. To change them, email president@larimerchess.org.",
+    "a player the TD registered has no device that saved them");
+  const month = register({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26, 2099-10-19" });
+  assert.match(month.message, /^Ann Ash is registered for all Mondays in October 2099\. Nights you'll miss: Monday, October 19 and Monday, October 26\. /);
+  assert.equal(mail[2].body.split("\n\n")[1], "Nights you'll miss: Monday, October 19 and Monday, October 26. To change them, go to"
+    + " https://larimerchess.org/entries/?event=monday-club-night-at-peak/2099-10-05 on the device you registered from, or email"
+    + " president@larimerchess.org.", "the Entries page lists a month's entries under its nights");
+  assert.equal(gs.register({ event: "classic", date: "2026-11-07", id: "33333333", category: "Adult" }, true).ok, true, "byes are optional");
+  eq(rowsOf(sheets.Entries).map((r) => [r.Date, r["US Chess ID"], r.Byes]), [["2026-11-07", "66666666", "3"], ["2026-11-07", "77777777", "2, 4"],
+    ["2099-10", "66666666", "2099-10-19, 2099-10-26"], ["2026-11-07", "33333333", ""]]);
+  eq(gs.entries("classic/2026-11-07", false).map((e) => [e.id, e.byes]), [["33333333", undefined], ["66666666", ["3"]], ["77777777", ["2", "4"]]]);
+  eq(gs.entries("monday-club-night-at-peak/2099-10-19", false).map((e) => [e.for, e.byes]), [["Whole month", ["2099-10-19", "2099-10-26"]]]);
+  assert.ok(!("byes" in gs.entries("classic/2026-11-07", true)[0]), "a list without byes has none to show");
+});
+
+// A four-round Swiss under way. Ann and Ben registered online; Cal and Dee on the desk, without an email.
+function classicRunning(store) {
+  const key = "classic/2026-11-07";
+  const t = byes({
+    Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Email", "Status", "Added by", "Token", "Regular rating", "Byes"],
+      ["", "classic", "2026-11-07", "66666666", "Ann Ash", "ann@example.com", "registered", "online", "t1", "1900", ""],
+      ["", "classic", "2026-11-07", "77777777", "Ben Birch", "ben@example.com", "registered", "online", "t2", "1700", ""],
+      ["", "classic", "2026-11-07", "33333333", "Cal", "", "registered", "TD", "t3", "1500", ""],
+      ["", "classic", "2026-11-07", "44444444", "Dee", "", "registered", "TD", "t4", "1300", ""]],
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD", "Round dates"],
+      [key, "classic", "Classic", "swiss", "4", "running", "2026-11-07 10:00", "white", "", "", "", "", ""]],
+    Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Byes"],
+      [key, "1", "66666666", "Ann Ash", "1900", "", "", ""], [key, "2", "77777777", "Ben Birch", "1700", "", "", ""],
+      [key, "3", "33333333", "Cal", "1500", "", "", ""], [key, "4", "44444444", "Dee", "1300", "", "", ""]],
+    Rounds: [["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind"]],
+  }, store);
+  t.pair = (number, post) => t.gs.saveRound({ event: "classic", date: "2026-11-07", number: String(number), post: post ? "yes" : "no",
+    byes: "[]", games: JSON.stringify([{ board: 1, white: "66666666", black: "33333333" }, { board: 2, white: "44444444", black: "77777777" }]) });
+  return t;
+}
+
+for (const store of STORES) {
+  test(`a player changes their byes on the Entries page by last name and email, in the entry and the running tournament, until the round is paired (${store})`, () => {
+    const { gs, post, pair, entryByes, playerByes } = classicRunning(store);
+    const ben = (fields) => post({ id: "77777777", last: "Birch", email: "ben@example.com", ...fields });
+    assert.equal(post({ last: "Birch", byes: "3" }).error, "That last name doesn't match the US Chess ID.");
+    assert.equal(post({ email: "ben@example.com", byes: "3" }).error, "That email doesn't match the registration.");
+    assert.equal(post({ id: "33333333", last: "", email: "", byes: "3" }).error, "That email doesn't match the registration.",
+      "an entry without an email can't be changed online");
+    assert.equal(post({ date: "2026-11-14", byes: "3" }).error, "No registration matches.");
+    assert.equal(post({ email: " ANN@example.com ", byes: "3" }).message, "Ann Ash's byes: round 3.");
+    eq([entryByes(), playerByes()], [["3", "", "", ""], ["3", "", "", ""]]);
+    eq(gs.entries("classic/2026-11-07", false).map((e) => e.byes || []), [["3"], [], [], []]);
+    const shown = gs.tournament("classic/2026-11-07", false);
+    eq(shown.players.map((p) => p.byes || []), [[3], [], [], []]);
+    assert.ok(!("roundDates" in shown), "only a month has round dates");
+    assert.equal(post({ byes: "2" }).message, "Ann Ash's byes: round 2.", "the new list replaces the old");
+    eq([entryByes()[0], playerByes()[0]], ["2", "2"]);
+
+    pair(1, true);
+    pair(2, false);
+    assert.equal(post({ byes: "" }).error, "Round 2 is already paired, so only the TD can change it.", "saved but not posted counts");
+    assert.equal(ben({ byes: "1" }).error, "Round 1 is already paired, so only the TD can change it.");
+    assert.equal(ben({ byes: "4" }).error, "A last-round bye is asked for before round 1 and can't be dropped after it (22C4); tell the TD.");
+    assert.equal(ben({ byes: "3" }).message, "Ben Birch's byes: round 3.");
+    assert.equal(ben({ byes: "" }).message, "Ben Birch's byes: none.");
+    eq([entryByes(), playerByes()], [["2", "", "", ""], ["2", "", "", ""]]);
+  });
+}
+
+for (const store of STORES) {
+  test(`the TD changes an entry's byes by its token, with no limit and the last round open, but not a round paired, nor once rated (${store})`, () => {
+    const { post, desk, pair, playerByes, ratings, cache } = classicRunning(store);
+    pair(1, true);
+    assert.equal(desk({ token: "t3", byes: "4, 3, 3" }).message, "Cal's byes: rounds 3 and 4.");
+    assert.equal(desk({ token: "t3", byes: "1, 3, 4" }).error, "Round 1 is already paired, so only the TD can change it.");
+    assert.equal(desk({ token: "t1", byes: "4" }).message, "Ann Ash's byes: round 4.", "the last round after round 1 is posted");
+    assert.match(post({ byes: "" }).error, /\(22C4\)/, "which the player can't drop online");
+    assert.equal(desk({ token: "t1", byes: "2, 3, 4" }).message, "Ann Ash's byes: rounds 2, 3, and 4.");
+    assert.equal(desk({ token: "gone", byes: "3" }).error, "No registration matches.");
+    eq(playerByes(), ["2, 3, 4", "", "3, 4", ""]);
+    ratings["classic/2026-11-07"] = "202611070123";
+    delete cache.rated;
+    assert.equal(desk({ token: "t3", byes: "3" }).error, "US Chess has rated this tournament, so its byes can't change.");
+    assert.equal(desk({ token: "t3", event: "classic", date: "2026-11-07", byes: "3" }).error,
+      "US Chess has rated this tournament, so it can't change on the desk.");
+    assert.equal(post({ byes: "2, 3, 4" }).error, "US Chess has rated this tournament, so its byes can't change.");
+    eq(playerByes(), ["2, 3, 4", "", "3, 4", ""]);
+  });
+}
+
+for (const store of STORES) {
+  test(`a month's byes are its nights, which its Round dates make rounds, leaving out a night added since Start (${store})`, () => {
+    const key = "monday-club-night-at-peak/2099-10";
+    const t = byes({
+      Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Email", "Status", "Token", "Byes"],
+        ["", "monday-club-night-at-peak", "2099-10", "66666666", "Ann Ash", "ann@example.com", "registered", "t1", ""]],
+      Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Round dates"],
+        [key, "monday-club-night-at-peak", "Monday Club Night", "swiss", "3", "running", JSON.stringify(NIGHTS.slice(0, 3))]],
+      Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Byes"], [key, "1", "66666666", "Ann Ash", "1900", ""]],
+    }, store);
+    const post = (byes) => t.post({ event: "monday-club-night-at-peak", date: "2099-10", byes });
+    assert.equal(post("2099-10-19").message, "Ann Ash's byes: October 19.");
+    eq(t.playerByes(), ["3"]);
+    assert.equal(post("2099-10-26, 2099-10-12").message, "Ann Ash's byes: October 12 and 26.", "no limit to one");
+    eq([t.entryByes(), t.playerByes()], [["2099-10-12, 2099-10-26"], ["2"]]);
+    assert.equal(post("2099-11-02").error, "Not a night of this month.");
+    assert.equal(post("3").error, "Not a night of this month.");
+    const shown = t.gs.tournament(key, false);
+    eq([shown.roundDates, shown.players[0].byes], [NIGHTS.slice(0, 3), [2]]);
+    eq(t.gs.entries("monday-club-night-at-peak/2099-10-19", false).map((e) => e.byes), [["2099-10-12", "2099-10-26"]]);
+    // The TD gives the half-point bye she asked for in round 2.
+    t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "2", post: "yes", games: "[]",
+      byes: JSON.stringify([{ id: "66666666", points: 0.5, kind: "half" }]) });
+    assert.equal(post("2099-10-26").error, "October 12 is already paired, so only the TD can change it.");
+    assert.equal(post("2099-10-12").message, "Ann Ash's byes: October 12.", "a night without a round can still be dropped");
+    // Switched to just one night, she plays no other, so asks for no byes on them.
+    const switched = t.gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2099-10-19", id: "66666666",
+      last: "Ash", email: "ann@example.com" } });
+    assert.equal(switched.ok, true, JSON.stringify(switched));
+    eq(t.playerByes(), [""]);
+    assert.ok(!("byes" in t.gs.tournament(key, false).players[0]));
+  });
+}
+
+for (const store of STORES) {
+  test(`Start writes a month's Round dates and gives new players the byes they asked for as rounds, as sync does later, but not in a quad (${store})`, () => {
+    const t = byes({
+      Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Email", "Status", "Token", "Regular rating", "Byes"],
+        ["", "monday-club-night-at-peak", "2099-10", "66666666", "Ann Ash", "ann@example.com", "registered", "t1", "1900", "2099-10-19, 2099-10-26"],
+        ["", "monday-club-night-at-peak", "2099-10-05", "77777777", "Ben Birch", "ben@example.com", "registered", "t2", "1700", ""],
+        ["", "classic", "2026-11-07", "66666666", "Ann Ash", "ann@example.com", "registered", "t3", "1900", "2, 4"],
+        ["", "open", "2026-11-21", "66666666", "Ann Ash", "ann@example.com", "registered", "t4", "1900", "2"]],
+      Tournaments: [], Players: [], Rounds: [],
+    }, store);
+    const month = "monday-club-night-at-peak/2099-10";
+    const start = (event, date, format) => t.gs.startTournament({ event, date, format, rounds: "4", coin: "white" });
+    const players = (key) => t.rows("Players").filter((r) => r.Key === key).map((r) => [r.Name, r.Byes]);
+    assert.equal(start("monday-club-night-at-peak", "2099-10", "swiss").ok, true);
+    eq(t.rows("Tournaments").map((r) => [r.Key, r["Round dates"]]), [[month, JSON.stringify(NIGHTS)]]);
+    eq(players(month), [["Ann Ash", "3, 4"], ["Ben Birch", ""]]);
+    // A late entrant, added by hand with the nights out of order; Ann's change by hand isn't copied again.
+    t.sheets.Entries.data.push(["", "monday-club-night-at-peak", "2099-10", "33333333", "Cal", "", "registered", "t5", "1500", "2099-10-26, 2099-10-05"]);
+    t.handEdit("Entries", 0, { Byes: "2099-10-05" });
+    t.gs.syncPlayers(month);
+    eq(players(month), [["Ann Ash", "3, 4"], ["Ben Birch", ""], ["Cal", "1, 4"]]);
+    // Ben, a player from the night he registered for, moves to the whole month with a bye.
+    const ben = t.register({ event: "monday-club-night-at-peak", date: "2099-10", id: "77777777", last: "Birch", email: "ben@example.com",
+      byes: "2099-10-26" });
+    assert.equal(ben.ok, true, JSON.stringify(ben));
+    eq(players(month), [["Ann Ash", "3, 4"], ["Ben Birch", "4"], ["Cal", "1, 4"]]);
+    eq(t.gs.tournament(month, false).players.map((p) => p.byes || []), [[3, 4], [4], [1, 4]]);
+    assert.equal(start("classic", "2026-11-07", "swiss").ok, true);
+    eq(players("classic/2026-11-07"), [["Ann Ash", "2, 4"]]);
+    eq(t.rows("Tournaments").map((r) => r["Round dates"]), [JSON.stringify(NIGHTS), ""], "a tournament date has none");
+    assert.equal(start("open", "2026-11-21", "quad").ok, true);
+    eq(players("open/2026-11-21"), [["Ann Ash", ""]], "a quad's missing player forfeits by the table");
+  });
+}
+
+test("an Entries tab and a month's tournament from before byes get their columns, and still register and list, with no rounds for its nights", () => {
+  const month = "monday-club-night-at-peak/2099-10";
+  const old = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating", "Quick rating",
+    "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee", "Discount", "Discount note"];
+  const t = byes({
+    Entries: [old, ["2026-10-01 09:00", "monday-club-night-at-peak", "2099-10", "66666666", "Ann Ash", "Adult", "", "", "", "1900", "", "",
+      "ann@example.com", "registered", "online", "t1"]],
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD"],
+      [month, "monday-club-night-at-peak", "Monday Club Night", "swiss", "4", "running", "2099-10-05 18:30", "white", "", "", "", ""]],
+    Players: [["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State"],
+      [month, "1", "66666666", "Ann Ash", "1900", "", "", "", "", "", "CO"]],
+  });
+  eq(t.gs.entries("monday-club-night-at-peak/2099-10-05", false).map((e) => [e.name, "byes" in e]), [["Ann Ash", false]]);
+  eq(heading(t.sheets.Entries).slice(-2), ["Discount note", "Byes"]);
+  assert.equal(t.register({}).ok, true);
+  assert.equal(t.register({ event: "open", date: "2026-11-21" }).ok, true);
+  eq(rowsOf(t.sheets.Entries).map((r) => [r.Date, r.Email, r.Byes]), [["2099-10", "ann@example.com", ""], ["2026-11-07", "ann@example.com", ""],
+    ["2026-11-21", "ann@example.com", ""]]);
+  assert.equal(t.post({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-19" }).message, "Ann Ash's byes: October 19.");
+  eq([t.entryByes()[0], t.playerByes()], ["2099-10-19", [""]], "without Round dates, a night has no round");
+  const shown = t.gs.tournament(month, false);
+  eq(["roundDates" in shown, "byes" in shown.players[0]], [false, false]);
 });

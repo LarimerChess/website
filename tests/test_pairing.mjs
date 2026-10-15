@@ -357,3 +357,19 @@ test("byes and unplayed rounds are classified, and a reclassified round counts a
   assert.equal(Pairing.histories(t).get("b").hadFullBye, false);
   assert.equal(Pairing.standings(t).find((r) => r.id === "a").score, 1);
 });
+
+test("28L4: a player who asked for a half-point bye in a later round gets the full-point bye only when no one else can", () => {
+  const players = ["a", "b", "c", "d", "e"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100 }));
+  const asking = (rounds, ids = ["e"]) => players.map((p) => (ids.includes(p.id) ? { ...p, byes: rounds } : p));
+  const bye = (t) => Pairing.pairRound(t, { coin: "white" }).byes;
+  const later = { players: asking([3]), rounds: [] };
+  assert.equal(Pairing.histories(later).get("e").committed, true);
+  assert.deepEqual(bye(later), [{ id: "d", points: 1, kind: "bye" }], "e, the lowest rated, asked for round 3's");
+  assert.deepEqual(Pairing.pairSections(later, { coin: "white" })[0].byes, [{ id: "d", points: 1, kind: "bye" }], "sections keep the requests");
+  const everyone = { players: asking([2, 3], players.map((p) => p.id)), rounds: [] };
+  assert.deepEqual(bye(everyone), [{ id: "e", points: 1, kind: "bye" }], "when everyone asked for one, the lowest rated after all");
+  // The round being paired: e, here after all, isn't committed to a later one.
+  const now = { players: asking([1]), rounds: [] };
+  assert.equal(Pairing.histories(now).get("e").committed, false);
+  assert.deepEqual(bye(now), [{ id: "e", points: 1, kind: "bye" }]);
+});

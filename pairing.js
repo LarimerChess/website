@@ -4,7 +4,8 @@
 // responsible for the pairings).
 //
 // A tournament is { players, rounds }:
-//   players: [{ id, name, rating }]  rating null for an unrated player
+//   players: [{ id, name, rating, byes }]  rating null for an unrated player
+//     byes: the rounds they asked in advance to take half-point byes in (22C), if any
 //   rounds:  [{ games: [{ white, black, result }], byes: [{ id, points, kind }], out: [ids] }]
 //     result: "1-0", "0-1", "1/2-1/2", or a forfeit, "1F-0F", "0F-1F", "0F-0F"
 //     byes: the rounds players have no game in; kind is bye (1 point), half (0.5), zero, or unplayed (0)
@@ -33,6 +34,8 @@
     const info = new Map(tournament.players.map((p) => [p.id, {
       id: p.id, name: p.name, rating: p.rating == null ? null : Number(p.rating), score: 0,
       colors: [], met: new Set(), hadFullBye: false, hadForfeitWin: false, hadHalfBye: false, out: false,
+      // Asked for a half-point bye in a round after the one being paired (28L4).
+      committed: (p.byes || []).some((n) => Number(n) > tournament.rounds.length + 1),
     }]));
     tournament.rounds.forEach((round) => {
       for (const id of round.out || []) if (info.has(id)) info.get(id).out = true;
@@ -333,7 +336,7 @@
 
   /** 28L2: the full-point bye, from the lowest score group up: the lowest-rated eligible player. */
   function chooseBye(players) {
-    const eligible = (p, strict) => !p.hadFullBye && !p.hadForfeitWin && (!strict || (!p.hadHalfBye && p.rating != null));
+    const eligible = (p, strict) => !p.hadFullBye && !p.hadForfeitWin && (!strict || (!p.hadHalfBye && !p.committed && p.rating != null));
     const order = [...players].sort((a, b) => a.score - b.score
       || (a.rating == null) - (b.rating == null) || (a.rating ?? 0) - (b.rating ?? 0));
     for (const strict of [true, false]) {

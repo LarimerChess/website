@@ -11,14 +11,16 @@
  *                         keeps a copy in the database's public/entries
  * GET  ?tournaments=current  the tournaments in progress, with posted pairings and results, for /pairings/
  * GET  ?withdraw=<token>  a page with a button that withdraws one entry
- * POST event, date, id, last, email, phone (optional; and the trap field website)
+ * POST event, date, id, last, email, phone and byes (both optional; and the trap field website)
  *                         registers a player, notes them in the Contacts tab, then emails the amount due and a withdraw link
  * POST action=toNight, event, date, id, last, email
  *                         switches a player's unpaid whole month to the one night on date
+ * POST action=byes, event, date, id, last, email, byes
+ *                         replaces the half-point byes a player has asked for
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, history, people, search, contacts, contactSave, contactDelete,
- *                               register, entries, remove, paid, refund, discount, toNight, ledger,
+ *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
@@ -54,6 +56,13 @@
  * becomes one of its nights: the month's row gets "moved to night", and all it holds, less any
  * card fee, is credited to the night; what that leaves over the night's fee is for the TD to refund.
  *
+ * A player in a Swiss can ask in advance for half-point byes (22C), when registering or later on the Entries
+ * page, and the TD can set them on the desk. The Byes column holds a tournament date's rounds, "2, 4", or a
+ * month's nights, "2026-10-19, 2026-10-26"; the running tournament's Players row holds them as rounds. Quads
+ * and arenas take none, and a round already paired changes only under the desk's Byes and unplayed rounds.
+ * Online, a tournament date takes one bye, and once round 1 is posted its last round can be neither asked for
+ * nor dropped (22C4).
+ *
  * The club turns no one away: a TD can give a discount, which lowers what an entry owes (the
  * Discount column, with its reason and TD in Discount note), and refund what was paid, less any
  * card fee, which the processor keeps.
@@ -80,7 +89,7 @@ const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee",
-  "Discount", "Discount note"];
+  "Discount", "Discount note", "Byes"];
 const MOVED = "moved to month";
 const TO_NIGHT = "moved to night";
 const PAYMENT_HEADER = ["No.", "Recorded", "Token", "Event", "Date", "US Chess ID", "Name", "Type", "Method", "Received",
@@ -94,15 +103,17 @@ const OUT_FOR_THE_DATE = ["Expelled from the tournament", "Removed from the venu
 const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
-  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD"],
-  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State"],
+  Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD",
+    "Round dates"],
+  Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State",
+    "Byes"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "arenaJoin",
-  "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
+const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+  "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
 // signed in before.
@@ -125,8 +136,9 @@ function doPost(e) {
     const p = e.parameter;
     if (!p.action) return json(register(p, false));
     if (p.action === "report") return json(reportResult(p));
-    // The Entries page's switch; the desk's carries its sign-in and comes through below.
+    // The Entries page's switch and byes; the desk's carry its sign-in and come through below.
     if (p.action === "toNight" && !p.idToken && !p.password) return json(toNight(p, null));
+    if (p.action === "byes" && !p.idToken && !p.password) return json(setByes(p, null));
     let td = null;
     if (p.idToken) {
       const signedIn = signedInTd(p.idToken);
@@ -159,6 +171,7 @@ function doPost(e) {
       case "refund": return json(refund(p.token, p.amount, p.by, td));
       case "discount": return json(discount(p.token, p.amount, p.note, td));
       case "toNight": return json(toNight(p, td || { name: "" }));
+      case "byes": return json(setByes(p, td || { name: "" }));
       case "ledger": return json({ ledger: ledgerFor(`${p.event}/${p.date}`) });
       case "incident": return json(logIncident(p, td));
       case "incidents": return json({ incidents: incidentsFor(p.event, p.date) });
@@ -226,16 +239,21 @@ function register(p, td, signedIn) {
   const category = td && CATEGORIES.includes(p.category) ? p.category : ageCategory(id, event.first);
   const amount = category ? price(event, category) : null;
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   let token;
   let credited = 0;
+  let byes = [];
   try {
     const { sheet, col, rows } = readEntries();
     const mine = rows.filter((r) => r[col.Event] === p.event && r[col["US Chess ID"]] === id && active(r[col.Status]));
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
     if (month) return { error: `${name} is already registered for the whole month.` };
+    const asked = byeList(p.byes);
+    const run = asked.length ? runOf(key) : null;
+    const checked = run ? checkByes(asked, [], key, event, run, !td) : { list: [] };
+    if (checked.error) return checked;
+    byes = checked.list;
     token = Utilities.getUuid();
     const ratingDue = ratingFee(event, prices().fees);
     const row = {
@@ -244,13 +262,15 @@ function register(p, td, signedIn) {
       "Regular rating": rating(member, "R"), "Quick rating": rating(member, "Q"),
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
       "Added by": !td ? "online" : signedIn ? `TD (${signedIn.name})` : "TD", Token: token, Phone: phone,
-      "Rating fee": ratingDue === null ? "" : money(ratingDue),
+      "Rating fee": ratingDue === null ? "" : money(ratingDue), Byes: byes.join(", "),
     };
     appendText(sheet, col, row);
     if (event.kind === "month") {
       const nights = mine.filter((r) => r[col.Date].startsWith(p.date + "-"));
       credited = moveToMonth(sheet, col, rows, nights, row, amount);
     }
+    // Sync never changes a player it has added, so one already in the tournament, as from a night of the month, gets them here.
+    if (run && run.info && setPlayerByes(key, id, byes, run.info)) clearTournamentCache(key);
     clearEntriesCache();
   } finally {
     lock.releaseLock();
@@ -268,6 +288,11 @@ function register(p, td, signedIn) {
   const lapsed = member.expirationDate && member.expirationDate < event.first
     ? `The US Chess membership expires ${member.expirationDate}, before this event. Renew it before you play.`
     : "";
+  const asking = !byes.length ? "" : event.kind === "month" ? `Nights you'll miss: ${andList(byes.map(nightLabel))}.`
+    : `Byes asked for: ${byesText(byes)}.`;
+  // Only a device that registered online keeps the player for the Entries page.
+  const change = td ? "To change them, email president@larimerchess.org."
+    : `To change them, go to ${entriesLink(key, event)} on the device you registered from, or email president@larimerchess.org.`;
   if (email) {
     MailApp.sendEmail({
       to: email,
@@ -276,6 +301,7 @@ function register(p, td, signedIn) {
       subject: `Registered: ${event.name}, ${event.label}`,
       body: [
         `${name} (US Chess ID ${id}) is registered for ${event.name}, ${event.label}.`,
+        asking && `${asking} ${change}`,
         due,
         lapsed && lapsed + " https://new.uschess.org/join-us-chess",
         event.page ? `Details and entries: ${SITE}${event.page}` : "",
@@ -285,7 +311,7 @@ function register(p, td, signedIn) {
     });
   }
   const sent = email ? ` A confirmation is on its way to ${email}.` : "";
-  return { ok: true, name, message: `${name} is registered for ${event.label}. ${due}${sent}${lapsed ? " " + lapsed : ""}` };
+  return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}` };
 }
 
 /** The entry list for a key. A club night's list includes the month's registrations; a month's
@@ -318,6 +344,8 @@ function entries(key, td, read) {
       const entry = { name: r[col.Name], id: r[col["US Chess ID"]], rating: r[col["Regular rating"]],
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
+      const byes = byeList(r[col.Byes]);
+      if (byes.length) entry.byes = byes;
       if (td) {
         const held = ledger[r[col.Token]] || { entry: 0, rating: 0, donation: 0, credit: 0, refunded: 0 };
         const credit = held.credit / 100;
@@ -927,11 +955,16 @@ function tournament(key, td) {
   if (!info) return null;
   const players = table("Players").rows.filter((r) => r.Key === key)
     .sort((a, b) => Number(a["No."]) - Number(b["No."]))
-    .map((r) => ({ id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
-      rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null,
-      section: r.Section || "", floor: /^\d+$/.test(r.Floor) ? Number(r.Floor) : null,
-      games: /^\d+$/.test(r["Prior games"]) ? Number(r["Prior games"]) : null, sweep: r["Prior sweep"] || "",
-      state: r.State || "" }));
+    .map((r) => {
+      const player = { id: r["US Chess ID"], number: Number(r["No."]), name: r.Name,
+        rating: /^\d+/.test(r.Rating) ? parseInt(r.Rating) : null, out: r["Out from round"] ? Number(r["Out from round"]) : null,
+        section: r.Section || "", floor: /^\d+$/.test(r.Floor) ? Number(r.Floor) : null,
+        games: /^\d+$/.test(r["Prior games"]) ? Number(r["Prior games"]) : null, sweep: r["Prior sweep"] || "",
+        state: r.State || "" };
+      const byes = byeRounds(byeList(r.Byes), info);
+      if (byes.length) player.byes = byes;
+      return player;
+    });
   const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
   const count = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
   const rounds = [...Array(count)].map((_, i) => {
@@ -954,6 +987,8 @@ function tournament(key, td) {
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players,
     td: info.TD || "" };
+  const dates = roundDates(info);
+  if (dates.length) result.roundDates = dates;
   const event = ratedEvents()[key];
   if (event) Object.assign(result, { status: "rated", usChessEvent: event });
   if (info.Format === "arena") {
@@ -1008,7 +1043,8 @@ function startTournament(p, signedIn) {
     addRows(t, [{ Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
-      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "" }]);
+      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "",
+      "Round dates": event.kind === "month" ? JSON.stringify(monthNights(key)) : "" }]);
   } finally {
     lock.releaseLock();
   }
@@ -1085,12 +1121,13 @@ function numberQuads(key) {
 }
 
 /** Adds registered entrants who aren't players yet, numbered after the others (28B), each in the
- *  section their rating puts them in. */
+ *  section their rating puts them in, and in a Swiss with the byes they asked for. */
 function syncPlayers(key) {
   const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     const defs = info && info.Format !== "quad" ? sectionsOf(info) : [];
+    const swiss = info && !["quad", "arena"].includes(info.Format);
     const t = table("Players");
     const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
     let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
@@ -1105,7 +1142,8 @@ function syncPlayers(key) {
       if (have.has(e.id)) continue;
       have.add(e.id);
       added.push({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
-        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "", ...records[e.id] });
+        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "",
+        Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
     setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
@@ -1742,8 +1780,7 @@ function toNight(p, td) {
     if (!member) return { error: "US Chess didn't answer. Try again in a few minutes." };
     if (letters(member.lastName) !== letters(p.last)) return { error: "That last name doesn't match the US Chess ID." };
   }
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const lock = lockTournaments();
   let row, name, over, due;
   try {
     const { sheet, col, rows } = readEntries();
@@ -1768,6 +1805,11 @@ function toNight(p, td) {
       Phone: month[col.Phone], "Rating fee": ratingDue === null ? "" : money(ratingDue) };
     appendText(sheet, col, row);
     sheet.getRange(rows.indexOf(month) + 2, col.Status + 1).setNumberFormat("@").setValue(TO_NIGHT);
+    // The month's tournament keeps the player for this night, without the month's byes, which would give them half
+    // points for the others.
+    const monthKey = `${p.event}/${p.date.slice(0, 7)}`;
+    const run = byeList(month[col.Byes]).length ? runOf(monthKey) : null;
+    if (run && run.info && setPlayerByes(monthKey, month[col["US Chess ID"]], [], run.info)) clearTournamentCache(monthKey);
     if (held.entry || held.rating) {
       addPayment(book, month[col.Token], partyOf(month, col), { Type: "credit", "Entry fee": -held.entry, "Rating fee": -held.rating,
         Note: `To ${nightLabel(p.date)}, ${row.Token}` });
@@ -1798,6 +1840,154 @@ function toNight(p, td) {
     });
   }
   return { ok: true, message: `${name} is registered for ${night.label} only. ${owed}` };
+}
+
+/** Replaces the byes an entry asks for with p.byes, in the entry and in its running tournament's Players row.
+ *  From the Entries page (td null), the entry is p.event/p.date's for p.id, with p.last and the entry's
+ *  p.email; from the TD desk, p.token. */
+function setByes(p, td) {
+  if (!td && !underLimit()) return { error: "Too many changes right now. Try again in a minute." };
+  const id = String(p.id || "").trim();
+  if (!td) {
+    if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
+    const member = lookup(id);
+    if (member === null) return { error: "US Chess has no member with that ID." };
+    if (!member) return { error: "US Chess didn't answer. Try again in a few minutes." };
+    if (letters(member.lastName) !== letters(p.last)) return { error: "That last name doesn't match the US Chess ID." };
+  }
+  const lock = lockTournaments();
+  try {
+    const { sheet, col, rows } = readEntries();
+    const index = rows.findIndex((r) => active(r[col.Status]) && (td ? r[col.Token] === p.token
+      : r[col.Event] === p.event && r[col.Date] === p.date && r[col["US Chess ID"]] === id));
+    if (index < 0) return { error: "No registration matches." };
+    const r = rows[index];
+    const email = String(p.email || "").trim().toLowerCase();
+    // The desk takes registrations without an email, and a blank one would match a blank cell.
+    if (!td && (!email || String(r[col.Email]).toLowerCase() !== email)) return { error: "That email doesn't match the registration." };
+    const key = `${r[col.Event]}/${r[col.Date]}`;
+    const event = clubEvents()[key];
+    if (!event) return { error: "That event isn't open." };
+    const run = runOf(key);
+    // doPost's check of TOURNAMENT_WRITES goes by p.event and p.date, which the desk may leave out and the Entries page skips.
+    if (run.info && rated(key)) return { error: "US Chess has rated this tournament, so its byes can't change." };
+    const checked = checkByes(byeList(p.byes), byeList(r[col.Byes]), key, event, run, !td);
+    if (checked.error) return checked;
+    sheet.getRange(index + 2, col.Byes + 1).setNumberFormat("@").setValue(checked.list.join(", "));
+    if (run.info) setPlayerByes(key, r[col["US Chess ID"]], checked.list, run.info);
+    clearEntriesCache();
+    if (run.info) clearTournamentCache(key);
+    return { ok: true, message: `${r[col.Name]}'s byes: ${byesText(checked.list)}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Checks the byes asked for, a list as byeList makes it, for the event with the key: against old, the entry's
+ *  list before, and run (runOf), its tournament's rows once it has started. online is the player's own change,
+ *  not the TD's. Returns { list }, as the Byes column keeps it, or { error }. */
+function checkByes(asked, old, key, event, run, online) {
+  if (event.kind === "night") {
+    return asked.length ? { error: "A single night has no byes; register for the whole month to miss a night." } : { list: [] };
+  }
+  const { info, lines } = run;
+  const format = info ? info.Format : event.format || "";
+  if (asked.length && format === "quad") return { error: "This tournament has no byes; a game a player misses is forfeited." };
+  if (asked.length && format === "arena") return { error: "An arena has no byes." };
+  const month = event.kind === "month";
+  const dates = roundDates(info);
+  const rounds = Number(info && info.Rounds) || Number(event.rounds) || 0;
+  let list;
+  if (month) {
+    const nights = [...monthNights(key), ...dates];
+    if (asked.some((d) => !nights.includes(d))) return { error: "Not a night of this month." };
+    list = [...new Set(asked)].sort();
+  } else {
+    if (asked.length && !rounds) return { error: "The number of rounds isn't set yet; tell the TD." };
+    if (asked.some((n) => !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > rounds)) return { error: "Not a round of this tournament." };
+    list = [...new Set(asked.map(Number))].sort((a, b) => a - b).map(String);
+  }
+  const paired = lines.reduce((m, r) => Math.max(m, Number(r.Round) || 0), 0);
+  const locked = [...list.filter((x) => !old.includes(x)), ...old.filter((x) => !list.includes(x))]
+    .filter((x) => byeRound(x, dates) && byeRound(x, dates) <= paired)
+    .sort((a, b) => byeRound(a, dates) - byeRound(b, dates))[0];
+  if (locked) {
+    const what = month ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
+    return { error: `${what} is already paired, so only the TD can change it.` };
+  }
+  if (online && !month && list.length > 1) return { error: "One half-point bye per player; ask the TD for more." };
+  const last = String(rounds);
+  if (online && !month && lines.some((r) => Number(r.Round) === 1 && r.Posted) && list.includes(last) !== old.includes(last)) {
+    return { error: "A last-round bye is asked for before round 1 and can't be dropped after it (22C4); tell the TD." };
+  }
+  return { list };
+}
+
+/** Sets the byes, as rounds, of the player with the US Chess ID in the tournament with the key, when they are
+ *  one of its players; whether they are. */
+function setPlayerByes(key, id, list, info) {
+  const players = table("Players");
+  const line = players.rows.find((x) => x.Key === key && x["US Chess ID"] === id);
+  if (line) setCell(players, line.row, "Byes", byeRounds(list, info).join(", "));
+  return Boolean(line);
+}
+
+/** A tournament's Tournaments row once it has started, or null, and its Rounds rows. */
+function runOf(key) {
+  const info = table("Tournaments").rows.find((r) => r.Key === key) || null;
+  return { info, lines: info ? table("Rounds").rows.filter((r) => r.Key === key) : [] };
+}
+
+/** A Byes cell or request, "2, 4", as a list. */
+function byeList(text) {
+  return String(text || "").split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+/** A bye's round: a round number, or a month's night by its place in dates (roundDates); 0 for neither. */
+function byeRound(x, dates) {
+  return /^\d{4}-\d\d-\d\d$/.test(x) ? dates.indexOf(x) + 1 : /^\d+$/.test(x) ? Number(x) : 0;
+}
+
+/** Byes as the tournament's round numbers, in order, leaving out a night its Round dates don't have. */
+function byeRounds(list, info) {
+  const dates = roundDates(info);
+  return [...new Set(list.map((x) => byeRound(x, dates)))].filter(Boolean).sort((a, b) => a - b);
+}
+
+/** A month's nights in round order, from its Tournaments row's Round dates (JSON), which Start sets from the
+ *  nights still to come; [] for a tournament date, or a month started before Round dates. */
+function roundDates(info) {
+  try {
+    const list = JSON.parse((info && info["Round dates"]) || "[]");
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/** The dates of a month's club nights that clubEvents() still lists, in order. */
+function monthNights(key) {
+  const events = clubEvents();
+  return Object.keys(events).filter((k) => k.startsWith(key + "-") && events[k].kind === "night").map((k) => k.split("/")[1]).sort();
+}
+
+/** Byes as messages name them: "round 3", "rounds 2 and 4", a month's nights as "October 19 and 26", or "none". */
+function byesText(list) {
+  if (!list.length) return "none";
+  if (!/^\d{4}-/.test(list[0])) return `${list.length > 1 ? "rounds" : "round"} ${andList(list)}`;
+  return `${Utilities.formatDate(new Date(list[0] + "T12:00:00Z"), TZ, "MMMM")} ${andList(list.map((d) => String(Number(d.slice(8)))))}`;
+}
+
+function andList(items) {
+  return items.length > 2 ? `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}` : items.join(" and ");
+}
+
+/** The Entries page open on an entry's list. It lists a month's entries under each night, so a month opens on
+ *  its first still to come. */
+function entriesLink(key, event) {
+  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  const night = event.kind === "month" && monthNights(key).find((d) => d >= today);
+  return `${SITE}/entries/?event=${night ? `${event.event}/${night}` : key}`;
 }
 
 /** Records a donation to the club apart from any entry, from the contact p.contact or, with none,
