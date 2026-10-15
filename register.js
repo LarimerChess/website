@@ -1,7 +1,7 @@
 // The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
 // The TD desk (td/) loads this too, for ENDPOINT, LIVE_DB, and FIREBASE, and the Entries and Pairings
-// pages, for the first two, the saved players, and byesText.
+// pages, for the first two, the saved players and their list, and byesText.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 // The club's Realtime Database (https://….firebaseio.com), which live.js follows; while it is
@@ -73,39 +73,59 @@ function byesText(byes) {
   return `${month} ${and.format(sorted.map((date) => String(Number(date.slice(8)))))}`;
 }
 
-function showSaved() {
+// The Register form, the Pairings page, and the Entries page show the same list of the players saved
+// here, and the same Remember choice, each picking a player for its own purpose.
+
+/** Fills a Players saved on this device box with a button per saved player, which calls pick, and a
+ *  Forget button, which calls forgotten once the player is forgotten, to redraw what depends on them;
+ *  the keyboard then stays in the list, or goes to fallback once it is empty. */
+function showSavedIn(box, pick, forgotten, fallback) {
   const list = savedPlayers();
-  savedBox.hidden = !list.length;
-  savedBox.querySelector("ul").replaceChildren(...list.map((p) => {
+  box.hidden = !list.length;
+  box.querySelector("ul").replaceChildren(...list.map((p, at) => {
     const item = document.createElement("li");
-    const pick = document.createElement("button");
-    pick.type = "button";
-    pick.className = "register-pick";
-    pick.textContent = playerName(p);
-    pick.addEventListener("click", () => {
-      fillIn(p);
-      (dateField.tagName === "SELECT" ? dateField : form.querySelector("button[type=submit]")).focus();
-    });
-    const forget = document.createElement("button");
-    forget.type = "button";
-    forget.className = "register-forget";
-    forget.textContent = "Forget";
-    const hint = document.createElement("span");
-    hint.className = "visually-hidden";
-    hint.textContent = ` ${playerName(p)}`;
-    forget.append(hint);
+    const choose = Object.assign(document.createElement("button"), { type: "button", className: "register-pick", textContent: playerName(p) });
+    choose.addEventListener("click", () => pick(p));
+    const forget = Object.assign(document.createElement("button"), { type: "button", className: "register-forget", textContent: "Forget" });
+    forget.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` ${playerName(p)}` }));
     forget.addEventListener("click", () => {
-      const rest = savedPlayers().filter((q) => q.id !== p.id);
-      const at = list.findIndex((q) => q.id === p.id);
-      if (!storePlayers(rest)) return;
-      showSaved();
-      status.textContent = `${playerName(p)} is no longer saved on this device.`;
-      const picks = savedBox.querySelectorAll(".register-pick");
-      (picks[Math.min(at, picks.length - 1)] || idField).focus();
+      if (!storePlayers(savedPlayers().filter((q) => q.id !== p.id))) return;
+      forgotten(p);
+      const picks = box.querySelectorAll(".register-pick");
+      (picks[Math.min(at, picks.length - 1)] || fallback).focus();
     });
-    item.append(pick, " ", forget);
+    item.append(choose, " ", forget);
     return item;
   }));
+}
+
+/** An empty Players saved on this device box, for a page that builds its form in script. */
+function newSavedBox() {
+  const box = Object.assign(document.createElement("fieldset"), { className: "register-saved", hidden: true });
+  box.append(Object.assign(document.createElement("legend"), { textContent: "Players saved on this device" }), document.createElement("ul"));
+  return box;
+}
+
+/** The Remember this player on this device checkbox, checked, for a page that builds its form in script;
+ *  the checkbox has the id. */
+function newRemember(id) {
+  const box = Object.assign(document.createElement("div"), { className: "register-remember", hidden: !canStore() });
+  const choice = Object.assign(document.createElement("input"), { id, type: "checkbox", checked: true });
+  choice.setAttribute("aria-describedby", `${id}-hint`);
+  box.append(choice, Object.assign(document.createElement("label"), { htmlFor: id, textContent: "Remember this player on this device" }),
+    Object.assign(document.createElement("p"), { id: `${id}-hint`, className: "register-hint",
+      textContent: "Kept only in this browser, for next time. Uncheck it on a shared computer." }));
+  return box;
+}
+
+function showSaved() {
+  showSavedIn(savedBox, (p) => {
+    fillIn(p);
+    (dateField.tagName === "SELECT" ? dateField : form.querySelector("button[type=submit]")).focus();
+  }, (p) => {
+    showSaved();
+    status.textContent = `${playerName(p)} is no longer saved on this device.`;
+  }, idField);
 }
 
 function fillIn(p) {

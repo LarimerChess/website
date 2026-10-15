@@ -1,12 +1,13 @@
 // The Entries page (entries/): the entry list of the upcoming club event the reader picks, from the
 // registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
 // and the address keeps the choice, so a link can open on one event. ENDPOINT and byesText come
-// from register.js, and so do the players saved on this device: a saved player registered for one
-// club night can switch to its whole month here, which the script treats as registering for the
-// month, and one registered for the whole month can switch to just one night, until they have paid.
-// A saved player can also change the byes they asked for, in a Swiss or a whole month; a player
-// registered on another device is saved here by the US Chess ID, last name, and email they
-// registered with.
+// from register.js, and so do the players saved on this device and their list: a saved player
+// registered for one club night can switch to its whole month here, which the script treats as
+// registering for the month, and one registered for the whole month can switch to just one night,
+// until they have paid. A saved player can also change the byes they asked for, in a Swiss or a
+// whole month; a player registered on another device is saved here by the US Chess ID, last name,
+// and email they registered with. Those two prove who is changing the entry, so a player saved
+// with an ID alone, as the Pairings page saves one, is asked for them on the first change.
 
 const allStatus = document.querySelector(".entries-all-status");
 const all = document.querySelector(".entries-all");
@@ -39,6 +40,7 @@ function switchButton(event, player, toNight) {
   button.textContent = toNight ? "Just this night" : "Switch to month";
   button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${who}` }));
   button.addEventListener("click", async () => {
+    if (!player.last || !player.email) return askFor(player, "entries-switch");
     const question = toNight ? `Switch ${who} from every night in ${month} to just ${dateFormat.format(new Date(event.start))}?`
       : `Switch ${who} to every night in ${month}? What was paid for this night counts toward the month.`;
     if (!confirm(question)) return;
@@ -77,6 +79,7 @@ function byesButton(cell, event, entry, player) {
   button.textContent = "Change byes";
   button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${player.name}` }));
   button.addEventListener("click", () => {
+    if (!player.last || !player.email) return askFor(player, "entries-change-byes");
     const month = entry.for === "Whole month";
     const choices = byeChoices(event, entry);
     const had = (entry.byes || []).map(String);
@@ -144,9 +147,8 @@ function eventSection(event) {
   hint.textContent = ` for ${event.name}, ${night ? `all of ${monthFormat.format(new Date(event.start))}` : dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
-  // Saved players on this list, who can change their entry; one saved from the Pairings page has no last name or email.
-  const editors = !event.closed && event.page
-    ? players().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id)) : [];
+  // Saved players on this list, who can change their entry.
+  const editors = !event.closed && event.page ? players().filter((p) => event.entries.some((e) => e.id === p.id)) : [];
   const switchers = nights.has(event.key) ? editors : [];
   const changers = editors.filter((p) => byeChoices(event, event.entries.find((e) => e.id === p.id)).length);
   if (event.entries.length) {
@@ -197,11 +199,48 @@ function eventSection(event) {
   return section;
 }
 
-// The lists shown, and a redraw of the event chosen, for the form below, which is made once so that
-// a redraw keeps what is typed in it.
+// The lists shown, and a redraw of the event chosen, for the saved players and the form below, which are
+// made once so that a redraw keeps what is typed in the form.
 let lists = [];
 let redraw = () => {};
+let savedHere = null;
 let finder = null;
+// The button a saved player pressed before the form asked for their last name and email.
+let resume = null;
+
+function showSavedHere() {
+  showSavedIn(savedHere, showEntryOf, (p) => {
+    found.delete(p.id);
+    showSavedHere();
+    redraw();
+    allStatus.textContent = `${playerName(p)} is no longer saved on this device.`;
+  }, finder.querySelector("summary"));
+}
+
+/** A saved player's entry: on the list shown if they're on it, else on the soonest one, with the
+ *  keyboard on their row's first button. */
+function showEntryOf(p) {
+  const on = lists.filter((e) => e.entries.some((x) => x.id === p.id));
+  if (!on.length) return void (allStatus.textContent = `${playerName(p)} isn't registered for an upcoming event.`);
+  const select = document.getElementById("entries-event");
+  if (!on.some((e) => e.key === select.value)) {
+    select.value = on[0].key;
+    redraw();
+  }
+  const button = all.querySelector(`tr[data-id="${CSS.escape(p.id)}"] button`);
+  allStatus.textContent = button ? `${playerName(p)}: change the entry with the buttons on its row.`
+    : `${playerName(p)} is registered. To change the entry, email president@larimerchess.org.`;
+  (button || select).focus();
+}
+
+/** Opens the form below on a saved player who has no last name or email, for the button they pressed. */
+function askFor(player, button) {
+  resume = { id: player.id, button };
+  finder.open = true;
+  finder.querySelector("#entries-find-id").value = player.id;
+  allStatus.textContent = `To change ${player.name}'s entry, enter the last name and email used to register.`;
+  finder.querySelector("#entries-find-last").focus();
+}
 
 /** A form that saves a player registered on another device as the Register form does, so their rows
  *  get their buttons. */
@@ -220,12 +259,8 @@ function findForm() {
     maxLength: 8, autocomplete: "on" });
   const lastInput = field("entries-find-last", "Last name", { name: "last", type: "text", autocomplete: "family-name" });
   const emailInput = field("entries-find-email", "Email", { name: "email", type: "email", autocomplete: "email" });
-  const remember = Object.assign(document.createElement("div"), { className: "register-remember", hidden: !canStore() });
-  const choice = Object.assign(document.createElement("input"), { id: "entries-find-remember", type: "checkbox", checked: true });
-  choice.setAttribute("aria-describedby", "entries-find-remember-hint");
-  remember.append(choice, Object.assign(document.createElement("label"), { htmlFor: choice.id, textContent: "Remember this player on this device" }),
-    Object.assign(document.createElement("p"), { id: "entries-find-remember-hint", className: "register-hint",
-      textContent: "Kept only in this browser, for next time. Uncheck it on a shared computer." }));
+  const remember = newRemember("entries-find-remember");
+  const choice = remember.querySelector("input");
   form.append(remember, Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Find my entries" }));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -240,8 +275,11 @@ function findForm() {
     const stored = choice.checked && storePlayers([player, ...saved.filter((p) => p.id !== id)]);
     idInput.value = lastInput.value = "";
     box.open = false;
+    showSavedHere();
     redraw();
-    const buttons = all.querySelector(`tr[data-id="${CSS.escape(id)}"] button`);
+    const row = all.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+    const buttons = (resume?.id === id && row?.querySelector(`.${resume.button}`)) || row?.querySelector("button");
+    resume = null;
     allStatus.textContent = `${stored ? `${player.name} is saved on this device.` : `Found ${player.name}.`}${buttons
       ? " Change the entry with the buttons on its row." : listed ? "" : " Pick one of their events to change its entry."}`;
     (buttons || document.getElementById("entries-event")).focus();
@@ -274,8 +312,12 @@ function showPicker(events) {
   redraw = show;
   // Redrawn when the script's lists replace the database's copy, so the reader keeps their place.
   const focused = all.contains(document.activeElement) ? document.activeElement.id : "";
-  finder ||= findForm();
-  all.replaceChildren(picker, finder, shown);
+  if (!finder) {
+    finder = findForm();
+    savedHere = newSavedBox();
+    showSavedHere();
+  }
+  all.replaceChildren(picker, savedHere, finder, shown);
   show();
   if (focused) document.getElementById(focused)?.focus();
 }

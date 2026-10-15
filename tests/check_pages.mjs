@@ -1452,6 +1452,45 @@ const savedHere = await byesPage.evaluate(() => ({ saved: JSON.parse(localStorag
   && foundHere.status === "Ann Example is saved on this device. Change the entry with the buttons on its row."
   ? pass("Entries page saves a player registered on another device, whose row then has its buttons")
   : fail(`Entries page another device: ${JSON.stringify({ byesUnsaved, byesNobody, foundHere, savedHere })}`);
+// The players saved on this device are listed as on the Register form and the Pairings page. Ann was saved by the
+// Pairings page, with her ID alone, and Cal by the Register form: picking Cal opens his list, and Ann's row has its
+// buttons, which ask for her last name and email once, then work.
+await byesPage.evaluate(() => localStorage.setItem("lccc-register-players", JSON.stringify([
+  { id: "12345678", last: "", email: "", name: "Ann Example" }, { id: "32345678", last: "Example", email: "cal@example.com", name: "Cal Example" }])));
+await byesPage.goto(base + "/entries/?event=club-night%2F2099-10-12", { waitUntil: "networkidle0" });
+const savedListed = await byesPage.$$eval(".entries-all .register-saved:not([hidden]) .register-pick", (b) => b.map((x) => x.textContent));
+const idOnly = await byesShown();
+await press(byesPage, ".entries-all .register-saved li:nth-child(2) .register-pick");
+const pickedCal = { ...await byesShown(), event: await byesPage.$eval("#entries-event", (s) => s.value) };
+await axeBoth(byesPage, "Entries page with players saved on this device");
+await byesPage.select("#entries-event", "club-night/2099-10-12");
+const callsBefore = byesCalls.length;
+await press(byesPage, `tr[data-id="12345678"] .entries-change-byes`);
+const askedOnce = await byesPage.evaluate(() => ({ open: document.querySelector(".entries-all details").open, id: document.querySelector("#entries-find-id").value,
+  focused: document.activeElement.id, status: document.querySelector(".entries-all-status").textContent,
+  editor: Boolean(document.querySelector(".entries-all [role=group]")) }));
+for (const [field, value] of [["#entries-find-last", "Example"], ["#entries-find-email", "ann@example.com"]]) await byesPage.type(field, value);
+await press(byesPage, ".entries-all form button[type=submit]");
+const annCompleted = { ...await byesShown(), saved: await byesPage.evaluate(() => JSON.parse(localStorage.getItem("lccc-register-players"))[0]) };
+await press(byesPage, `tr[data-id="12345678"] .entries-change-byes`);
+const editorAfter = await byesEditor();
+JSON.stringify(savedListed) === JSON.stringify(["Ann Example (12345678)", "Cal Example (32345678)"])
+  && JSON.stringify(idOnly.changers) === '["Ann Example"]'
+  && pickedCal.event === "classic/2099-11-07" && pickedCal.focused === "Change byes for Cal Example"
+  && pickedCal.status === "Cal Example (32345678): change the entry with the buttons on its row."
+  && JSON.stringify(askedOnce) === JSON.stringify({ open: true, id: "12345678", focused: "entries-find-last",
+    status: "To change Ann Example's entry, enter the last name and email used to register.", editor: false })
+  && byesCalls.length === callsBefore
+  && JSON.stringify(annCompleted.saved) === JSON.stringify({ id: "12345678", last: "Example", email: "ann@example.com", name: "Ann Example" })
+  && annCompleted.focused === "Change byes for Ann Example" && editorAfter?.label === "Nights Ann Example will miss"
+  ? pass("Entries page lists the players saved on this device, and one saved with only an ID gives the last name and email once")
+  : fail(`Entries page saved players: ${JSON.stringify({ savedListed, idOnly, pickedCal, askedOnce, annCompleted, editorAfter })}`);
+await press(byesPage, ".entries-all [role=group] + p button:last-child");
+await press(byesPage, ".entries-all .register-saved li:first-child .register-forget");
+const forgotHere = { ...await byesShown(), listed: await byesPage.$$eval(".entries-all .register-pick", (b) => b.map((x) => x.textContent)) };
+JSON.stringify(forgotHere.listed) === '["Cal Example (32345678)"]' && !forgotHere.changers.length
+  && forgotHere.status === "Ann Example (12345678) is no longer saved on this device." && forgotHere.focused === "Cal Example (32345678)"
+  ? pass("Forget on the Entries page removes the saved player and their row's buttons") : fail(`Entries page forget: ${JSON.stringify(forgotHere)}`);
 await byesPage.evaluate(() => localStorage.clear());
 await byesPage.close();
 
