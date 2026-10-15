@@ -2,7 +2,7 @@
 // players, pair each round with pairing.js or by hand, review, change, and post it (and change it
 // again until it has results), enter results or confirm the ones players report, and follow the
 // standings. The script keeps everything in the Tournaments in progress spreadsheet. An arena is
-// run by td-arena.js. call, choice, and choices come from td.js.
+// run by td-arena.js. call, choice, choices, andList, byeDate, and nightsInWords come from td.js.
 //
 // A tournament's sections play each round together: one check-in, one Pair button that pairs
 // every section on its own, one review, and one Post, with each section in its own tables.
@@ -44,7 +44,8 @@ const nameOf = (id) => {
 function forEngine(t) {
   return {
     format: t.format, sections: t.sections || [],
-    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "" })),
+    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "",
+      ...(p.byes ? { byes: p.byes } : {}) })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
   };
 }
@@ -134,6 +135,7 @@ async function loadRun() {
     current = tournament;
     renderRun();
     syncReport(key, current);
+    document.dispatchEvent(new CustomEvent("td-tournament", { detail: current }));
   } catch {
     runStatus.textContent = "The tournament couldn't be loaded. Try again.";
   }
@@ -213,7 +215,7 @@ function renderCheckin(t, parts, next) {
   // A quad's pairings come from the table, so a player not here loses that game by forfeit.
   runCheckinHint.textContent = quad
     ? "Everyone starts as Present; change anyone who isn't here. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
-    : "Everyone starts as Present; change anyone who isn't here. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
+    : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section).
@@ -226,11 +228,15 @@ function renderCheckin(t, parts, next) {
   const scores = new Map(parts.flatMap((s) => Pairing.standings(s).map((r) => [r.id, r.score])));
   runAttendance.replaceChildren(...parts.filter((s) => s.players.length).flatMap((s) => {
     const rows = s.players.filter((p) => !p.out).map((p) => {
+      const byes = p.byes || [];
       const row = document.createElement("tr");
       row.insertCell().textContent = p.number;
       row.insertCell().textContent = p.name;
       row.insertCell().textContent = p.rating ?? "Unrated";
       row.insertCell().textContent = scores.get(p.id) ?? 0;
+      // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
+      if (!quad) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
+        .replaceAll(" ", " ")).join(", ");
       if (choosing) {
         const move = document.createElement("select");
         move.setAttribute("aria-label", `${p.name}'s section`);
@@ -238,19 +244,21 @@ function renderCheckin(t, parts, next) {
         move.addEventListener("change", () => moveTo(p, move.value));
         row.insertCell().append(move);
       }
+      const asked = !quad && byes.includes(next);
       const select = document.createElement("select");
       select.dataset.id = p.id;
+      select.dataset.start = asked ? "half" : "play";
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round`);
-      select.append(option("play", "Present", true),
+      select.append(option("play", "Present", !asked),
         option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", false),
-        ...(quad ? [] : [option("half", "Half-point bye (asked for)", false), option("zero", "Zero-point bye (asked for)", false)]),
+        ...(quad ? [] : [option("half", "Half-point bye (asked for)", asked), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
       row.insertCell().append(select);
       return row;
     });
-    return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(choosing ? ["Section"] : []), "This round"],
-      rows, `${s.name} (${rows.length})`, several);
+    return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(quad ? [] : ["Byes asked for"]),
+      ...(choosing ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
   }));
 }
 
@@ -778,6 +786,18 @@ function renderByesAll() {
   }));
   box.replaceChildren(...(rows.length ? sectionTable("run-byes-table", ["Round", "Player", "Kind"], rows, "Byes and unplayed rounds", false)
     : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
+  const asked = current.players.map((p) => [p, (p.byes || []).filter((n) => n > current.rounds.length && !(p.out && n >= p.out))])
+    .filter(([, later]) => later.length);
+  if (asked.length) {
+    box.append(Object.assign(document.createElement("p"), {
+      textContent: `Asked for: ${asked.map(([p, later]) => `${nameOf(p.id)}, ${roundsInWords(later)}`).join("; ")}. Change them in the entries list.` }));
+  }
+}
+
+/** Rounds in words, "round 3" or "rounds 2 and 4", or a month's nights, "October 19 and 26". */
+function roundsInWords(numbers) {
+  const dates = numbers.map((n) => current.roundDates?.[n - 1]);
+  return dates.every(Boolean) ? nightsInWords(dates) : `${numbers.length > 1 ? "rounds" : "round"} ${andList.format(numbers.map(String))}`;
 }
 
 const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance", "Est. rating"];
@@ -826,7 +846,7 @@ function runBusy() {
   const field = document.activeElement?.matches("input, select, textarea") && document.activeElement.closest(".run");
   const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
   const checkingIn = !runRound.hidden && !runCheckin.hidden
-    && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== "play");
+    && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
   return Boolean(field || edited || checkingIn || runSectionsEdit.open || (!runStart.hidden && startEdited));
 }
 

@@ -15,6 +15,7 @@ const choice = document.getElementById("td-event");
 const playerInput = document.getElementById("td-player");
 const playerList = document.getElementById("td-players");
 const chosen = document.querySelector(".td-chosen");
+const tdByes = document.querySelector(".td-byes");
 const deskStatus = document.querySelector(".td-register-status");
 const tdEntriesStatus = document.querySelector(".td-entries-status");
 const tdTable = document.querySelector(".td-entries");
@@ -178,6 +179,7 @@ async function signIn(value = "") {
     for (const c of items) group.append(new Option(`${c.name}, ${c.label}`, c.key));
     return group;
   }));
+  showRegisterByes();
   showDeskEntries();
   loadPeople();
   return true;
@@ -340,7 +342,112 @@ playerInput.addEventListener("blur", closeList);
 
 choice.addEventListener("change", () => {
   if (player) choose(player);
+  loadedTournament = null;
+  showRegisterByes();
   showDeskEntries();
+});
+
+// The tournament td-run.js last loaded for the chosen event, kept while it loads again: once it has
+// started, its rounds and nights are the ones a bye can be asked for.
+let loadedTournament = null;
+const andList = new Intl.ListFormat("en-US");
+
+/** "October 19" for 2026-10-19, in UTC, since a date alone is read as midnight UTC. */
+function byeDate(date) {
+  return new Date(date).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", day: "numeric" });
+}
+
+/** A month's nights in words: "October 19 and 26". */
+function nightsInWords(dates) {
+  const [first, ...rest] = [...dates].sort();
+  return andList.format([byeDate(first), ...rest.map((date) => String(Number(date.slice(8))))]);
+}
+
+/** The rounds a bye can be asked for in key's event, [{ value, label, paired }]: a one-day Swiss's
+ *  rounds, or a month's nights, and none for a night, a quad, or an arena. */
+function byeRounds(key) {
+  const item = choices.find((c) => c.key === key);
+  const t = loadedTournament?.key === key ? loadedTournament : null;
+  if (!item || item.kind === "night" || ["quad", "arena"].includes(t ? t.format : item.format)) return [];
+  const paired = (i) => i < (t?.rounds.length || 0);
+  if (item.kind === "month") {
+    // Past nights have left the choices, so a started month goes by its own dates.
+    if (t?.roundDates) return t.roundDates.map((date, i) => ({ value: date, label: byeDate(date), paired: paired(i) }));
+    return choices.filter((c) => c.kind === "night" && c.key.startsWith(`${key}-`)).map((c) => c.key.split("/")[1])
+      .map((date) => ({ value: date, label: byeDate(date), paired: false }));
+  }
+  return [...Array(Number(t?.plannedRounds || item.rounds) || 0)]
+    .map((_, i) => ({ value: String(i + 1), label: `Round ${i + 1}`, paired: paired(i) }));
+}
+
+/** The register form's Byes for the chosen event, keeping the boxes checked when keep is set, as when its
+ *  tournament loads again. A round already paired isn't offered: the TD gives it under Byes and unplayed rounds. */
+function showRegisterByes(keep = false) {
+  const kept = new Set(keep ? [...tdByes.querySelectorAll(":checked")].map((box) => box.value) : []);
+  const rounds = byeRounds(choice.value).filter((r) => !r.paired);
+  tdByes.querySelector(".td-byes-boxes").replaceChildren(...rounds.map(({ value, label }) => {
+    const wrap = document.createElement("label");
+    wrap.append(Object.assign(document.createElement("input"), { type: "checkbox", value, checked: kept.has(value) }), ` ${label}`);
+    return wrap;
+  }));
+  tdByes.hidden = !rounds.length;
+}
+
+/** An entry's Byes: a box for each round or night it can ask to miss, saved as soon as it changes,
+ *  then in words any asked for that no box shows, as when the rounds aren't known. */
+function showEntryByes(cell, e) {
+  const [eventName] = choice.value.split("/");
+  const month = e.date?.length === 7;
+  const rounds = month ? byeRounds(`${eventName}/${e.date}`)
+    : choices.find((c) => c.key === choice.value)?.kind === "entry" ? byeRounds(choice.value) : [];
+  const asked = e.byes || [];
+  const boxes = rounds.map(({ value, label }) => {
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", value, checked: asked.includes(value) });
+    box.setAttribute("aria-label", `${label} bye for ${e.name}`);
+    box.addEventListener("change", () => saveEntryByes(cell, e, box));
+    const wrap = document.createElement("label");
+    // A round shows its number alone, to keep the table narrow.
+    wrap.append(box, ` ${month ? label : value}`);
+    return wrap;
+  });
+  const unshown = asked.filter((b) => !rounds.some((r) => r.value === b));
+  const words = !unshown.length ? "" : month ? nightsInWords(unshown) : `${unshown.length > 1 ? "Rounds" : "Round"} ${andList.format(unshown)}`;
+  cell.replaceChildren(...boxes.flatMap((wrap) => [wrap, " "]), words);
+}
+
+/** Saves an entry's byes with box changed, or puts the box back if the script refuses. The list
+ *  sent keeps what no box shows. */
+async function saveEntryByes(cell, e, box) {
+  const boxes = cell.querySelectorAll("input");
+  const asked = e.byes || [];
+  const byes = (box.checked ? [...asked, box.value] : asked.filter((b) => b !== box.value))
+    .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  for (const b of boxes) b.disabled = true;
+  const result = await call("byes", { token: e.token, byes: byes.join(", ") })
+    .catch(() => ({ error: "Couldn't reach the registration service. Try again." }));
+  deskStatus.textContent = result.message || result.error;
+  if (result.ok) e.byes = byes;
+  else box.checked = !box.checked;
+  for (const b of boxes) b.disabled = false;
+  // The tournament has a copy, which check-in starts from.
+  if (result.ok) {
+    pending.add("run");
+    applyChanges();
+  }
+}
+
+// The event and the rounds offered when the entries were last drawn: a tournament that loads,
+// starts, or changes its rounds after that can change the entries' boxes.
+let entriesDrawn = null;
+const byeShape = (key) => byeRounds(key).map((r) => r.value).join();
+
+document.addEventListener("td-tournament", (event) => {
+  loadedTournament = event.detail;
+  showRegisterByes(true);
+  if (entriesDrawn?.key === choice.value && entriesDrawn.shape !== byeShape(choice.value)) {
+    pending.add("entries");
+    applyChanges();
+  }
 });
 
 // Saving takes a few seconds, so Register hands the player off and clears the form at once: the
@@ -387,10 +494,11 @@ registerForm.addEventListener("submit", (event) => {
     return playerInput.focus();
   }
   const [eventName, date] = choice.value.split("/");
+  const byes = [...tdByes.querySelectorAll(":checked")].map((box) => box.value).join(", ");
   const job = {
     player, label: choice.selectedOptions[0]?.textContent || choice.value,
     fields: { event: eventName, date, id: player.id, category: registerForm.elements.category.value,
-      email: registerForm.elements.email.value, phone: player.phone || "" },
+      email: registerForm.elements.email.value, phone: player.phone || "", ...(byes ? { byes } : {}) },
   };
   const item = document.createElement("li");
   saving.prepend(item);
@@ -401,6 +509,7 @@ registerForm.addEventListener("submit", (event) => {
   chosen.textContent = "";
   registerForm.elements.email.value = "";
   registerForm.elements.category.value = "";
+  for (const box of tdByes.querySelectorAll(":checked")) box.checked = false;
   playerInput.focus();
 });
 
@@ -429,12 +538,14 @@ async function showDeskEntries(quiet = false) {
     ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${dollars(total("paid") - total("refunded"))}. Still owed: $${dollars(owed)}.`
     : "No entries yet.";
   const current = choices.find((c) => c.key === key);
+  entriesDrawn = { key, shape: byeShape(key) };
   tdTable.tBodies[0].replaceChildren(...entries.map((e) => {
     const row = document.createElement("tr");
     const lapsed = e.expires && current && e.expires < current.first;
     const off = [e.credit && `$${e.credit} credit`, e.discount && `$${e.discount} discount`].filter(Boolean).join(" and ");
-    for (const text of [e.name, e.id, e.rating || "Unrated", e.for, e.category || "?",
-      e.due === "" ? "?" : `$${e.due}${off ? ` after ${off}` : ""}`]) {
+    for (const text of [e.name, e.id, e.rating || "Unrated", e.for]) row.insertCell().textContent = text;
+    showEntryByes(row.insertCell(), e);
+    for (const text of [e.category || "?", e.due === "" ? "?" : `$${e.due}${off ? ` after ${off}` : ""}`]) {
       row.insertCell().textContent = text;
     }
     const send = async (button, action, fields) => {
