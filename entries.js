@@ -28,6 +28,9 @@ let swissRounds = new Map();
 // Players the form below found on this visit, whether or not they are saved on this device.
 const found = new Map();
 const players = () => [...found.values(), ...savedPlayers().filter((p) => !found.has(p.id))];
+// The reader's own ID: the player they last found or picked, else the first saved here.
+let you = null;
+const yourId = () => you ?? savedPlayers()[0]?.id;
 
 /** A button that switches the saved player from this night to its whole month, or with toNight, from the
  *  whole month to just this night. */
@@ -151,6 +154,12 @@ function eventSection(event) {
   const editors = !event.closed && event.page ? players().filter((p) => event.entries.some((e) => e.id === p.id)) : [];
   const switchers = nights.has(event.key) ? editors : [];
   const changers = editors.filter((p) => byeChoices(event, event.entries.find((e) => e.id === p.id)).length);
+  if (event.closed || !event.page) {
+    section.append(Object.assign(document.createElement("p"), { textContent: "Registration is closed." }));
+  } else if (!event.entries.some((e) => e.id === yourId())) {
+    section.append(document.createElement("p"));
+    section.lastChild.append(register);
+  }
   if (event.entries.length) {
     const table = document.createElement("table");
     table.className = "entries";
@@ -191,11 +200,6 @@ function eventSection(event) {
     wrap.append(table);
     section.append(wrap);
   }
-  if (event.closed || !event.page) {
-    section.append(Object.assign(document.createElement("p"), { textContent: "Registration is closed." }));
-  } else {
-    section.append(register);
-  }
   return section;
 }
 
@@ -211,6 +215,7 @@ let resume = null;
 function showSavedHere() {
   showSavedIn(savedHere, showEntryOf, (p) => {
     found.delete(p.id);
+    if (you === p.id) you = null;
     showSavedHere();
     redraw();
     allStatus.textContent = `${playerName(p)} is no longer saved on this device.`;
@@ -220,13 +225,15 @@ function showSavedHere() {
 /** A saved player's entry: on the list shown if they're on it, else on the soonest one, with the
  *  keyboard on their row's first button. */
 function showEntryOf(p) {
+  you = p.id;
   const on = lists.filter((e) => e.entries.some((x) => x.id === p.id));
-  if (!on.length) return void (allStatus.textContent = `${playerName(p)} isn't registered for an upcoming event.`);
-  const select = document.getElementById("entries-event");
-  if (!on.some((e) => e.key === select.value)) {
-    select.value = on[0].key;
+  if (!on.length) {
     redraw();
+    return void (allStatus.textContent = `${playerName(p)} isn't registered for an upcoming event.`);
   }
+  const select = document.getElementById("entries-event");
+  if (!on.some((e) => e.key === select.value)) select.value = on[0].key;
+  redraw();
   const button = all.querySelector(`tr[data-id="${CSS.escape(p.id)}"] button`);
   allStatus.textContent = button ? `${playerName(p)}: change the entry with the buttons on its row.`
     : `${playerName(p)} is registered. To change the entry, email president@larimerchess.org.`;
@@ -272,6 +279,7 @@ function findForm() {
     // One the Register form saved keeps its phone.
     const player = { ...saved.find((p) => p.id === id), id, last, email, name: entry.name || last };
     found.set(id, player);
+    you = id;
     const stored = choice.checked && storePlayers([player, ...saved.filter((p) => p.id !== id)]);
     idInput.value = lastInput.value = "";
     box.open = false;

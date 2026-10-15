@@ -22,7 +22,7 @@ const dateField = form?.elements.date;
 const wanted = new URLSearchParams(location.search).get("date");
 if (dateField?.tagName === "SELECT" && [...dateField.options].some((o) => o.value === wanted)) dateField.value = wanted;
 
-// Players registered from this browser, most recent first. Storage can throw (a private
+// Players registered from this browser, the one last registered or picked first. Storage can throw (a private
 // window, blocked site data); then the form works as if nothing were saved.
 const SAVED = "lccc-register-players";
 // A phone may keep an event page cached for minutes after this script changes, so the field is
@@ -76,7 +76,8 @@ function byesText(byes) {
 // The Register form, the Pairings page, and the Entries page show the same list of the players saved
 // here, and the same Remember choice, each picking a player for its own purpose.
 
-/** Fills a Players saved on this device box with a button per saved player, which calls pick, and a
+/** Fills a Players saved on this device box with a button per saved player, which moves the player to
+ *  the front of the list, the one pages take for the reader, and calls pick, and a
  *  Forget button, which calls forgotten once the player is forgotten, to redraw what depends on them;
  *  the keyboard then stays in the list, or goes to fallback once it is empty. */
 function showSavedIn(box, pick, forgotten, fallback) {
@@ -85,7 +86,12 @@ function showSavedIn(box, pick, forgotten, fallback) {
   box.querySelector("ul").replaceChildren(...list.map((p, at) => {
     const item = document.createElement("li");
     const choose = Object.assign(document.createElement("button"), { type: "button", className: "register-pick", textContent: playerName(p) });
-    choose.addEventListener("click", () => pick(p));
+    choose.addEventListener("click", () => {
+      storePlayers([p, ...savedPlayers().filter((q) => q.id !== p.id)]);
+      showSavedIn(box, pick, forgotten, fallback);
+      box.querySelector(".register-pick").focus();
+      pick(p);
+    });
     const forget = Object.assign(document.createElement("button"), { type: "button", className: "register-forget", textContent: "Forget" });
     forget.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` ${playerName(p)}` }));
     forget.addEventListener("click", () => {

@@ -404,6 +404,9 @@ if (registerPath) {
   filled.id === "12345678" && filled.last === "Player" && filled.email === "test@example.com" && filled.phone === "970 555 0123"
     && !filled.website && filled.focus
     && posted.length === 2 ? pass(`${registerPath} fills in a saved player without registering`) : fail(`${registerPath} filled ${JSON.stringify(filled)}`);
+  const reordered = await saved();
+  JSON.stringify(reordered) === JSON.stringify(["Test Player (12345678)", "Test Kid (87654321)"])
+    ? pass(`${registerPath} moves the player picked to the front of the saved list`) : fail(`${registerPath} after a pick: ${JSON.stringify(reordered)}`);
   for (const scheme of ["light", "dark"]) {
     await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
     await registration.evaluate(axeSource);
@@ -412,7 +415,7 @@ if (registerPath) {
       : pass(`${registerPath} form with saved players has no axe violations (${scheme})`);
   }
   await registration.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
-  await registration.click(".register-saved li:first-child .register-forget");
+  await registration.click(".register-saved li:nth-child(2) .register-forget");
   const afterForget = await registration.evaluate(() => ({ stored: localStorage.getItem("lccc-register-players"),
     focus: document.activeElement.textContent, said: document.querySelector(".register-status").textContent }));
   JSON.stringify(await saved()) === JSON.stringify(["Test Player (12345678)"]) && !afterForget.stored.includes("87654321")
@@ -1250,7 +1253,7 @@ await quickPage.close();
 // A player saved on this device, registered for one club night, switches to its whole month.
 const switchPage = await browser.newPage();
 switchPage.on("pageerror", (error) => fail(`JavaScript error on /entries/ switching: ${error.message}`));
-await switchPage.evaluateOnNewDocument(() => localStorage.setItem("lccc-register-players",
+const switchSaved = await switchPage.evaluateOnNewDocument(() => localStorage.setItem("lccc-register-players",
   JSON.stringify([{ id: "22345678", last: "Player", email: "night@example.com", name: "Night Player" }])));
 switchPage.on("dialog", (d) => d.accept());
 const switchCalls = [];
@@ -1284,9 +1287,8 @@ switchPage.on("request", async (request) => {
 });
 await switchPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
 const switchers = await switchPage.$$eval(".entries-switch", (b) => b.map((x) => x.closest("tr").cells[0].textContent));
-const nightRegister = await switchPage.$eval(".entries-all a.button", (a) => a.getAttribute("href"));
-nightRegister === "/events/club-night/?date=2026-10#register" ? pass("Entries page's Register for a club night opens on its whole month")
-  : fail(`Entries page Register for a club night: ${nightRegister}`);
+(await switchPage.$$(".entries-all a.button")).length === 0 ? pass("Entries page hides Register when the latest player saved here is registered")
+  : fail("Entries page shows Register to a player saved here who is registered");
 await switchPage.evaluate(axeSource);
 const switchAxe = await switchPage.evaluate(() => axe.run());
 switchAxe.violations.length ? fail(`Entries page with a switch: ${switchAxe.violations.map((v) => v.id).join(", ")}`)
@@ -1310,6 +1312,27 @@ JSON.stringify(switchCalls[1]) === JSON.stringify({ action: "toNight", event: "c
 await switchPage.select("#entries-event", "classic/2026-11-07");
 (await switchPage.$$(".entries-switch")).length === 0 ? pass("Entries page offers no switch for a tournament")
   : fail("Entries page offers a switch for a tournament");
+const siblingSaved = await switchPage.evaluateOnNewDocument(() => localStorage.setItem("lccc-register-players", JSON.stringify([
+  { id: "32345678", last: "Sibling", email: "sibling@example.com", name: "Sibling Player" },
+  ...JSON.parse(localStorage.getItem("lccc-register-players"))])));
+await switchPage.goto(base + "/entries/?event=club-night/2026-10-12", { waitUntil: "networkidle0" });
+const nightRegister = await switchPage.evaluate(() => {
+  const register = document.querySelector(".entries-all a.button");
+  return { href: register?.getAttribute("href"),
+    above: Boolean(register?.compareDocumentPosition(document.querySelector(".entries-all table")) & Node.DOCUMENT_POSITION_FOLLOWING) };
+});
+nightRegister.href === "/events/club-night/?date=2026-10#register" && nightRegister.above
+  ? pass("Entries page shows Register above the list when the latest player saved here isn't registered, opening a club night on its whole month")
+  : fail(`Entries page Register for a club night: ${JSON.stringify(nightRegister)}`);
+await press(switchPage, ".entries-all .register-saved li:nth-child(2) .register-pick");
+const pickedNight = await switchPage.evaluate(() => ({ register: Boolean(document.querySelector(".entries-all a.button")),
+  first: document.querySelector(".entries-all .register-pick").textContent }));
+for (const { identifier } of [switchSaved, siblingSaved]) await switchPage.removeScriptToEvaluateOnNewDocument(identifier);
+await switchPage.reload({ waitUntil: "networkidle0" });
+const pickedKept = await switchPage.evaluate(() => Boolean(document.querySelector(".entries-all a.button")));
+JSON.stringify(pickedNight) === JSON.stringify({ register: false, first: "Night Player (22345678)" }) && !pickedKept
+  ? pass("Entries page takes the player picked as the reader, hiding Register for their event, and keeps the choice")
+  : fail(`Entries page after a pick: ${JSON.stringify({ pickedNight, pickedKept })}`);
 await switchPage.close();
 
 // Byes on the Entries page, against a stand-in that keeps Ann's: a Byes column, and Change byes for a player saved
