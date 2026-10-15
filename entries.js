@@ -1,9 +1,12 @@
 // The Entries page (entries/): the entry list of the upcoming club event the reader picks, from the
 // registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
-// and the address keeps the choice, so a link can open on one event. ENDPOINT comes from register.js,
-// and so do the players saved on this device: a saved player registered for one club night can
-// switch to its whole month here, which the script treats as registering for the month, and one
-// registered for the whole month can switch to just one night, until they have paid.
+// and the address keeps the choice, so a link can open on one event. ENDPOINT and byesText come
+// from register.js, and so do the players saved on this device: a saved player registered for one
+// club night can switch to its whole month here, which the script treats as registering for the
+// month, and one registered for the whole month can switch to just one night, until they have paid.
+// A saved player can also change the byes they asked for, in a Swiss or a whole month; a player
+// registered on another device is saved here by the US Chess ID, last name, and email they
+// registered with.
 
 const allStatus = document.querySelector(".entries-all-status");
 const all = document.querySelector(".entries-all");
@@ -19,6 +22,11 @@ function cell(row, text, tag = "td") {
 
 // Club nights, the events.json events that aren't tournaments, as the registration script tells them.
 let nights = new Set();
+// The rounds of each tournament that takes byes, a Swiss, by the same key.
+let swissRounds = new Map();
+// Players the form below found on this visit, whether or not they are saved on this device.
+const found = new Map();
+const players = () => [...found.values(), ...savedPlayers().filter((p) => !found.has(p.id))];
 
 /** A button that switches the saved player from this night to its whole month, or with toNight, from the
  *  whole month to just this night. */
@@ -52,6 +60,72 @@ function switchButton(event, player, toNight) {
   return button;
 }
 
+/** What an entry can ask to miss: a whole month's nights still to come, or a Swiss's rounds. */
+function byeChoices(event, entry) {
+  const [name, date] = event.key.split("/");
+  if (!nights.has(event.key)) return Array.from({ length: swissRounds.get(event.key) || 0 }, (_, i) => String(i + 1));
+  return entry.for !== "Whole month" ? [] : [...nights].map((key) => key.split("/"))
+    .filter(([night, day]) => night === name && day.startsWith(date.slice(0, 7)) && day >= today).map(([, day]) => day).sort();
+}
+
+/** A button that puts checkboxes for what the saved player will miss in the cell, with Save, which
+ *  replaces their byes, and Cancel. */
+function byesButton(cell, event, entry, player) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "td-action entries-change-byes";
+  button.textContent = "Change byes";
+  button.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` for ${player.name}` }));
+  button.addEventListener("click", () => {
+    const month = entry.for === "Whole month";
+    const choices = byeChoices(event, entry);
+    const had = (entry.byes || []).map(String);
+    const shown = [...cell.childNodes];
+    const boxes = Object.assign(document.createElement("div"), { className: "register-remember" });
+    boxes.setAttribute("role", "group");
+    boxes.setAttribute("aria-label", `${month ? "Nights" : "Rounds"} ${player.name} will miss`);
+    for (const value of choices) {
+      const box = Object.assign(document.createElement("input"), { type: "checkbox", id: `entries-bye-${player.id}-${value}`, value,
+        checked: had.includes(value) });
+      boxes.append(box, Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: byesText([value]) }));
+    }
+    const save = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: "Save" });
+    const cancel = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: "Cancel" });
+    const actions = Object.assign(document.createElement("p"), { className: "td-buttons" });
+    actions.append(save, cancel);
+    cell.replaceChildren(boxes, actions);
+    (boxes.querySelector("input") || save).focus();
+    cancel.addEventListener("click", () => {
+      cell.replaceChildren(...shown);
+      button.focus();
+    });
+    save.addEventListener("click", async () => {
+      const controls = cell.querySelectorAll("input, button");
+      for (const control of controls) control.disabled = true;
+      const [name, date] = event.key.split("/");
+      // A month's nights already played aren't offered, and keep their byes.
+      const byes = [...had.filter((b) => !choices.includes(b)), ...[...boxes.querySelectorAll(":checked")].map((b) => b.value)];
+      let said;
+      try {
+        const body = new URLSearchParams({ action: "byes", event: name, date: month ? date.slice(0, 7) : date, id: player.id,
+          last: player.last, email: player.email, byes: byes.join(", ") });
+        const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
+        said = result.message || result.error;
+        if (result.ok) {
+          cell.replaceChildren(...shown);
+          await load();
+        }
+      } catch {
+        said = "The change didn't go through. Try again, or email president@larimerchess.org.";
+      }
+      for (const control of controls) control.disabled = false;
+      allStatus.textContent = said;
+      (cell.contains(save) ? save : all.querySelector(`tr[data-id="${CSS.escape(player.id)}"] .entries-change-byes`))?.focus();
+    });
+  });
+  return button;
+}
+
 function eventSection(event) {
   const section = document.createElement("section");
   const heading = document.createElement("h2");
@@ -70,22 +144,27 @@ function eventSection(event) {
   hint.textContent = ` for ${event.name}, ${night ? `all of ${monthFormat.format(new Date(event.start))}` : dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
-  // Saved players on this night's list who can switch; one saved from the Pairings page has no last name or email.
-  const switchers = nights.has(event.key) && !event.closed && event.page
-    ? savedPlayers().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id)) : [];
+  // Saved players on this list, who can change their entry; one saved from the Pairings page has no last name or email.
+  const editors = !event.closed && event.page
+    ? players().filter((p) => p.last && p.email && event.entries.some((e) => e.id === p.id)) : [];
+  const switchers = nights.has(event.key) ? editors : [];
+  const changers = editors.filter((p) => byeChoices(event, event.entries.find((e) => e.id === p.id)).length);
   if (event.entries.length) {
     const table = document.createElement("table");
     table.className = "entries";
     const head = table.createTHead().insertRow();
     const month = event.entries.some((e) => e.for === "Whole month") || switchers.length;
+    const byesColumn = event.entries.some((e) => e.byes?.length) || changers.length;
     // Players get sections when the tournament starts.
     const sectioned = event.entries.some((e) => e.section);
-    for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(sectioned ? ["Section"] : [])]) {
+    for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(byesColumn ? ["Byes"] : []),
+      ...(sectioned ? ["Section"] : [])]) {
       cell(head, label, "th").scope = "col";
     }
     const body = table.createTBody();
     for (const e of event.entries) {
       const row = body.insertRow();
+      row.dataset.id = e.id;
       cell(row, e.name);
       const link = document.createElement("a");
       link.href = `https://ratings.uschess.org/player/${encodeURIComponent(e.id)}`;
@@ -101,9 +180,14 @@ function eventSection(event) {
       const player = switchers.find((p) => p.id === e.id);
       if (month || player) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
       if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }, e.for === "Whole month"));
+      const changer = changers.find((p) => p.id === e.id);
+      if (byesColumn) cell(row, byesText(e.byes));
+      if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
       if (sectioned) cell(row, e.section || "");
     }
-    section.append(table);
+    const wrap = Object.assign(document.createElement("div"), { className: "td-table" });
+    wrap.append(table);
+    section.append(wrap);
   }
   if (event.closed || !event.page) {
     section.append(Object.assign(document.createElement("p"), { textContent: "Registration is closed." }));
@@ -111,6 +195,59 @@ function eventSection(event) {
     section.append(register);
   }
   return section;
+}
+
+// The lists shown, and a redraw of the event chosen, for the form below, which is made once so that
+// a redraw keeps what is typed in it.
+let lists = [];
+let redraw = () => {};
+let finder = null;
+
+/** A form that saves a player registered on another device as the Register form does, so their rows
+ *  get their buttons. */
+function findForm() {
+  const box = document.createElement("details");
+  box.className = "run-sections-edit";
+  const form = Object.assign(document.createElement("form"), { className: "register-form" });
+  form.append(Object.assign(document.createElement("p"), { className: "register-hint",
+    textContent: "To change your byes, or switch between a night and its month, enter what you registered with." }));
+  const field = (id, label, attributes) => {
+    const input = Object.assign(document.createElement("input"), { id, required: true, ...attributes });
+    form.append(Object.assign(document.createElement("label"), { htmlFor: id, textContent: label }), input);
+    return input;
+  };
+  const idInput = field("entries-find-id", "US Chess ID", { name: "uschess-id", type: "text", inputMode: "numeric", pattern: "[0-9]{8}",
+    maxLength: 8, autocomplete: "on" });
+  const lastInput = field("entries-find-last", "Last name", { name: "last", type: "text", autocomplete: "family-name" });
+  const emailInput = field("entries-find-email", "Email", { name: "email", type: "email", autocomplete: "email" });
+  const remember = Object.assign(document.createElement("div"), { className: "register-remember", hidden: !canStore() });
+  const choice = Object.assign(document.createElement("input"), { id: "entries-find-remember", type: "checkbox", checked: true });
+  choice.setAttribute("aria-describedby", "entries-find-remember-hint");
+  remember.append(choice, Object.assign(document.createElement("label"), { htmlFor: choice.id, textContent: "Remember this player on this device" }),
+    Object.assign(document.createElement("p"), { id: "entries-find-remember-hint", className: "register-hint",
+      textContent: "Kept only in this browser, for next time. Uncheck it on a shared computer." }));
+  form.append(remember, Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Find my entries" }));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const [id, last, email] = [idInput, lastInput, emailInput].map((input) => input.value.trim());
+    const listed = lists.find((e) => e.key === document.getElementById("entries-event")?.value)?.entries.find((e) => e.id === id);
+    const entry = listed || lists.flatMap((e) => e.entries).find((e) => e.id === id);
+    if (!entry) return void (allStatus.textContent = "Nobody with that US Chess ID is registered for an upcoming event.");
+    const saved = savedPlayers();
+    // One the Register form saved keeps its phone.
+    const player = { ...saved.find((p) => p.id === id), id, last, email, name: entry.name || last };
+    found.set(id, player);
+    const stored = choice.checked && storePlayers([player, ...saved.filter((p) => p.id !== id)]);
+    idInput.value = lastInput.value = "";
+    box.open = false;
+    redraw();
+    const buttons = all.querySelector(`tr[data-id="${CSS.escape(id)}"] button`);
+    allStatus.textContent = `${stored ? `${player.name} is saved on this device.` : `Found ${player.name}.`}${buttons
+      ? " Change the entry with the buttons on its row." : listed ? "" : " Pick one of their events to change its entry."}`;
+    (buttons || document.getElementById("entries-event")).focus();
+  });
+  box.append(Object.assign(document.createElement("summary"), { id: "entries-find", textContent: "Registered on another device?" }), form);
+  return box;
 }
 
 function showPicker(events) {
@@ -134,11 +271,13 @@ function showPicker(events) {
     history.replaceState(history.state, "", `?event=${encodeURIComponent(select.value)}`);
   };
   select.addEventListener("change", show);
+  redraw = show;
   // Redrawn when the script's lists replace the database's copy, so the reader keeps their place.
-  const focused = document.activeElement?.id === "entries-event";
-  all.replaceChildren(picker, shown);
+  const focused = all.contains(document.activeElement) ? document.activeElement.id : "";
+  finder ||= findForm();
+  all.replaceChildren(picker, finder, shown);
   show();
-  if (focused) select.focus();
+  if (focused) document.getElementById(focused)?.focus();
 }
 
 // The database's copy (see publishEntries in scripts/registration.gs) is shown first, since it comes
@@ -151,6 +290,7 @@ function showLists(events) {
   const text = JSON.stringify(events);
   if (text === shownLists) return;
   shownLists = text;
+  lists = events;
   allStatus.textContent = events.length ? "" : "No club events are coming up.";
   if (events.length) showPicker(events);
   else all.replaceChildren();
@@ -158,8 +298,10 @@ function showLists(events) {
 
 function load() {
   const calendar = fetch("/events.json").then((response) => response.json()).catch(() => []).then((calendarEvents) => {
-    nights = new Set(calendarEvents.filter((e) => e.page && !(e.tags || []).includes("tournament"))
-      .map((e) => `${e.page.split("/").filter(Boolean).pop()}/${e.start.slice(0, 10)}`));
+    const club = calendarEvents.filter((e) => e.page).map((e) => [`${e.page.split("/").filter(Boolean).pop()}/${e.start.slice(0, 10)}`, e]);
+    nights = new Set(club.filter(([, e]) => !(e.tags || []).includes("tournament")).map(([key]) => key));
+    swissRounds = new Map(club.filter(([, e]) => (e.tags || []).includes("tournament") && Number(e.rounds) && !["quad", "arena"].includes(e.pairing))
+      .map(([key, e]) => [key, Number(e.rounds)]));
   });
   let answered = false;
   if (LIVE_DB) {

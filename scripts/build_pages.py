@@ -44,6 +44,7 @@ LISTINGS = {
     "scholastic/": lambda e: "youth" in e["tags"],
 }
 LABEL = re.compile(r"^(?:Cost(?: for [^:]+)?|Time control):")
+ROUND_TIME = re.compile(r"^\s*[•*-]\s+Round (\d+): (\d{1,2}:\d\d [AP]M)", re.M)
 LINK = re.compile(r"https?://[^\s<>\"]*[^\s<>\".,;:!?)]|[\w.+-]+@[\w-]+\.[\w.-]*\w")
 STREET_ABBREVIATIONS = {"St", "Ave", "Rd", "Dr", "Blvd", "Ln", "Ct", "Pl", "Pkwy"}
 NAV = [("/events/", "Events"), ("/entries/", "Entries"), ("/pairings/", "Pairings"), ("/standings/", "Standings"),
@@ -237,6 +238,43 @@ def register_choices(events, prices):
     return list(months.items())
 
 
+def byes_html(events):
+    """Checkboxes named byes for the rounds a player will miss, each a half-point bye: a tournament's rounds, with
+    the times its description gives, unless it is a quad or an arena or has no rounds; or each month of a club
+    night's nights, which register.js shows only while that month is chosen."""
+    e = events[0]
+    box = lambda value, shown: (f'\n            <input id="register-bye-{value}" name="byes" type="checkbox" value="{value}">'
+                                f'\n            <label for="register-bye-{value}">{escaped(shown)}</label>')
+
+    def fieldset(month, legend, boxes, hint):
+        hint_id = f"register-byes-{month}-hint" if month else "register-byes-hint"
+        chosen = f' data-month="{month}" hidden disabled' if month else ""
+        return (f'\n        <fieldset class="run-sections"{chosen} aria-describedby="{hint_id}">'
+                f"\n          <legend>{legend}</legend>"
+                f'\n          <div class="register-remember">{boxes}'
+                f'\n            <p id="{hint_id}" class="register-hint">{hint}</p>'
+                "\n          </div>"
+                "\n        </fieldset>")
+
+    entries = '<a href="/entries/">Entries page</a>'
+    if "tournament" in e["tags"]:
+        if not e.get("rounds") or e.get("pairing") in ("quad", "arena"):
+            return ""
+        times = dict(ROUND_TIME.findall(e["description"]))
+        boxes = "".join(box(n, f"Round {n}, {times[n]}" if n in times else f"Round {n}")
+                        for n in map(str, range(1, int(e["rounds"]) + 1)))
+        return fieldset("", "Rounds you'll miss (half-point bye)", boxes,
+                        f"One per player, half a point. You can change it on the {entries} until the round is paired; "
+                        "a last-round bye is fixed once round 1 is paired.")
+    months = defaultdict(str)
+    for x in events:
+        start = datetime.fromisoformat(x["start"]).astimezone(TZ)
+        months[x["start"][:7]] += box(x["start"][:10], f"{start:%A}, {start:%B} {start.day}")
+    return "".join(fieldset(month, "Nights you'll miss (half-point bye)", boxes,
+                            f"Half a point for each. Change them on the {entries} until the night is paired.")
+                   for month, boxes in months.items())
+
+
 def register_html(events, prices):
     """The Register form and entry list, which register.js brings to life; one choice or a menu of them."""
     name = events[0]["page"].strip("/").split("/")[-1]
@@ -279,7 +317,7 @@ def register_html(events, prices):
         <p id="register-email-hint" class="register-hint">For a player under 18, a parent's or guardian's. It isn't shown on the entry list; see <a href="/privacy/">Privacy</a>.</p>
         <label for="register-phone">Phone (optional)</label>
         <input id="register-phone" name="phone" type="tel" autocomplete="tel" aria-describedby="register-phone-hint">
-        <p id="register-phone-hint" class="register-hint">So the tournament director can reach you. For a player under 18, a parent's or guardian's. Never shown on the entry list.</p>
+        <p id="register-phone-hint" class="register-hint">So the tournament director can reach you. For a player under 18, a parent's or guardian's. Never shown on the entry list.</p>{byes_html(events)}
         <div class="register-remember" hidden>
           <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
           <label for="register-remember">Remember this player on this device</label>
@@ -297,10 +335,10 @@ def register_html(events, prices):
     <section id="entries">
       <h2>Entries</h2>
       <p class="entries-status" role="status"></p>
-      <table class="entries" hidden>
+      <div class="td-table"><table class="entries" hidden>
         <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th>{for_column}</tr></thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>"""
 
 

@@ -4,6 +4,7 @@
 """
 
 import importlib.util
+import re
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -105,6 +106,41 @@ class Invitational(unittest.TestCase):
         self.assertIn('<p class="register-invitational">', page)
         self.assertIn('id="entries"', page)
         self.assertNotIn("data-invitational", bp.register_html([CLASSIC], {"fees": Fees.FEES}))
+
+
+class Byes(unittest.TestCase):
+    PRICES = {"fees": Fees.FEES}
+
+    def test_a_swiss_offers_its_rounds_with_the_times_given(self):
+        page = bp.register_html([{**CLASSIC, "rounds": "3", "pairing": "swiss"}], self.PRICES)
+        self.assertEqual(re.findall(r'<input id="register-bye-(\d)" name="byes" type="checkbox" value="\1">\s*<label for="register-bye-\1">([^<]+)<', page),
+                         [("1", "Round 1, 10:00 AM"), ("2", "Round 2, 12:15 PM"), ("3", "Round 3")])
+        self.assertIn('<fieldset class="run-sections" aria-describedby="register-byes-hint">\n'
+                      "          <legend>Rounds you'll miss (half-point bye)</legend>", page)
+        self.assertIn('<p id="register-byes-hint" class="register-hint">One per player, half a point.', page)
+        self.assertLess(page.index('id="register-phone-hint"'), page.index("<fieldset class=\"run-sections\""))
+        self.assertLess(page.index("<fieldset class=\"run-sections\""), page.index('<div class="register-remember" hidden>'))
+
+    def test_a_round_time_shows_without_its_note(self):
+        slow = {**CLASSIC, "rounds": "2", "description": DESCRIPTION.replace("12:15 PM", "1:30 PM, after a lunch break")}
+        self.assertIn('<label for="register-bye-2">Round 2, 1:30 PM</label>', bp.register_html([slow], self.PRICES))
+
+    def test_no_byes_for_a_quad_an_arena_or_an_event_without_rounds(self):
+        for event in [{**CLASSIC, "rounds": "3", "pairing": "quad"}, {**CLASSIC, "rounds": "3", "pairing": "arena"}, CLASSIC]:
+            self.assertNotIn('name="byes"', bp.register_html([event], self.PRICES), event.get("pairing"))
+
+    def test_a_club_night_offers_each_months_nights_for_that_month_only(self):
+        night = {**CLASSIC, "title": "Monday Club Night", "tags": ["casual", "club", "rated"], "pairing": "swiss",
+                 "page": "/events/monday-club-night/"}
+        starts = ["2026-10-19T18:30:00-06:00", "2026-10-26T18:30:00-06:00", "2026-11-02T18:30:00-07:00"]
+        page = bp.register_html([{**night, "start": start, "end": start} for start in starts], self.PRICES)
+        months = re.findall(r'<fieldset class="run-sections" data-month="([\d-]+)" hidden disabled '
+                            r'aria-describedby="register-byes-\1-hint">(.*?)</fieldset>', page, re.S)
+        self.assertEqual([(month, re.findall(r'value="([\d-]+)">\s*<label for="register-bye-\1">([^<]+)<', body)) for month, body in months],
+                         [("2026-10", [("2026-10-19", "Monday, October 19"), ("2026-10-26", "Monday, October 26")]),
+                          ("2026-11", [("2026-11-02", "Monday, November 2")])])
+        self.assertIn("<legend>Nights you'll miss (half-point bye)</legend>", months[0][1])
+        self.assertIn('<p id="register-byes-2026-10-hint" class="register-hint">Half a point for each.', months[0][1])
 
 
 class Unrated(unittest.TestCase):

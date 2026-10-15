@@ -624,6 +624,54 @@ section.td-table td { white-space: nowrap; }
         <label for="register-phone">Phone (optional)</label>
         <input id="register-phone" name="phone" type="tel" autocomplete="tel" aria-describedby="register-phone-hint">
         <p id="register-phone-hint" class="register-hint">So the tournament director can reach you. For a player under 18, a parent's or guardian's. Never shown on the entry list.</p>
+        <fieldset class="run-sections" data-month="2026-10" hidden disabled aria-describedby="register-byes-2026-10-hint">
+          <legend>Nights you'll miss (half-point bye)</legend>
+          <div class="register-remember">
+            <input id="register-bye-2026-10-19" name="byes" type="checkbox" value="2026-10-19">
+            <label for="register-bye-2026-10-19">Monday, October 19</label>
+            <input id="register-bye-2026-10-26" name="byes" type="checkbox" value="2026-10-26">
+            <label for="register-bye-2026-10-26">Monday, October 26</label>
+            <p id="register-byes-2026-10-hint" class="register-hint">Half a point for each. Change them on the <a href="/entries/">Entries page</a> until the night is paired.</p>
+          </div>
+        </fieldset>
+        <fieldset class="run-sections" data-month="2026-11" hidden disabled aria-describedby="register-byes-2026-11-hint">
+          <legend>Nights you'll miss (half-point bye)</legend>
+          <div class="register-remember">
+            <input id="register-bye-2026-11-02" name="byes" type="checkbox" value="2026-11-02">
+            <label for="register-bye-2026-11-02">Monday, November 2</label>
+            <input id="register-bye-2026-11-09" name="byes" type="checkbox" value="2026-11-09">
+            <label for="register-bye-2026-11-09">Monday, November 9</label>
+            <input id="register-bye-2026-11-16" name="byes" type="checkbox" value="2026-11-16">
+            <label for="register-bye-2026-11-16">Monday, November 16</label>
+            <input id="register-bye-2026-11-23" name="byes" type="checkbox" value="2026-11-23">
+            <label for="register-bye-2026-11-23">Monday, November 23</label>
+            <input id="register-bye-2026-11-30" name="byes" type="checkbox" value="2026-11-30">
+            <label for="register-bye-2026-11-30">Monday, November 30</label>
+            <p id="register-byes-2026-11-hint" class="register-hint">Half a point for each. Change them on the <a href="/entries/">Entries page</a> until the night is paired.</p>
+          </div>
+        </fieldset>
+        <fieldset class="run-sections" data-month="2026-12" hidden disabled aria-describedby="register-byes-2026-12-hint">
+          <legend>Nights you'll miss (half-point bye)</legend>
+          <div class="register-remember">
+            <input id="register-bye-2026-12-07" name="byes" type="checkbox" value="2026-12-07">
+            <label for="register-bye-2026-12-07">Monday, December 7</label>
+            <input id="register-bye-2026-12-14" name="byes" type="checkbox" value="2026-12-14">
+            <label for="register-bye-2026-12-14">Monday, December 14</label>
+            <input id="register-bye-2026-12-21" name="byes" type="checkbox" value="2026-12-21">
+            <label for="register-bye-2026-12-21">Monday, December 21</label>
+            <input id="register-bye-2026-12-28" name="byes" type="checkbox" value="2026-12-28">
+            <label for="register-bye-2026-12-28">Monday, December 28</label>
+            <p id="register-byes-2026-12-hint" class="register-hint">Half a point for each. Change them on the <a href="/entries/">Entries page</a> until the night is paired.</p>
+          </div>
+        </fieldset>
+        <fieldset class="run-sections" data-month="2027-01" hidden disabled aria-describedby="register-byes-2027-01-hint">
+          <legend>Nights you'll miss (half-point bye)</legend>
+          <div class="register-remember">
+            <input id="register-bye-2027-01-04" name="byes" type="checkbox" value="2027-01-04">
+            <label for="register-bye-2027-01-04">Monday, January 4</label>
+            <p id="register-byes-2027-01-hint" class="register-hint">Half a point for each. Change them on the <a href="/entries/">Entries page</a> until the night is paired.</p>
+          </div>
+        </fieldset>
         <div class="register-remember" hidden>
           <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
           <label for="register-remember">Remember this player on this device</label>
@@ -641,10 +689,10 @@ section.td-table td { white-space: nowrap; }
     <section id="entries">
       <h2>Entries</h2>
       <p class="entries-status" role="status"></p>
-      <table class="entries" hidden>
+      <div class="td-table"><table class="entries" hidden>
         <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th></tr></thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="where">
@@ -662,6 +710,6 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../../register.js?v=dc8ab5ced9" defer></script>
+  <script src="../../register.js?v=f47acefa31" defer></script>
 </body>
 </html>
