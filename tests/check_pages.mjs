@@ -445,6 +445,81 @@ if (registerPath) {
   await registration.evaluate(() => localStorage.clear());
 }
 
+// Byes asked for when registering, each a half-point bye. A Swiss's Register form offers its rounds, with the times
+// its description gives, and sends those checked as one value; its entry list shows each player's byes. A club
+// night's offers a month's nights only while that month is chosen, and sends their dates.
+const fillPlayer = async (tab) => {
+  for (const [field, value] of [["#register-id", "12345678"], ["#register-last", "Player"], ["#register-email", "test@example.com"]]) {
+    await tab.$eval(field, (input) => { input.value = ""; });
+    await tab.type(field, value);
+  }
+};
+const datesByPage = seriesPages.map((p) => clubEvents.filter((e) => e.page === p));
+const swissDates = datesByPage.find(([e]) => e?.tags.includes("tournament") && Number(e.rounds) && !["quad", "arena"].includes(e.pairing));
+if (swissDates) {
+  const [swiss] = swissDates;
+  const sentSwiss = [];
+  const swissPage = await mocked(`${swiss.page} with byes`, (p) => {
+    if (p.entries) return { entries: [{ name: "Ann Example", id: "12345678", rating: "1500", byes: ["2", "4"] }, { name: "Ben Example", id: "22345678", rating: "1200" }] };
+    sentSwiss.push(p);
+    return { ok: true, name: "Test Player", message: "Test Player is registered for Saturday, November 7, 2026, with a half-point bye." };
+  });
+  await swissPage.goto(base + swiss.page, { waitUntil: "networkidle0" });
+  const times = Object.fromEntries([...swiss.description.matchAll(/^\s*[•*-]\s+Round (\d+): (\d{1,2}:\d\d [AP]M)/gm)].map((m) => [m[1], m[2]]));
+  const rounds = [...Array(Number(swiss.rounds))].map((_, i) => `Round ${i + 1}${times[i + 1] ? `, ${times[i + 1]}` : ""}`);
+  const offered = await swissPage.$$eval("[name=byes] + label", (labels) => labels.map((l) => l.textContent));
+  const listed = await swissPage.$$eval("#entries tr", (rows) => rows.map((r) => r.lastElementChild.textContent));
+  const picked = [...new Set(["1", swiss.rounds])];
+  await fillPlayer(swissPage);
+  for (const round of picked) await press(swissPage, `#register-bye-${round}`);
+  await press(swissPage, ".register-form button[type=submit]");
+  await swissPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  const left = await swissPage.$$eval("[name=byes]:checked", (boxes) => boxes.length);
+  JSON.stringify(offered) === JSON.stringify(rounds) && JSON.stringify(listed) === JSON.stringify(["Byes", "Rounds 2 and 4", ""])
+    && sentSwiss.length === 1 && sentSwiss[0].byes === picked.join(", ") && left === 0
+    ? pass(`${swiss.page} offers the rounds to miss (${offered.join("; ")}), sends those checked, and lists each player's byes`)
+    : fail(`${swiss.page} byes: ${JSON.stringify({ offered, rounds, listed, sent: sentSwiss, left })}`);
+  await swissPage.evaluate(() => localStorage.clear());
+  await swissPage.close();
+}
+const nightDates = datesByPage.find(([e]) => e?.tags.includes("rated") && !e.tags.includes("tournament"));
+if (nightDates) {
+  const { page: nightPath, start } = nightDates[0];
+  const month = start.slice(0, 7);
+  const nights = nightDates.filter((e) => e.start.startsWith(month)).map((e) => e.start.slice(0, 10));
+  const sentNights = [];
+  const nightPage = await mocked(`${nightPath} with byes`, (p) => {
+    if (p.entries) return { entries: [] };
+    sentNights.push(p);
+    return { ok: true, name: "Test Player", message: "Test Player is registered." };
+  });
+  await nightPage.goto(`${base}${nightPath}?date=${month}`, { waitUntil: "networkidle0" });
+  const offeredNights = () => nightPage.$$eval("fieldset[data-month]", (sets) => sets.filter((s) => !s.hidden && !s.disabled)
+    .map((s) => [...s.querySelectorAll("[name=byes]")].map((b) => b.value)));
+  const checkNights = async () => {
+    for (const night of nights) await press(nightPage, `#register-bye-${night}`);
+    await fillPlayer(nightPage);
+    await nightPage.$eval(".register-status", (s) => { s.textContent = ""; });
+  };
+  const forMonth = await offeredNights();
+  await checkNights();
+  // Checked for the month, then a night chosen instead: the night is registered without them.
+  await nightPage.select("#register-date", nights[0]);
+  const forNight = await offeredNights();
+  await press(nightPage, ".register-form button[type=submit]");
+  await nightPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  await nightPage.select("#register-date", month);
+  await checkNights();
+  await press(nightPage, ".register-form button[type=submit]");
+  await nightPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  JSON.stringify(forMonth) === JSON.stringify([nights]) && JSON.stringify(forNight) === "[]" && sentNights.length === 2
+    && sentNights[0].date === nights[0] && !("byes" in sentNights[0]) && sentNights[1].date === month && sentNights[1].byes === nights.join(", ")
+    ? pass(`${nightPath} offers the nights to miss only for a whole month, and sends their dates (${sentNights[1].byes})`)
+    : fail(`${nightPath} byes: ${JSON.stringify({ forMonth, forNight, nights, sent: sentNights })}`);
+  await nightPage.evaluate(() => localStorage.clear());
+  await nightPage.close();
+}
+
 // The home page's register cards. Through a month's second Monday the club night card asks
 // players to register for the month, then to drop in; the clock is set an hour before each case.
 const clubNights = clubEvents.filter((e) => !e.tags.includes("tournament") && e.tags.includes("rated"));
@@ -1237,6 +1312,149 @@ await switchPage.select("#entries-event", "classic/2026-11-07");
   : fail("Entries page offers a switch for a tournament");
 await switchPage.close();
 
+// Byes on the Entries page, against a stand-in that keeps Ann's: a Byes column, and Change byes for a player saved
+// on this device, on a whole month, which offers the nights still to come and keeps a bye on one already played, and
+// on a Swiss, which offers its rounds, but never on a quad; and a form that saves a player registered on another device.
+const byesPage = await browser.newPage();
+byesPage.on("pageerror", (error) => fail(`JavaScript error on /entries/ with byes: ${error.message}`));
+await byesPage.evaluateOnNewDocument(() => {
+  if (!sessionStorage.getItem("seeded")) {
+    localStorage.setItem("lccc-register-players", JSON.stringify([{ id: "12345678", last: "Example", email: "ann@example.com", name: "Ann Example" }]));
+    sessionStorage.setItem("seeded", "1");
+  }
+});
+const byesCalls = [];
+// Ann's byes by event; events.json no longer lists October 5, which has been played.
+const annByes = { "club-night": ["2099-10-05", "2099-10-19"], classic: ["3"] };
+await byesPage.setRequestInterception(true);
+byesPage.on("request", async (request) => {
+  const url = new URL(request.url());
+  if (url.pathname === "/register.js") {
+    request.respond({ contentType: "text/javascript", body: offline(await (await fetch(base + "/register.js")).text()) });
+  } else if (url.pathname === "/events.json") {
+    request.respond({ contentType: "application/json", body: JSON.stringify([
+      ...["12", "19", "26"].map((day) => ({ page: "/events/club-night/", start: `2099-10-${day}T18:30:00-06:00`, tags: ["casual"], pairing: "swiss", rounds: "" })),
+      { page: "/events/classic/", start: "2099-11-07T10:00:00-07:00", tags: ["tournament"], pairing: "swiss", rounds: "4" },
+      { page: "/events/quads/", start: "2099-11-14T10:00:00-07:00", tags: ["tournament"], pairing: "quad", rounds: "3" }]) });
+  } else if (url.host === "registration.test") {
+    let body;
+    if (request.method() === "POST") {
+      const p = Object.fromEntries(new URLSearchParams(request.postData()));
+      byesCalls.push(p);
+      const byes = p.byes ? p.byes.split(", ") : [];
+      if (p.event === "classic" && byes.length > 1) {
+        body = { error: "Online, a player can ask for one bye in a one-day tournament." };
+      } else {
+        annByes[p.event] = byes;
+        body = { ok: true, message: "Ann Example's byes are saved." };
+      }
+    } else {
+      const ann = (event, rest) => ({ name: "Ann Example", id: "12345678", rating: "1500", ...rest, ...(annByes[event]?.length ? { byes: annByes[event] } : {}) });
+      body = { events: [
+        { key: "club-night/2099-10-12", name: "Club Night", label: "Monday, October 12, 2099", page: "/events/club-night/", start: "2099-10-12T18:30:00-06:00",
+          entries: [ann("club-night", { for: "Whole month" }), { name: "Ben Example", id: "22345678", rating: "1200", for: "Monday, October 12" }] },
+        { key: "classic/2099-11-07", name: "Classic", label: "Saturday, November 7, 2099", page: "/events/classic/", start: "2099-11-07T10:00:00-07:00",
+          entries: [ann("classic", { for: "Saturday, November 7" }), { name: "Cal Example", id: "32345678", rating: "1400", for: "Saturday, November 7" }] },
+        { key: "quads/2099-11-14", name: "Quads", label: "Saturday, November 14, 2099", page: "/events/quads/", start: "2099-11-14T10:00:00-07:00",
+          entries: [ann("quads", { for: "Saturday, November 14" })] }] };
+    }
+    request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
+  } else {
+    request.continue();
+  }
+});
+// The Byes column's text, without its button, and whose rows have Change byes.
+const byesShown = () => byesPage.evaluate(() => {
+  const head = [...document.querySelectorAll(".entries-all thead th")].map((c) => c.textContent);
+  return { head, byes: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => [...(r.cells[head.indexOf("Byes")]?.childNodes || [])]
+    .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim()),
+  changers: [...document.querySelectorAll(".entries-all .entries-change-byes")].map((b) => b.closest("tr").cells[0].textContent),
+  status: document.querySelector(".entries-all-status").textContent, focused: document.activeElement?.textContent };
+});
+const byesEditor = () => byesPage.evaluate(() => {
+  const group = document.querySelector(".entries-all [role=group]");
+  return group && { label: group.getAttribute("aria-label"), focused: document.activeElement?.id || document.activeElement?.textContent,
+    boxes: [...group.querySelectorAll("input")].map((b) => `${b.labels[0].textContent}${b.checked ? " (checked)" : ""}`) };
+});
+const saveByes = async (said) => {
+  await press(byesPage, ".entries-all [role=group] + p button");
+  await byesPage.waitForFunction((s) => document.querySelector(".entries-all-status").textContent.startsWith(s), {}, said);
+};
+await byesPage.goto(base + "/entries/", { waitUntil: "networkidle0" });
+const monthByes = await byesShown();
+await press(byesPage, ".entries-change-byes");
+const monthEditor = await byesEditor();
+await axeBoth(byesPage, "Entries page changing byes");
+await byesPage.setViewport({ width: 390, height: 844 });
+await fitsPhone(byesPage, "Entries page changing byes");
+await byesPage.setViewport({ width: 1100, height: 800 });
+await press(byesPage, "#entries-bye-12345678-2099-10-19");
+await press(byesPage, "#entries-bye-12345678-2099-10-26");
+await saveByes("Ann Example's byes");
+const monthSaved = await byesShown();
+JSON.stringify(monthByes.head) === JSON.stringify(["Name", "US Chess ID", "Rating", "For", "Byes"])
+  && JSON.stringify(monthByes.byes) === JSON.stringify(["October 5 and 19", ""]) && JSON.stringify(monthByes.changers) === '["Ann Example"]'
+  && JSON.stringify(monthEditor) === JSON.stringify({ label: "Nights Ann Example will miss", focused: "entries-bye-12345678-2099-10-12",
+    boxes: ["October 12", "October 19 (checked)", "October 26"] })
+  && JSON.stringify(byesCalls[0]) === JSON.stringify({ action: "byes", event: "club-night", date: "2099-10", id: "12345678", last: "Example",
+    email: "ann@example.com", byes: "2099-10-05, 2099-10-26" })
+  && monthSaved.byes[0] === "October 5 and 26" && monthSaved.status === "Ann Example's byes are saved." && monthSaved.focused === "Change byes for Ann Example"
+  ? pass("Entries page shows byes, and a saved player changes a whole month's, keeping the nights already played")
+  : fail(`Entries page month's byes: ${JSON.stringify({ monthByes, monthEditor, call: byesCalls[0], monthSaved })}`);
+await press(byesPage, ".entries-change-byes");
+await press(byesPage, ".entries-all [role=group] + p button:last-child");
+const cancelled = await byesShown();
+cancelled.byes[0] === "October 5 and 26" && cancelled.focused === "Change byes for Ann Example" && byesCalls.length === 1
+  ? pass("Entries page's Cancel puts the byes back as they were") : fail(`Entries page Cancel: ${JSON.stringify({ cancelled, byesCalls })}`);
+await byesPage.select("#entries-event", "classic/2099-11-07");
+const swissByes = await byesShown();
+await press(byesPage, ".entries-change-byes");
+const swissEditor = await byesEditor();
+await press(byesPage, "#entries-bye-12345678-4");
+await saveByes("Online");
+const byesRefused = await byesEditor();
+await press(byesPage, "#entries-bye-12345678-3");
+await saveByes("Ann Example's byes");
+const swissSaved = await byesShown();
+await byesPage.select("#entries-event", "quads/2099-11-14");
+const quadByes = await byesShown();
+JSON.stringify(swissByes.byes) === JSON.stringify(["Round 3", ""]) && JSON.stringify(swissByes.changers) === '["Ann Example"]'
+  && JSON.stringify(swissEditor.boxes) === JSON.stringify(["Round 1", "Round 2", "Round 3 (checked)", "Round 4"])
+  && swissEditor.label === "Rounds Ann Example will miss"
+  && JSON.stringify(byesRefused) === JSON.stringify({ ...swissEditor, focused: "Save", boxes: ["Round 1", "Round 2", "Round 3 (checked)", "Round 4 (checked)"] })
+  && JSON.stringify(byesCalls.slice(1).map((c) => [c.event, c.date, c.byes])) === JSON.stringify([["classic", "2099-11-07", "3, 4"], ["classic", "2099-11-07", "4"]])
+  && swissSaved.byes[0] === "Round 4" && !quadByes.head.includes("Byes") && !quadByes.changers.length
+  ? pass("Entries page changes a Swiss's byes by round, keeps them open after a refusal, and offers none for a quad")
+  : fail(`Entries page Swiss's byes: ${JSON.stringify({ swissByes, swissEditor, byesRefused, calls: byesCalls.slice(1), swissSaved, quadByes })}`);
+// Saved on another device: the form saves the player here, and their row gets its buttons.
+await byesPage.evaluate(() => localStorage.clear());
+await byesPage.goto(base + "/entries/?event=club-night%2F2099-10-12", { waitUntil: "networkidle0" });
+const byesUnsaved = await byesShown();
+await press(byesPage, "#entries-find");
+await axeBoth(byesPage, "Entries page with the form for another device");
+const findPlayer = async (id) => {
+  for (const [field, value] of [["#entries-find-id", id], ["#entries-find-last", "Example"], ["#entries-find-email", "ann@example.com"]]) {
+    await byesPage.$eval(field, (input) => { input.value = ""; });
+    await byesPage.type(field, value);
+  }
+  await press(byesPage, ".entries-all form button[type=submit]");
+};
+await findPlayer("99999999");
+const byesNobody = (await byesShown()).status;
+await findPlayer("12345678");
+const foundHere = await byesShown();
+const savedHere = await byesPage.evaluate(() => ({ saved: JSON.parse(localStorage.getItem("lccc-register-players")),
+  open: document.querySelector(".entries-all details").open }));
+!byesUnsaved.changers.length && JSON.stringify(byesUnsaved.byes) === JSON.stringify(["October 5 and 26", ""])
+  && byesNobody === "Nobody with that US Chess ID is registered for an upcoming event."
+  && JSON.stringify(savedHere) === JSON.stringify({ saved: [{ id: "12345678", last: "Example", email: "ann@example.com", name: "Ann Example" }], open: false })
+  && JSON.stringify(foundHere.changers) === '["Ann Example"]' && foundHere.focused === "Just this night for Ann Example"
+  && foundHere.status === "Ann Example is saved on this device. Change the entry with the buttons on its row."
+  ? pass("Entries page saves a player registered on another device, whose row then has its buttons")
+  : fail(`Entries page another device: ${JSON.stringify({ byesUnsaved, byesNobody, foundHere, savedHere })}`);
+await byesPage.evaluate(() => localStorage.clear());
+await byesPage.close();
+
 // Running a tournament on the TD desk, against a stand-in for the Apps Script that keeps the
 // tournament in memory: start it, check in, pair round one, post it, and enter a result.
 const runPage = await browser.newPage();
@@ -1727,6 +1945,35 @@ await axeBoth(standingsPage, "Standings page with two sections");
 await standingsPage.setViewport(PHONE);
 await fitsPhone(standingsPage, "Standings page with two sections");
 await standingsPage.close();
+
+// Byes asked for in rounds not yet posted are posted with each section (22C4), above the round menu on Pairings and
+// below the table on Standings: by round, or in a month by night. A round already posted has them under Without a game.
+const withByesAsked = (extra) => twoSections().map((t) => ({ ...t, plannedRounds: 4, ...extra,
+  players: t.players.map((p) => ({ ...p, ...{ a: { byes: [3, 4] }, f: { byes: [2, 3] } }[p.id] })) }));
+let askedTournaments = withByesAsked({});
+const askedLines = (tab) => tab.$$eval("main p", (ps) => ps.filter((p) => p.textContent.startsWith("Byes asked for")).map((p) => ({
+  text: p.textContent, before: p.previousElementSibling.className || p.previousElementSibling.tagName, after: p.nextElementSibling?.className || "" })));
+const askedPairings = await mocked("/pairings/ with byes asked for", () => ({ tournaments: askedTournaments }));
+await askedPairings.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const byRound = await askedLines(askedPairings);
+askedTournaments = withByesAsked({ roundDates: ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"] });
+await askedPairings.reload({ waitUntil: "networkidle0" });
+const byNight = await askedLines(askedPairings);
+await askedPairings.close();
+const askedStandings = await mocked("/standings/ with byes asked for", () => ({ tournaments: askedTournaments }));
+await askedStandings.goto(base + "/standings/", { waitUntil: "networkidle0" });
+const belowTable = await askedLines(askedStandings);
+askedTournaments = withByesAsked({ status: "rated" });
+await askedStandings.reload({ waitUntil: "networkidle0" });
+const onceRated = await askedLines(askedStandings);
+await askedStandings.close();
+JSON.stringify(byRound) === JSON.stringify([{ text: "Byes asked for: Ann (2000), rounds 3 and 4.", before: "H3", after: "round-menu" },
+  { text: "Byes asked for: Fay (1200), round 3.", before: "H3", after: "round-menu" }])
+  && JSON.stringify(byNight.map((l) => l.text)) === JSON.stringify(["Byes asked for: Ann (2000), October 19 and 26.", "Byes asked for: Fay (1200), October 19."])
+  && JSON.stringify(belowTable.map((l) => [l.text, l.before])) === JSON.stringify([["Byes asked for: Ann (2000), October 19 and 26.", "round-shown"],
+    ["Byes asked for: Fay (1200), October 19.", "round-shown"]]) && !onceRated.length
+  ? pass("Pairings and Standings pages post the byes asked for in rounds not yet posted, by round or by night, until the tournament is rated")
+  : fail(`Byes asked for: ${JSON.stringify({ byRound, byNight, belowTable, onceRated })}`);
 
 // A quad on the Standings page: Sonneborn-Berger and head-to-head.
 const quadStandingsPage = await mocked("/standings/ with quads", () => {

@@ -1,7 +1,7 @@
 // The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
-// The TD desk (td/) loads this too, for ENDPOINT, LIVE_DB, and FIREBASE, and the Pairings page, for
-// the first two and the saved players.
+// The TD desk (td/) loads this too, for ENDPOINT, LIVE_DB, and FIREBASE, and the Entries and Pairings
+// pages, for the first two, the saved players, and byesText.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 // The club's Realtime Database (https://….firebaseio.com), which live.js follows; while it is
@@ -62,6 +62,16 @@ function canStore() {
 }
 
 const playerName = (p) => `${p.name || p.last} (${p.id})`;
+
+/** An entry's byes as stored, for a cell: "Rounds 2 and 4", or a whole month's nights, "October 19 and 26". */
+function byesText(byes) {
+  const sorted = (byes || []).map(String).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  if (!sorted.length) return "";
+  const and = new Intl.ListFormat("en-US");
+  if (!sorted[0].includes("-")) return `${sorted.length > 1 ? "Rounds" : "Round"} ${and.format(sorted)}`;
+  const month = new Intl.DateTimeFormat("en-US", { timeZone: "America/Denver", month: "long" }).format(new Date(`${sorted[0]}T12:00:00Z`));
+  return `${month} ${and.format(sorted.map((date) => String(Number(date.slice(8)))))}`;
+}
 
 function showSaved() {
   const list = savedPlayers();
@@ -132,9 +142,12 @@ async function showEntries() {
       ? `${players} registered for ${day}.` : `No one has registered for ${day} yet.`;
     const head = table.tHead.rows[0];
     const forColumn = [...head.cells].some((c) => c.textContent === "For");
+    const byesColumn = entries.some((e) => e.byes?.length);
     // Players get sections when the tournament starts.
     const sectioned = entries.some((e) => e.section);
+    head.querySelector(".entries-byes")?.remove();
     head.querySelector(".entries-section")?.remove();
+    if (byesColumn) head.append(Object.assign(document.createElement("th"), { scope: "col", className: "entries-byes", textContent: "Byes" }));
     if (sectioned) head.append(Object.assign(document.createElement("th"), { scope: "col", className: "entries-section", textContent: "Section" }));
     table.tBodies[0].replaceChildren(...entries.map((e) => {
       const row = document.createElement("tr");
@@ -151,6 +164,7 @@ async function showEntries() {
       row.insertCell().append(link);
       row.insertCell().textContent = e.rating || "Unrated";
       if (forColumn) row.insertCell().textContent = e.for || "";
+      if (byesColumn) row.insertCell().textContent = byesText(e.byes);
       if (sectioned) row.insertCell().textContent = e.section || "";
       return row;
     }));
@@ -178,7 +192,15 @@ if (!dateField) {
     const [latest] = savedPlayers();
     if (latest && !idField.value) fillIn(latest);
   }
-  if (dateField.tagName === "SELECT") dateField.addEventListener("change", showEntries);
+  // A club night's nights to miss show only while their month is chosen; a disabled fieldset's checkboxes aren't sent.
+  const showByes = () => {
+    for (const month of form.querySelectorAll("fieldset[data-month]")) month.hidden = month.disabled = month.dataset.month !== dateField.value;
+  };
+  showByes();
+  if (dateField.tagName === "SELECT") {
+    dateField.addEventListener("change", showEntries);
+    dateField.addEventListener("change", showByes);
+  }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = form.querySelector("button[type=submit]");
@@ -190,6 +212,9 @@ if (!dateField) {
       const body = new URLSearchParams(new FormData(form));
       body.set("id", idField.value);
       body.delete("uschess-id");
+      const byes = [...new Set(body.getAll("byes"))];
+      body.delete("byes");
+      if (byes.length) body.set("byes", byes.join(", "));
       const response = await fetch(ENDPOINT, { method: "POST", body });
       const result = await response.json();
       status.textContent = result.message || result.error;
@@ -204,6 +229,7 @@ if (!dateField) {
       if (result.ok) {
         idField.value = "";
         form.elements.last.value = "";
+        for (const bye of form.querySelectorAll("[name=byes]")) bye.checked = false;
         showEntries();
       }
     } catch {

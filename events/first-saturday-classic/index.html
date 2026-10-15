@@ -627,6 +627,20 @@ section.td-table td { white-space: nowrap; }
         <label for="register-phone">Phone (optional)</label>
         <input id="register-phone" name="phone" type="tel" autocomplete="tel" aria-describedby="register-phone-hint">
         <p id="register-phone-hint" class="register-hint">So the tournament director can reach you. For a player under 18, a parent's or guardian's. Never shown on the entry list.</p>
+        <fieldset class="run-sections" aria-describedby="register-byes-hint">
+          <legend>Rounds you'll miss (half-point bye)</legend>
+          <div class="register-remember">
+            <input id="register-bye-1" name="byes" type="checkbox" value="1">
+            <label for="register-bye-1">Round 1, 10:00 AM</label>
+            <input id="register-bye-2" name="byes" type="checkbox" value="2">
+            <label for="register-bye-2">Round 2, 12:15 PM</label>
+            <input id="register-bye-3" name="byes" type="checkbox" value="3">
+            <label for="register-bye-3">Round 3, 2:30 PM</label>
+            <input id="register-bye-4" name="byes" type="checkbox" value="4">
+            <label for="register-bye-4">Round 4, 4:45 PM</label>
+            <p id="register-byes-hint" class="register-hint">One per player, half a point. You can change it on the <a href="/entries/">Entries page</a> until the round is paired; a last-round bye is fixed once round 1 is paired.</p>
+          </div>
+        </fieldset>
         <div class="register-remember" hidden>
           <input id="register-remember" type="checkbox" checked aria-describedby="register-remember-hint">
           <label for="register-remember">Remember this player on this device</label>
@@ -644,10 +658,10 @@ section.td-table td { white-space: nowrap; }
     <section id="entries">
       <h2>Entries</h2>
       <p class="entries-status" role="status"></p>
-      <table class="entries" hidden>
+      <div class="td-table"><table class="entries" hidden>
         <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th></tr></thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="where">
@@ -665,6 +679,6 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../../register.js?v=dc8ab5ced9" defer></script>
+  <script src="../../register.js?v=f47acefa31" defer></script>
 </body>
 </html>

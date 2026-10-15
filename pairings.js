@@ -4,8 +4,8 @@
 // standings after a round, the latest with results unless a reader picks an earlier one. An
 // arena's games and queue are on Pairings, its leaderboard on Standings. With LIVE_DB set, the
 // pages follow the database's public copy of the same tournaments instead, and redraw as it changes.
-// ENDPOINT, LIVE_DB, savedPlayers, and storePlayers come from register.js, listenLive from live.js,
-// Pairing from pairing.js, and Arena from arena.js.
+// ENDPOINT, LIVE_DB, savedPlayers, storePlayers, and byesText come from register.js, listenLive from
+// live.js, Pairing from pairing.js, and Arena from arena.js.
 
 const pairingsStatus = document.querySelector(".pairings-status");
 const pairingsAll = document.querySelector(".pairings-all");
@@ -87,6 +87,18 @@ function namer(t) {
     const p = t.players.find((x) => x.id === id);
     return p ? `${p.name} (${p.rating ?? "unrated"})` : id;
   };
+}
+
+/** "Byes asked for: Ann (1500), round 3; …", posted with the pairings (22C4): the half-point byes asked
+ *  for in rounds not yet posted, since a posted round's are under "Without a game". */
+function byesAsked(t, s, name) {
+  if (t.format !== "swiss" || t.status !== "running") return [];
+  const asked = s.players.map((p) => [p, (p.byes || []).filter((n) => n > s.rounds.length && !(p.out && n >= p.out))])
+    .filter(([, later]) => later.length).map(([p, later]) => {
+      const nights = later.map((n) => t.roundDates?.[n - 1]);
+      return `${name(p.id)}, ${nights.every(Boolean) ? byesText(nights) : byesText(later).replace(/^Round/, "round")}`;
+    });
+  return asked.length ? [paragraph(`Byes asked for: ${asked.join("; ")}.`)] : [];
 }
 
 /** The sections with players, and whether to head each with its name. */
@@ -293,7 +305,7 @@ function pairingsSection(t, ti) {
   const name = namer(t);
   if (t.format === "arena") return arenaPairings(section, t, name);
   if (!t.rounds.length) {
-    section.append(paragraph("Round 1 hasn't been posted yet."));
+    section.append(paragraph("Round 1 hasn't been posted yet."), ...byesAsked(t, t, name));
     return section;
   }
   const { parts, several } = partsOf(t);
@@ -314,7 +326,7 @@ function pairingsSection(t, ti) {
       }
       return shown;
     };
-    section.append(...roundMenu(`round-${ti}-${si}`, "Round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
+    section.append(...byesAsked(t, s, name), ...roundMenu(`round-${ti}-${si}`, "Round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
   });
   return section;
 }
@@ -395,6 +407,7 @@ function standingsSection(t, ti) {
   section.append(heading(2, t.name));
   if (t.format === "arena") return arenaStandings(section, t);
   const quad = t.format === "quad";
+  const name = namer(t);
   const { parts, several } = partsOf(t);
   const scored = (round) => round.games.some((g) => g.result) || (!round.games.length && round.byes.length);
   if (!parts.some((s) => s.rounds.some(scored))) {
@@ -411,7 +424,7 @@ function standingsSection(t, ti) {
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
       .map(([n, round]) => [n, `${n}${round.games.every((g) => g.result) ? "" : " (in progress)"}`]);
     if (!rounds.length) {
-      section.append(paragraph("No results yet."));
+      section.append(paragraph("No results yet."), ...byesAsked(t, s, name));
       return;
     }
     const draw = (n) => {
@@ -432,7 +445,8 @@ function standingsSection(t, ti) {
         rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
           r.performance ?? "", r.estimate ?? ""]), label)];
     };
-    section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw));
+    section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw),
+      ...byesAsked(t, s, name));
   });
   return section;
 }
