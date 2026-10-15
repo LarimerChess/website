@@ -705,15 +705,15 @@ sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
 whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) => c.action === "register").length === 2
   ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
-await desk.click(".td-entries tbody tr td:nth-child(8) button");
+await desk.click(".td-entries tbody tr td:nth-child(9) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && c.by === "cash") ? pass("TD desk marks a player paid in cash")
   : fail(`TD desk paid call: ${JSON.stringify(deskCalls.filter((c) => c.action === "paid"))}`);
-await desk.waitForSelector(".td-entries tbody tr td:nth-child(8) select:enabled");
-await desk.select(".td-entries tbody tr td:nth-child(8) select", "card");
+await desk.waitForSelector(".td-entries tbody tr td:nth-child(9) select:enabled");
+await desk.select(".td-entries tbody tr td:nth-child(9) select", "card");
 // Paying redraws the entries, and then asks for the Money list; the next click waits for that.
 const ledgerCalls = deskCalls.filter((c) => c.action === "ledger").length;
-await desk.click(".td-entries tbody tr td:nth-child(8) button");
+await desk.click(".td-entries tbody tr td:nth-child(9) button");
 for (let waited = 0; waited < 5000 && deskCalls.filter((c) => c.action === "ledger").length === ledgerCalls; waited += 100) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
@@ -1748,7 +1748,7 @@ const moneyClick = async (text) => {
 };
 await moneyClick("This night only");
 await moneyDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.textContent.startsWith("Refund $9.50")));
-const moneyNightDue = await moneyDesk.$eval(".td-entries tbody tr", (r) => r.cells[5].firstChild.textContent);
+const moneyNightDue = await moneyDesk.$eval(".td-entries tbody tr", (r) => r.cells[6].firstChild.textContent);
 await moneyClick("Refund $9.50");
 await moneyClick("Discount");
 const moneyAsked = moneyCalls.map(({ action, token, event, date, amount, by, note }) => ({ action, token, event, date, amount, by, note }));
@@ -1790,9 +1790,9 @@ await giftDesk.type("#td-password", "secret");
 await giftDesk.click(".td-login button");
 await giftDesk.waitForSelector(".td-entries tbody tr");
 await giftDesk.$$eval(".td-entries tbody tr button", (b) => b.find((x) => x.firstChild.textContent === "Mark paid").click());
-await giftDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(8)").textContent.includes("donation"));
+await giftDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(9)").textContent.includes("donation"));
 await giftDesk.waitForFunction(() => document.querySelector(".td-ledger").textContent.includes("Donations"));
-const giftPaid = await giftDesk.$eval(".td-entries tbody tr td:nth-child(8)", (c) => c.textContent);
+const giftPaid = await giftDesk.$eval(".td-entries tbody tr td:nth-child(9)", (c) => c.textContent);
 const giftMoney = await giftDesk.$eval(".td-ledger", (l) => l.lastElementChild.textContent);
 JSON.stringify(giftCalls) === JSON.stringify([{ amount: "22", by: "cash", donate: "1" }]) && /\$5 more than the \$17 due/.test(giftAsked[1])
   && giftPaid.includes("mark unpaid + $5 donation") && giftMoney === "Donations to the club: $5."
@@ -1826,18 +1826,91 @@ await partDesk.waitForSelector(".td-entries tbody tr");
 const partClick = (label) => partDesk.$$eval(".td-entries tbody tr button", (b, label) => b.find((x) => x.firstChild.textContent === label).click(), label);
 await partClick("Mark paid");
 await partDesk.waitForFunction(() => [...document.querySelectorAll(".td-entries button")].some((b) => b.firstChild.textContent === "Add payment"));
-const partShort = await partDesk.$eval(".td-entries tbody tr td:nth-child(8)", (c) => c.textContent);
+const partShort = await partDesk.$eval(".td-entries tbody tr td:nth-child(9)", (c) => c.textContent);
 const partOwed = await partDesk.$eval(".td-entries-status", (s) => s.textContent);
 await partDesk.select(".td-entries .td-method", "card");
 await partClick("Add payment");
-await partDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(8)").textContent.includes("cash, card"));
-const partDone = await partDesk.$$eval(".td-entries tbody tr td:nth-child(8) :is(button, select)", (b) => b.map((x) => x.firstChild?.textContent ?? ""));
+await partDesk.waitForFunction(() => document.querySelector(".td-entries tbody tr td:nth-child(9)").textContent.includes("cash, card"));
+const partDone = await partDesk.$$eval(".td-entries tbody tr td:nth-child(9) :is(button, select)", (b) => b.map((x) => x.firstChild?.textContent ?? ""));
 JSON.stringify(partCalls) === JSON.stringify([{ amount: "10", by: "cash", donate: "" }, { amount: "7.68", by: "card", donate: "" }])
   && partShort.startsWith("$10 cash ✓ paid by Part Player; mark unpaid $7 due") && partOwed.includes("Still owed: $7.")
   && partAsked[1] === "Amount Part Player paid by card" && partDone.length === 2 && partDone[0] === "$17.68 cash, card ✓"
   ? pass("TD desk takes part of the fee, shows what's still due, and collects the rest with another payment")
   : fail(`TD desk part payment: ${JSON.stringify({ partCalls, partShort, partOwed, partAsked, partDone })}`);
 await partDesk.close();
+
+// Byes asked for in advance: the register form and each entry have a box for every round of a one-day
+// Swiss, or every night of a month to come. An entry's box saves as soon as it changes, with the entry's
+// token, and goes back if the script refuses.
+const deskByeCalls = [];
+let deskByeAnswer = { ok: true, message: "Ann Example's byes are saved." };
+const deskByeEntries = {
+  "classic/2026-11-07": [{ name: "Ann Example", id: "12345678", rating: "1500", for: "Saturday, November 7", category: "Adult", amount: "15",
+    due: "15", card: "15.75", email: "", expires: "2027-01-31", token: "ann1", date: "2026-11-07", byes: ["3"] }],
+  "club-night/2026-10": [{ name: "Month Player", id: "22345678", rating: "1400", for: "Whole month", category: "Adult", amount: "17",
+    due: "17", card: "17.80", email: "", expires: "2027-01-31", token: "month1", date: "2026-10", byes: ["2026-10-19"] }],
+};
+const deskByePage = await mocked("/td/ with byes asked for", (p) => {
+  if (p.action === "register" || p.action === "byes") deskByeCalls.push(p);
+  return { login: { ok: true, changes: null },
+    choices: { choices: [
+      { key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07", format: "swiss", rounds: "4" },
+      { key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12", format: "", rounds: "" },
+      { key: "club-night/2026-10-19", name: "Club Night", label: "Monday, October 19, 2026", kind: "night", first: "2026-10-19", format: "", rounds: "" },
+      { key: "club-night/2026-10-26", name: "Club Night", label: "Monday, October 26, 2026", kind: "night", first: "2026-10-26", format: "", rounds: "" }] },
+    people: { players: [{ id: "12345678", name: "Ann Example", state: "", rating: "1500", expires: "2027-01-31", known: true }] },
+    contacts: { headings: ["Name"], contacts: [] }, entries: { entries: deskByeEntries[`${p.event}/${p.date}`] || [] },
+    ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
+    incidents: { incidents: [] }, tournament: { tournament: null }, byes: deskByeAnswer,
+    register: { ok: true, message: "Ann Example is registered." } }[p.action] || { ok: true };
+});
+await signIn(deskByePage);
+await deskByePage.waitForSelector('.td-entries input[aria-label="Round 3 bye for Ann Example"]');
+const deskByeBoxes = () => deskByePage.evaluate(() => ({ head: document.querySelector(".td-entries th:nth-child(5)").textContent,
+  boxes: [...document.querySelectorAll(".td-entries tbody td:nth-child(5) input")].map((b) => `${b.getAttribute("aria-label")}${b.checked ? " (checked)" : ""}`),
+  offered: [...document.querySelectorAll(".td-byes:not([hidden]) label")].map((l) => l.textContent.trim()) }));
+const deskByesShown = await deskByeBoxes();
+const deskByeSaved = (text) => deskByePage.waitForFunction((t) => document.querySelector(".td-register-status").textContent.startsWith(t)
+  && !document.querySelector(".td-entries input:disabled"), {}, text);
+await deskByePage.click('.td-entries input[aria-label="Round 4 bye for Ann Example"]');
+await deskByeSaved("Ann Example's byes are saved.");
+deskByeAnswer = { error: "Round 1 is paired already." };
+await deskByePage.click('.td-entries input[aria-label="Round 1 bye for Ann Example"]');
+await deskByeSaved("Round 1 is paired already.");
+const deskByesRefused = await deskByeBoxes();
+const deskByeSaves = deskByeCalls.filter((c) => c.action === "byes").map(({ token, byes }) => ({ token, byes }));
+deskByesShown.head === "Byes" && JSON.stringify(deskByesShown.boxes) === JSON.stringify(["Round 1 bye for Ann Example", "Round 2 bye for Ann Example",
+  "Round 3 bye for Ann Example (checked)", "Round 4 bye for Ann Example"])
+  && JSON.stringify(deskByeSaves) === JSON.stringify([{ token: "ann1", byes: "3, 4" }, { token: "ann1", byes: "1, 3, 4" }])
+  && JSON.stringify(deskByesRefused.boxes.filter((b) => b.endsWith("(checked)"))) === JSON.stringify(["Round 3 bye for Ann Example (checked)",
+    "Round 4 bye for Ann Example (checked)"])
+  ? pass("TD desk shows an entry's byes, saves a change at once with the entry's token, and puts the box back when the script refuses")
+  : fail(`TD desk entry byes: ${JSON.stringify({ deskByesShown, deskByeSaves, deskByesRefused })}`);
+await deskByePage.type("#td-player", "ann");
+await deskByePage.waitForSelector("#td-players:not([hidden]) [role=option]");
+await deskByePage.keyboard.press("ArrowDown");
+await deskByePage.keyboard.press("Enter");
+await deskByePage.click('.td-byes input[value="2"]');
+await deskByePage.click('.td-byes input[value="4"]');
+await deskByePage.click(".td-register button[type=submit]");
+await deskByePage.waitForSelector(".td-saving .td-save-done");
+const deskByesCleared = await deskByePage.$$eval(".td-byes input:checked", (b) => b.length);
+const deskByeRegistered = deskByeCalls.find((c) => c.action === "register") || {};
+JSON.stringify(deskByesShown.offered) === JSON.stringify(["Round 1", "Round 2", "Round 3", "Round 4"])
+  && deskByeRegistered.id === "12345678" && deskByeRegistered.byes === "2, 4" && deskByesCleared === 0
+  ? pass("TD desk's register form offers each round of a one-day Swiss, sends the byes checked, and clears them for the next player")
+  : fail(`TD desk register byes: ${JSON.stringify({ offered: deskByesShown.offered, deskByeRegistered, deskByesCleared })}`);
+await deskByePage.select("#td-event", "club-night/2026-10");
+await deskByePage.waitForSelector('.td-entries input[aria-label="October 19 bye for Month Player"]');
+const deskByesMonth = await deskByeBoxes();
+JSON.stringify(deskByesMonth.offered) === JSON.stringify(["October 19", "October 26"])
+  && JSON.stringify(deskByesMonth.boxes) === JSON.stringify(["October 19 bye for Month Player (checked)", "October 26 bye for Month Player"])
+  ? pass("TD desk offers a month's nights to come by date, on the register form and on a whole-month entry")
+  : fail(`TD desk month byes: ${JSON.stringify(deskByesMonth)}`);
+await axeBoth(deskByePage, "TD desk with byes asked for");
+await deskByePage.setViewport(PHONE);
+await fitsPhone(deskByePage, "TD desk with byes asked for");
+await deskByePage.close();
 
 // A donation apart from any entry: from a contact, on their row, or anonymous, by the Contacts tools.
 let giveBook = { headings: ["Name", "US Chess ID"], contacts: [{ id: "c1", Name: "Cora Contact", "US Chess ID": "12345678", donated: "5" }], anonymous: "" };
@@ -2324,6 +2397,95 @@ reopened.cancel && JSON.stringify(reopened.games) === JSON.stringify(byHand.game
   ? pass("TD desk changes a posted round without results and posts it again, which clears its reports")
   : fail(`TD desk editing a posted round: ${JSON.stringify({ reopened, reposted })}`);
 await handPage.close();
+
+// Byes asked for in advance at check-in: Ben asked for round 2 and Cal for rounds 2 and 3, so both start round 2
+// as half-point byes, which the pairing takes, without counting as unsaved work that holds back the desk's
+// reloads. The rounds not yet paired are listed under Byes and unplayed rounds, and the register form offers only those.
+const checkinByeDesk = deskState([{ games: [{ board: 1, white: "11111111", black: "33333333", result: "1-0", section: "" },
+  { board: 2, white: "44444444", black: "22222222", result: "0-1", section: "" }], byes: [], out: [], posted: true }]);
+checkinByeDesk.held.players[1].byes = [2];
+checkinByeDesk.held.players[2].byes = [2, 3];
+const checkinByePage = await mocked("/td/ checking in byes asked for", checkinByeDesk.answer);
+await signIn(checkinByePage);
+await checkinByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
+const checkinByes = await checkinByePage.evaluate(() => {
+  document.activeElement?.blur();
+  return { head: [...document.querySelectorAll(".run-attendance th")].map((th) => th.textContent),
+    rows: [...document.querySelectorAll(".run-attendance tbody tr")].map((r) => [r.cells[1].textContent, r.cells[4].textContent, r.querySelector("select").value]),
+    hint: document.querySelector(".run-checkin-hint").textContent, busy: runBusy(),
+    asked: document.querySelector(".run-byes-all p:last-child").textContent,
+    offered: [...document.querySelectorAll(".td-byes:not([hidden]) label")].map((l) => l.textContent.trim()) };
+});
+await checkinByePage.select('select[aria-label="Ann this round"]', "absent");
+const checkinByesBusy = await checkinByePage.evaluate(() => { document.activeElement?.blur(); return runBusy(); });
+await checkinByePage.select('select[aria-label="Ann this round"]', "play");
+JSON.stringify(checkinByes.head) === JSON.stringify(["No.", "Name", "Rating", "Score", "Byes asked for", "This round"])
+  && JSON.stringify(checkinByes.rows) === JSON.stringify([["Ann", "", "play"], ["Ben", "2", "half"], ["Cal", "2, 3", "half"], ["Dee", "", "play"]])
+  && checkinByes.hint.startsWith("Everyone starts as Present, or as a half-point bye if they asked for one this round;")
+  && !checkinByes.busy && checkinByesBusy
+  ? pass("TD desk starts a player who asked for a bye this round as a half-point bye, shows the byes asked for, and counts only a changed choice as unsaved")
+  : fail(`TD desk check-in with byes: ${JSON.stringify({ checkinByes, checkinByesBusy })}`);
+checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), rounds 2 and 3. Change them in the entries list."
+  && JSON.stringify(checkinByes.offered) === JSON.stringify(["Round 2", "Round 3"])
+  ? pass("TD desk lists the byes asked for rounds not yet paired, and the register form offers only those rounds")
+  : fail(`TD desk byes asked for: ${JSON.stringify({ asked: checkinByes.asked, offered: checkinByes.offered })}`);
+await axeBoth(checkinByePage, "TD desk checking in byes asked for");
+await checkinByePage.setViewport(PHONE);
+await fitsPhone(checkinByePage, "TD desk checking in byes asked for");
+await press(checkinByePage, ".run-pair");
+await checkinByePage.waitForSelector(".run-pairings:not([hidden])");
+const checkinByeDraft = await draftShown(checkinByePage);
+checkinByeDraft.games.length === 1 && checkinByeDraft.games[0].slice(1, 3).sort().join() === "11111111,44444444"
+  && JSON.stringify(checkinByeDraft.off) === JSON.stringify([["Ben (1700)", "half"], ["Cal (1500)", "half"]])
+  ? pass("TD desk pairs the round with the half-point byes asked for") : fail(`TD desk pairing byes asked for: ${JSON.stringify(checkinByeDraft)}`);
+await checkinByePage.close();
+
+// A started month's tournament that comes back after the entries gives them its nights, past ones too; and a bye
+// saved from the entries list reaches check-in through the tournament's copy.
+const monthByeEntries = [{ name: "Ann", id: "11111111", rating: "1900", for: "Whole month", category: "Adult", amount: "17", due: "17",
+  card: "17.80", email: "", expires: "2027-01-31", token: "ann1", date: "2026-10", byes: ["2026-10-12"] }];
+const monthByeHeld = { key: "club-night/2026-10", name: "Club Night", format: "swiss", plannedRounds: 3, status: "running", coin: "white",
+  roundDates: ["2026-10-12", "2026-10-19", "2026-10-26"], players: fourPlayers(),
+  rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" }], byes: [{ id: "11111111", points: 0.5, kind: "half", section: "" },
+    { id: "44444444", points: 1, kind: "bye", section: "" }], out: [], posted: true }] };
+monthByeHeld.players[0].byes = [1];
+let releaseMonthBye;
+const monthByeLoad = new Promise((resolve) => { releaseMonthBye = resolve; });
+const monthByePage = await mocked("/td/ with a month's byes", async (p) => {
+  if (p.action === "tournament") await monthByeLoad;
+  if (p.action === "byes") {
+    monthByeEntries[0].byes = p.byes.split(", ");
+    monthByeHeld.players[0].byes = monthByeEntries[0].byes.map((date) => monthByeHeld.roundDates.indexOf(date) + 1);
+    return { ok: true, message: "Ann's byes are saved." };
+  }
+  return { login: { ok: true, changes: null },
+    choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" },
+      { key: "club-night/2026-10-19", name: "Club Night", label: "Monday, October 19, 2026", kind: "night", first: "2026-10-19" },
+      { key: "club-night/2026-10-26", name: "Club Night", label: "Monday, October 26, 2026", kind: "night", first: "2026-10-26" }] },
+    people: { players: [] }, contacts: { headings: ["Name"], contacts: [] }, entries: { entries: JSON.parse(JSON.stringify(monthByeEntries)) },
+    ledger: { ledger: { received: { cash: "0", check: "0", card: "0", other: "0" }, entry: "0", rating: "0", card: "0", games: null, uschess: "0" } },
+    incidents: { incidents: [] }, tournament: { tournament: JSON.parse(JSON.stringify(monthByeHeld)) } }[p.action] || { ok: true };
+});
+await signIn(monthByePage);
+const monthByeCell = () => monthByePage.$eval(".td-entries tbody td:nth-child(5)", (c) => [...c.childNodes]
+  .map((n) => (n.querySelector ? `${n.querySelector("input").value}${n.querySelector("input").checked ? " (checked)" : ""}` : n.textContent.trim())).filter(Boolean));
+await monthByePage.waitForSelector(".td-entries tbody td:nth-child(5) input");
+const monthByesEarly = await monthByeCell();
+releaseMonthBye();
+const monthByesRedrawn = await monthByePage.waitForFunction(() => document.querySelectorAll(".td-entries tbody td:nth-child(5) input").length === 3,
+  { timeout: 5000 }).then(() => true, () => false);
+const monthByesLoaded = await monthByeCell();
+await monthByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
+await monthByePage.click('.td-entries input[value="2026-10-19"]');
+const monthByeCheckin = await monthByePage.waitForFunction(() => [...document.querySelectorAll(".run-attendance tbody tr")]
+  .find((r) => r.cells[1].textContent === "Ann" && r.querySelector("select").value === "half")?.cells[4].textContent, { timeout: 5000 })
+  .then((cell) => cell.jsonValue(), () => null);
+JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26", "October 12"]) && monthByesRedrawn
+  && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12 (checked)", "2026-10-19", "2026-10-26"])
+  && monthByeCheckin?.replaceAll(" ", " ") === "1 (October 12), 2 (October 19)"
+  ? pass("TD desk shows a started month's nights, past ones too, once its tournament loads, and check-in follows a bye saved from the entries")
+  : fail(`TD desk month byes: ${JSON.stringify({ monthByesEarly, monthByesRedrawn, monthByesLoaded, monthByeCheckin })}`);
+await monthByePage.close();
 
 // The menu: on one line at 1100px; on a phone it wraps, without covering the page or scrolling sideways.
 const layout = await browser.newPage();

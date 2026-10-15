@@ -555,6 +555,14 @@ section.td-table td { white-space: nowrap; }
 .td-login .td-google { justify-self: stretch; }
 .td-who { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 </style>
+  <style>
+/* The desk's own rules, outside style.css: sync_assets.py replaces only the first <style>. */
+.td-byes { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
+.td-byes legend { padding: 0; font-weight: 600; }
+.td-byes-boxes { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 4px 0; }
+.register-form .td-byes label { display: flex; align-items: center; gap: 6px; margin-top: 0; font-weight: 400; }
+.td-byes input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -652,7 +660,7 @@ section.td-table td { white-space: nowrap; }
         <div class="run-round" hidden>
           <h3 class="run-round-title">This round</h3>
           <div class="run-checkin">
-            <p class="run-checkin-hint">Everyone starts as Present; change anyone who isn't here. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.</p>
+            <p class="run-checkin-hint">Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.</p>
             <div class="run-attendance-all"></div>
             <details class="run-sections-edit" hidden>
               <summary>Change the sections</summary>
@@ -745,6 +753,11 @@ section.td-table td { white-space: nowrap; }
             <option>Senior (65+)</option>
             <option>Under 18</option>
           </select>
+          <fieldset class="td-byes" aria-describedby="td-byes-hint" hidden>
+            <legend>Byes</legend>
+            <div class="td-byes-boxes"></div>
+            <p id="td-byes-hint" class="register-hint">Rounds the player will miss, each a half-point bye.</p>
+          </fieldset>
           <label for="td-email">Email (optional)</label>
           <input id="td-email" name="email" type="email" autocomplete="off" aria-describedby="td-email-hint">
           <p id="td-email-hint" class="register-hint">With an email, the player gets the confirmation and a withdraw link. For a player under 18, a parent's or guardian's.</p>
@@ -787,7 +800,7 @@ section.td-table td { white-space: nowrap; }
         <p class="td-entries-status" role="status"></p>
         <div class="td-table">
           <table class="entries td-entries" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col"><span class="visually-hidden">Discount</span></th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <thead><tr><th scope="col">Name</th><th scope="col">US Chess ID</th><th scope="col">Rating</th><th scope="col">For</th><th scope="col">Byes</th><th scope="col">Category</th><th scope="col">Due</th><th scope="col"><span class="visually-hidden">Discount</span></th><th scope="col">Paid</th><th scope="col">Membership</th><th scope="col">Email</th><th scope="col"><span class="visually-hidden">Incident</span></th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -879,11 +892,11 @@ section.td-table td { white-space: nowrap; }
   </footer>
   <script src="../register.js?v=f47acefa31" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=8c4f3ee842" defer></script>
+  <script src="../td.js?v=6e4c156534" defer></script>
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
   <script src="../pairing.js?v=cf150858f2" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
-  <script src="../td-run.js?v=c4465fa6ed" defer></script>
+  <script src="../td-run.js?v=b45db18f94" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=8f428b91c9" defer></script>
 </body>
