@@ -1453,38 +1453,6 @@
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  },
  {
-  "title": "First Saturday Classic",
-  "calendar": "club",
-  "organizer": "Larimer County Chess Club",
-  "tags": [
-   "tournament",
-   "all-ages",
-   "club",
-   "rated",
-   "reduced-youth",
-   "regular",
-   "quick"
-  ],
-  "url": "",
-  "price": "17",
-  "pairing": "swiss",
-  "rounds": "4",
-  "page": "/events/first-saturday-classic/",
-  "start": "2026-11-07T10:00:00-07:00",
-  "end": "2026-11-07T19:00:00-07:00",
-  "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-  "place": {
-   "name": "Peak Community Church",
-   "street": "500 Mathews St",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80524"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
- },
- {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
   "calendar": "community",
   "organizer": "Chilson Senior Center",
