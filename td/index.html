@@ -571,6 +571,7 @@ section.td-table td { white-space: nowrap; }
       <div class="td-nav-event" hidden>
         <label for="td-event">Event</label>
         <select id="td-event" required></select>
+        <button class="button button-secondary td-new-event" type="button" aria-haspopup="dialog">New tournament</button>
         <button class="button button-secondary td-refresh" type="button" aria-describedby="td-refresh-hint">Refresh public pages</button>
         <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About refreshing" aria-describedby="td-refresh-hint">?</button><span id="td-refresh-hint" class="hint-text" role="tooltip">The Entries, Pairings, and Standings pages show a copy that lasts six hours, which every change made on this desk or by a registration replaces at once. After editing the Sheets by hand, refresh to replace the copies now.</span></span>
         <span class="td-who" hidden></span>
@@ -881,6 +882,26 @@ section.td-table td { white-space: nowrap; }
         <p><button class="button" type="submit" value="log">Log it</button> <button class="button button-secondary" type="button" value="cancel">Cancel</button></p>
       </form>
     </dialog>
+
+    <dialog class="event-dialog td-create" aria-labelledby="td-create-title">
+      <form class="register-form event-dialog-body" method="dialog">
+        <h2 id="td-create-title">New tournament</h2>
+        <p>For a tournament that isn't on the calendar, starting now. Only the desk takes its entries.</p>
+        <label for="td-create-name">Name</label>
+        <input id="td-create-name" name="name" type="text" required maxlength="100" autocomplete="off">
+        <label for="td-create-format">Format</label>
+        <select id="td-create-format" name="format">
+          <option value="quad">Quads</option>
+          <option value="swiss">Swiss</option>
+          <option value="arena">Arena</option>
+        </select>
+        <label for="td-create-fee">Entry fee in dollars (optional)</label>
+        <input id="td-create-fee" name="fee" type="text" inputmode="decimal" autocomplete="off" aria-describedby="td-create-fee-hint">
+        <p class="register-hint" id="td-create-fee-hint">Before US Chess's rating fee. Leave it blank for the TD to confirm each player's fee.</p>
+        <p class="td-create-status" role="status"></p>
+        <p><button class="button" type="submit" value="create">Create</button> <button class="button button-secondary" type="button" value="cancel">Cancel</button></p>
+      </form>
+    </dialog>
   </main>
 
   <footer class="wrap">
@@ -891,7 +912,7 @@ section.td-table td { white-space: nowrap; }
   </footer>
   <script src="../register.js?v=d4f1af7701" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=6e4c156534" defer></script>
+  <script src="../td.js?v=d166e5e99f" defer></script>
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
   <script src="../pairing.js?v=1f748e86a9" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>

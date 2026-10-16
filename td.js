@@ -167,6 +167,14 @@ async function signIn(value = "") {
   login.hidden = true;
   desk.hidden = navEvent.hidden = false;
   const { choices: list } = await (early || call("choices"));
+  fillChoices(list);
+  showRegisterByes();
+  showDeskEntries();
+  loadPeople();
+  return true;
+}
+
+function fillChoices(list) {
   choices = list || [];
   const groups = new Map();
   for (const c of choices) {
@@ -179,10 +187,6 @@ async function signIn(value = "") {
     for (const c of items) group.append(new Option(`${c.name}, ${c.label}`, c.key));
     return group;
   }));
-  showRegisterByes();
-  showDeskEntries();
-  loadPeople();
-  return true;
 }
 
 // The sign-in never leaves the page, so the browser may not notice it succeeded; handing it the
@@ -746,6 +750,39 @@ incidentForm.addEventListener("submit", async (event) => {
   incidentDialog.close();
   deskStatus.textContent = result.message;
   showDeskEntries();
+});
+
+const createDialog = document.querySelector(".td-create");
+const createForm = createDialog.querySelector("form");
+document.querySelector(".td-new-event").addEventListener("click", () => {
+  createForm.reset();
+  createDialog.querySelector(".td-create-status").textContent = "";
+  createDialog.showModal();
+});
+createForm.querySelector('[value="cancel"]').addEventListener("click", () => createDialog.close());
+createForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const status = createDialog.querySelector(".td-create-status");
+  const button = createForm.querySelector('[type="submit"]');
+  status.textContent = "Creating…";
+  button.disabled = true;
+  try {
+    const result = await call("createEvent", Object.fromEntries(new FormData(createForm)));
+    if (!result.ok) {
+      status.textContent = result.error;
+      return;
+    }
+    const { choices: list } = await call("choices");
+    fillChoices(list);
+    choice.value = result.key;
+    createDialog.close();
+    deskStatus.textContent = result.message;
+    choice.dispatchEvent(new Event("change"));
+  } catch {
+    status.textContent = "Couldn't reach the registration service. Try again.";
+  } finally {
+    button.disabled = false;
+  }
 });
 
 // Changes from another desk or the website show without a reload: the desk follows the change

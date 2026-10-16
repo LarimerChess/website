@@ -19,7 +19,7 @@
  *                         replaces the half-point byes a player has asked for
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, history, people, search, contacts, contactSave, contactDelete,
+ * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
@@ -80,7 +80,8 @@
  * Invitational club events (calendar metadata access=invitational) and events in the registration
  * Sheet's "Closed events" tab (Event, Name, Start, Format, Rounds, Fee) take registrations only from the TD
  * desk; their entries and pairings are public like any other event's. The tab can also hold an
- * event that isn't on the calendar, and gives a calendar event its format and fee.
+ * event that isn't on the calendar, as the desk's New tournament adds (createEvent), and gives a calendar
+ * event its format and fee.
  */
 
 const SITE = "https://larimerchess.org";
@@ -157,6 +158,7 @@ function doPost(e) {
       case "changes": return json({ changes: changes() });
       case "refresh": return json(refreshCaches());
       case "choices": return json({ choices: choices() });
+      case "createEvent": return json(createEvent(p));
       case "history": return json({ players: history(p.q) });
       case "people": return json({ players: people() });
       case "contacts": return json(contacts());
@@ -408,6 +410,36 @@ function choices() {
     .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first, format: e.format || "",
       rounds: e.rounds || "", closed: Boolean(e.closed) }))
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
+}
+
+/** The desk's New tournament: a Closed events row for a tournament that starts now, keyed by a page-style
+ *  name made from its name. A blank fee is one the TD will confirm. */
+function createEvent(p) {
+  const name = String(p.name || "").trim();
+  const slug = name.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) return { error: "Give the tournament a name with letters or digits." };
+  if (name.length > 100) return { error: "Keep the name to 100 characters." };
+  const format = ["quad", "swiss", "arena"].includes(p.format) ? p.format : null;
+  if (!format) return { error: "Choose quad, Swiss, or arena." };
+  const fee = String(p.fee || "").trim().replace(/^\$/, "");
+  if (fee && !/^\d+(\.\d\d)?$/.test(fee)) return { error: "Enter the fee in dollars, such as 15, or leave it blank." };
+  const now = new Date();
+  const start = Utilities.formatDate(now, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
+  const key = `${slug}/${start.slice(0, 10)}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    CacheService.getScriptCache().remove("clubEvents");
+    if (clubEvents()[key]) return { error: "That name is taken today; choose another." };
+    const { sheet, col } = readTab("Closed events", ["Event", "Name", "Start", "Format", "Rounds", "Fee"]);
+    appendText(sheet, col, { Event: slug, Name: name, Start: start, Format: format, Fee: fee });
+    CacheService.getScriptCache().remove("clubEvents");
+  } finally {
+    lock.releaseLock();
+  }
+  clearEntriesCache();
+  return { ok: true, key, message: `${name} is on the desk. Register its players, then start it under Run the tournament.` };
 }
 
 /** Players who have registered before, by US Chess ID or by every word of a name. The desk before it

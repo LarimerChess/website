@@ -2631,6 +2631,50 @@ JSON.stringify(quadRound.map((g) => g.result)) === JSON.stringify(["", "1F-0F"])
   ? pass("a quad player not marked present loses that round's game by forfeit") : fail(`TD desk quad forfeits: ${JSON.stringify(quadRound)}`);
 await quadPage.close();
 
+// New tournament on the TD desk: the dialog creates an event that isn't on the calendar, which the desk then
+// chooses, ready to start in the format given.
+const createCalls = [];
+const created = [];
+const createPage = await mocked("/td/ creating a tournament", (p) => {
+  createCalls.push(p);
+  if (p.action === "createEvent") {
+    created.push({ key: "friday-blitz-quad/2026-10-16", name: p.name, label: "Friday, October 16, 2026", kind: "entry",
+      first: "2026-10-16", format: p.format, closed: true });
+    return { ok: true, key: created[0].key, message: `${p.name} is on the desk.` };
+  }
+  return { login: { ok: true, changes: null }, people: { players: [] }, contacts: { headings: [], contacts: [] },
+    choices: { choices: [{ key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07" },
+      ...created] },
+    entries: { entries: [] }, incidents: { incidents: [] }, tournament: { tournament: null } }[p.action] || { ok: true };
+});
+await signIn(createPage);
+await createPage.waitForSelector(".td-new-event");
+for (const viewport of [{ width: 1100, height: 800 }, PHONE]) {
+  await createPage.setViewport(viewport);
+  await createPage.click(".td-new-event");
+  await createPage.waitForSelector("dialog.td-create[open]");
+  await axeBoth(createPage, `TD desk New tournament at ${viewport.width}px`);
+  if (viewport === PHONE) await fitsPhone(createPage, "TD desk New tournament");
+  await createPage.click('dialog.td-create [value="cancel"]');
+}
+await createPage.setViewport({ width: 1100, height: 800 });
+await createPage.click(".td-new-event");
+await createPage.type("#td-create-name", "Friday Blitz Quad");
+await createPage.select("#td-create-format", "arena");
+await createPage.click('dialog.td-create [value="create"]');
+await createPage.waitForFunction(() => !document.querySelector("dialog.td-create").open);
+await createPage.waitForSelector(".run-start:not([hidden])");
+const createAsked = createCalls.find((c) => c.action === "createEvent") || {};
+const afterCreate = await createPage.evaluate(() => ({ chosen: document.getElementById("td-event").value,
+  format: document.getElementById("run-format").value, set: document.querySelector(".run-format-set").textContent,
+  status: document.querySelector(".td-register-status").textContent }));
+createAsked.name === "Friday Blitz Quad" && createAsked.format === "arena" && createAsked.fee === ""
+  && afterCreate.chosen === "friday-blitz-quad/2026-10-16" && afterCreate.format === "arena" && afterCreate.set.includes("Arena")
+  && afterCreate.status === "Friday Blitz Quad is on the desk."
+  ? pass("TD desk New tournament creates the event, chooses it, and offers to start it in its format")
+  : fail(`TD desk New tournament: ${JSON.stringify({ createAsked, afterCreate })}`);
+await createPage.close();
+
 // An arena: the Pairings page shows its games in progress, the queue, and recent results; the
 // Standings page, its leaderboard.
 const arenaData = () => {

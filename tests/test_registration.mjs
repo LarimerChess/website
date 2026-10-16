@@ -1340,3 +1340,36 @@ test("an Entries tab and a month's tournament from before byes get their columns
   const shown = t.gs.tournament(month, false);
   eq(["roundDates" in shown, "byes" in shown.players[0]], [false, false]);
 });
+
+test("the desk's New tournament adds a Closed events row by heading, which the desk then lists, and refuses a name taken that day", () => {
+  const { gs, sheets, cache } = load({ "Closed events": [["Fee", "Event", "Start", "Name"]] });
+  const scriptCache = gs.CacheService.getScriptCache();
+  gs.CacheService = { getScriptCache: () => ({ ...scriptCache, remove: (k) => { delete cache[k]; } }) };
+  const formatDate = gs.Utilities.formatDate;
+  gs.Utilities = { ...gs.Utilities, formatDate: (d, tz, f) => (f === "yyyy-MM-dd'T'HH:mm:ssXXX" ? "2026-10-16T18:05:00-06:00"
+    : f === "yyyy-MM-dd" ? "2026-10-16" : formatDate(d, tz, f)) };
+  const fetch = gs.UrlFetchApp.fetch;
+  gs.UrlFetchApp = { ...gs.UrlFetchApp, fetch: (url, o) => (url.endsWith("/events.json")
+    ? { getResponseCode: () => 200, getContentText: () => "[]" } : fetch(url, o)) };
+  const made = gs.createEvent({ name: "Friday Blitz: Café Quad!", format: "quad", fee: "$10" });
+  eq([made.ok, made.key], [true, "friday-blitz-cafe-quad/2026-10-16"]);
+  eq(heading(sheets["Closed events"]), ["Fee", "Event", "Start", "Name", "Format", "Rounds"]);
+  eq(rowsOf(sheets["Closed events"]), [{ Fee: "10", Event: "friday-blitz-cafe-quad", Start: "2026-10-16T18:05:00-06:00",
+    Name: "Friday Blitz: Café Quad!", Format: "quad", Rounds: "" }]);
+  const listed = gs.choices().find((c) => c.key === made.key);
+  eq([listed.name, listed.format, listed.closed], ["Friday Blitz: Café Quad!", "quad", true]);
+  eq(gs.createEvent({ name: "friday blitz cafe quad", format: "swiss" }), { error: "That name is taken today; choose another." });
+  assert.ok(gs.createEvent({ name: " !! ", format: "quad" }).error);
+  assert.ok(gs.createEvent({ name: "Blitz", format: "blitz" }).error);
+  assert.ok(gs.createEvent({ name: "Blitz", format: "arena", fee: "ten" }).error);
+  assert.equal(sheets["Closed events"].data.length, 2);
+});
+
+test("New tournament makes the Closed events tab when it's missing", () => {
+  const { gs, sheets } = load({});
+  gs.clubEvents = () => ({});
+  const made = gs.createEvent({ name: "Snow Day Swiss", format: "swiss", fee: "" });
+  assert.equal(made.ok, true);
+  eq(heading(sheets["Closed events"]), ["Event", "Name", "Start", "Format", "Rounds", "Fee"]);
+  eq(rowsOf(sheets["Closed events"]).map((r) => [r.Event, r.Format, r.Fee]), [["snow-day-swiss", "swiss", ""]]);
+});
