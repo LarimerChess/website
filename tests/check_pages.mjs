@@ -3047,6 +3047,57 @@ JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", 
   : fail(`TD desk quads with an extra games section: ${JSON.stringify(quadShown)}`);
 await quadExtra.close();
 
+// An entrant who came after the quads were made plays in an extra games section only: the form lists them unchosen,
+// adding the section sends them, and each extra section's menu adds another player.
+const lateDesk = deskState(quadRounds.map((r) => ({ ...r, games: r.games.filter((g) => g.section === "Quad 1") })));
+const quadOne = quadPlayers.slice(0, 4);
+Object.assign(lateDesk.held, { format: "quad", players: quadOne, sections: [{ name: "Quad 1" }] });
+const cory = { id: "13802751", name: "Cory Kohler", rating: "1882", for: "Saturday", out: "" };
+const lateAnswer = lateDesk.answer;
+lateDesk.answer = (p) => {
+  const held = lateDesk.held;
+  if (p.action === "entries") return { entries: [cory, ...quadOne.map((q) => ({ id: q.id, name: q.name, rating: String(q.rating), out: "" }))] };
+  if (p.action === "extraSection") {
+    lateDesk.calls.push(p);
+    const ids = JSON.parse(p.players);
+    if (ids.includes(cory.id)) held.players.push({ id: cory.id, number: 5, name: cory.name, rating: 1882, section: p.name, out: null });
+    held.sections = [{ name: "Quad 1", last: 3 }, { name: p.name, extra: true, first: 4, last: 4, players: ids }];
+    held.plannedRounds = 4;
+    return { ok: true, message: `${p.name}: ${ids.length} players, 1 round from round 4.` };
+  }
+  if (p.action === "extraPlayer") {
+    lateDesk.calls.push(p);
+    held.sections[1].players.push(p.id);
+    return { ok: true, message: "Added." };
+  }
+  return lateAnswer(p);
+};
+const latePage = await mocked("/td/ an entrant in an extra games section only", (p) => lateDesk.answer(p));
+await signIn(latePage);
+await latePage.waitForFunction(() => [...document.querySelectorAll(".run-extra-players label")].some((l) => l.textContent.includes("Cory")));
+await latePage.click(".run-extra-wrap summary");
+const lateForm = await latePage.$$eval(".run-extra-players label", (labels) => labels.map((l) => [l.textContent.trim(), l.querySelector("input").checked]));
+for (const id of ["90000021", "90000022", "90000023"]) await latePage.click(`.run-extra-players input[value="${id}"]`);
+await latePage.click(`.run-extra-players input[value="${cory.id}"]`);
+await press(latePage, ".run-extra button[type=submit]");
+await latePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 4: check in");
+const lateSent = JSON.parse(lateDesk.calls.find((c) => c.action === "extraSection")?.players || "[]");
+const lateIn = await latePage.$$eval('.run-this-round[data-id="13802751"]', (s) => s.map((x) => x.dataset.section));
+await latePage.waitForSelector(".run-extra-add");
+const lateMenu = await latePage.$$eval(".run-extra-add option", (o) => o.map((x) => x.value));
+await latePage.select(".run-extra-add", "90000021");
+await press(latePage, '.run-extra-list button[data-focus="add-Extra games"]');
+await latePage.waitForFunction(() => document.querySelector(".run-status").textContent === "Added.");
+const lateAdded = lateDesk.calls.find((c) => c.action === "extraPlayer") || {};
+JSON.stringify(lateForm) === JSON.stringify([["Q1 (2000)", true], ["Q2 (1950)", true], ["Q3 (1900)", true], ["Q4 (1850)", true],
+  ["Cory Kohler (1882), entered, not in a quad yet", false]])
+  && lateSent.join() === "90000020,13802751" && lateIn.join() === "Extra games" && lateMenu.join() === "90000021,90000022,90000023"
+  && lateAdded.section === "Extra games" && lateAdded.id === "90000021"
+  ? pass("TD desk puts an entrant who isn't in a quad into an extra games section only, and adds a player to one")
+  : fail(`TD desk entrant in an extra games section: ${JSON.stringify({ lateForm, lateSent, lateIn, lateMenu, lateAdded })}`);
+await axeBoth(latePage, "TD desk adding a player to an extra games section");
+await latePage.close();
+
 // Byes by the rules on the desk: Cal lost round 1 by forfeit, so he starts round 2 as not here (28P); Fay entered
 // late and has no round 1, which the TD can make a half-point bye (28K); and a full-point bye the TD gives Ann,
 // who had one in round 1, is flagged (28L3) without stopping the post.

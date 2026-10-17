@@ -22,7 +22,7 @@
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, extraSection, dropSection, timeControl, round, result, results, byeKind,
+ *                               sync, sections, section, extraSection, extraPlayer, dropSection, timeControl, round, result, results, byeKind,
  *                               out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
@@ -114,7 +114,7 @@ const TOURNAMENT_HEADERS = {
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
   "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
@@ -184,6 +184,7 @@ function doPost(e) {
       case "sections": return json(setSections(p));
       case "section": return json(setSection(p));
       case "extraSection": return json(addExtraSection(p));
+      case "extraPlayer": return json(addExtraPlayer(p));
       case "dropSection": return json(dropExtraSection(p));
       case "timeControl": return json(setTimeControl(p));
       case "round": return json(saveRound(p));
@@ -1134,7 +1135,7 @@ const lastRound = (defs) => defs.reduce((m, s) => Math.max(m, Number(s.last) || 
  * Adds an extra rated games section (28M4) to a Swiss or quads, paired as a Swiss: p.players, a JSON list of its players' IDs, play
  * p.rounds rounds in it from the next round, apart from their own section's standings and alongside any
  * rounds it has left, and the rating report has it as a section of its own. The other sections keep the
- * rounds they had, as their last.
+ * rounds they had, as their last. A registered entrant who isn't a player yet plays in it only.
  */
 function addExtraSection(p) {
   const key = `${p.event}/${p.date}`;
@@ -1160,8 +1161,11 @@ function addExtraSection(p) {
     if (!defs.length) return { error: "This tournament started before sections, so it can't add one." };
     if (defs.some((s) => s.name.toLowerCase() === name.toLowerCase())) return { error: `There's already a section named ${name}.` };
     const have = new Set(table("Players").rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
-    const players = [...new Set(ids.map(String))].filter((id) => have.has(id));
+    const wanted = [...new Set(ids.map(String))];
+    const entrants = newEntrants(key, wanted.filter((id) => !have.has(id)));
+    const players = wanted.filter((id) => have.has(id) || entrants.some((e) => e.id === id));
     if (players.length < 2) return { error: "Choose at least two of the tournament's players." };
+    addEntrants(key, entrants, name);
     const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
     const planned = Math.max(Number(line.Rounds) || 0, paired);
     for (const s of defs) if (!s.last) s.last = planned;
@@ -1173,6 +1177,55 @@ function addExtraSection(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Adds p.id, a player or a registered entrant who isn't one yet, to the extra games section p.section
+ *  from its next round to be paired; a round already paired, even if not posted, goes on without them. */
+function addExtraPlayer(p) {
+  const key = `${p.event}/${p.date}`;
+  const id = String(p.id || "");
+  const lock = lockTournaments();
+  try {
+    const t = table("Tournaments");
+    const line = t.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    const defs = sectionsOf(line);
+    const def = defs.find((s) => s.extra && s.name === p.section);
+    if (!def) return { error: "No such extra games section." };
+    if ((def.players || []).includes(id)) return { error: `That player is in ${def.name} already.` };
+    const paired = table("Rounds").rows.filter((r) => r.Key === key && r.Section === def.name).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+    const from = Math.max(paired + 1, Number(def.first) || 1);
+    if (from > Number(def.last)) return { error: `${def.name} has paired all its rounds; give it more first.` };
+    const row = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === id);
+    const entrant = row ? null : newEntrants(key, [id])[0];
+    if (!row && !entrant) return { error: "Not a player or a registered entrant of this tournament." };
+    if (row && row["Out from round"]) return { error: `${row.Name} has withdrawn.` };
+    if (entrant) addEntrants(key, [entrant], def.name);
+    def.players = [...(def.players || []), id];
+    setCell(t, line.row, "Sections", JSON.stringify(defs));
+    clearTournamentCache(key);
+    return { ok: true, message: `${row ? row.Name : entrant.name} plays in ${def.name} from round ${from}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The registered entrants among ids, once each, leaving out the expelled and barred. */
+function newEntrants(key, ids) {
+  if (!ids.length) return [];
+  const found = new Map();
+  for (const e of entries(key, true)) if (!e.out && ids.includes(e.id) && !found.has(e.id)) found.set(e.id, e);
+  return [...found.values()];
+}
+
+/** Players rows for entrants who play in an extra games section only, numbered after the others (28B). */
+function addEntrants(key, entrants, section) {
+  if (!entrants.length) return;
+  const t = table("Players");
+  let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
+  const records = priorRecords(entrants.map((e) => e.id));
+  addRows(t, entrants.map((e) => ({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name, Rating: e.rating || "",
+    "Out from round": "", Section: section, Byes: "", ...records[e.id] })));
 }
 
 /** Sets the time control the rating report gives, p.value: the tournament's, or with p.section that
@@ -1519,7 +1572,8 @@ function setSections(p) {
     if (late) return { error: late };
     setCell(info, line.row, "Sections", JSON.stringify([...parsed.sections, ...extras]));
     const t = table("Players");
-    setCells(t, Object.fromEntries(t.rows.filter((x) => x.Key === key).map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
+    setCells(t, Object.fromEntries(t.rows.filter((x) => x.Key === key && !extras.some((s) => s.name === x.Section))
+      .map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
     clearTournamentCache(key);
     return { ok: true, message: `Sections: ${parsed.sections.map((s) => s.name).join(", ")}. Everyone is placed by rating.` };
   } finally {

@@ -1209,11 +1209,30 @@ plannedSection.addEventListener("change", fillPlanned);
 
 const extraForm = document.querySelector(".run-extra");
 
-/** The extra games sections, each with a button to take it off, and the form to add one, all its
- *  players chosen at first: those not withdrawn, in number order. */
+// td.js's entries list for the chosen event, for the entrants who aren't players yet.
+let deskEntries = { key: "", entries: [] };
+document.addEventListener("td-entries", (event) => {
+  deskEntries = event.detail;
+  if (current && current.key === deskEntries.key && !runManage.hidden) renderExtras();
+});
+
+/** Registered entrants who aren't players, as quads never add late entrants: they may play in an
+ *  extra games section only. */
+function entrantsNotPlaying() {
+  if (deskEntries.key !== current.key) return [];
+  const have = new Set(current.players.map((p) => p.id));
+  return [...new Map(deskEntries.entries.filter((e) => !e.out && !have.has(e.id)).map((e) => [e.id, e])).values()];
+}
+
+const entrantLabel = (e) => `${e.name} (${e.rating || "unrated"}), entered, not in ${current.format === "quad" ? "a quad" : "a section"} yet`;
+
+/** The extra games sections, each with a button to take it off until it's posted and a menu to add
+ *  a player, and the form to add one, all its players chosen at first: those not withdrawn, in
+ *  number order, then the entrants who aren't players, not chosen. */
 function renderExtras() {
   const list = document.querySelector(".run-extra-list");
   const extras = (current.sections || []).filter((d) => d.extra);
+  const entrants = entrantsNotPlaying();
   extraForm.closest("details").hidden = !["swiss", "quad"].includes(current.format) || !(current.sections || []).length;
   list.replaceChildren(...extras.map((d) => {
     const item = document.createElement("li");
@@ -1229,22 +1248,41 @@ function renderExtras() {
         runStatus.textContent = result.message || result.error;
       }));
     }
+    const finished = current.rounds[last - 1]?.games.concat(current.rounds[last - 1].byes).some((x) => x.section === d.name);
+    const candidates = [...current.players.filter((p) => !p.out && !d.players.includes(p.id)).map((p) => option(p.id, nameOf(p.id), false)),
+      ...entrants.map((e) => option(e.id, entrantLabel(e), false))];
+    if (!finished && candidates.length) {
+      const menu = Object.assign(document.createElement("select"), { className: "run-extra-add" });
+      menu.setAttribute("aria-label", `Player to add to ${d.name}`);
+      menu.append(...candidates);
+      item.append(" ", menu, " ", editButton("Add a player", ` to ${d.name}`, `add-${d.name}`, async () => {
+        const [event, date] = keyParts();
+        const result = await call("extraPlayer", { event, date, section: d.name, id: menu.value });
+        if (result.ok) await loadRun();
+        runStatus.textContent = result.message || result.error;
+      }));
+    }
     return item;
   }));
-  if (extraForm.dataset.key === current.key) return;
-  extraForm.dataset.key = current.key;
-  const names = new Set((current.sections || []).map((d) => d.name.toLowerCase()));
-  let name = "Extra games";
-  for (let n = 2; names.has(name.toLowerCase()); n++) name = `Extra games ${n}`;
-  extraForm.elements.name.value = name;
-  extraForm.elements.rounds.value = "1";
   const boxes = extraForm.querySelector(".run-extra-players");
-  boxes.replaceChildren(...current.players.filter((p) => !p.out).map((p) => {
+  // Redrawn with each change, keeping the TD's choices.
+  const chosen = new Map([...boxes.querySelectorAll("input")].map((box) => [box.value, box.checked]));
+  if (extraForm.dataset.key !== current.key) {
+    extraForm.dataset.key = current.key;
+    chosen.clear();
+    const names = new Set((current.sections || []).map((d) => d.name.toLowerCase()));
+    let name = "Extra games";
+    for (let n = 2; names.has(name.toLowerCase()); n++) name = `Extra games ${n}`;
+    extraForm.elements.name.value = name;
+    extraForm.elements.rounds.value = "1";
+  }
+  const box = (id, text, checked) => {
     const label = document.createElement("label");
-    const box = Object.assign(document.createElement("input"), { type: "checkbox", value: p.id, checked: true });
-    label.append(box, ` ${nameOf(p.id)}`);
+    label.append(Object.assign(document.createElement("input"), { type: "checkbox", value: id, checked: chosen.get(id) ?? checked }), ` ${text}`);
     return label;
-  }));
+  };
+  boxes.replaceChildren(...current.players.filter((p) => !p.out).map((p) => box(p.id, nameOf(p.id), true)),
+    ...entrants.map((e) => box(e.id, entrantLabel(e), false)));
 }
 
 extraForm.addEventListener("submit", async (e) => {

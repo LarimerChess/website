@@ -533,6 +533,7 @@ async function showDeskEntries(quiet = false) {
   if (!quiet) document.dispatchEvent(new Event("td-choice"));
   const { entries = [] } = await call("entries", { event: eventName, date });
   if (key !== choice.value) return;
+  document.dispatchEvent(new CustomEvent("td-entries", { detail: { key, entries } }));
   const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
   // A script from before part payments sends no balance.
   for (const e of entries) if (!("balance" in e)) e.balance = e.paid ? "0" : e.due;
