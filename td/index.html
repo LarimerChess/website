@@ -730,6 +730,24 @@ section.td-table td { white-space: nowrap; }
             <button class="button button-secondary" type="submit">Change the rounds</button>
           </form>
           <p><button class="button button-secondary run-restart" type="button">Restart the tournament</button></p>
+          <div class="register-form run-report" hidden>
+            <h3>Rating report</h3>
+            <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; until then, from the second morning after play ends, the chief TD and the President get a reminder each morning.</p>
+            <div class="field-row">
+              <label for="run-report-td">Chief TD</label>
+              <select id="run-report-td"></select>
+            </div>
+            <div class="field-row">
+              <label for="run-report-control">Time control</label>
+              <input id="run-report-control" type="text" autocomplete="off" placeholder="G/70;d10" aria-describedby="run-report-control-hint">
+              <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the time control" aria-describedby="run-report-control-hint">?</button><span id="run-report-control-hint" class="hint-text" role="tooltip">As US Chess writes it, from the event's calendar description when it's still listed.</span></span>
+            </div>
+            <p class="register-hint run-report-folder-hint">The desk can keep the files in a folder on this computer: it rewrites them whenever the tournament loads with every result in, and deletes them when a round or result is missing, or the tournament is restarted, so a file never holds results the desk no longer has.</p>
+            <p><button class="button run-report-folder" type="button">Keep the files in a folder</button></p>
+            <p class="run-report-folder-status" role="status"></p>
+            <p class="register-hint run-report-download-hint">Or download them, which reloads the tournament first. A downloaded file stays as it was: after any change, delete it and download again.</p>
+            <p class="run-report-files"></p>
+          </div>
         </div>
       </section>
 
@@ -768,31 +786,13 @@ section.td-table td { white-space: nowrap; }
       </section>
 
       <section class="td-panel run td-span run-standings-wrap" hidden>
-        <h2>Standings and rating report</h2>
+        <h2>Standings and byes</h2>
         <h3>Standings</h3>
         <p class="register-hint run-standings-hint">Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.</p>
         <div class="run-standings-all"></div>
         <h3>Byes and unplayed rounds</h3>
         <p class="register-hint">Every round a player had no game in. Change one if it was classified wrongly, such as an unplayed round the TD excuses as a half-point bye; the score follows.</p>
         <div class="run-byes-all"></div>
-        <div class="register-form run-report" hidden>
-          <h3>Rating report</h3>
-          <p class="register-hint">Upload these three files in MUIR, US Chess's ratings portal, under New Event, or enter the results there by hand, and review the event before submitting. The tournament is complete once US Chess shows it rated with these results; until then, from the second morning after play ends, the chief TD and the President get a reminder each morning.</p>
-          <div class="field-row">
-            <label for="run-report-td">Chief TD</label>
-            <select id="run-report-td"></select>
-          </div>
-          <div class="field-row">
-            <label for="run-report-control">Time control</label>
-            <input id="run-report-control" type="text" autocomplete="off" placeholder="G/70;d10" aria-describedby="run-report-control-hint">
-            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the time control" aria-describedby="run-report-control-hint">?</button><span id="run-report-control-hint" class="hint-text" role="tooltip">As US Chess writes it, from the event's calendar description when it's still listed.</span></span>
-          </div>
-          <p class="register-hint run-report-folder-hint">The desk can keep the files in a folder on this computer: it rewrites them whenever the tournament loads with every result in, and deletes them when a round or result is missing, or the tournament is restarted, so a file never holds results the desk no longer has.</p>
-          <p><button class="button run-report-folder" type="button">Keep the files in a folder</button></p>
-          <p class="run-report-folder-status" role="status"></p>
-          <p class="register-hint run-report-download-hint">Or download them, which reloads the tournament first. A downloaded file stays as it was: after any change, delete it and download again.</p>
-          <p class="run-report-files"></p>
-        </div>
       </section>
 
       <section class="td-panel td-span">
@@ -916,7 +916,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
   <script src="../pairing.js?v=1f748e86a9" defer></script>
   <script src="../ratingreport.js?v=432fd1a009" defer></script>
-  <script src="../td-run.js?v=325a18b4c6" defer></script>
+  <script src="../td-run.js?v=36b7e58b09" defer></script>
   <script src="../arena.js?v=753f1aa4a9" defer></script>
   <script src="../td-arena.js?v=8f428b91c9" defer></script>
 </body>

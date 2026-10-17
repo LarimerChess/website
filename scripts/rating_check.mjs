@@ -231,7 +231,7 @@ export function reminder(t, ended, match, tdFound, over) {
   const muir = "MUIR, https://ratings.uschess.org/portal/events";
   const files = t.format === "arena" ? `enter its games in ${muir}`
     : "download the rating report files from the TD desk, https://larimerchess.org/td/ (choose the event; Rating report is "
-      + `under Standings), and upload them in ${muir}, or enter the results there by hand`;
+      + `under Run the tournament), and upload them in ${muir}, or enter the results there by hand`;
   lines.push("", `To report it, ${files}. Review the event in MUIR before submitting.`,
     "If the desk is wrong, correct it there; if US Chess is wrong, correct the event in MUIR.", "",
     "This reminder comes each morning until US Chess shows the event rated with the desk's results.");

@@ -2886,7 +2886,7 @@ await signIn(ratedPage);
 await ratedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Rated by US Chess"));
 const afterRating = await ratedPage.evaluate(() => ({ round: document.querySelector(".run-round").hidden,
   standings: !document.querySelector(".run-standings-wrap").hidden, manage: document.querySelector(".run-manage").hidden }));
-afterPlay.status.includes("The rating report is under Standings") && afterPlay.td === "Jared Hall (31847334)" && !afterPlay.finish && afterPlay.round
+afterPlay.status.includes("The rating report is below") && afterPlay.td === "Jared Hall (31847334)" && !afterPlay.finish && afterPlay.round
   && records === 4 && told.includes("up to date in the folder Rating report") && rewritten && goneWhenMissing && roundAdded
   && afterRating.round && afterRating.standings && afterRating.manage
   ? pass("TD desk has no Finish: after the last round it keeps the rating report files in a folder, rewritten when a result changes "

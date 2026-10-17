@@ -201,7 +201,7 @@ function renderRun() {
   const next = t.rounds.length + 1;
   if (t.plannedRounds && next > t.plannedRounds) {
     runRound.hidden = true;
-    runStatus.textContent += " All rounds are played. The rating report is under Standings.";
+    runStatus.textContent += " All rounds are played. The rating report is below.";
     return;
   }
   renderCheckin(t, parts, next);
