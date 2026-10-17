@@ -777,6 +777,53 @@ for (const store of STORES) {
 }
 
 for (const store of STORES) {
+  test(`an entrant who isn't in a quad plays in an extra games section only, added with it or later (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    gs.clubEvents = () => ({ "quad/2026-10-17": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });
+    let registered = [...Array(4)].map((_, i) => ({ id: `9000001${i}`, name: `Q${i}`, rating: String(2000 - i * 50), out: "" }));
+    gs.entries = () => registered;
+    const p = { event: "quad", date: "2026-10-17" };
+    gs.startTournament({ ...p, format: "quad" });
+    const quad = Pairing.sections(gs.tournament("quad/2026-10-17", true))[0];
+    for (const n of [1, 2, 3]) {
+      const games = Pairing.pairQuadRound(quad.players, n).games.map((g) => ({ ...g, section: "Quad 1", result: "1-0" }));
+      gs.saveRound({ ...p, number: String(n), post: "yes", games: JSON.stringify(games), byes: "[]" });
+    }
+    registered = [...registered, { id: "13802751", name: "Cory Kohler", rating: "1882", out: "" },
+      { id: "13802752", name: "Dan Ames", rating: "1500", out: "" }, { id: "13802753", name: "Out Player", rating: "1400", out: "Expelled" }];
+    assert.match(gs.addExtraSection({ ...p, name: "Extra games", rounds: "2", players: '["13802753","90000010"]' }).error, /at least two/);
+    assert.equal(gs.addExtraSection({ ...p, name: "Extra games", rounds: "2", players: '["90000010","13802751"]' }).message,
+      "Extra games: 2 players, 2 rounds from round 4.");
+    const cory = rows("Players").find((r) => r["US Chess ID"] === "13802751");
+    eq([cory["No."], cory.Name, cory.Rating, cory.Section, cory["Prior games"], cory.State], ["5", "Cory Kohler", "1882", "Extra games", "0", "CO"]);
+    const parts = () => Pairing.sections(gs.tournament("quad/2026-10-17", true)).map((s) => [s.name, s.players.map((x) => x.id).sort()]);
+    eq(parts(), [["Quad 1", ["90000010", "90000011", "90000012", "90000013"]], ["Extra games", ["13802751", "90000010"]]]);
+    eq(Pairing.pairSections(gs.tournament("quad/2026-10-17", true)).map((s) => [s.section, s.games.flatMap((g) => [g.white, g.black]).sort()]),
+      [["Extra games", ["13802751", "90000010"]]]);
+    // A later entrant joins it before its next round is paired, and so does a quad's player.
+    assert.equal(gs.addExtraPlayer({ ...p, section: "Extra games", id: "13802752" }).message, "Dan Ames plays in Extra games from round 4.");
+    assert.equal(gs.addExtraPlayer({ ...p, section: "Extra games", id: "90000011" }).message, "Q1 plays in Extra games from round 4.");
+    eq(rows("Players").map((r) => [r["No."], r.Section]).slice(4), [["5", "Extra games"], ["6", "Extra games"]]);
+    eq(parts(), [["Quad 1", ["90000010", "90000011", "90000012", "90000013"]],
+      ["Extra games", ["13802751", "13802752", "90000010", "90000011"]]]);
+    assert.match(gs.addExtraPlayer({ ...p, section: "Extra games", id: "13802751" }).error, /in Extra games already/);
+    assert.match(gs.addExtraPlayer({ ...p, section: "Extra games", id: "13802753" }).error, /Not a player or a registered entrant/);
+    assert.match(gs.addExtraPlayer({ ...p, section: "Quad 1", id: "90000012" }).error, /No such extra games section/);
+    // Once its last round is paired, there's nothing left to join.
+    const four = Pairing.pairSections(gs.tournament("quad/2026-10-17", true))[0];
+    gs.saveRound({ ...p, number: "4", post: "yes", games: JSON.stringify(four.games.map((g) => ({ ...g, section: "Extra games" }))), byes: "[]" });
+    assert.equal(gs.addExtraPlayer({ ...p, section: "Extra games", id: "90000012" }).message, "Q2 plays in Extra games from round 5.");
+    const five = Pairing.pairSections(gs.tournament("quad/2026-10-17", true))[0];
+    eq(five.games.flatMap((g) => [g.white, g.black]).length + five.byes.length, 5);
+    gs.saveRound({ ...p, number: "5", post: "no", games: JSON.stringify(five.games.map((g) => ({ ...g, section: "Extra games" }))), byes: "[]" });
+    assert.match(gs.addExtraPlayer({ ...p, section: "Extra games", id: "90000013" }).error, /paired all its rounds/);
+    // Syncing never puts them in a quad.
+    gs.syncPlayers("quad/2026-10-17");
+    eq(rows("Players").filter((r) => r.Section === "Extra games").map((r) => r.Name), ["Cory Kohler", "Dan Ames"]);
+  });
+}
+
+for (const store of STORES) {
   test(`quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them (${store})`, () => {
     const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
     gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });

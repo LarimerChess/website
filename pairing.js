@@ -18,8 +18,9 @@
 // A tournament with sections also has sections: [{ name, under }] and each player's section;
 // sections(t) splits it into one such tournament per section, and pairSections pairs them all.
 // An extra rated games section (28M4), { name, extra: true, first, last, players: [ids] }, holds
-// players who are also in another section, from round first to round last of the tournament,
-// and is a Swiss even among quads; once a tournament has one, its other sections carry last too.
+// players who are also in another section, or whose section is its name and who play in it only,
+// from round first to round last of the tournament, and is a Swiss even among quads; once a
+// tournament has one, its other sections carry last too.
 
 (function (root) {
   "use strict";
@@ -710,8 +711,8 @@
   /**
    * A tournament's sections in order, each a tournament of its own (28A, 29): { name, key, under,
    * extra, format, first, last, players, rounds }. A player plays in one section, and may also be in extra
-   * sections, numbered 1 up within each in the order of their numbers; the rounds are the
-   * section's own, from the tournament's round first to last (null for through the planned
+   * sections, or in extra sections only when their section names one; they're numbered 1 up within
+   * each in the order of their numbers. The rounds are the section's own, from the tournament's round first to last (null for through the planned
    * rounds), keeping only the section's games and byes. key is what the spreadsheet's Section
    * cells hold for it, empty for a tournament started before sections, which is one section, or
    * for quads one per four numbers.
@@ -720,19 +721,20 @@
     const all = (t.sections || []).filter((s) => s && s.name);
     const defs = all.filter((s) => !s.extra);
     const extras = all.filter((s) => s.extra);
+    const regular = t.players.filter((p) => !extras.some((d) => d.name === p.section));
     let groups;
-    if (defs.length || t.players.some((p) => p.section)) {
+    if (defs.length || regular.some((p) => p.section)) {
       const names = defs.map((s) => s.name);
-      const where = new Map(t.players.map((p) => [p.id, p.section || placeIn(defs, p.rating)]));
+      const where = new Map(regular.map((p) => [p.id, p.section || placeIn(defs, p.rating)]));
       for (const name of where.values()) if (name && !names.includes(name)) names.push(name);
       groups = names.map((name) => ({ name, key: name, under: defs.find((s) => s.name === name)?.under || null,
-        members: t.players.filter((p) => where.get(p.id) === name) }));
+        members: regular.filter((p) => where.get(p.id) === name) }));
     } else if (t.format === "quad") {
-      const quads = [...new Set(t.players.map((p) => Math.ceil(Number(p.number) / 4)))].sort((a, b) => a - b);
+      const quads = [...new Set(regular.map((p) => Math.ceil(Number(p.number) / 4)))].sort((a, b) => a - b);
       groups = quads.map((q) => ({ name: `Quad ${q}`, key: "", under: null,
-        members: t.players.filter((p) => Math.ceil(Number(p.number) / 4) === q) }));
+        members: regular.filter((p) => Math.ceil(Number(p.number) / 4) === q) }));
     } else {
-      groups = [{ name: "", key: "", under: null, members: t.players }];
+      groups = [{ name: "", key: "", under: null, members: regular }];
     }
     for (const d of extras) {
       const ids = new Set(d.players || []);

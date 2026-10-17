@@ -373,6 +373,21 @@ test("quads with an extra games section: the quads play their table, the extra s
   assert.deepEqual([extra.games.length, extra.byes.map((b) => b.kind)], [1, ["unplayed"]], "three players in a Swiss: one game, and one without");
 });
 
+test("a player whose section is an extra games section's name plays in it only, not placed in a quad or section by rating", () => {
+  const quad = [...Array(4)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1, section: "Quad 1" }));
+  const late = { id: "late", name: "late", rating: 1882, number: 5, section: "Extra games" };
+  const t = { format: "quad", players: [...quad, late], rounds: [],
+    sections: [{ name: "Quad 1", last: 3 }, { name: "Extra games", extra: true, first: 1, last: 2, players: ["p1", "late"] }] };
+  assert.deepEqual(Pairing.sections(t).map((s) => [s.name, s.players.map((p) => [p.id, p.number])]),
+    [["Quad 1", [["p1", 1], ["p2", 2], ["p3", 3], ["p4", 4]]], ["Extra games", [["p1", 1], ["late", 2]]]]);
+  assert.deepEqual(Pairing.pairSections(t).map((s) => [s.section, s.games.map((g) => [g.white, g.black].sort())]),
+    [["Quad 1", [["p1", "p4"], ["p2", "p3"]]], ["Extra games", [["late", "p1"]]]]);
+  // In a Swiss too, with no section's limit placing them.
+  const swiss = { format: "swiss", rounds: [], players: [...field([["a", 2000, "Open"], ["b", 1800, "Open"]]), { ...late, number: 3 }],
+    sections: [{ name: "Open", last: 1 }, { name: "Extra games", extra: true, first: 2, last: 3, players: ["a", "late"] }] };
+  assert.deepEqual(Pairing.sections(swiss).map((s) => [s.name, s.players.map((p) => p.id)]), [["Open", ["a", "b"]], ["Extra games", ["a", "late"]]]);
+});
+
 test("no sections: one section, paired exactly as before, and old quads keep their boards", () => {
   const players = field([["a", 2000], ["b", 1800], ["c", 1600], ["d", 1500], ["e", 1300]]);
   const t = { players, rounds: [] };

@@ -507,6 +507,7 @@ section.td-table td { white-space: nowrap; }
 .run-extra-players { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 4px 0; }
 .register-form .run-extra-players label { display: flex; align-items: center; gap: 6px; margin-top: 0; font-weight: 400; }
 .run-extra-players input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.run-extra-add { max-width: 100%; margin: 4px 0; font: inherit; padding: 4px 8px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
 .entries .register-remember label { white-space: nowrap; }
 .round-menu { margin: 12px 0 8px; }
 .round-menu label { font-weight: 600; }
@@ -750,7 +751,7 @@ section.td-table td { white-space: nowrap; }
           <details class="run-extra-wrap" hidden>
             <summary>Add an extra games section</summary>
             <form class="register-form run-extra">
-              <p class="register-hint">Rated games for players who are also in another section, such as everyone playing again once the tournament is over (28M4). They are rated with the tournament, as a section of their own in its rating report, and don't count in the other sections' standings. The section starts with the next round to pair, alongside any rounds the other sections have left.</p>
+              <p class="register-hint">Rated games for players who are also in another section, such as everyone playing again once the tournament is over (28M4). They are rated with the tournament, as a section of their own in its rating report, and don't count in the other sections' standings. The section starts with the next round to pair, alongside any rounds the other sections have left. An entrant who isn't playing yet, such as one who came after the quads were made, can play in it only.</p>
               <label for="run-extra-name">Section</label>
               <input id="run-extra-name" name="name" type="text" maxlength="30" autocomplete="off">
               <label for="run-extra-rounds">Rounds</label>
@@ -951,11 +952,11 @@ section.td-table td { white-space: nowrap; }
   </footer>
   <script src="../register.js?v=d4f1af7701" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=d166e5e99f" defer></script>
+  <script src="../td.js?v=6fbece8429" defer></script>
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
-  <script src="../pairing.js?v=72e41c0445" defer></script>
+  <script src="../pairing.js?v=6d74fac0c5" defer></script>
   <script src="../ratingreport.js?v=ddbbb11047" defer></script>
-  <script src="../td-run.js?v=d76495ddf2" defer></script>
+  <script src="../td-run.js?v=ef478e35b5" defer></script>
   <script src="../arena.js?v=051926af16" defer></script>
   <script src="../td-arena.js?v=508eec2a45" defer></script>
 </body>
