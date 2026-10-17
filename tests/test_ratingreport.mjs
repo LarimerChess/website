@@ -92,7 +92,7 @@ test("quads' extra games section is a Swiss in the report", () => {
 
 test("rule 5C reads every way a time control is written, finds blitz, and refuses what it can't rate", () => {
   const cases = { "30+30": ["D", "G/30;+30"], "15+15": ["D", "G/15;+15"], "G15;+30": ["D", "G/15;+30"], "SD/60;d5": ["D", "G/60;d5"],
-    "30 minutes + 30 seconds per move": ["D", "G/30;+30"], "All Rounds G/90, +30 seconds increment": ["R", "G/90;+30"], "G/30": ["D", "G/30;d0"],
+    "30 minutes + 30 seconds per move": ["D", "G/30;+30"], "All Rounds G/90, +30 seconds increment": ["R", "G/90;+30"], "G/30": ["D", "G/30;d5"], "G/10": ["Q", "G/10;d2"], "G/27": ["D", "G/27;d3"], "40/90 SD/30": ["R", "40/90 SD/30"],
     "G/5;+3": ["B", "G/5;+3"], "G/10 d/0": ["B", "G/10;d0"], "G/3 inc/2": ["B", "G/3;+2"], "3+2": ["B", "G/3;+2"], "G/2;+10": ["", "G/2;+10"],
     "40/90 SD/30 inc/30": ["R", "40/90 SD/30 inc/30"] };
   for (const [control, [system, text]] of Object.entries(cases)) {

@@ -28,6 +28,7 @@ import { homedir } from "node:os";
 
 const require = createRequire(import.meta.url);
 const Pairing = require("../pairing.js");
+const Arena = require("../arena.js");
 const ROOT = new URL("..", import.meta.url).pathname;
 const RATINGS = `${ROOT}ratings.json`;
 const API = "https://ratings-api.uschess.org/api/v1";
@@ -71,11 +72,12 @@ export function endedOn(t, now) {
 }
 
 /** { player: { round: [outcome, opponent, color] } } as the desk has it, for one section's rounds; an arena's games are
- *  numbered in order. Players with no game, bye, or result in any round are left out, as MUIR drops them. */
+ *  numbered in order, leaving out those with time odds, which US Chess doesn't rate (5C1). Players with no game, bye, or
+ *  result in any round are left out, as MUIR drops them. */
 function played(t) {
   const players = Object.fromEntries(t.players.map((p) => [p.id, {}]));
   const games = t.format === "arena"
-    ? [...(t.games || [])].sort((a, b) => a.game - b.game).map((g, i) => [i + 1, g])
+    ? [...(t.games || [])].filter((g) => !Arena.timeOdds(g) || Arena.FORFEIT(g.result)).sort((a, b) => a.game - b.game).map((g, i) => [i + 1, g])
     : t.rounds.flatMap((r, i) => (r.posted ? r.games.map((g) => [i + 1, g]) : []));
   if (t.format !== "arena") {
     t.rounds.forEach((r, i) => {

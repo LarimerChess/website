@@ -69,8 +69,9 @@ function renderArena() {
   const closed = Arena.pastCutoff(date, t.cutoff, new Date());
   runStatus.textContent = `${t.name}: ${t.players.length} players, ${t.games.length} games paired, ${playing.length} in progress.`
     + (t.status === "rated" ? " Rated by US Chess."
-      : closed && !playing.length ? ` It's past ${t.cutoff} and every game is in. Enter the games in MUIR, US Chess's ratings portal; the arena is complete `
-        + "once US Chess shows it rated with these results."
+      : closed && !playing.length ? ` It's past ${t.cutoff} and every game is in. Enter the games in MUIR, US Chess's ratings portal, except those marked`
+        + " not rated, where only one player took the Blood Pact: time odds aren't ratable (5C1). The arena is complete once US Chess shows it rated"
+        + " with these results."
       : closed ? ` It's past ${t.cutoff}: no new games start. Games in progress finish and count.`
         : t.cutoff ? ` No new games after ${t.cutoff}.` : "");
   runArena.hidden = false;
@@ -134,7 +135,7 @@ function renderArena() {
 
   arenaDone.tBodies[0].replaceChildren(...t.games.filter((g) => g.result).reverse().map((g) => {
     const row = document.createElement("tr");
-    row.insertCell().textContent = g.game;
+    row.insertCell().textContent = g.game + (Arena.timeOdds(g) && !Arena.FORFEIT(g.result) ? " (not rated: time odds)" : "");
     pactCell(row, g, "white");
     pactCell(row, g, "black");
     const select = document.createElement("select");

@@ -67,8 +67,10 @@
    * A time control as rule 5C counts it: { minutes, seconds, total, text }, or null when it has no base
    * time to read. minutes are every control's (40/90 SD/30 is 90 and 30) and seconds the increment or
    * delay. It reads US Chess's notation (G/30;+30, G/70;d10, SD/30;d5, G/5 d/0, inc/30), G15;+30, a base
-   * and increment (30+30), and words (30 minutes + 30 seconds per move). text is a single control as
-   * MUIR writes it, G/30;+30, with ;d0 when it has neither; several controls stay as written.
+   * and increment (30+30), and words (30 minutes + 30 seconds per move). One that names neither an
+   * increment nor a delay has rule 5E2's: the least 5E recommends, d5 for a base of 30 minutes or more
+   * or several controls, d3 over 10, d2 for 10 or less. text is a single control as MUIR writes it,
+   * G/30;+30; several controls stay as written.
    */
   function parseControl(control) {
     const written = String(control || "").trim();
@@ -81,8 +83,9 @@
       added = ["", "+", bare[2]];
     }
     if (!minutes.length) return null;
-    const seconds = Number(added?.[2] || 0);
-    const kind = added && /^d/i.test(added[1]) ? "d" : added ? "+" : "d";
+    const base = minutes[0];
+    const seconds = added ? Number(added[2]) : minutes.length > 1 || base >= 30 ? 5 : base > 10 ? 3 : 2;
+    const kind = added && !/^d/i.test(added[1]) ? "+" : "d";
     return { minutes, seconds, total: minutes.reduce((a, b) => a + b, 0) + seconds,
       text: minutes.length === 1 ? `G/${minutes[0]};${kind}${seconds}` : written };
   }

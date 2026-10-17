@@ -80,3 +80,15 @@ test("an extra games section is compared with US Chess's section that has its pl
     "Jo Juniper (90000062) in Extra games isn't in US Chess's event.", "Lu Larch (90000064) in Extra games isn't in US Chess's event.",
     "Ned Nutmeg (90000066) in Extra games isn't in US Chess's event."]);
 });
+
+test("an arena game where only one player took the Blood Pact has time odds, so it isn't expected in US Chess's event (5C1)", async () => {
+  const { differences } = await import("../scripts/rating_check.mjs");
+  const t = { key: "knightmare-arena-classical/2026-10-31", format: "arena", name: "Arena",
+    players: [{ id: "11111111", name: "Ann A" }, { id: "22222222", name: "Bob B" }, { id: "33333333", name: "Cy C" }],
+    games: [{ game: 1, white: "11111111", black: "22222222", whitePact: true, blackPact: false, result: "1-0" },
+      { game: 2, white: "22222222", black: "33333333", whitePact: true, blackPact: true, result: "1/2-1/2" }] };
+  const standings = { 1: [
+    { memberId: "22222222", roundOutcomes: [{ roundNumber: 1, outcome: "Draw", opponentMemberId: "33333333", color: "White" }] },
+    { memberId: "33333333", roundOutcomes: [{ roundNumber: 1, outcome: "Draw", opponentMemberId: "22222222", color: "Black" }] }] };
+  assert.deepEqual(differences(t, standings), []);
+});

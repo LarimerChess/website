@@ -20,6 +20,9 @@
   const OUTCOME = { "1-0": ["win", "loss"], "0-1": ["loss", "win"], "1/2-1/2": ["draw", "draw"],
     "1F-0F": ["win", "loss"], "0F-1F": ["loss", "win"], "0F-0F": ["loss", "loss"] };
 
+  // Rule 5C1: a game where only one player took the Blood Pact has time odds, so US Chess doesn't rate it.
+  const timeOdds = (g) => Boolean(g.whitePact) !== Boolean(g.blackPact);
+
   const byNumber = (games) => [...games].sort((a, b) => Number(a.game) - Number(b.game));
 
   /** Each player's points, played games, current run of wins, and Blood Pact bonuses. */
@@ -138,7 +141,7 @@
     return local >= `${date} ${cutoff}`;
   }
 
-  const Arena = { RESULTS, FORFEIT, tally, standings, lastOpponent, assignColors, waiting, pair, localTime, pastCutoff };
+  const Arena = { RESULTS, FORFEIT, timeOdds, tally, standings, lastOpponent, assignColors, waiting, pair, localTime, pastCutoff };
   if (typeof module !== "undefined" && module.exports) module.exports = Arena;
   else root.Arena = Arena;
 })(typeof window !== "undefined" ? window : globalThis);

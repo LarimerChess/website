@@ -118,19 +118,28 @@ def game_minutes(time_control):
 def speed(time_control):
     """The website's speed metadata (US Chess rating categories) for a listing's time control, or None.
 
-    US Chess adds the base minutes to the increment or delay seconds: 5 to 10 is blitz, under 30
-    quick, 30 to 65 both regular and quick, above that regular."""
-    base = [int(m) for m in re.findall(r"\b(?:(?:G|SD|Game)\s*/\s*|Game in\s+)(\d{1,3})\b", time_control, re.I)]
-    base += [int(m) for n, m in re.findall(r"\b(\d{2})\s*/\s*(\d{2,3})\b", time_control) if int(n) >= 20]
-    if not base:
+    Rule 5C adds every control's minutes to the increment or delay seconds: 5 to 10 is blitz, over 10
+    and under 30 quick, 30 to 65 both regular and quick, above that regular. The first control has at
+    least 5 minutes, or 3 for blitz. A moves control counts with the sudden death after it (40/90 SD/30
+    is 120); a listing with one control per section counts its longest. One naming no increment or delay
+    has rule 5E2's."""
+    sudden = [int(m) for m in re.findall(r"\b(?:(?:G|SD|Game)\s*/\s*|Game in\s+)(\d{1,3})\b", time_control, re.I)]
+    moves = [int(m) for n, m in re.findall(r"\b(\d{2})\s*/\s*(\d{2,3})\b", time_control) if int(n) >= 20]
+    if not sudden and not moves:
         return None
-    added = [int(s) for s in re.findall(r"(?:\+\s*|\binc(?:rement)?\.?\s*|\bd(?:elay)?\s*/?\s*)(\d{1,2})\b",
+    primary = max(moves) if moves else max(sudden)
+    base = primary + (max(sudden, default=0) if moves else 0)
+    added = [int(s) for s in re.findall(r"(?:\+\s*|\binc(?:rement)?\.?\s*/?\s*|\bd(?:elay)?\s*/?\s*)(\d{1,2})\b",
                                         time_control, re.I)]
     added += [int(s) for s in re.findall(r"\b(\d{1,2})\s*(?:s|sec|seconds?)\.?\s+(?:inc|delay)", time_control, re.I)]
-    total = max(base) + max(added, default=0)
-    if total < 5:
+    # Rule 5E2: naming neither, it has the least delay rule 5E recommends.
+    unnamed = 5 if moves or primary >= 30 else 3 if primary > 10 else 2
+    total = base + max(added, default=unnamed)
+    if total <= 10:
+        return "blitz" if total >= 5 and primary >= 3 else None
+    if primary < 5:
         return None
-    return "blitz" if total <= 10 else "quick" if total < 30 else "regular,quick" if total <= 65 else "regular"
+    return "quick" if total < 30 else "regular,quick" if total <= 65 else "regular"
 
 
 def schedule(round_times, time_control, first, last):
