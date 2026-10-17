@@ -196,7 +196,15 @@ test("whole tournaments: no rematches, one bye each at most, and no color three 
     const players = [...Array(size)].map((_, i) => ({ id: `p${i}`, name: `p${i}`, rating: i === size - 1 ? null : 2200 - i * 37 }));
     const t = { players, rounds: [] };
     for (let r = 0; r < roundsCount; r++) {
+      const before = Pairing.histories(t);
       const { games, byes, notes } = Pairing.pairRound(t, { coin: "white" });
+      // 28L2: the unrated player has the bye only when no rated player in the lowest score group could.
+      const full = byes.find((b) => b.points === 1);
+      if (full?.id === `p${size - 1}`) {
+        const score = before.get(full.id).score;
+        assert.ok(![...before.values()].some((p) => p.rating != null && p.score <= score && !p.hadFullBye && !p.hadForfeitWin),
+          `round ${r + 1} of ${size}: the unrated player has the bye while a rated player could`);
+      }
       assert.ok(!notes.some((n) => n.includes("can't")), `round ${r + 1} of ${size}: ${notes}`);
       const seen = new Set();
       for (const g of games) {
@@ -221,7 +229,6 @@ test("whole tournaments: no rematches, one bye each at most, and no color three 
     }
     const fullByes = t.rounds.flatMap((r) => r.byes.filter((b) => b.points === 1).map((b) => b.id));
     assert.equal(new Set(fullByes).size, fullByes.length, "no one gets two full-point byes");
-    assert.ok(!fullByes.includes(`p${size - 1}`) || size < 3, "the unrated player never gets the bye");
     for (const p of info.values()) {
       const colors = p.colors.filter(Boolean).join("");
       assert.ok(Math.abs([...colors].filter((c) => c === "W").length - [...colors].filter((c) => c === "B").length) <= 2,
@@ -411,4 +418,22 @@ test("28L4: a player who asked for a half-point bye in a later round gets the fu
   const now = { players: asking([1]), rounds: [] };
   assert.equal(Pairing.histories(now).get("e").committed, false);
   assert.deepEqual(bye(now), [{ id: "e", points: 1, kind: "bye" }]);
+});
+
+test("28L2 to 28L4: the full-point bye stays in the lowest score group, rated, then unrated who have played, then new", () => {
+  const bye = (players, rounds) => Pairing.pairRound({ players, rounds }, { coin: "white" }).byes.find((b) => b.points === 1)?.id;
+  const player = (id, rating, extra = {}) => ({ id, name: id, rating, ...extra });
+  const game = (white, black, result) => ({ white, black, result });
+  const field = [player("a", 2000), player("b", 1900), player("c", 1800), player("d", 1700), player("n", null)];
+  // After round 1, b, d, and the unrated n have no points: the lowest-rated rated player among them.
+  assert.equal(bye(field, [{ games: [game("a", "b", "1-0"), game("c", "d", "1-0")], byes: [{ id: "n", points: 0, kind: "unplayed" }] }]), "d");
+  // With everyone else on ½, n is the lowest score group alone and has the bye, not a rated player a group up.
+  assert.equal(bye(field, [{ games: [game("a", "c", "1/2-1/2")], byes: [{ id: "b", points: 0.5, kind: "half" },
+    { id: "d", points: 0.5, kind: "half" }, { id: "n", points: 0, kind: "unplayed" }] }]), "n");
+  // d and n on 0, d having asked for a half-point bye in round 3: n, though unrated (28L4).
+  const asking = field.map((p) => (p.id === "d" ? { ...p, byes: [3] } : p));
+  assert.equal(bye(asking, [{ games: [game("a", "d", "1-0"), game("b", "c", "1/2-1/2")], byes: [{ id: "n", points: 0, kind: "unplayed" }] }]), "n");
+  // Two unrated players on 0: the one with rated games before the event, then the new one.
+  const unrated = [player("a", 2000), player("b", 1900), player("c", 1800), player("x", null, { games: 0 }), player("y", null, { games: 3 })];
+  assert.equal(bye(unrated, [{ games: [game("a", "x", "1-0"), game("b", "y", "1-0")], byes: [{ id: "c", points: 1, kind: "bye" }] }]), "y");
 });

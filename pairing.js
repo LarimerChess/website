@@ -39,6 +39,8 @@
       colors: [], met: new Set(), hadFullBye: false, hadForfeitWin: false, hadHalfBye: false, out: false,
       // Asked for a half-point bye in a round after the one being paired (28L4).
       committed: (p.byes || []).some((n) => Number(n) > tournament.rounds.length + 1),
+      // Rated games before the event, as US Chess had them; null when not known.
+      priorGames: p.games == null || p.games === "" ? null : Number(p.games),
     }]));
     tournament.rounds.forEach((round) => {
       for (const id of round.out || []) if (info.has(id)) info.get(id).out = true;
@@ -337,18 +339,26 @@
     return out;
   }
 
-  /** 28L2: the full-point bye, from the lowest score group up: the lowest-rated eligible player. */
+  /**
+   * 28L2 to 28L4: the full-point bye goes to the lowest score group with a player who can take it, never to
+   * one who has had one (28L3). In that group, the lowest-rated player; then an unrated player who has
+   * played rated games; then a new player (28L2); and one who has taken or asked for a half-point bye only
+   * when nobody else in the group can (28L4). Everyone else must still pair. A player who won a no-show's
+   * forfeit "should not" have one (28L3), so they do only when no score group has anyone else.
+   */
   function chooseBye(players) {
-    const eligible = (p, strict) => !p.hadFullBye && !p.hadForfeitWin && (!strict || (!p.hadHalfBye && !p.committed && p.rating != null));
-    const order = [...players].sort((a, b) => a.score - b.score
-      || (a.rating == null) - (b.rating == null) || (a.rating ?? 0) - (b.rating ?? 0));
-    for (const strict of [true, false]) {
-      for (const p of order) {
-        if (!eligible(p, strict)) continue;
-        if (pairable(players.filter((q) => q !== p))) return p;
+    const fits = (p) => pairable(players.filter((q) => q !== p));
+    const unrated = (p) => (p.rating != null ? 0 : p.priorGames > 0 ? 1 : 2);
+    const order = (list) => list.sort((a, b) => (a.hadHalfBye || a.committed) - (b.hadHalfBye || b.committed)
+      || unrated(a) - unrated(b) || (a.rating ?? 0) - (b.rating ?? 0));
+    const scores = [...new Set(players.map((p) => p.score))].sort((a, b) => a - b);
+    for (const forfeitWins of [false, true]) {
+      for (const score of scores) {
+        const pick = order(players.filter((p) => p.score === score && !p.hadFullBye && (forfeitWins || !p.hadForfeitWin))).find(fits);
+        if (pick) return pick;
       }
     }
-    return order.find((p) => !p.hadFullBye) || order[0];
+    return order(players.filter((p) => !p.hadFullBye))[0] || players[0];
   }
 
   /** 28J: round one. Upper half against lower half by rating, colors alternating down from the coin. */

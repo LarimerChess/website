@@ -47,7 +47,7 @@ function forEngine(t) {
   return {
     format: t.format, sections: t.sections || [],
     players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "",
-      ...(p.byes ? { byes: p.byes } : {}) })),
+      games: p.games, floor: p.floor, sweep: p.sweep, ...(p.byes ? { byes: p.byes } : {}) })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
   };
 }
