@@ -318,6 +318,34 @@ test("a player with no section yet goes where their rating puts them", () => {
   assert.deepEqual(split.map((s) => s.players.map((p) => p.id)), [["a"], ["b", "c"]]);
 });
 
+test("an extra rated games section (28M4) has its own players and rounds, and its games stay out of their sections", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1800, "Open"], ["c", 1600, "Open"], ["d", 1500, "Open"]]);
+  players[0].byes = [2];
+  const game = (white, black, result, section) => ({ white, black, result, section });
+  const t = { format: "swiss", players,
+    sections: [{ name: "Open", last: 2 }, { name: "Extra games", extra: true, first: 2, last: 3, players: ["a", "b", "c"] }],
+    rounds: [{ games: [game("a", "c", "1-0", "Open"), game("d", "b", "0-1", "Open")], byes: [], out: [] }] };
+  const [open, extra] = Pairing.sections(t);
+  assert.deepEqual([open.first, open.last, open.rounds.length, extra.first, extra.last, extra.rounds.length], [1, 2, 1, 2, 3, 0]);
+  assert.deepEqual(extra.players.map((p) => [p.id, p.number, p.byes]), [["a", 1, undefined], ["b", 2, undefined], ["c", 3, undefined]],
+    "numbered within the section, without the byes asked for in the player's own");
+  assert.deepEqual([2, 3].map((n) => [Pairing.playsIn(open, n), Pairing.playsIn(extra, n)]), [[true, true], [false, true]]);
+  // Round 2: a takes the half-point bye asked for in the Open and still plays in the extra section.
+  const [openTwo, extraTwo] = Pairing.pairSections(t, (s) => ({ halfByes: s.extra ? [] : ["a"] }));
+  assert.deepEqual(openTwo.byes.find((b) => b.id === "a"), { id: "a", points: 0.5, kind: "half" });
+  assert.ok(extraTwo.games.some((g) => [g.white, g.black].includes("a")));
+  assert.equal(extraTwo.byes.length, 1, "three players: one full-point bye");
+  t.rounds.push({ games: [game("b", "c", "1-0", "Open"), game("b", "c", "0-1", "Extra games")],
+    byes: [{ id: "a", points: 0.5, kind: "half", section: "Open" }, { id: "d", points: 0, kind: "unplayed", section: "Open" },
+      { id: "a", points: 1, kind: "bye", section: "Extra games" }], out: [] });
+  const [openAfter, extraAfter] = Pairing.sections(t);
+  assert.deepEqual(Pairing.standings(openAfter).map((r) => [r.id, r.score]), [["b", 2], ["a", 1.5], ["c", 0], ["d", 0]]);
+  assert.deepEqual(Pairing.standings(extraAfter).map((r) => [r.id, r.score]), [["c", 1], ["a", 1], ["b", 0]]);
+  t.rounds.push({ games: [], byes: [], out: [] });
+  assert.equal(Pairing.sections(t)[0].rounds.length, 2, "the Open ends with its last round");
+  assert.deepEqual(Pairing.pairSections({ ...t, rounds: t.rounds.slice(0, 2) }).map((s) => s.section), ["Extra games"]);
+});
+
 test("quads as sections: each quad pairs from the table with its own numbers 1 to 4", () => {
   const players = [...Array(8)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1,
     section: `Quad ${Math.ceil((i + 1) / 4)}` }));

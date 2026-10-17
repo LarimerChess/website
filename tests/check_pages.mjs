@@ -2894,6 +2894,103 @@ afterPlay.status.includes("The rating report is below") && afterPlay.td === "Jar
   : fail(`TD desk after the last round: ${JSON.stringify({ afterPlay, records, told, rewritten, goneWhenMissing, roundAdded, afterRating })}`);
 await ratedPage.close();
 
+// An extra games section (28M4) once the Open is over: the TD adds it with everyone, and round 4 checks in, pairs,
+// and posts only it; it has its own standings and its own section in the rating report, with the players again.
+const inOpen = (pairs) => ({ ...played(pairs), games: played(pairs).games.map((g) => ({ ...g, section: "Open" })) });
+const extraDesk = deskState([inOpen([["11111111", "33333333", "1-0"], ["44444444", "22222222", "0-1"]]),
+  inOpen([["22222222", "11111111", "1/2-1/2"], ["33333333", "44444444", "1-0"]]),
+  inOpen([["11111111", "44444444", "1-0"], ["22222222", "33333333", "0-1"]])]);
+extraDesk.held.sections = [{ name: "Open" }];
+extraDesk.held.players.forEach((p) => { p.section = "Open"; });
+const extraAnswer = extraDesk.answer;
+extraDesk.answer = (p) => {
+  const held = extraDesk.held;
+  if (p.action === "extraSection") {
+    const first = held.rounds.length + 1;
+    held.sections = [...held.sections.map((s) => ({ ...s, last: s.last || held.plannedRounds })),
+      { name: p.name, extra: true, first, last: first + Number(p.rounds) - 1, players: JSON.parse(p.players) }];
+    held.plannedRounds = first + Number(p.rounds) - 1;
+    return { ok: true, message: `${p.name}: added.` };
+  }
+  if (p.action === "result") {
+    held.rounds[Number(p.number) - 1].games.find((g) => g.board === Number(p.board) && g.section === p.section).result = p.result;
+    return { ok: true };
+  }
+  return extraAnswer(p);
+};
+const extraPage = await mocked("/td/ adding an extra games section", (p) => extraDesk.answer(p));
+await signIn(extraPage);
+await extraPage.waitForFunction(() => !document.querySelector(".run-report").hidden);
+await extraPage.$eval(".run-extra-wrap summary", (s) => s.click());
+const extraForm = await extraPage.evaluate(() => ({ name: document.getElementById("run-extra-name").value,
+  rounds: document.getElementById("run-extra-rounds").value,
+  players: [...document.querySelectorAll(".run-extra-players input")].map((b) => b.checked) }));
+await press(extraPage, ".run-extra button[type=submit]");
+await extraPage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 4: check in");
+const extraCheckin = await extraPage.evaluate(() => ({ headings: [...document.querySelectorAll(".run-attendance-all h4")].map((h) => h.textContent),
+  rows: document.querySelectorAll(".run-attendance tbody tr").length, report: document.querySelector(".run-report").hidden,
+  list: document.querySelector(".run-extra-list").textContent, planned: [...document.querySelectorAll("#run-planned-section option")].map((o) => o.value),
+  rounds: document.getElementById("run-planned-rounds").value }));
+await press(extraPage, ".run-pair");
+await extraPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("pairings to review"));
+await press(extraPage, ".run-post");
+await extraPage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 4: results");
+const extraPosted = extraDesk.held.rounds[3].games.map((g) => g.section);
+for (const label of ["Extra games board 1 result", "Extra games board 2 result"]) {
+  await extraPage.select(`select[aria-label="${label}"]`, "1-0");
+  await new Promise((r) => setTimeout(r, 200));
+}
+await extraPage.waitForFunction(() => !document.querySelector(".run-report").hidden);
+const extraDone = await extraPage.evaluate(async () => {
+  const files = await reportFiles(current);
+  const records = (name) => new DataView(files[name].buffer).getUint32(4, true);
+  return { standings: [...document.querySelectorAll(".run-standings-all h4")].map((h) => h.textContent),
+    openScores: [...document.querySelectorAll(".run-standings")[0].querySelectorAll("tbody tr")].map((r) => r.cells[3].textContent),
+    sections: records("TSEXPORT.DBF"), players: records("TDEXPORT.DBF") };
+});
+await axeBoth(extraPage, "TD desk with an extra games section");
+for (const width of [1600, 390]) {
+  await extraPage.setViewport({ width, height: 900 });
+  if (process.env.SHOTS) await extraPage.screenshot({ path: `${process.env.SHOTS}/extra-${width}.png`, fullPage: true });
+}
+await fitsPhone(extraPage, "TD desk with an extra games section");
+extraForm.name === "Extra games" && extraForm.rounds === "1" && extraForm.players.length === 4 && extraForm.players.every(Boolean)
+  && JSON.stringify(extraCheckin.headings) === JSON.stringify(["Extra games (4)"]) && extraCheckin.rows === 4 && extraCheckin.report
+  && extraCheckin.list.startsWith("Extra games: 4 players, round 4.") && extraCheckin.planned.join() === "Open,Extra games" && extraCheckin.rounds === "3"
+  && extraPosted.join() === "Extra games,Extra games" && extraDone.standings.join() === "Open,Extra games"
+  && extraDone.openScores.join() === "2.5,2,1.5,0" && extraDone.sections === 2 && extraDone.players === 8
+  ? pass("TD desk adds an extra games section after the last round: it pairs and scores apart, and the rating report has it as a section")
+  : fail(`TD desk extra games section: ${JSON.stringify({ extraForm, extraCheckin, extraPosted, extraDone })}`);
+await extraPage.close();
+
+// The Pairings page numbers an extra games section's rounds from 1, and a report from it names the tournament's round.
+const withExtra = () => {
+  const [t] = twoSections();
+  t.sections = [{ name: "Open", last: 2 }, { name: "Under 1400", under: 1400, last: 2 },
+    { name: "Extra games", extra: true, first: 3, last: 4, players: ["a", "e"] }];
+  t.plannedRounds = 4;
+  t.rounds[1].games.forEach((g) => { g.result ||= "1-0"; });
+  t.rounds.push({ games: [{ board: 1, white: "e", black: "a", result: "", section: "Extra games" }], byes: [], out: [], posted: true });
+  return [t];
+};
+const extraReports = [];
+const extraPairings = await mocked("/pairings/ with an extra games section", (p) => {
+  if (p.action === "report") extraReports.push(p);
+  return p.action === "report" ? { ok: true, message: "Reported." } : { tournaments: withExtra() };
+});
+await extraPairings.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const extraShown = await extraPairings.evaluate(() => [...document.querySelectorAll(".pairings-all h3")].map((h) =>
+  [h.textContent, h.nextElementSibling.querySelector("select")?.selectedOptions[0].textContent]));
+JSON.stringify(extraShown) === JSON.stringify([["Open", "2 of 2"], ["Under 1400", "2 of 2"], ["Extra games", "1 of 2"]])
+  ? pass("Pairings page numbers an extra games section's rounds from 1") : fail(`Pairings page extra games section: ${JSON.stringify(extraShown)}`);
+await extraPairings.evaluate(() => { found.add("e"); redrawAll(); });
+await extraPairings.$$eval(".report button", (b) => b[0].click());
+await extraPairings.waitForFunction(() => document.querySelector(".report [role=status]")?.textContent === "Reported.");
+extraReports.length === 1 && extraReports[0].number === "3" && extraReports[0].section === "Extra games"
+  ? pass("Pairings page reports an extra games section's game by the tournament's round")
+  : fail(`Pairings page extra games report: ${JSON.stringify(extraReports)}`);
+await extraPairings.close();
+
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
 // in place of the real ones.
 const resultsPage = await browser.newPage();

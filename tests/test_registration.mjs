@@ -694,6 +694,61 @@ for (const store of STORES) {
 }
 
 for (const store of STORES) {
+  test(`an extra games section: the tournament's players again, from the next round, with rounds of its own (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    gs.clubEvents = () => ({ "classic/2026-11-07": { event: "classic", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry" } });
+    let registered = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1500"], ["44444444", "Dee", "1300"]]
+      .map(([id, name, rating]) => ({ id, name, rating, out: "" }));
+    gs.entries = () => registered;
+    const p = { event: "classic", date: "2026-11-07" };
+    gs.startTournament({ ...p, format: "swiss", rounds: "2", coin: "white", sections: '[{"name":"Open"}]' });
+    const game = (round, board, white, black, section, result) => ({ board, white, black, section, result });
+    for (const [n, games] of [[1, [game(1, 1, "11111111", "33333333", "Open"), game(1, 2, "44444444", "22222222", "Open")]],
+      [2, [game(2, 1, "22222222", "11111111", "Open"), game(2, 2, "33333333", "44444444", "Open")]]]) {
+      gs.saveRound({ ...p, number: String(n), post: "yes", games: JSON.stringify(games), byes: "[]" });
+    }
+    const all = JSON.stringify(["11111111", "22222222", "33333333", "44444444"]);
+    assert.match(gs.addExtraSection({ ...p, name: "", rounds: "1", players: all }).error, /Name the section/);
+    assert.match(gs.addExtraSection({ ...p, name: "Extra games", rounds: "x", players: all }).error, /number from 1 to 99/);
+    assert.match(gs.addExtraSection({ ...p, name: "open", rounds: "1", players: all }).error, /already a section named open/);
+    assert.match(gs.addExtraSection({ ...p, name: "Extra games", rounds: "1", players: '["11111111","99999999"]' }).error, /at least two/);
+    const added = gs.addExtraSection({ ...p, name: "Extra games", rounds: "2", players: all });
+    assert.equal(added.message, "Extra games: 4 players, 2 rounds from round 3.");
+    const info = () => rows("Tournaments")[0];
+    eq([JSON.parse(info().Sections), info().Rounds], [[{ name: "Open", last: 2 },
+      { name: "Extra games", extra: true, first: 3, last: 4, players: JSON.parse(all) }], "4"]);
+    const t = gs.tournament("classic/2026-11-07", true);
+    eq(Pairing.sections(t).map((s) => [s.name, s.rounds.length, s.players.length]), [["Open", 2, 4], ["Extra games", 0, 4]]);
+    // Each section's rounds change on their own, never below those paired.
+    assert.match(gs.setRounds({ ...p, rounds: "3" }).error, /Which section/);
+    assert.match(gs.setRounds({ ...p, section: "Open", rounds: "1" }).error, /Open has 2 rounds paired/);
+    assert.equal(gs.setRounds({ ...p, section: "Extra games", rounds: "1" }).message, "Extra games plays 1 round.");
+    eq([JSON.parse(info().Sections)[1].last, info().Rounds], [3, "3"]);
+    const extra = Pairing.pairSections(gs.tournament("classic/2026-11-07", true));
+    eq(extra.map((s) => s.section), ["Extra games"]);
+    gs.saveRound({ ...p, number: "3", post: "yes", games: JSON.stringify(extra[0].games.map((g) => ({ ...g, section: "Extra games" }))), byes: "[]" });
+    // Nobody is moved into it, nor placed in it when they enter late.
+    assert.match(gs.setSection({ ...p, id: "11111111", section: "Extra games" }).error, /No such section/);
+    registered = [...registered, { id: "55555555", name: "Eve", rating: "1200", out: "" }];
+    gs.syncPlayers("classic/2026-11-07");
+    assert.equal(rows("Players").find((r) => r.Name === "Eve").Section, "Open");
+    eq(gs.sectionsByKey(), {}, "the Entries page doesn't name a section where there's one besides the extra");
+    // A player's bye is told apart by section.
+    gs.saveRound({ ...p, number: "2", post: "yes", games: JSON.stringify([game(2, 1, "22222222", "11111111", "Open")]),
+      byes: JSON.stringify([{ id: "33333333", points: 0, kind: "unplayed", section: "Open" }, { id: "44444444", points: 0, kind: "unplayed", section: "Open" }]) });
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Extra games" }).error, "That player has a game that round, not a bye.");
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Open" }).ok, true);
+    // One added by mistake comes off; one with posted pairings stays.
+    assert.match(gs.dropExtraSection({ ...p, section: "Extra games" }).error, /posted pairings/);
+    assert.equal(gs.addExtraSection({ ...p, name: "Blitz", rounds: "2", players: all }).message, "Blitz: 4 players, 2 rounds from round 4.");
+    assert.equal(info().Rounds, "5");
+    assert.equal(gs.dropExtraSection({ ...p, section: "Blitz" }).ok, true);
+    eq([JSON.parse(info().Sections).map((s) => s.name), info().Rounds], [["Open", "Extra games"], "3"]);
+    assert.match(gs.addExtraSection({ event: "nothing", date: "2026-11-07", name: "X", rounds: "1", players: all }).error, /No such/);
+  });
+}
+
+for (const store of STORES) {
   test(`quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them (${store})`, () => {
     const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
     gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });

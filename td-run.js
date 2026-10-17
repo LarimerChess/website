@@ -5,7 +5,9 @@
 // run by td-arena.js. call, choice, choices, andList, byeDate, and nightsInWords come from td.js.
 //
 // A tournament's sections play each round together: one check-in, one Pair button that pairs
-// every section on its own, one review, and one Post, with each section in its own tables.
+// every section on its own, one review, and one Post, with each section in its own tables. An
+// extra rated games section (28M4) plays only its own rounds, and its players are also in another
+// section, so the desk tells their check-ins, games, and byes apart by section.
 
 const runStatus = document.querySelector(".run-status");
 const runStart = document.querySelector(".run-start");
@@ -147,7 +149,8 @@ function renderRun() {
   if (current && current.status !== "rated") {
     runManage.hidden = false;
     runPlanned.hidden = current.format !== "swiss";
-    runPlanned.elements.rounds.value = current.plannedRounds || "";
+    fillPlanned();
+    renderExtras();
   }
   const selectedChoice = choices.find((c) => c.key === choice.value);
   if (!current) {
@@ -222,11 +225,12 @@ function renderCheckin(t, parts, next) {
   const editable = !quad && next === 1;
   runSectionsEdit.hidden = !editable;
   if (editable && !runSectionsEdit.open) fillSections(runSectionsEdit.querySelector(".run-sections"), t.sections || []);
-  const defs = t.sections || [];
+  const defs = (t.sections || []).filter((d) => !d.extra);
   const choosing = editable && defs.length > 1;
   const several = parts.length > 1;
-  const scores = new Map(parts.flatMap((s) => Pairing.standings(s).map((r) => [r.id, r.score])));
-  runAttendance.replaceChildren(...parts.filter((s) => s.players.length).flatMap((s) => {
+  runAttendance.replaceChildren(...parts.filter((s) => s.players.length && Pairing.playsIn(s, next)).flatMap((s) => {
+    const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
+    const own = next - s.first + 1;
     const rows = s.players.filter((p) => !p.out).map((p) => {
       const byes = p.byes || [];
       const row = document.createElement("tr");
@@ -237,19 +241,20 @@ function renderCheckin(t, parts, next) {
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
       if (!quad) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
         .replaceAll(" ", " ")).join(", ");
-      if (choosing) {
+      if (choosing && !s.extra) {
         const move = document.createElement("select");
         move.setAttribute("aria-label", `${p.name}'s section`);
         for (const d of defs) if (Pairing.mayEnter(d, p.rating) || d.name === s.name) move.append(option(d.name, d.name, d.name === s.name));
         move.addEventListener("change", () => moveTo(p, move.value));
         row.insertCell().append(move);
       }
-      const asked = !quad && byes.includes(next);
+      const asked = !quad && byes.includes(own);
       const select = document.createElement("select");
       select.dataset.id = p.id;
+      select.dataset.section = s.key;
       select.dataset.start = asked ? "half" : "play";
       select.className = "run-this-round";
-      select.setAttribute("aria-label", `${p.name} this round`);
+      select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
       select.append(option("play", "Present", !asked),
         option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", false),
         ...(quad ? [] : [option("half", "Half-point bye (asked for)", asked), option("zero", "Zero-point bye (asked for)", false)]),
@@ -258,7 +263,7 @@ function renderCheckin(t, parts, next) {
       return row;
     });
     return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(quad ? [] : ["Byes asked for"]),
-      ...(choosing ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
+      ...(choosing && !s.extra ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
   }));
 }
 
@@ -278,11 +283,16 @@ async function moveTo(p, section) {
 
 /** A saved or posted round as a draft, copied, so nothing changes until it is saved. */
 function draftFrom(number) {
-  return { number, sections: Pairing.sections(forEngine(current)).filter((s) => s.players.length).map((s) => ({
+  return { number, sections: playing(number).map((s) => ({
     section: s.key, name: s.name, waiting: [],
-    games: s.rounds[number - 1].games.map((g) => ({ board: g.board, white: g.white, black: g.black, result: g.result || "" })),
-    byes: s.rounds[number - 1].byes.map((b) => ({ id: b.id, points: b.points, kind: b.kind })) })) };
+    games: s.rounds[number - s.first].games.map((g) => ({ board: g.board, white: g.white, black: g.black, result: g.result || "" })),
+    byes: s.rounds[number - s.first].byes.map((b) => ({ id: b.id, points: b.points, kind: b.kind })) })) };
 }
+
+/** The sections with players that play the tournament's round number. */
+const playing = (number) => Pairing.sections(forEngine(current)).filter((s) => s.players.length && Pairing.playsIn(s, number));
+// Tables are headed by section, and controls named by it, when the tournament has several, even in a round only one plays.
+const severalSections = () => Pairing.sections(forEngine(current)).filter((s) => s.players.length).length > 1;
 
 const numberOf = (id) => current.players.find((p) => p.id === id)?.number ?? Infinity;
 const isWithdrawn = (id) => {
@@ -335,9 +345,9 @@ function renumber() {
 /** What keeps the draft from being saved, in words for the TD. */
 function draftProblems() {
   const problems = [];
-  const seen = new Set();
-  const several = draft.sections.length > 1;
+  const several = severalSections();
   for (const s of draft.sections) {
+    const seen = new Set();
     const where = several ? ` (${s.name})` : "";
     const active = activeIn(s);
     const placed = [...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id)];
@@ -385,7 +395,7 @@ function renderDraft() {
   runPairingsHint.textContent = "Change any seat with its menu: the player you choose swaps places with the one there. The director is "
     + "responsible for the pairings (29E7). Save keeps them private; Post shows them on the Pairings page"
     + (draft.posted ? ", in place of the round posted, and clears any results players reported for it." : ".");
-  const several = draft.sections.length > 1;
+  const several = severalSections();
   runGames.replaceChildren(...draft.sections.flatMap((s, n) => editSection(s, n, several)));
   const problems = draftProblems();
   runProblems.hidden = !problems.length;
@@ -566,12 +576,12 @@ function renderResults(number) {
   runResultButtons.hidden = false;
   runPairingsHint.textContent = "Enter each board's result with its menu, which overrides anything reported. Players can report their "
     + "results on the Pairings page; a report counts once you confirm it. Check for reports to see new ones.";
-  const parts = Pairing.sections(forEngine(current));
-  const several = parts.length > 1;
+  const parts = playing(number);
+  const several = severalSections();
   const round = current.rounds[number - 1];
   agreedNow = [];
-  runGames.replaceChildren(...parts.filter((s) => s.players.length).flatMap((s, n) => {
-    const here = s.rounds[number - 1];
+  runGames.replaceChildren(...parts.flatMap((s, n) => {
+    const here = s.rounds[number - s.first];
     const where = several ? `${s.name} board` : "Board";
     const rows = here.games.map((g) => {
       const row = document.createElement("tr");
@@ -612,7 +622,6 @@ function renderResults(number) {
 
 const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
 
-/** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). */
 // The rating report's chief TD and affiliate come from scripts/tds.json; its time control and place,
 // from the event's listing in events.json while it's still there. The files are built from the
 // tournament as the desk last loaded it and are never stored anywhere but the TD's folder.
@@ -757,20 +766,27 @@ for (const id of ["run-report-td", "run-report-control"]) {
   document.getElementById(id).addEventListener("change", () => current && syncReport(choice.value, current));
 }
 
+/** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). With an
+ *  extra games section, a round is the section's own, and its section says which bye of a player's it is. */
 function renderByesAll() {
   const box = document.querySelector(".run-byes-all");
-  const rows = current.rounds.flatMap((r, i) => r.byes.map((b) => {
+  const extra = (current.sections || []).some((d) => d.extra);
+  const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
+  const rows = parts.flatMap((s) => s.rounds.flatMap((r, i) => r.byes.map((b) => {
     const row = document.createElement("tr");
+    const where = extra ? `${s.name} round ${i + 1}` : `round ${i + 1}`;
+    if (extra) row.insertCell().textContent = s.name;
     row.insertCell().textContent = i + 1;
     row.insertCell().textContent = nameOf(b.id);
     const select = document.createElement("select");
-    select.setAttribute("aria-label", `${nameOf(b.id)}, round ${i + 1}`);
+    select.setAttribute("aria-label", `${nameOf(b.id)}, ${where}`);
     const kind = Pairing.byeKind(b);
     for (const [value, text] of Object.entries(BYE_LABELS)) select.append(option(value, text, value === kind));
     select.addEventListener("change", async () => {
       const [event, date] = keyParts();
       select.disabled = true;
-      const result = await call("byeKind", { event, date, number: i + 1, id: b.id, kind: select.value });
+      const result = await call("byeKind", { event, date, number: s.first + i, id: b.id, kind: select.value,
+        ...(extra ? { section: s.key } : {}) });
       select.disabled = false;
       if (!result.ok) {
         select.value = kind;
@@ -778,13 +794,14 @@ function renderByesAll() {
       }
       b.kind = select.value;
       b.points = Pairing.BYE_KINDS[select.value];
-      runStatus.textContent = `${nameOf(b.id)}, round ${i + 1}: ${BYE_LABELS[select.value]}.`;
+      runStatus.textContent = `${nameOf(b.id)}, ${where}: ${BYE_LABELS[select.value]}.`;
       renderStandings();
     });
     row.insertCell().append(select);
     return row;
-  }));
-  box.replaceChildren(...(rows.length ? sectionTable("run-byes-table", ["Round", "Player", "Kind"], rows, "Byes and unplayed rounds", false)
+  })));
+  box.replaceChildren(...(rows.length
+    ? sectionTable("run-byes-table", [...(extra ? ["Section"] : []), "Round", "Player", "Kind"], rows, "Byes and unplayed rounds", false)
     : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
   const asked = current.players.map((p) => [p, (p.byes || []).filter((n) => n > current.rounds.length && !(p.out && n >= p.out))])
     .filter(([, later]) => later.length);
@@ -906,8 +923,8 @@ document.querySelector(".run-sync").addEventListener("click", async () => {
 
 /** The check-in's choice for each player, after taking out those withdrawn from this round on. */
 async function checkIn(number) {
-  const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value]);
-  const withdrawn = choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id);
+  const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value, s.dataset.section]);
+  const withdrawn = [...new Set(choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id))];
   const [event, date] = keyParts();
   for (const id of withdrawn) await call("out", { event, date, id, from: number });
   return { choicesMade, withdrawn };
@@ -919,13 +936,14 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
     return void (runStatus.textContent = "Nobody is present to pair.");
   }
   const { choicesMade, withdrawn } = await checkIn(number);
-  const sections = Pairing.pairSections(forEngine(current), {
-    halfByes: choicesMade.filter(([, v]) => v === "half").map(([id]) => id),
-    zeroByes: choicesMade.filter(([, v]) => v === "zero").map(([id]) => id),
-    absent: choicesMade.filter(([, v]) => v === "absent").map(([id]) => id),
+  const chose = (s, value) => choicesMade.filter(([, v, key]) => v === value && key === s.key).map(([id]) => id);
+  const sections = Pairing.pairSections(forEngine(current), (s) => ({
+    halfByes: chose(s, "half"),
+    zeroByes: chose(s, "zero"),
+    absent: chose(s, "absent"),
     out: withdrawn,
     coin: current.coin,
-  });
+  }));
   // A quad's table pairs absent players too; their games are forfeits.
   const away = new Set(choicesMade.filter(([, v]) => v === "absent").map(([id]) => id));
   if (current.format === "quad") {
@@ -947,13 +965,14 @@ document.querySelector(".run-by-hand").addEventListener("click", async () => {
   const number = current.rounds.length + 1;
   const { choicesMade, withdrawn } = await checkIn(number);
   current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
-  const chosen = new Map(choicesMade);
+  const chosen = new Map(choicesMade.map(([id, v, key]) => [`${key}|${id}`, v]));
   const anyone = choicesMade.some(([, v]) => v === "play");
-  draft = { number, sections: Pairing.sections(forEngine(current)).filter((s) => s.players.length).map((s) => {
+  draft = { number, sections: playing(number).map((s) => {
     const part = { section: s.key, name: s.name, games: [], byes: [], waiting: [] };
     for (const p of s.players) {
-      if (!chosen.has(p.id) || withdrawn.includes(p.id)) continue;
-      const kind = { half: "half", zero: "zero", absent: anyone && current.format !== "quad" ? "unplayed" : "" }[chosen.get(p.id)];
+      const choice = chosen.get(`${s.key}|${p.id}`);
+      if (!choice || withdrawn.includes(p.id)) continue;
+      const kind = { half: "half", zero: "zero", absent: anyone && current.format !== "quad" ? "unplayed" : "" }[choice];
       if (kind) part.byes.push({ id: p.id, kind, points: Pairing.BYE_KINDS[kind] });
       else part.waiting.push(p.id);
     }
@@ -1024,10 +1043,78 @@ async function saveDraft(post) {
 document.querySelector(".run-post").addEventListener("click", () => saveDraft(true));
 document.querySelector(".run-save").addEventListener("click", () => saveDraft(false));
 
+// Once a tournament has an extra games section, each section has its own rounds, changed one at a time.
+const plannedSection = document.getElementById("run-planned-section");
+
+function fillPlanned() {
+  const defs = (current.sections || []).some((d) => d.extra) ? current.sections : [];
+  plannedSection.hidden = document.querySelector('[for="run-planned-section"]').hidden = !defs.length;
+  const chosen = plannedSection.value;
+  plannedSection.replaceChildren(...defs.map((d) => option(d.name, d.name, d.name === chosen)));
+  const def = defs.find((d) => d.name === plannedSection.value);
+  runPlanned.elements.rounds.value = def ? def.last - (def.first || 1) + 1 : current.plannedRounds || "";
+}
+plannedSection.addEventListener("change", fillPlanned);
+
+const extraForm = document.querySelector(".run-extra");
+
+/** The extra games sections, each with a button to take it off, and the form to add one, all its
+ *  players chosen at first: those not withdrawn, in number order. */
+function renderExtras() {
+  const list = document.querySelector(".run-extra-list");
+  const extras = (current.sections || []).filter((d) => d.extra);
+  extraForm.closest("details").hidden = current.format !== "swiss" || !(current.sections || []).length;
+  list.replaceChildren(...extras.map((d) => {
+    const item = document.createElement("li");
+    const first = d.first, last = d.last;
+    item.append(`${d.name}: ${d.players.length} players, ${first === last ? `round ${first}` : `rounds ${first} to ${last}`}. `);
+    const posted = current.rounds.some((r) => r.posted && r.games.concat(r.byes).some((x) => x.section === d.name));
+    if (!posted) {
+      item.append(editButton("Take off", ` ${d.name}`, `drop-${d.name}`, async () => {
+        if (!confirm(`Take off ${d.name}? Any of its pairings saved but not posted are deleted.`)) return;
+        const [event, date] = keyParts();
+        const result = await call("dropSection", { event, date, section: d.name });
+        if (result.ok) await loadRun();
+        runStatus.textContent = result.message || result.error;
+      }));
+    }
+    return item;
+  }));
+  if (extraForm.dataset.key === current.key) return;
+  extraForm.dataset.key = current.key;
+  const names = new Set((current.sections || []).map((d) => d.name.toLowerCase()));
+  let name = "Extra games";
+  for (let n = 2; names.has(name.toLowerCase()); n++) name = `Extra games ${n}`;
+  extraForm.elements.name.value = name;
+  extraForm.elements.rounds.value = "1";
+  const boxes = extraForm.querySelector(".run-extra-players");
+  boxes.replaceChildren(...current.players.filter((p) => !p.out).map((p) => {
+    const label = document.createElement("label");
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", value: p.id, checked: true });
+    label.append(box, ` ${nameOf(p.id)}`);
+    return label;
+  }));
+}
+
+extraForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const players = [...extraForm.querySelectorAll(".run-extra-players input:checked")].map((box) => box.value);
+  const [event, date] = keyParts();
+  const result = await call("extraSection", { event, date, name: extraForm.elements.name.value.trim(),
+    rounds: extraForm.elements.rounds.value.trim(), players: JSON.stringify(players) });
+  if (result.ok) {
+    delete extraForm.dataset.key;
+    extraForm.closest("details").open = false;
+    await loadRun();
+  }
+  runStatus.textContent = result.message || result.error;
+});
+
 runPlanned.addEventListener("submit", async (e) => {
   e.preventDefault();
   const [event, date] = keyParts();
-  const result = await call("rounds", { event, date, rounds: runPlanned.elements.rounds.value.trim() });
+  const result = await call("rounds", { event, date, rounds: runPlanned.elements.rounds.value.trim(),
+    ...(plannedSection.hidden ? {} : { section: plannedSection.value }) });
   if (result.ok) await loadRun();
   runStatus.textContent = `${result.message || result.error} ${result.ok ? runStatus.textContent : ""}`.trim();
 });

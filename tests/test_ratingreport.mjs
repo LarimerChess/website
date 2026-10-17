@@ -58,3 +58,21 @@ test("the rating system follows the time control", () => {
     .map(RatingReport.ratingSystem), ["D", "R", "D", "Q", "D", "R", "Q"]);
   assert.equal(RatingReport.lastFirst("José de la Cruz"), "CRUZ, JOSE DE LA");
 });
+
+test("an extra rated games section (28M4) is a section of its own, with its own rounds and its players numbered again", () => {
+  const t = structuredClone(SECTIONS);
+  t.sections = [...t.sections.map((s) => ({ ...s, last: 2 })),
+    { name: "Extra games", extra: true, first: 3, last: 3, players: ["90000061", "90000062", "90000064", "90000066"] }];
+  t.plannedRounds = 3;
+  t.rounds.push({ games: [{ board: 1, white: "90000064", black: "90000061", result: "0-1", section: "Extra games" },
+    { board: 2, white: "90000062", black: "90000066", result: "1/2-1/2", section: "Extra games" }], byes: [], out: [], posted: true });
+  const files = RatingReport.files(t, REPORT);
+  assert.equal(read(files["THEXPORT.DBF"])[0].H_TOT_SECT, "3");
+  assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => [s.S_SEC_NUM, s.S_SEC_NAME, s.S_TOT_RNDS, s.S_LST_PAIR]),
+    [["1", "Open", "2", "4"], ["2", "Under 1400", "2", "3"], ["3", "Extra games", "1", "4"]]);
+  const rows = read(files["TDEXPORT.DBF"]);
+  assert.ok(!("D_RND03" in rows[0]), "as many round fields as the longest section");
+  assert.deepEqual(rows.filter((p) => p.D_SEC_NUM === "3").map((p) => [p.D_PAIR_NUM, p.D_MEM_ID, p.D_RND01, p.D_RND02]), [
+    ["1", "90000061", "W3B", ""], ["2", "90000062", "D4W", ""], ["3", "90000064", "L1W", ""], ["4", "90000066", "D2B", ""]]);
+  assert.deepEqual(rows.filter((p) => p.D_MEM_ID === "90000061").map((p) => p.D_SEC_NUM), ["1", "3"]);
+});

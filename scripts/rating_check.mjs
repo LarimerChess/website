@@ -70,9 +70,9 @@ export function endedOn(t, now) {
   return now >= `${nextDay(last)} 00:00` ? last : null;
 }
 
-/** { player: { round: [outcome, opponent, color] } } as the desk has it; an arena's games are numbered in order.
- *  Players with no game, bye, or result in any round are left out, as MUIR drops them. */
-export function ours(t) {
+/** { player: { round: [outcome, opponent, color] } } as the desk has it, for one section's rounds; an arena's games are
+ *  numbered in order. Players with no game, bye, or result in any round are left out, as MUIR drops them. */
+function played(t) {
   const players = Object.fromEntries(t.players.map((p) => [p.id, {}]));
   const games = t.format === "arena"
     ? [...(t.games || [])].sort((a, b) => a.game - b.game).map((g, i) => [i + 1, g])
@@ -97,15 +97,20 @@ export function ours(t) {
   return Object.fromEntries(Object.entries(players).filter(([, rounds]) => Object.values(rounds).some(([o]) => o !== "U")));
 }
 
-/** The same from US Chess's standings, { section number: [rows] }, and each player's section. */
+/** The desk's sections as US Chess rates them, [{ name, players }], players as played gives them: an extra rated
+ *  games section (28M4) has its own rounds, from its round 1, and players who are also in another section. */
+export function ours(t) {
+  if (t.format === "arena") return [{ name: "", players: played(t) }];
+  return Pairing.sections(t).filter((s) => s.players.length).map((s) => ({ name: s.name, players: played({ ...s, format: t.format }) }));
+}
+
+/** The same from US Chess's standings, { section number: { player: rounds } }. */
 function theirs(standings) {
-  const players = {};
-  const sectionOf = {};
+  const sections = {};
   for (const [section, rows] of Object.entries(standings)) {
+    const players = (sections[section] = {});
     for (const row of rows) {
-      const id = row.memberId || "";
-      sectionOf[id] = section;
-      const rounds = (players[id] ||= {});
+      const rounds = (players[row.memberId || ""] ||= {});
       for (const o of row.roundOutcomes || []) {
         const outcome = OUTCOMES[o.outcome] || o.outcome || "?";
         const played = ["W", "L", "D"].includes(outcome);
@@ -113,7 +118,7 @@ function theirs(standings) {
       }
     }
   }
-  return { players, sectionOf };
+  return sections;
 }
 
 function described([outcome, them, color], names) {
@@ -122,41 +127,58 @@ function described([outcome, them, color], names) {
   return outcome === "?" ? `a game ${game} with no result` : `${SHOWN[outcome]} ${game}`;
 }
 
-/** What US Chess's rated event has differently from the desk, as sentences; none when it matches. */
+/** What US Chess's rated event has differently from the desk, as sentences; none when it matches. Each of US
+ *  Chess's sections is compared with the desk's section sharing the most players with it. */
 export function differences(t, standings) {
   const names = Object.fromEntries(t.players.map((p) => [p.id, p.name || p.id]));
   const mine = ours(t);
-  const { players: found, sectionOf } = theirs(standings);
+  const found = theirs(standings);
+  const extra = (t.sections || []).some((s) => s.extra);
   const byName = (a, b) => (names[a] || a).localeCompare(names[b] || b);
-  const out = [];
-  for (const id of Object.keys(mine).filter((id) => !found[id]).sort(byName)) out.push(`${names[id]} (${id}) isn't in US Chess's event.`);
-  for (const id of Object.keys(found).filter((id) => !mine[id]).sort()) out.push(`US Chess has ${id}, who didn't play here.`);
-  const both = Object.keys(mine).filter((id) => found[id]).sort(byName);
   const key = (cell) => cell.join("|");
-  for (const id of both) {
+  const matched = new Map();
+  for (const [number, players] of Object.entries(found)) {
+    const ids = Object.keys(players);
+    const best = mine.map((s, i) => [i, ids.filter((id) => s.players[id]).length]).filter(([i, n]) => n && !matched.has(i))
+      .sort((a, b) => b[1] - a[1])[0];
+    if (best) matched.set(best[0], number);
+  }
+  const out = [];
+  const missing = [];
+  const pairs = [];
+  mine.forEach((s, i) => {
+    const there = found[matched.get(i)] || {};
+    for (const id of Object.keys(s.players)) (there[id] ? pairs.push([s, id, there[id]]) : missing.push([s, id]));
+  });
+  const inSection = (s) => (extra ? ` in ${s.name}` : "");
+  for (const [s, id] of missing.sort(([, a], [, b]) => byName(a, b))) out.push(`${names[id]} (${id})${inSection(s)} isn't in US Chess's event.`);
+  const ourIds = new Set(mine.flatMap((s) => Object.keys(s.players)));
+  for (const id of [...new Set(Object.values(found).flatMap((p) => Object.keys(p)))].filter((id) => !ourIds.has(id)).sort()) {
+    out.push(`US Chess has ${id}, who didn't play here.`);
+  }
+  for (const [s, id, theirRounds] of pairs.sort(([, a], [, b]) => byName(a, b))) {
+    const ourRounds = s.players[id];
     if (t.format === "arena") {
       // An arena has no rounds, and MUIR numbers its games in some order of its own.
       const count = (rounds) => Object.values(rounds).reduce((m, c) => m.set(key(c), (m.get(key(c)) || 0) + 1), new Map());
-      const [a, b] = [count(mine[id]), count(found[id])];
+      const [a, b] = [count(ourRounds), count(theirRounds)];
       for (const [cell, n] of a) for (let i = b.get(cell) || 0; i < n; i++) out.push(`${names[id]}: on the desk but not US Chess, ${described(cell.split("|"), names)}.`);
       for (const [cell, n] of b) for (let i = a.get(cell) || 0; i < n; i++) out.push(`${names[id]}: on US Chess but not the desk, ${described(cell.split("|"), names)}.`);
       continue;
     }
-    const rounds = [...new Set([...Object.keys(mine[id]), ...Object.keys(found[id])].map(Number))].sort((x, y) => x - y);
+    const rounds = [...new Set([...Object.keys(ourRounds), ...Object.keys(theirRounds)].map(Number))].sort((x, y) => x - y);
     for (const n of rounds) {
-      const here = mine[id][n] || ["U", "", ""];
-      const there = found[id][n] || ["U", "", ""];
+      const here = ourRounds[n] || ["U", "", ""];
+      const there = theirRounds[n] || ["U", "", ""];
       if (key(here) !== key(there)) {
-        out.push(`${names[id]}, round ${n}: on the desk, ${described(here, names)}; on US Chess, ${described(there, names)}.`);
+        out.push(`${names[id]}, ${extra ? `${s.name} ` : ""}round ${n}: on the desk, ${described(here, names)}; on US Chess, ${described(there, names)}.`);
       }
     }
   }
   if (t.format !== "arena") {
-    const sections = Pairing.sections(t).map((s) => new Set(s.players.map((p) => p.id)));
-    const groups = {};
-    for (const id of both) (groups[sectionOf[id]] ||= []).push(id);
-    for (const [number, members] of Object.entries(groups)) {
-      if (!sections.some((s) => members.every((id) => s.has(id)))) {
+    for (const [number, players] of Object.entries(found)) {
+      const members = Object.keys(players).filter((id) => ourIds.has(id));
+      if (members.length && !mine.some((s) => members.every((id) => s.players[id]))) {
         out.push(`US Chess's section ${number} mixes players from different sections here: ${members.map((id) => names[id]).sort().join(", ")}.`);
       }
     }
@@ -199,12 +221,12 @@ export class USChess {
 /** { event, found } for the rated event most like the tournament, found being its differences; or null. */
 export async function ratedEvent(t, uschess) {
   const [first, last] = daysOf(t.key);
-  const mine = Object.keys(ours(t));
+  const mine = new Set(ours(t).flatMap((s) => Object.keys(s.players)));
   let best = null;
   for (const event of await uschess.events(first, last)) {
     const standings = await uschess.standings(event);
-    const players = theirs(standings).players;
-    const shared = mine.filter((id) => players[id]).length;
+    const players = new Set(Object.values(theirs(standings)).flatMap((p) => Object.keys(p)));
+    const shared = [...mine].filter((id) => players.has(id)).length;
     if (shared && (!best || shared > best.shared)) best = { shared, event, standings };
   }
   return best && { event: best.event, found: differences(t, best.standings) };

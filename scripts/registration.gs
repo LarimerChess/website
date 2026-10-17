@@ -22,7 +22,8 @@
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, round, result, results, byeKind, out, rounds, restart, and for arenas:
+ *                               sync, sections, section, extraSection, dropSection, round, result, results, byeKind, out, rounds,
+ *                               restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * A TD signs in to the desk with Firebase Authentication (Google, or a link by email), and the
@@ -113,7 +114,7 @@ const TOURNAMENT_HEADERS = {
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "section", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "dropSection", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
   "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
@@ -182,6 +183,8 @@ function doPost(e) {
       case "sync": return json(syncPlayers(`${p.event}/${p.date}`));
       case "sections": return json(setSections(p));
       case "section": return json(setSection(p));
+      case "extraSection": return json(addExtraSection(p));
+      case "dropSection": return json(dropExtraSection(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
       case "results": return json(saveResults(p));
@@ -1085,7 +1088,8 @@ function startTournament(p, signedIn) {
   return synced;
 }
 
-/** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. */
+/** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Once it has an
+ *  extra rated games section, every section has its own rounds, and p.section names the one to change. */
 function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
@@ -1096,11 +1100,98 @@ function setRounds(p) {
     const line = t.rows.find((r) => r.Key === key);
     if (!line) return { error: "No such tournament." };
     if (line.Format !== "swiss") return { error: "Only a Swiss can change its number of rounds." };
-    const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+    const lines = table("Rounds").rows.filter((r) => r.Key === key);
+    const defs = sectionsOf(line);
+    if (defs.some((s) => s.extra)) {
+      const def = defs.find((s) => s.name === p.section);
+      if (!def) return { error: "Which section's rounds?" };
+      const first = Number(def.first) || 1;
+      const paired = lines.filter((r) => r.Section === def.name).reduce((m, r) => Math.max(m, Number(r.Round) - first + 1), 0);
+      if (Number(rounds) < paired) return { error: `${def.name} has ${paired} rounds paired already, so it can't have fewer.` };
+      def.last = first + Number(rounds) - 1;
+      setCells(t, { [line.row]: { Sections: JSON.stringify(defs), Rounds: String(lastRound(defs)) } });
+      clearTournamentCache(key);
+      return { ok: true, message: `${def.name} plays ${rounds} ${rounds === "1" ? "round" : "rounds"}.` };
+    }
+    const paired = lines.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
     if (Number(rounds) < paired) return { error: `${paired} rounds are paired already, so it can't have fewer.` };
     setCell(t, line.row, "Rounds", rounds);
     clearTournamentCache(key);
     return { ok: true, message: `It plays ${rounds} rounds.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+const lastRound = (defs) => defs.reduce((m, s) => Math.max(m, Number(s.last) || 0), 0);
+
+/**
+ * Adds an extra rated games section (28M4) to a Swiss: p.players, a JSON list of its players' IDs, play
+ * p.rounds rounds in it from the next round, apart from their own section's standings and alongside any
+ * rounds it has left, and the rating report has it as a section of its own. The other sections keep the
+ * rounds they had, as their last.
+ */
+function addExtraSection(p) {
+  const key = `${p.event}/${p.date}`;
+  const name = String(p.name || "").trim().replace(/\s+/g, " ");
+  const rounds = String(p.rounds || "").trim();
+  let ids;
+  try {
+    ids = JSON.parse(p.players || "[]");
+  } catch (err) {
+    ids = null;
+  }
+  // US Chess's rating report keeps 30 characters of a section's name.
+  if (!name || name.length > 30) return { error: "Name the section, in up to 30 characters." };
+  if (!/^[1-9]\d?$/.test(rounds)) return { error: "Rounds is a number from 1 to 99." };
+  if (!Array.isArray(ids)) return { error: "Choose the section's players." };
+  const lock = lockTournaments();
+  try {
+    const t = table("Tournaments");
+    const line = t.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    if (line.Format !== "swiss") return { error: "Only a Swiss can add an extra games section." };
+    const defs = sectionsOf(line);
+    if (!defs.length) return { error: "This tournament started before sections, so it can't add one." };
+    if (defs.some((s) => s.name.toLowerCase() === name.toLowerCase())) return { error: `There's already a section named ${name}.` };
+    const have = new Set(table("Players").rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
+    const players = [...new Set(ids.map(String))].filter((id) => have.has(id));
+    if (players.length < 2) return { error: "Choose at least two of the tournament's players." };
+    const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+    const planned = Math.max(Number(line.Rounds) || 0, paired);
+    for (const s of defs) if (!s.last) s.last = planned;
+    const first = paired + 1;
+    defs.push({ name, extra: true, first, last: first + Number(rounds) - 1, players });
+    setCells(t, { [line.row]: { Sections: JSON.stringify(defs), Rounds: String(lastRound(defs)) } });
+    clearTournamentCache(key);
+    return { ok: true, message: `${name}: ${players.length} players, ${rounds} ${rounds === "1" ? "round" : "rounds"} from round ${first}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Takes off an extra rated games section added by mistake, with any of its rounds saved but not posted. */
+function dropExtraSection(p) {
+  const key = `${p.event}/${p.date}`;
+  const lock = lockTournaments();
+  try {
+    const t = table("Tournaments");
+    const line = t.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    const defs = sectionsOf(line);
+    const def = defs.find((s) => s.extra && s.name === p.section);
+    if (!def) return { error: "No such extra games section." };
+    const rows = table("Rounds");
+    const mine = rows.rows.filter((r) => r.Key === key && r.Section === def.name);
+    if (mine.some((r) => r.Posted)) return { error: `${def.name} has posted pairings, so it stays; lower its rounds to stop it.` };
+    deleteRows(rows, mine);
+    const kept = defs.filter((s) => s !== def);
+    // Without an extra section, the others play through the tournament's rounds again.
+    if (!kept.some((s) => s.extra)) for (const s of kept) delete s.last;
+    const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+    setCells(t, { [line.row]: { Sections: JSON.stringify(kept), Rounds: String(Math.max(lastRound(kept), paired)) } });
+    clearTournamentCache(key);
+    return { ok: true, message: `${def.name} is taken off.` };
   } finally {
     lock.releaseLock();
   }
@@ -1158,7 +1249,7 @@ function syncPlayers(key) {
   const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
-    const defs = info && info.Format !== "quad" ? sectionsOf(info) : [];
+    const defs = info && info.Format !== "quad" ? sectionsOf(info).filter((s) => !s.extra) : [];
     const swiss = info && !["quad", "arena"].includes(info.Format);
     const t = table("Players");
     const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
@@ -1200,7 +1291,8 @@ function saveByeKind(p) {
   const lock = lockTournaments();
   try {
     const t = table("Rounds");
-    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && r.White === p.id && !r.Black);
+    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && r.White === p.id && !r.Black
+      && (p.section === undefined || r.Section === p.section));
     if (!line) return { error: "That player has a game that round, not a bye." };
     setCells(t, { [line.row]: { "Bye kind": p.kind, "Bye points": String(BYE_KINDS[p.kind]) } });
     clearTournamentCache(key);
@@ -1374,9 +1466,14 @@ function setSections(p) {
     const line = info.rows.find((r) => r.Key === key);
     if (!line) return { error: "No such tournament." };
     if (line.Format !== "swiss") return { error: "Only a Swiss has sections to set; quads are grouped when they start." };
+    const extras = sectionsOf(line).filter((s) => s.extra);
+    const taken = extras.find((x) => parsed.sections.some((s) => s.name.toLowerCase() === x.name.toLowerCase()));
+    if (taken) return { error: `${taken.name} is an extra games section already.` };
+    const last = (sectionsOf(line).find((s) => !s.extra && s.last) || {}).last;
+    if (extras.length && last) for (const s of parsed.sections) s.last = last;
     const late = beforeRoundOne(key);
     if (late) return { error: late };
-    setCell(info, line.row, "Sections", JSON.stringify(parsed.sections));
+    setCell(info, line.row, "Sections", JSON.stringify([...parsed.sections, ...extras]));
     const t = table("Players");
     setCells(t, Object.fromEntries(t.rows.filter((x) => x.Key === key).map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
     clearTournamentCache(key);
@@ -1394,7 +1491,7 @@ function setSection(p) {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     if (!info) return { error: "No such tournament." };
     if (info.Format !== "swiss") return { error: "Quads are grouped by rating when they start." };
-    const def = sectionsOf(info).find((s) => s.name === p.section);
+    const def = sectionsOf(info).find((s) => s.name === p.section && !s.extra);
     if (!def) return { error: "No such section." };
     const t = table("Players");
     const line = t.rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
@@ -1416,7 +1513,7 @@ function setSection(p) {
 /** Each running tournament's players' sections, { key: { id: section } }, where it has more than one section. */
 function sectionsByKey() {
   try {
-    const several = new Set(table("Tournaments").rows.filter((r) => sectionsOf(r).length > 1).map((r) => r.Key));
+    const several = new Set(table("Tournaments").rows.filter((r) => sectionsOf(r).filter((s) => !s.extra).length > 1).map((r) => r.Key));
     const out = {};
     for (const r of table("Players").rows) {
       if (several.has(r.Key) && r.Section) (out[r.Key] = out[r.Key] || {})[r["US Chess ID"]] = r.Section;

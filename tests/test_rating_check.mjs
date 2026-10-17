@@ -58,3 +58,25 @@ test("play goes on until the planned rounds are in, or the event's last day is o
   assert.equal(endedOn({ ...t, key: "monday-club-night-at-peak/2026-02" }, "2026-02-28 23:00"), null);
   assert.equal(endedOn({ ...t, key: "monday-club-night-at-peak/2026-02" }, "2026-03-01 00:00"), "2026-02-28");
 });
+
+test("an extra games section is compared with US Chess's section that has its players, by its own rounds", async () => {
+  const { ours, differences } = await import("../scripts/rating_check.mjs");
+  const t = structuredClone(fixtures.find((x) => x.key === "second-saturday-sections/2026-12-12"));
+  t.sections = [...t.sections.map((s) => ({ ...s, last: 2 })),
+    { name: "Extra games", extra: true, first: 3, last: 3, players: ["90000061", "90000062", "90000064", "90000066"] }];
+  t.rounds.push({ games: [{ board: 1, white: "90000064", black: "90000061", result: "0-1", section: "Extra games" },
+    { board: 2, white: "90000062", black: "90000066", result: "1/2-1/2", section: "Extra games" }], byes: [], out: [], posted: true });
+  const words = { W: "Win", L: "Loss", D: "Draw", B: "ByeFull", H: "ByeHalf", U: "Unpaired", X: "WinForfeit", F: "Forfeit" };
+  const rated = (s) => Object.entries(s.players).map(([memberId, rounds]) => ({ memberId, roundOutcomes: Object.entries(rounds)
+    .map(([n, [outcome, them, color]]) => ({ roundNumber: Number(n), outcome: words[outcome], opponentMemberId: them,
+      color: { W: "White", B: "Black" }[color] })) }));
+  // US Chess numbers the extra games first.
+  const [open, under, extra] = ours(t).map(rated);
+  assert.deepEqual(differences(t, { 1: extra, 2: open, 3: under }), []);
+  extra.find((r) => r.memberId === "90000062").roundOutcomes[0].outcome = "Win";
+  assert.deepEqual(differences(t, { 1: extra, 2: open, 3: under }), ["Jo Juniper, Extra games round 1: on the desk, "
+    + "drew against Ned Nutmeg as White; on US Chess, won against Ned Nutmeg as White."]);
+  assert.deepEqual(differences(t, { 1: open, 2: under }), ["Ivy Ironwood (90000061) in Extra games isn't in US Chess's event.",
+    "Jo Juniper (90000062) in Extra games isn't in US Chess's event.", "Lu Larch (90000064) in Extra games isn't in US Chess's event.",
+    "Ned Nutmeg (90000066) in Extra games isn't in US Chess's event."]);
+});

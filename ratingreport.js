@@ -7,7 +7,8 @@
 // files(t, report) takes a tournament in the registration script's shape and
 //   report: { td, affiliate, timeControl, city, state, zip, begin, end }  begin and end YYYY-MM-DD
 // and returns { "THEXPORT.DBF": Uint8Array, ... }. Each section of a Swiss, and each quad, is a
-// section of the report, its players numbered within it as Pairing.sections numbers them.
+// section of the report, its players numbered within it as Pairing.sections numbers them; an extra
+// rated games section (28M4) too, whose players are also in another section.
 
 (function (root) {
   "use strict";
@@ -76,7 +77,9 @@
    *  W, L, D; X and F for a win or loss by forfeit; B and H for a full- or half-point bye; U not played. */
   function roundCells(section, count) {
     const numbers = new Map(section.players.map((p) => [p.id, p.number]));
-    const cells = new Map(section.players.map((p) => [p.id, Array(count).fill("U0")]));
+    // A section with fewer rounds than the report's longest leaves the fields after its own empty,
+    // since a section has as many results as its S_TOT_RNDS.
+    const cells = new Map(section.players.map((p) => [p.id, Array(count).fill("").fill("U0", 0, section.rounds.length)]));
     section.rounds.forEach((r, i) => {
       if (i >= count) return;
       for (const g of r.games) {
@@ -97,7 +100,8 @@
     const name = t.name.split(",")[0];
     let sections = Pairing.sections(t).filter((s) => s.players.length);
     if (sections.length === 1 && t.format !== "quad") sections = [{ ...sections[0], name }];
-    const count = t.rounds.length;
+    // An extra rated games section (28M4) reports only its own rounds, from its round 1.
+    const count = Math.max(...sections.map((s) => s.rounds.length));
     const sectionRecords = [];
     const players = [];
     sections.forEach((s, i) => {
@@ -106,7 +110,7 @@
         S_TIMECTL: (report.timeControl || "").replace("G/", "Game/"), S_CTD_ID: report.td,
         // R for Round Robin: each quad plays rule 30G's table, the order US Chess reads its rounds in.
         S_TRN_TYPE: t.format === "quad" ? "R" : "S",
-        S_TOT_RNDS: String(count), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
+        S_TOT_RNDS: String(s.rounds.length), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
         // S_SCH_LVL is MUIR's participant code: N Non-Scholastic, S Scholastic, J JTP K-12, P JTP Primary.
         // Club events are open to all ages and not tied to a school (docs/tds/rating-an-event.md).
         S_END_DATE: ymd(report.end), S_SCH_LVL: "N", S_GR_PRIX: "N", S_GP_PTS: "0" });

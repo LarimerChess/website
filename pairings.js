@@ -290,19 +290,23 @@ function pairingsSection(t, ti) {
   }
   const { parts, several } = partsOf(t);
   const kind = (b) => ({ bye: "full-point bye", half: "half-point bye", zero: "zero-point bye", unplayed: "unplayed" })[Pairing.byeKind(b)];
-  const of = t.plannedRounds ? ` of ${t.plannedRounds}` : "";
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
+    // An extra games section numbers its own rounds from 1; the script knows each by the tournament's.
+    const planned = s.last ? s.last - s.first + 1 : t.plannedRounds;
+    const of = planned ? ` of ${planned}` : "";
+    if (!s.rounds.length) return void section.append(paragraph("Round 1 hasn't been posted yet."));
     const rounds = s.rounds.map((_, i) => [i + 1, `${i + 1}${of}`]);
     const draw = (n) => {
       const round = s.rounds[n - 1];
-      const games = round.games.map((g) => withClaim(t, n, g));
+      const number = s.first + n - 1;
+      const games = round.games.map((g) => withClaim(t, number, g));
       const shown = [tableOf(["Board", "White", "Black", "Result"],
         games.map((g) => [g.board, name(g.white), name(g.black), shownResult(g)]))];
       if (round.byes.length) shown.push(paragraph(`Without a game: ${round.byes.map((b) => `${name(b.id)}, ${kind(b)}`).join("; ")}.`));
       if (t.status === "running") {
         const ids = mine();
-        for (const g of games) if (!g.result && (ids.has(g.white) || ids.has(g.black))) shown.push(reportBox(t, n, g, name));
+        for (const g of games) if (!g.result && (ids.has(g.white) || ids.has(g.black))) shown.push(reportBox(t, number, g, name));
       }
       return shown;
     };
