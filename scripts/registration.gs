@@ -2088,7 +2088,8 @@ function checkByes(asked, old, key, event, run, online) {
     const what = month ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
     return { error: `${what} is already paired, so only the TD can change it.` };
   }
-  if (online && !month && list.length > 1) return { error: "One half-point bye per player; ask the TD for more." };
+  // One online, a month's too, as the Denver Chess Club's monthly Tuesdays allow; the TD can give more.
+  if (online && list.length > 1) return { error: "One half-point bye per player; ask the TD for more." };
   // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable.
   const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
   if (online && lines.some((r) => Number(r.Round) === 1 && r.Posted) && list.includes(last) !== old.includes(last)) {

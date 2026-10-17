@@ -1247,11 +1247,12 @@ test("byes asked for when registering: one online, any on the desk, a month's by
   assert.match(desk.message, /^Ben Birch is registered for Saturday, November 7, 2026\. Byes asked for: rounds 2 and 4\. /);
   assert.equal(mail[1].body.split("\n\n")[1], "Byes asked for: rounds 2 and 4. To change them, email president@larimerchess.org.",
     "a player the TD registered has no device that saved them");
-  const month = register({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26, 2099-10-19" });
+  assert.equal(refused({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26, 2099-10-19" }),
+    "One half-point bye per player; ask the TD for more.", "a month's too, as the Denver Chess Club's monthly Tuesdays");
+  const month = register({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26, 2099-10-19" }, true);
   assert.match(month.message, /^Ann Ash is registered for all Mondays in October 2099\. Nights you'll miss: Monday, October 19 and Monday, October 26\. /);
-  assert.equal(mail[2].body.split("\n\n")[1], "Nights you'll miss: Monday, October 19 and Monday, October 26. To change them, go to"
-    + " https://larimerchess.org/entries/?event=monday-club-night-at-peak/2099-10-05 on the device you registered from, or email"
-    + " president@larimerchess.org.", "the Entries page lists a month's entries under its nights");
+  assert.equal(mail[2].body.split("\n\n")[1], "Nights you'll miss: Monday, October 19 and Monday, October 26. To change them, email"
+    + " president@larimerchess.org.", "registered at the desk, the email gives no link to the device's Entries page");
   assert.equal(gs.register({ event: "classic", date: "2026-11-07", id: "33333333", category: "Adult" }, true).ok, true, "byes are optional");
   eq(rowsOf(sheets.Entries).map((r) => [r.Date, r["US Chess ID"], r.Byes]), [["2026-11-07", "66666666", "3"], ["2026-11-07", "77777777", "2, 4"],
     ["2099-10", "66666666", "2099-10-19, 2099-10-26"], ["2026-11-07", "33333333", ""]]);
@@ -1344,7 +1345,9 @@ for (const store of STORES) {
     const post = (byes) => t.post({ event: "monday-club-night-at-peak", date: "2099-10", byes });
     assert.equal(post("2099-10-19").message, "Ann Ash's byes: October 19.");
     eq(t.playerByes(), ["3"]);
-    assert.equal(post("2099-10-26, 2099-10-12").message, "Ann Ash's byes: October 12 and 26.", "no limit to one");
+    assert.equal(post("2099-10-26, 2099-10-12").error, "One half-point bye per player; ask the TD for more.",
+      "one online, as the Denver Chess Club's monthly Tuesdays allow");
+    assert.equal(t.desk({ token: "t1", byes: "2099-10-26, 2099-10-12" }).ok, true, "the TD can give more");
     eq([t.entryByes(), t.playerByes()], [["2099-10-12, 2099-10-26"], ["2"]]);
     assert.equal(post("2099-11-02").error, "Not a night of this month.");
     assert.equal(post("3").error, "Not a night of this month.");
@@ -1357,9 +1360,10 @@ for (const store of STORES) {
     assert.equal(post("2099-10-26").error, "October 12 is already paired, so only the TD can change it.");
     assert.equal(post("2099-10-12").message, "Ann Ash's byes: October 12.", "a night without a round can still be dropped");
     // 22C4: once round 1 is posted, the month's last night's bye is fixed, either way.
+    t.desk({ token: "t1", byes: `2099-10-12, ${NIGHTS.at(-1)}` });
     t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "1", post: "yes", games: "[]",
       byes: JSON.stringify([{ id: "66666666", points: 0, kind: "unplayed" }]) });
-    assert.equal(post(`2099-10-12, ${NIGHTS.at(-1)}`).error,
+    assert.equal(post("2099-10-12").error,
       "A bye for the month's last night is asked for before round 1 and can't be dropped after it (22C4); tell the TD.");
     // Switched to just one night, she plays no other, so asks for no byes on them.
     const switched = t.gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2099-10-19", id: "66666666",
