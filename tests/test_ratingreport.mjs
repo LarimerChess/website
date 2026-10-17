@@ -51,14 +51,14 @@ test("a quad's sections are round robins, a Swiss's Swiss", () => {
   assert.deepEqual(read(RatingReport.files(SECTIONS, REPORT)["TSEXPORT.DBF"]).map((s) => s.S_TRN_TYPE), ["S", "S"]);
 });
 
-test("a quad's D_RNDnn is its game against player n, and a player's own field is blank", () => {
+test("a quad's D_RNDnn are its rounds, in the order played, as MUIR rated the 2026-10-10 quad", () => {
   const quad = fixtures.find((t) => t.format === "quad");
   const files = RatingReport.files(quad, REPORT);
-  assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => s.S_TOT_RNDS), ["4", "4"], "a round robin's players, not its rounds");
-  assert.deepEqual(read(files["TDEXPORT.DBF"]).filter((p) => p.D_SEC_NUM === "1")
-    .map((p) => [p.D_PAIR_NUM, p.D_RND01, p.D_RND02, p.D_RND03, p.D_RND04]), [
-    ["1", "", "L2W", "D3B", "W4W"], ["2", "W1B", "", "D3W", "W4B"],
-    ["3", "D1W", "D2B", "", "W4W"], ["4", "L1B", "L2W", "L3B", ""]]);
+  assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => s.S_TOT_RNDS), ["3", "3"]);
+  const rows = read(files["TDEXPORT.DBF"]);
+  assert.ok(!("D_RND04" in rows[0]), "no field for a player's own number, which MUIR would read as a game");
+  assert.deepEqual(rows.filter((p) => p.D_SEC_NUM === "1").map((p) => [p.D_PAIR_NUM, p.D_RND01, p.D_RND02, p.D_RND03]), [
+    ["1", "W4W", "D3B", "L2W"], ["2", "D3W", "W4B", "W1B"], ["3", "D2B", "D1W", "W4W"], ["4", "L1B", "L2W", "L3B"]]);
 });
 
 test("the rating system follows the time control", () => {
@@ -97,7 +97,7 @@ test("quads' extra games section is a Swiss in the report", () => {
   t.rounds.forEach((r, i) => { if (i < 3) r.games.forEach((g) => { g.section = t.players.find((p) => p.id === g.white).section; }); });
   const sections = read(RatingReport.files(t, REPORT)["TSEXPORT.DBF"]);
   assert.deepEqual(sections.map((s) => [s.S_SEC_NAME, s.S_TRN_TYPE, s.S_TOT_RNDS, s.S_LST_PAIR]),
-    [["Quad 1", "R", "4", "4"], ["Quad 2", "R", "4", "4"], ["Extra games", "S", "1", "2"]]);
+    [["Quad 1", "R", "3", "4"], ["Quad 2", "R", "3", "4"], ["Extra games", "S", "1", "2"]]);
 });
 
 test("rule 5C reads every way a time control is written, finds blitz, and refuses what it can't rate", () => {
