@@ -248,25 +248,23 @@
       if (index >= scores.length) return carried.length ? null : [];
       const own = ranked.filter((p) => p.score === scores[index]);
       const below = ranked.filter((p) => p.score < scores[index]);
-      // Carried players are paired first, each with the highest-rated player they can play (29D2).
-      const pairCarried = (carriedLeft, pool, games) => {
-        if (!carriedLeft.length) return [{ pool, games }];
+      // Carried players are paired first, each with the highest-rated player they can play; one who can
+      // play nobody here drops on alone, rather than taking this group down too (29D2).
+      const pairCarried = (carriedLeft, pool, games, skipped) => {
+        if (!carriedLeft.length) return [{ pool, games, skipped }];
         const [first, ...others] = carriedLeft;
         const results = [];
         const choices = pool.filter((p) => !first.met.has(p.id)).sort(byRank);
         for (const opponent of choices) {
           const left = pool.filter((p) => p !== opponent);
-          for (const r of pairCarried(others, left, [...games, assignColors(first, opponent)])) results.push(r);
+          for (const r of pairCarried(others, left, [...games, assignColors(first, opponent)], skipped)) results.push(r);
           if (results.length > 6) break;
         }
+        if (results.length <= 6) results.push(...pairCarried(others, pool, games, [...skipped, first]));
         return results;
       };
-      const tries = pairCarried(carried, own, []);
-      // Carried players who can't be paired here drop again.
-      if (!tries.length && carried.length) {
-        return attempt(index + 1, [...carried, ...own]);
-      }
-      for (const { pool, games } of tries) {
+      const tries = pairCarried(carried, own, [], []).sort((a, b) => a.skipped.length - b.skipped.length);
+      for (const { pool, games, skipped } of tries) {
         // 29D1: the lowest-rated, but not an unrated, player is the odd one; then the next lowest.
         const dropOrders = [];
         const byRating = [...pool].sort((a, b) => (a.rating == null) - (b.rating == null) || (a.rating ?? 0) - (b.rating ?? 0));
@@ -278,15 +276,16 @@
         }
         for (const drop of dropOrders) {
           const stay = pool.filter((p) => !drop.includes(p));
-          const rest = [...drop, ...below];
+          const rest = [...skipped, ...drop, ...below];
           const paired = stay.length ? pairHalves(stay) : { games: [] };
           if (paired === null) continue;
           if (!pairable(rest)) continue;
-          const next = attempt(index + 1, [...drop].sort(byRank));
+          const next = attempt(index + 1, [...skipped, ...drop].sort(byRank));
           if (next) return [...games, ...paired.games, ...next];
         }
       }
-      return null;
+      // Last, the carried players and this whole group drop together.
+      return carried.length ? attempt(index + 1, [...carried, ...own]) : null;
     };
     return attempt(0, []);
   }

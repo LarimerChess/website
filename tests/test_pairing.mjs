@@ -437,3 +437,17 @@ test("28L2 to 28L4: the full-point bye stays in the lowest score group, rated, t
   const unrated = [player("a", 2000), player("b", 1900), player("c", 1800), player("x", null, { games: 0 }), player("y", null, { games: 3 })];
   assert.equal(bye(unrated, [{ games: [game("a", "x", "1-0"), game("b", "y", "1-0")], byes: [{ id: "c", points: 1, kind: "bye" }] }]), "y");
 });
+
+test("29D2: a player who can meet nobody in the next score group drops on alone, not with that group", () => {
+  const p = (id, rating) => ({ id, name: id, rating });
+  const g = (white, black, result) => ({ white, black, result });
+  // After round 3, B (2½) has met D and E (2), so B drops past them to C (0); D and E play each other.
+  const t = { players: [p("A", 2000), p("B", 1900), p("C", 1800), p("D", 1700), p("E", 1600)], rounds: [
+    { games: [g("A", "C", "1-0"), g("D", "B", "0-1")], byes: [{ id: "E", points: 1, kind: "bye" }] },
+    { games: [g("A", "B", "1/2-1/2"), g("E", "C", "1-0")], byes: [{ id: "D", points: 1, kind: "bye" }] },
+    { games: [g("C", "D", "0F-1F"), g("B", "E", "1-0")], byes: [{ id: "A", points: 0, kind: "unplayed" }] }] };
+  const { games, byes, notes } = Pairing.pairRound(t, { coin: "white" });
+  assert.deepEqual(notes.filter((n) => n.includes("can't")), []);
+  assert.deepEqual(byes.map((b) => b.id), ["A"], "C can't take the bye: B could then play nobody");
+  assert.deepEqual(games.map((x) => [x.white, x.black].sort().join("-")).sort(), ["B-C", "D-E"]);
+});
