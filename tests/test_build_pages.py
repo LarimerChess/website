@@ -140,7 +140,7 @@ class Byes(unittest.TestCase):
                          [("2026-10", [("2026-10-19", "Monday, October 19"), ("2026-10-26", "Monday, October 26")]),
                           ("2026-11", [("2026-11-02", "Monday, November 2")])])
         self.assertIn("<legend>Nights you'll miss (half-point bye)</legend>", months[0][1])
-        self.assertIn('<p id="register-byes-2026-10-hint" class="register-hint">Half a point for each.', months[0][1])
+        self.assertIn('<p id="register-byes-2026-10-hint" class="register-hint">One per player, half a point.', months[0][1])
 
 
 class Unrated(unittest.TestCase):
