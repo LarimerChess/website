@@ -5,7 +5,8 @@
 // once every round is in, for the TD to upload in MUIR; tests/test_ratingreport.mjs checks them.
 //
 // files(t, report) takes a tournament in the registration script's shape and
-//   report: { td, affiliate, timeControl, city, state, zip, begin, end }  begin and end YYYY-MM-DD
+//   report: { td, affiliate, timeControl, timeControls, city, state, zip, begin, end }  begin and end YYYY-MM-DD,
+//   timeControls a section's own time control by its key, where it differs
 // and returns { "THEXPORT.DBF": Uint8Array, ... }. Each section of a Swiss, and each quad, is a
 // section of the report, its players numbered within it as Pairing.sections numbers them; an extra
 // rated games section (28M4) too, whose players are also in another section.
@@ -62,15 +63,51 @@
     return (parts.length > 1 ? `${parts.at(-1)}, ${parts.slice(0, -1).join(" ")}` : parts[0] || "").toUpperCase();
   }
 
-  /** Rule 5C: the minutes of every control plus the increment or delay's seconds; above 65 is regular,
-   *  30 to 65 dual, below that quick. The 2C layout has no letter for blitz. */
+  /**
+   * A time control as rule 5C counts it: { minutes, seconds, total, text }, or null when it has no base
+   * time to read. minutes are every control's (40/90 SD/30 is 90 and 30) and seconds the increment or
+   * delay. It reads US Chess's notation (G/30;+30, G/70;d10, SD/30;d5, G/5 d/0, inc/30), G15;+30, a base
+   * and increment (30+30), and words (30 minutes + 30 seconds per move). text is a single control as
+   * MUIR writes it, G/30;+30, with ;d0 when it has neither; several controls stay as written.
+   */
+  function parseControl(control) {
+    const written = String(control || "").trim();
+    const text = written.replace(/\b(?:minutes?|mins?)\b/gi, "").replace(/\b(?:seconds?|secs?)\b/gi, "");
+    let minutes = [...text.matchAll(/(?:\b(?:G|SD|Game)\s*\/?\s*|\b\d+\s*\/\s*)(\d+)/gi)].map((m) => Number(m[1]));
+    let added = /(\+|\binc(?:rement)?|\bd(?:elay)?)\s*\/?\s*(\d+)/i.exec(text);
+    const bare = /^(\d+)\s*\+\s*(\d+)/.exec(text);
+    if (!minutes.length && bare) {
+      minutes = [Number(bare[1])];
+      added = ["", "+", bare[2]];
+    }
+    if (!minutes.length) return null;
+    const seconds = Number(added?.[2] || 0);
+    const kind = added && /^d/i.test(added[1]) ? "d" : added ? "+" : "d";
+    return { minutes, seconds, total: minutes.reduce((a, b) => a + b, 0) + seconds,
+      text: minutes.length === 1 ? `G/${minutes[0]};${kind}${seconds}` : written };
+  }
+
+  /** Rule 5C's rating system for a time control: R (regular, a total over 65), D (dual, 30 to 65), Q (quick,
+   *  over 10 and under 30), B (blitz, 5 to 10), or "" when it isn't ratable or can't be read. The first
+   *  control has at least 5 minutes, or 3 for blitz. */
   function ratingSystem(control) {
-    const text = control || "";
-    const minutes = [...text.matchAll(/(?:\b(?:G|SD|Game)\s*\/\s*|\b\d+\s*\/\s*)(\d+)/gi)].map((m) => Number(m[1]));
-    if (!minutes.length) return "R";
-    const seconds = /(?:\+\s*|\binc\s*\/?\s*|\bd\s*\/?\s*)(\d+)/i.exec(text);
-    const total = minutes.reduce((a, b) => a + b, 0) + Number(seconds?.[1] || 0);
-    return total > 65 ? "R" : total >= 30 ? "D" : "Q";
+    const c = parseControl(control);
+    if (!c) return "";
+    const primary = c.minutes[0];
+    if (c.total > 10) return primary < 5 ? "" : c.total > 65 ? "R" : c.total >= 30 ? "D" : "Q";
+    return c.total >= 5 && primary >= 3 ? "B" : "";
+  }
+
+  /** Why a time control can't go in the upload files, in words for the TD, or "". */
+  function controlProblem(control, where = "") {
+    const named = where ? `${where}: ` : "";
+    if (!String(control || "").trim()) return `${named}enter the time control, such as G/30;+30.`;
+    const system = ratingSystem(control);
+    if (!parseControl(control)) return `${named}the desk can't read "${control}"; write it like G/30;+30 or 40/90 SD/30;d5.`;
+    if (!system) return `${named}${control} can't be rated under rule 5C: blitz is 5 to 10 minutes in all, with at least 3 to start, and the other systems need at least 5 to start.`;
+    // The upload format's rating systems are R, D, and Q (S_R_SYSTEM).
+    if (system === "B") return `${named}${control} is blitz, which the upload files can't carry; enter it in MUIR by hand and mark it blitz.`;
+    return "";
   }
 
   /** Each player's D_RNDnn: the result letter, the opponent's number (0 without a game), and the color.
@@ -106,8 +143,11 @@
     const players = [];
     sections.forEach((s, i) => {
       const number = String(i + 1);
-      sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(report.timeControl),
-        S_TIMECTL: (report.timeControl || "").replace("G/", "Game/"), S_CTD_ID: report.td,
+      // Rule 5C, TD tip, note 2: each section's time control, when they differ.
+      const control = (report.timeControls || {})[s.key] || report.timeControl;
+      const written = parseControl(control)?.text || control || "";
+      sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(control),
+        S_TIMECTL: written.replace(/^G\//, "Game/"), S_CTD_ID: report.td,
         // R for Round Robin: each quad plays rule 30G's table, the order US Chess reads its rounds in.
         S_TRN_TYPE: s.format === "quad" ? "R" : "S",
         S_TOT_RNDS: String(s.rounds.length), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
@@ -134,7 +174,7 @@
     };
   }
 
-  const RatingReport = { files, ratingSystem, lastFirst };
+  const RatingReport = { files, parseControl, ratingSystem, controlProblem, lastFirst };
   if (typeof module !== "undefined" && module.exports) module.exports = RatingReport;
   else root.RatingReport = RatingReport;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -52,7 +52,7 @@ test("a quad's sections are round robins, a Swiss's Swiss", () => {
 });
 
 test("the rating system follows the time control", () => {
-  assert.deepEqual(["G/70;d10", "G/30;+10", "G/20;d5", "G/90;+30", ""].map(RatingReport.ratingSystem), ["R", "D", "Q", "R", "R"]);
+  assert.deepEqual(["G/70;d10", "G/30;+10", "G/20;d5", "G/90;+30", ""].map(RatingReport.ratingSystem), ["R", "D", "Q", "R", ""]);
   // Rule 5C's examples, in its notation: every control's minutes count.
   assert.deepEqual(["G/60 d/5", "G/61 d/5", "G/25 d/5", "G/26 d/3", "30/30 SD/30 d/5", "40/90, SD/30; inc/30", "G/10 d/3"]
     .map(RatingReport.ratingSystem), ["D", "R", "D", "Q", "D", "R", "Q"]);
@@ -88,4 +88,26 @@ test("quads' extra games section is a Swiss in the report", () => {
   const sections = read(RatingReport.files(t, REPORT)["TSEXPORT.DBF"]);
   assert.deepEqual(sections.map((s) => [s.S_SEC_NAME, s.S_TRN_TYPE, s.S_TOT_RNDS, s.S_LST_PAIR]),
     [["Quad 1", "R", "3", "4"], ["Quad 2", "R", "3", "4"], ["Extra games", "S", "1", "2"]]);
+});
+
+test("rule 5C reads every way a time control is written, finds blitz, and refuses what it can't rate", () => {
+  const cases = { "30+30": ["D", "G/30;+30"], "15+15": ["D", "G/15;+15"], "G15;+30": ["D", "G/15;+30"], "SD/60;d5": ["D", "G/60;d5"],
+    "30 minutes + 30 seconds per move": ["D", "G/30;+30"], "All Rounds G/90, +30 seconds increment": ["R", "G/90;+30"], "G/30": ["D", "G/30;d0"],
+    "G/5;+3": ["B", "G/5;+3"], "G/10 d/0": ["B", "G/10;d0"], "G/3 inc/2": ["B", "G/3;+2"], "3+2": ["B", "G/3;+2"], "G/2;+10": ["", "G/2;+10"],
+    "40/90 SD/30 inc/30": ["R", "40/90 SD/30 inc/30"] };
+  for (const [control, [system, text]] of Object.entries(cases)) {
+    assert.deepEqual([RatingReport.ratingSystem(control), RatingReport.parseControl(control).text], [system, text], control);
+  }
+  assert.equal(RatingReport.parseControl("blitz"), null);
+  assert.match(RatingReport.controlProblem(""), /enter the time control/);
+  assert.match(RatingReport.controlProblem("blitz"), /can't read "blitz"/);
+  assert.match(RatingReport.controlProblem("G/5;+3", "Extra games"), /^Extra games: G\/5;\+3 is blitz/);
+  assert.match(RatingReport.controlProblem("G/2;+10"), /can't be rated under rule 5C/);
+  assert.equal(RatingReport.controlProblem("G/70;d10"), "");
+});
+
+test("a section with its own time control has its own rating system and control in the report", () => {
+  const files = RatingReport.files(SECTIONS, { ...REPORT, timeControl: "G/70;d10", timeControls: { "Under 1400": "30+30" } });
+  assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => [s.S_SEC_NAME, s.S_R_SYSTEM, s.S_TIMECTL]),
+    [["Open", "R", "Game/70;d10"], ["Under 1400", "D", "Game/30;+30"]]);
 });

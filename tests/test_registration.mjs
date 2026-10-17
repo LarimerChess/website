@@ -627,7 +627,7 @@ for (const store of STORES) {
     if (store === "sheet") {
       eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
         "State", "Byes"]);
-      eq(heading(sheets.Tournaments).slice(-4), ["Cutoff", "Sections", "TD", "Round dates"]);
+      eq(heading(sheets.Tournaments).slice(-5), ["Cutoff", "Sections", "TD", "Round dates", "Time control"]);
     }
     // Its rows are where they were; only headings were added.
     assert.equal(rows("Players")[4]["No."], "5");
@@ -701,7 +701,8 @@ for (const store of STORES) {
       .map(([id, name, rating]) => ({ id, name, rating, out: "" }));
     gs.entries = () => registered;
     const p = { event: "classic", date: "2026-11-07" };
-    gs.startTournament({ ...p, format: "swiss", rounds: "2", coin: "white", sections: '[{"name":"Open"}]' });
+    gs.startTournament({ ...p, format: "swiss", rounds: "2", coin: "white", sections: '[{"name":"Open"}]', timeControl: "G/30;d5" });
+    assert.equal(gs.tournament("classic/2026-11-07", true).timeControl, "G/30;d5", "Start keeps the time control the desk read from the listing");
     const game = (round, board, white, black, section, result) => ({ board, white, black, section, result });
     for (const [n, games] of [[1, [game(1, 1, "11111111", "33333333", "Open"), game(1, 2, "44444444", "22222222", "Open")]],
       [2, [game(2, 1, "22222222", "11111111", "Open"), game(2, 2, "33333333", "44444444", "Open")]]]) {
@@ -745,6 +746,15 @@ for (const store of STORES) {
     assert.equal(gs.dropExtraSection({ ...p, section: "Blitz" }).ok, true);
     eq([JSON.parse(info().Sections).map((s) => s.name), info().Rounds], [["Open", "Extra games"], "3"]);
     assert.match(gs.addExtraSection({ event: "nothing", date: "2026-11-07", name: "X", rounds: "1", players: all }).error, /No such/);
+    // The rating report's time control: the tournament's, and a section's own where it differs.
+    assert.equal(gs.setTimeControl({ ...p, value: "G/70;d10" }).ok, true);
+    assert.equal(gs.setTimeControl({ ...p, section: "Extra games", value: " G/30;+30 " }).ok, true);
+    const set = gs.tournament("classic/2026-11-07", true);
+    eq([set.timeControl, set.sections.find((s) => s.name === "Extra games").timeControl], ["G/70;d10", "G/30;+30"]);
+    gs.setTimeControl({ ...p, section: "Extra games", value: "" });
+    assert.equal(gs.tournament("classic/2026-11-07", true).sections.find((s) => s.name === "Extra games").timeControl, undefined);
+    assert.match(gs.setTimeControl({ ...p, value: "x".repeat(41) }).error, /40 characters/);
+    assert.match(gs.setTimeControl({ ...p, section: "Blitz", value: "G/5;+3" }).error, /No such section/);
   });
 }
 

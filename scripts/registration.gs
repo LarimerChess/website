@@ -22,8 +22,8 @@
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, extraSection, dropSection, round, result, results, byeKind, out, rounds,
- *                               restart, and for arenas:
+ *                               sync, sections, section, extraSection, dropSection, timeControl, round, result, results, byeKind,
+ *                               out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
  * A TD signs in to the desk with Firebase Authentication (Google, or a link by email), and the
@@ -106,7 +106,7 @@ const ARENA_RESULTS = ["1-0", "0-1", "1/2-1/2", "1F-0F", "0F-1F", "0F-0F"];
 // Tabs and headings the script adds to the tournament spreadsheet when they're missing.
 const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD",
-    "Round dates"],
+    "Round dates", "Time control"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State",
     "Byes"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
@@ -114,7 +114,7 @@ const TOURNAMENT_HEADERS = {
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "dropSection", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
   "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
@@ -185,6 +185,7 @@ function doPost(e) {
       case "section": return json(setSection(p));
       case "extraSection": return json(addExtraSection(p));
       case "dropSection": return json(dropExtraSection(p));
+      case "timeControl": return json(setTimeControl(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
       case "results": return json(saveResults(p));
@@ -1021,7 +1022,7 @@ function tournament(key, td) {
   });
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players,
-    td: info.TD || "" };
+    td: info.TD || "", timeControl: info["Time control"] || "" };
   const dates = roundDates(info);
   if (dates.length) result.roundDates = dates;
   const event = ratedEvents()[key];
@@ -1079,7 +1080,8 @@ function startTournament(p, signedIn) {
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
       Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "",
-      "Round dates": event.kind === "month" ? JSON.stringify(monthNights(key)) : "" }]);
+      "Round dates": event.kind === "month" ? JSON.stringify(monthNights(key)) : "",
+      "Time control": String(p.timeControl || "").trim().slice(0, 40) }]);
   } finally {
     lock.releaseLock();
   }
@@ -1168,6 +1170,35 @@ function addExtraSection(p) {
     setCells(t, { [line.row]: { Sections: JSON.stringify(defs), Rounds: String(lastRound(defs)) } });
     clearTournamentCache(key);
     return { ok: true, message: `${name}: ${players.length} players, ${rounds} ${rounds === "1" ? "round" : "rounds"} from round ${first}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Sets the time control the rating report gives, p.value: the tournament's, or with p.section that
+ *  section's own, where it differs (rule 5C, TD tip, note 2); an empty one goes back to the tournament's. */
+function setTimeControl(p) {
+  const key = `${p.event}/${p.date}`;
+  // S_TIMECTL holds 40 characters.
+  const value = String(p.value || "").trim().replace(/\s+/g, " ");
+  if (value.length > 40) return { error: "A time control fits in 40 characters, such as G/30;+30." };
+  const lock = lockTournaments();
+  try {
+    const t = table("Tournaments");
+    const line = t.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    if (!p.section) {
+      setCell(t, line.row, "Time control", value);
+    } else {
+      const defs = sectionsOf(line);
+      const def = defs.find((s) => s.name === p.section);
+      if (!def) return { error: "No such section." };
+      if (value) def.timeControl = value;
+      else delete def.timeControl;
+      setCell(t, line.row, "Sections", JSON.stringify(defs));
+    }
+    clearTournamentCache(key);
+    return { ok: true };
   } finally {
     lock.releaseLock();
   }

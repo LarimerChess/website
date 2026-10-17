@@ -626,8 +626,9 @@ function renderResults(number) {
 
 const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
 
-// The rating report's chief TD and affiliate come from scripts/tds.json; its time control and place,
-// from the event's listing in events.json while it's still there. The files are built from the
+// The rating report's chief TD and affiliate come from scripts/tds.json; its place, from the event's
+// listing in events.json while it's still there. Its time control is kept with the tournament, read
+// from the listing when it starts, and a section can have its own. The files are built from the
 // tournament as the desk last loaded it and are never stored anywhere but the TD's folder.
 const REPORT_FILES = ["THEXPORT.DBF", "TSEXPORT.DBF", "TDEXPORT.DBF"];
 let reportSources = null;
@@ -689,8 +690,7 @@ async function syncFolder(key, files) {
 
 /** Fills a menu with the club's TDs, choosing the tournament's chief TD when the menu is new to it. */
 async function fillTds(menu, key, chosen) {
-  reportSources ||= Promise.all(["/scripts/tds.json", "/events.json"].map((url) => fetch(url).then((r) => r.json()).catch(() => null)));
-  const [roster] = await reportSources;
+  const [roster] = await loadSources();
   if (!menu.options.length) {
     for (const td of roster?.tds || []) menu.append(option(td.uschess_id, `${td.name} (${td.uschess_id})`, false));
   }
@@ -700,24 +700,119 @@ async function fillTds(menu, key, chosen) {
   }
 }
 
+/** The time control in an event's listing, as MUIR writes it: "G/30;+30" from
+ *  "Time control: 30 minutes + 30 seconds per move." or "Time control: G/30;+30 (30 minutes per player, …)". */
+function listedControl(listing) {
+  const text = (/^Time control: (.+)$/m.exec(listing?.description || "")?.[1] || "").replace(/\s*\(.*$/, "").replace(/\.$/, "").trim();
+  return RatingReport.parseControl(text)?.text || text;
+}
+
+const loadSources = () => (reportSources ||= Promise.all(["/scripts/tds.json", "/events.json"]
+  .map((url) => fetch(url).then((r) => r.json()).catch(() => null))));
+const listingOf = async (t) => ((await loadSources())[1] || []).find((e) => e.page === `/events/${t.event}/`);
+
+/** Each section with players and the time control the report gives it: its own, or the tournament's. */
+function reportControls(t) {
+  const parts = Pairing.sections(forEngine(t)).filter((s) => s.players.length);
+  const own = (s) => (t.sections || []).find((d) => d.name === s.key)?.timeControl || "";
+  return parts.map((s) => ({ section: s, own: own(s), control: own(s) || t.timeControl || "" }));
+}
+
+/** What keeps the files from being written: each section's time control, as rule 5C and the upload format need it. */
+function reportProblems(t) {
+  const controls = reportControls(t);
+  return [...new Set(controls.map(({ section, control }) => RatingReport.controlProblem(control, controls.length > 1 ? section.name : "")))]
+    .filter(Boolean);
+}
+
+/** The time control fields: the tournament's, and with several sections each one's own, where it differs. */
+function renderControls(t) {
+  const main = document.getElementById("run-report-control");
+  if (main.dataset.key !== t.key) {
+    document.getElementById("run-report-control-error").textContent = "";
+    main.removeAttribute("aria-invalid");
+  }
+  if (main.dataset.key !== t.key || document.activeElement !== main) main.value = t.timeControl || "";
+  main.dataset.key = t.key;
+  const box = document.querySelector(".run-report-sections");
+  const controls = reportControls(t);
+  if (controls.length < 2) return void box.replaceChildren();
+  box.replaceChildren(...controls.map(({ section, own }, i) => {
+    const row = document.createElement("div");
+    row.className = "field-row";
+    const input = Object.assign(document.createElement("input"), { id: `run-report-control-${i}`, type: "text", autocomplete: "off",
+      spellcheck: false, maxLength: 40, value: own, placeholder: "Same as the tournament", className: "run-report-section-control" });
+    input.dataset.section = section.key;
+    input.setAttribute("aria-describedby", "run-report-control-error");
+    input.addEventListener("change", () => checkControl(input, section.key));
+    row.append(Object.assign(document.createElement("label"), { htmlFor: input.id, textContent: section.name }), input);
+    return row;
+  }));
+}
+
+/** Saves a time control field as US Chess writes it, G/30;+30 for 30+30, or says what's wrong with it. A
+ *  section's may be left empty, for the tournament's. */
+function checkControl(input, section) {
+  const value = input.value.trim().replace(/\s+/g, " ");
+  const error = document.getElementById("run-report-control-error");
+  const parsed = RatingReport.parseControl(value);
+  const wrong = !value ? (section ? "" : "Enter the tournament's time control.")
+    : !parsed ? `${section ? `${section}: ` : ""}"${value}" isn't a time control the desk can read; write it like G/30;+30, G/70;d10, or 40/90 SD/30;d5.` : "";
+  input.setAttribute("aria-invalid", String(Boolean(wrong)));
+  error.textContent = wrong;
+  if (wrong) return;
+  input.value = parsed ? parsed.text : "";
+  saveControl(section, input.value);
+}
+
+async function saveControl(section, value) {
+  const t = current;
+  const [event, date] = keyParts();
+  const result = await call("timeControl", { event, date, value: value.trim(), ...(section ? { section } : {}) });
+  if (!result.ok) return void (runStatus.textContent = result.error);
+  if (section) {
+    const def = t.sections.find((d) => d.name === section);
+    if (value.trim()) def.timeControl = value.trim();
+    else delete def.timeControl;
+  } else {
+    t.timeControl = value.trim();
+  }
+  if (t === current) syncReport(choice.value, t);
+}
+
 async function reportFiles(t) {
   const tdMenu = document.getElementById("run-report-td");
   await fillTds(tdMenu, t.key, t.td);
-  const [roster, events] = await reportSources;
-  const control = document.getElementById("run-report-control");
-  const listing = (events || []).find((e) => e.page === `/events/${t.event}/`);
-  if (!control.value && listing) control.value = /^Time control: (\S+)/m.exec(listing.description)?.[1].replace(/\.$/, "") || "";
+  const [roster] = await reportSources;
+  const listing = await listingOf(t);
   const when = t.key.split("/")[1];
   const days = t.rounds.map((r) => (r.postedAt || "").slice(0, 10)).filter(Boolean).sort();
   const [begin, end] = when.length === 10 ? [when, when] : days.length ? [days[0], days.at(-1)] : [`${when}-01`, `${when}-01`];
   return RatingReport.files({ ...forEngine(t), name: t.name }, { td: tdMenu.value, affiliate: roster?.affiliate || "",
-    timeControl: control.value.trim(), city: listing?.place?.city || "Fort Collins", state: listing?.place?.region || "CO",
+    timeControl: t.timeControl || "", timeControls: Object.fromEntries(reportControls(t).filter((c) => c.own).map((c) => [c.section.key, c.own])),
+    city: listing?.place?.city || "Fort Collins", state: listing?.place?.region || "CO",
     zip: listing?.place?.zip || "80524", begin, end });
 }
 
-/** Keeps the folder, if there is one, the same as the tournament, and says so. */
+/** Keeps the folder, if there is one, the same as the tournament, and says so. A tournament started
+ *  before it kept a time control takes its listing's, while the event is listed. */
 async function syncReport(key, t) {
-  const ready = t && reportReady(t);
+  const rated = t && t.format !== "arena";
+  if (rated && !t.timeControl) {
+    const listed = listedControl(await listingOf(t));
+    if (listed) {
+      t.timeControl = listed;
+      const [event, date] = key.split("/");
+      call("timeControl", { event, date, value: listed });
+    }
+  }
+  const problems = rated ? reportProblems(t) : [];
+  if (rated && choice.value === key) {
+    renderControls(t);
+    document.querySelector(".run-report-problems").replaceChildren(...problems.map((text) =>
+      Object.assign(document.createElement("li"), { textContent: text[0].toUpperCase() + text.slice(1) })));
+  }
+  const ready = t && reportReady(t) && !problems.length;
   const done = await syncFolder(key, ready ? await reportFiles(t) : null);
   if (choice.value !== key) return;
   const button = document.querySelector(".run-report-folder");
@@ -744,6 +839,8 @@ async function syncReport(key, t) {
 async function downloadReport(name) {
   await loadRun();
   if (!current || !reportReady(current)) return;
+  const problems = reportProblems(current);
+  if (problems.length) return void (runStatus.textContent = `Not yet: ${problems[0]}`);
   const files = await reportFiles(current);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([files[name]], { type: "application/octet-stream" }));
@@ -766,9 +863,8 @@ document.querySelector(".run-report-folder").addEventListener("click", async () 
   syncReport(key, current);
 });
 
-for (const id of ["run-report-td", "run-report-control"]) {
-  document.getElementById(id).addEventListener("change", () => current && syncReport(choice.value, current));
-}
+document.getElementById("run-report-td").addEventListener("change", () => current && syncReport(choice.value, current));
+document.getElementById("run-report-control").addEventListener("change", (e) => current && checkControl(e.target, ""));
 
 /** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). With an
  *  extra games section, a round is the section's own, and its section says which bye of a player's it is. */
@@ -897,6 +993,7 @@ runStart.addEventListener("submit", async (event) => {
   if (fields.format === "quad" && !confirm("Start the quads? Players are grouped by rating and numbered by lot now, so register everyone first.")) return;
   if (fields.format === "arena" && !/^\d\d:\d\d$/.test(fields.cutoff)) return void (runStatus.textContent = "No new games after what time?");
   runStatus.textContent = "Starting…";
+  fields.timeControl = listedControl(await listingOf({ event: eventName }));
   const result = await call("start", { event: eventName, date, ...fields });
   runStatus.textContent = result.message || result.error;
   if (result.ok) {

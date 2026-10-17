@@ -2297,7 +2297,7 @@ await reportPage.close();
 // A desk that keeps a Swiss of four in memory, for the checks below. rounds, if given, starts it with them.
 function deskState(rounds) {
   const state = { calls: [], held: rounds ? { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running",
-    coin: "white", players: fourPlayers(), rounds } : null };
+    coin: "white", players: fourPlayers(), rounds, timeControl: "G/70;d10" } : null };
   state.answer = (p) => {
     state.calls.push(p);
     const held = state.held;
@@ -2872,7 +2872,7 @@ await donePage.waitForFunction(() => document.querySelector(".run-status").textC
 await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 0);
 // Restarted and played again, then a round added: the files go until the new round is in.
 doneDesk.held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: "white",
-  players: fourPlayers(), rounds: JSON.parse(JSON.stringify(keptRounds)) };
+  players: fourPlayers(), rounds: JSON.parse(JSON.stringify(keptRounds)), timeControl: "G/70;d10" };
 await donePage.evaluate(() => document.dispatchEvent(new Event("td-choice")));
 await donePage.waitForFunction(() => Object.keys(window.keptFiles).length === 3);
 await donePage.$eval("#run-planned-rounds", (input) => { input.value = "4"; });
@@ -2949,6 +2949,34 @@ const extraDone = await extraPage.evaluate(async () => {
     openScores: [...document.querySelectorAll(".run-standings")[0].querySelectorAll("tbody tr")].map((r) => r.cells[3].textContent),
     sections: records("TSEXPORT.DBF"), players: records("TDEXPORT.DBF") };
 });
+// Each section's time control: blitz can't go in the files, so they wait; a dual one goes in its own section.
+const sectionControl = async (value) => {
+  await extraPage.$eval('input[data-section="Extra games"]', (input, v) => {
+    input.value = v;
+    input.dispatchEvent(new Event("change"));
+  }, value);
+  await new Promise((r) => setTimeout(r, 300));
+};
+await sectionControl("G/5;+3");
+const blitzShown = await extraPage.evaluate(async () => ({ problems: document.querySelector(".run-report-problems").textContent,
+  fields: [...document.querySelectorAll(".run-report-sections label")].map((l) => l.textContent) }));
+await sectionControl("30+30");
+const dualShown = await extraPage.evaluate(async () => {
+  const files = await reportFiles(current);
+  const text = new TextDecoder().decode(files["TSEXPORT.DBF"]);
+  return { problems: document.querySelector(".run-report-problems").textContent, dual: text.includes("Game/30;+30"), main: text.includes("Game/70;d10") };
+});
+await sectionControl("thirty plus thirty");
+const unreadable = await extraPage.evaluate(() => ({ error: document.getElementById("run-report-control-error").textContent,
+  invalid: document.querySelector('input[data-section="Extra games"]').getAttribute("aria-invalid") }));
+await sectionControl("");
+const controlCalls = extraDesk.calls.filter((c) => c.action === "timeControl").map((c) => [c.section, c.value]);
+blitzShown.problems.startsWith("Extra games: G/5;+3 is blitz") && blitzShown.fields.join() === "Open,Extra games"
+  && dualShown.problems === "" && dualShown.dual && dualShown.main
+  && JSON.stringify(controlCalls) === JSON.stringify([["Extra games", "G/5;+3"], ["Extra games", "G/30;+30"], ["Extra games", ""]])
+  && unreadable.invalid === "true" && unreadable.error.startsWith('Extra games: "thirty plus thirty" isn\'t a time control')
+  ? pass("TD desk keeps a time control for each section, and holds back the files for one the upload can't carry")
+  : fail(`TD desk section time controls: ${JSON.stringify({ blitzShown, dualShown, unreadable, controlCalls })}`);
 await axeBoth(extraPage, "TD desk with an extra games section");
 for (const width of [1600, 390]) {
   await extraPage.setViewport({ width, height: 900 });
