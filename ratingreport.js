@@ -114,8 +114,11 @@
   }
 
   /** Each player's D_RNDnn: the result letter, the opponent's number (0 without a game), and the color.
-   *  W, L, D; X and F for a win or loss by forfeit; B and H for a full- or half-point bye; U not played. */
+   *  W, L, D; X and F for a win or loss by forfeit; B and H for a full- or half-point bye; U not played.
+   *  A quad is a round robin, whose D_RNDnn is the game against player n, whatever round it was in;
+   *  a player's own field is blank, and a bye, against no one, has no field. */
   function roundCells(section, count) {
+    if (section.format === "quad") return robinCells(section, count);
     const numbers = new Map(section.players.map((p) => [p.id, p.number]));
     // A section with fewer rounds than the report's longest leaves the fields after its own empty,
     // since a section has as many results as its S_TOT_RNDS.
@@ -135,13 +138,32 @@
     return cells;
   }
 
+  function robinCells(section, count) {
+    const numbers = new Map(section.players.map((p) => [p.id, p.number]));
+    const size = section.players.length;
+    const cells = new Map(section.players.map((p) => [p.id,
+      Array(count).fill("").fill("U0", 0, size).fill("", p.number - 1, p.number)]));
+    for (const r of section.rounds) {
+      for (const g of r.games) {
+        const points = Pairing.POINTS[g.result];
+        if (!points) continue;
+        [[g.white, g.black, "W", 0], [g.black, g.white, "B", 1]].forEach(([me, them, color, side]) => {
+          cells.get(me)[numbers.get(them) - 1] = /F/.test(g.result) ? `${points[side] ? "X" : "F"}0`
+            : `${{ 1: "W", 0.5: "D", 0: "L" }[points[side]]}${numbers.get(them)}${color}`;
+        });
+      }
+    }
+    return cells;
+  }
+
   function files(t, report) {
     const ymd = (d) => d.replaceAll("-", "");
     const name = t.name.split(",")[0];
     let sections = Pairing.sections(t).filter((s) => s.players.length);
     if (sections.length === 1 && t.format !== "quad") sections = [{ ...sections[0], name }];
     // An extra rated games section (28M4) reports only its own rounds, from its round 1.
-    const count = Math.max(...sections.map((s) => s.rounds.length));
+    const width = (s) => (s.format === "quad" ? s.players.length : s.rounds.length);
+    const count = Math.max(...sections.map(width));
     const sectionRecords = [];
     const players = [];
     sections.forEach((s, i) => {
@@ -151,9 +173,9 @@
       const written = parseControl(control)?.text || control || "";
       sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(control),
         S_TIMECTL: written.replace(/^G\//, "Game/"), S_CTD_ID: report.td,
-        // R for Round Robin: each quad plays rule 30G's table, the order US Chess reads its rounds in.
+        // A round robin's S_TOT_RNDS is its number of players, a Swiss's its rounds.
         S_TRN_TYPE: s.format === "quad" ? "R" : "S",
-        S_TOT_RNDS: String(s.rounds.length), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
+        S_TOT_RNDS: String(width(s)), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
         // S_SCH_LVL is MUIR's participant code: N Non-Scholastic, S Scholastic, J JTP K-12, P JTP Primary.
         // Club events are open to all ages and not tied to a school (docs/tds/rating-an-event.md).
         S_END_DATE: ymd(report.end), S_SCH_LVL: "N", S_GR_PRIX: "N", S_GP_PTS: "0" });
