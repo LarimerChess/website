@@ -737,7 +737,8 @@ for (const store of STORES) {
     // A player's bye is told apart by section.
     gs.saveRound({ ...p, number: "2", post: "yes", games: JSON.stringify([game(2, 1, "22222222", "11111111", "Open")]),
       byes: JSON.stringify([{ id: "33333333", points: 0, kind: "unplayed", section: "Open" }, { id: "44444444", points: 0, kind: "unplayed", section: "Open" }]) });
-    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Extra games" }).error, "That player has a game that round, not a bye.");
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Extra games" }).error, "That round isn't paired yet.");
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "22222222", kind: "half", section: "Open" }).error, "That player has a game that round, not a bye.");
     assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Open" }).ok, true);
     // One added by mistake comes off; one with posted pairings stays.
     assert.match(gs.dropExtraSection({ ...p, section: "Extra games" }).error, /posted pairings/);
@@ -1355,6 +1356,11 @@ for (const store of STORES) {
       byes: JSON.stringify([{ id: "66666666", points: 0.5, kind: "half" }]) });
     assert.equal(post("2099-10-26").error, "October 12 is already paired, so only the TD can change it.");
     assert.equal(post("2099-10-12").message, "Ann Ash's byes: October 12.", "a night without a round can still be dropped");
+    // 22C4: once round 1 is posted, the month's last night's bye is fixed, either way.
+    t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "1", post: "yes", games: "[]",
+      byes: JSON.stringify([{ id: "66666666", points: 0, kind: "unplayed" }]) });
+    assert.equal(post(`2099-10-12, ${NIGHTS.at(-1)}`).error,
+      "A bye for the month's last night is asked for before round 1 and can't be dropped after it (22C4); tell the TD.");
     // Switched to just one night, she plays no other, so asks for no byes on them.
     const switched = t.gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2099-10-19", id: "66666666",
       last: "Ash", email: "ann@example.com" } });

@@ -1318,16 +1318,26 @@ const FORFEITS = ["1F-0F", "0F-1F", "0F-0F"];
 const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
 
 /** Reclassifies a player's round without a game, such as an unplayed round the TD later excuses
- *  as a half-point bye; the points follow the kind. */
+ *  as a half-point bye; the points follow the kind. p.section, when sent, names the section's row. */
 function saveByeKind(p) {
   if (BYE_KINDS[p.kind] === undefined) return { error: "Not a kind of bye." };
   const key = `${p.event}/${p.date}`;
   const lock = lockTournaments();
   try {
     const t = table("Rounds");
-    const line = t.rows.find((r) => r.Key === key && Number(r.Round) === Number(p.number) && r.White === p.id && !r.Black
+    const here = t.rows.filter((r) => r.Key === key && Number(r.Round) === Number(p.number)
       && (p.section === undefined || r.Section === p.section));
-    if (!line) return { error: "That player has a game that round, not a bye." };
+    const line = here.find((r) => r.White === p.id && !r.Black);
+    if (!line) {
+      // A round with no row for the player, such as one a late entrant missed (28K), gets one.
+      if (!here.length) return { error: "That round isn't paired yet." };
+      if (here.some((r) => r.White === p.id || r.Black === p.id)) return { error: "That player has a game that round, not a bye." };
+      if (!table("Players").rows.some((r) => r.Key === key && r["US Chess ID"] === p.id)) return { error: "Not a player in this tournament." };
+      addRows(t, [{ Key: key, Round: String(p.number), Board: "", White: p.id, Black: "", Result: "", "Bye points": String(BYE_KINDS[p.kind]),
+        Posted: (here.find((r) => r.Posted) || { Posted: "" }).Posted, Section: String(p.section || ""), "Bye kind": p.kind }]);
+      clearTournamentCache(key);
+      return { ok: true };
+    }
     setCells(t, { [line.row]: { "Bye kind": p.kind, "Bye points": String(BYE_KINDS[p.kind]) } });
     clearTournamentCache(key);
     return { ok: true };
@@ -2079,9 +2089,10 @@ function checkByes(asked, old, key, event, run, online) {
     return { error: `${what} is already paired, so only the TD can change it.` };
   }
   if (online && !month && list.length > 1) return { error: "One half-point bye per player; ask the TD for more." };
-  const last = String(rounds);
-  if (online && !month && lines.some((r) => Number(r.Round) === 1 && r.Posted) && list.includes(last) !== old.includes(last)) {
-    return { error: "A last-round bye is asked for before round 1 and can't be dropped after it (22C4); tell the TD." };
+  // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable.
+  const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
+  if (online && lines.some((r) => Number(r.Round) === 1 && r.Posted) && list.includes(last) !== old.includes(last)) {
+    return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1 and can't be dropped after it (22C4); tell the TD.` };
   }
   return { list };
 }

@@ -242,7 +242,7 @@ def quad_main(t):
         by_id = {p["id"]: p for p in q["players"]}
         order = standings(q, "quadStandings")
         rounds = round_cells(q, order)
-        rows = [[str(r["place"]), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
+        rows = [[str(r["place"] or ""), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
                  score_text(r["score"]), score_text(r["sonnebornBerger"]), performance_text(r)]
                 for r in order]
         name = q["name"]

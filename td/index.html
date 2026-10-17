@@ -525,9 +525,9 @@ section.td-table td { white-space: nowrap; }
 .run-tools strong { flex-basis: 100%; }
 .run-field { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; font-size: 14px; }
 .run-field select, .run-games select { max-width: 100%; }
-.run-problems { margin: 12px 0; padding-left: 12px; border-left: 4px solid var(--accent); }
-.run-problems p { margin: 0; font-weight: 600; }
-.run-problems ul { margin: 4px 0 0; padding-left: 20px; }
+.run-problems, .run-warnings { margin: 12px 0; padding-left: 12px; border-left: 4px solid var(--accent); }
+.run-problems p, .run-warnings p { margin: 0; font-weight: 600; }
+.run-problems ul, .run-warnings ul { margin: 4px 0 0; padding-left: 20px; }
 .td-saving { list-style: none; padding: 0; margin: 8px 0 0; }
 .td-saving li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .td-save-pending { color: var(--muted); }
@@ -692,6 +692,10 @@ section.td-table td { white-space: nowrap; }
             <div class="run-games-all"></div>
             <div class="run-problems" hidden>
               <p>Before saving:</p>
+              <ul></ul>
+            </div>
+            <div class="run-warnings" hidden>
+              <p>Check before posting:</p>
               <ul></ul>
             </div>
             <p class="run-edit-buttons"><button class="button run-post" type="button">Post the pairings</button> <button class="button button-secondary run-save" type="button">Save without posting</button> <button class="button button-secondary run-repair" type="button">Pair again</button> <button class="button button-secondary run-cancel" type="button" hidden>Keep the posted pairings</button></p>
@@ -949,9 +953,9 @@ section.td-table td { white-space: nowrap; }
   <script src="../live.js?v=d1a40ee2c6" defer></script>
   <script src="../td.js?v=d166e5e99f" defer></script>
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
-  <script src="../pairing.js?v=e0f4db8695" defer></script>
+  <script src="../pairing.js?v=72e41c0445" defer></script>
   <script src="../ratingreport.js?v=71896863e2" defer></script>
-  <script src="../td-run.js?v=f4317c6dbf" defer></script>
+  <script src="../td-run.js?v=d76495ddf2" defer></script>
   <script src="../arena.js?v=051926af16" defer></script>
   <script src="../td-arena.js?v=508eec2a45" defer></script>
 </body>

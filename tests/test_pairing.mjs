@@ -341,7 +341,7 @@ test("an extra rated games section (28M4) has its own players and rounds, and it
   const [openTwo, extraTwo] = Pairing.pairSections(t, (s) => ({ halfByes: s.extra ? [] : ["a"] }));
   assert.deepEqual(openTwo.byes.find((b) => b.id === "a"), { id: "a", points: 0.5, kind: "half" });
   assert.ok(extraTwo.games.some((g) => [g.white, g.black].includes("a")));
-  assert.equal(extraTwo.byes.length, 1, "three players: one full-point bye");
+  assert.deepEqual(extraTwo.byes.map((b) => [b.kind, b.points]), [["unplayed", 0]], "three players: one has no game, and no point (28M4)");
   t.rounds.push({ games: [game("b", "c", "1-0", "Open"), game("b", "c", "0-1", "Extra games")],
     byes: [{ id: "a", points: 0.5, kind: "half", section: "Open" }, { id: "d", points: 0, kind: "unplayed", section: "Open" },
       { id: "a", points: 1, kind: "bye", section: "Extra games" }], out: [] });
@@ -370,7 +370,7 @@ test("quads with an extra games section: the quads play their table, the extra s
   const [one, two, extra] = Pairing.pairSections(t, { coin: "white" });
   assert.deepEqual([one.format, two.format, extra.format], ["quad", "quad", "swiss"]);
   assert.deepEqual(one.games.map((g) => [g.white, g.black]), [["p1", "p4"], ["p2", "p3"]], "the quad table");
-  assert.deepEqual([extra.games.length, extra.byes.length], [1, 1], "three players in a Swiss: one game and a bye");
+  assert.deepEqual([extra.games.length, extra.byes.map((b) => b.kind)], [1, ["unplayed"]], "three players in a Swiss: one game, and one without");
 });
 
 test("no sections: one section, paired exactly as before, and old quads keep their boards", () => {
@@ -450,4 +450,15 @@ test("29D2: a player who can meet nobody in the next score group drops on alone,
   assert.deepEqual(notes.filter((n) => n.includes("can't")), []);
   assert.deepEqual(byes.map((b) => b.id), ["A"], "C can't take the bye: B could then play nobody");
   assert.deepEqual(games.map((x) => [x.white, x.black].sort().join("-")).sort(), ["B-C", "D-E"]);
+});
+
+test("30B: in a quad, a player who withdrew before playing half their games counts in no one's score", () => {
+  const players = ["q1", "q2", "q3", "q4"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100, number: i + 1 }));
+  const g = (white, black, result) => ({ white, black, result });
+  // q3 draws q2, then withdraws and forfeits to q1 and q4.
+  const rounds = [{ games: [g("q1", "q4", "1/2-1/2"), g("q2", "q3", "1/2-1/2")], byes: [], out: [] },
+    { games: [g("q3", "q1", "0F-1F"), g("q4", "q2", "1/2-1/2")], byes: [], out: ["q3"] },
+    { games: [g("q1", "q2", "1/2-1/2"), g("q3", "q4", "0F-1F")], byes: [], out: ["q3"] }];
+  const rows = Pairing.quadStandings({ players: players.map((p) => (p.id === "q3" ? { ...p, out: 2 } : p)), rounds });
+  assert.deepEqual(rows.map((r) => [r.id, r.score, r.place]), [["q1", 1, 1], ["q2", 1, 1], ["q4", 1, 1], ["q3", 0.5, null]]);
 });

@@ -3047,6 +3047,37 @@ JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", 
   : fail(`TD desk quads with an extra games section: ${JSON.stringify(quadShown)}`);
 await quadExtra.close();
 
+// Byes by the rules on the desk: Cal lost round 1 by forfeit, so he starts round 2 as not here (28P); Fay entered
+// late and has no round 1, which the TD can make a half-point bye (28K); and a full-point bye the TD gives Ann,
+// who had one in round 1, is flagged (28L3) without stopping the post.
+const byeRules = deskState([{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1F-0F", section: "" },
+  { board: 2, white: "44444444", black: "55555555", result: "1-0", section: "" }],
+byes: [{ id: "11111111", points: 1, kind: "bye", section: "" }], out: [], posted: true }]);
+byeRules.held.players = sixPlayers;
+const byePage = await mocked("/td/ byes by the rules", (p) => byeRules.answer(p));
+await signIn(byePage);
+await byePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
+const noShow = await byePage.evaluate(() => {
+  const select = document.querySelector('.run-this-round[data-id="33333333"]');
+  return { value: select.value, name: select.closest("tr").cells[1].textContent };
+});
+await byePage.select('.run-byes-all select[aria-label="Fay (1100), round 1"]', "half");
+await byePage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Half-point bye"));
+const lateBye = byeRules.calls.find((c) => c.action === "byeKind") || {};
+await press(byePage, ".run-pair");
+await byePage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("pairings to review"));
+await byePage.select("#run-move-0", "11111111");
+await byePage.select("#run-move-kind-0", "bye");
+await press(byePage, ".run-tools button[data-focus='0|move']");
+const warned = await byePage.evaluate(() => ({ hidden: document.querySelector(".run-warnings").hidden,
+  items: [...document.querySelectorAll(".run-warnings li")].map((li) => li.textContent), blocked: !document.querySelector(".run-problems").hidden }));
+noShow.value === "absent" && noShow.name.includes("28P") && lateBye.id === "66666666" && lateBye.number === "1" && lateBye.kind === "half"
+  && lateBye.section === "" && !warned.hidden && warned.items.some((w) => w.startsWith("Ann (1900) has had a full-point bye already"))
+  ? pass("TD desk starts a forfeit loser as not here (28P), lets a late entrant's missed round be a half-point bye (28K), and flags a second full-point bye (28L3)")
+  : fail(`TD desk byes by the rules: ${JSON.stringify({ noShow, lateBye, warned })}`);
+await axeBoth(byePage, "TD desk flagging a full-point bye");
+await byePage.close();
+
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
 // in place of the real ones.
 const resultsPage = await browser.newPage();

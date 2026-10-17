@@ -22,6 +22,7 @@ const runGames = document.querySelector(".run-games-all");
 const runEditButtons = document.querySelector(".run-edit-buttons");
 const runPairingsHint = document.querySelector(".run-pairings-hint");
 const runProblems = document.querySelector(".run-problems");
+const runWarnings = document.querySelector(".run-warnings");
 const runCancel = document.querySelector(".run-cancel");
 const runResultButtons = document.querySelector(".run-result-buttons");
 const runStandingsWrap = document.querySelector(".run-standings-wrap");
@@ -235,11 +236,15 @@ function renderCheckin(t, parts, next) {
     const table = s.format === "quad";
     const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
     const own = next - s.first + 1;
+    // 28P: a player who lost the last round by forfeit is dropped unless the TD accepts their excuse.
+    const forfeited = new Set((s.rounds[own - 2]?.games || []).flatMap((g) => [g.result === "0F-1F" || g.result === "0F-0F" ? g.white : null,
+      g.result === "1F-0F" || g.result === "0F-0F" ? g.black : null]).filter(Boolean));
     const rows = s.players.filter((p) => !p.out).map((p) => {
       const byes = p.byes || [];
+      const noShow = forfeited.has(p.id);
       const row = document.createElement("tr");
       row.insertCell().textContent = p.number;
-      row.insertCell().textContent = p.name;
+      row.insertCell().textContent = noShow ? `${p.name} (lost round ${own - 1} by forfeit: not here unless excused, 28P)` : p.name;
       row.insertCell().textContent = p.rating ?? "Unrated";
       row.insertCell().textContent = scores.get(p.id) ?? 0;
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
@@ -253,16 +258,24 @@ function renderCheckin(t, parts, next) {
         row.insertCell().append(move);
       }
       const asked = !table && byes.includes(own);
+      const start = noShow ? "absent" : asked ? "half" : "play";
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
-      select.dataset.start = asked ? "half" : "play";
+      select.dataset.start = start;
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
-      select.append(option("play", "Present", !asked),
-        option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", false),
-        ...(table ? [] : [option("half", "Half-point bye (asked for)", asked), option("zero", "Zero-point bye (asked for)", false)]),
+      select.append(option("play", "Present", start === "play"),
+        option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", start === "absent"),
+        ...(table ? [] : [option("half", "Half-point bye (asked for)", start === "half"), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
+      const lastRound = s.last ? s.last - s.first + 1 : t.plannedRounds;
+      if (asked && own === lastRound) {
+        select.addEventListener("change", () => {
+          if (select.value === "play") runStatus.textContent = `${p.name} asked for this last-round bye before round 1. Playing after all, a win`
+            + " counts as a draw for prizes (22C5); the standings here show the result as played.";
+        });
+      }
       row.insertCell().append(select);
       return row;
     });
@@ -365,6 +378,33 @@ function draftProblems() {
   return [...new Set(problems)];
 }
 
+/** Full-point byes in the draft that the rules wouldn't give, in words for the TD; posting is still allowed. */
+function draftWarnings() {
+  const warnings = [];
+  for (const s of draft.sections) {
+    const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
+    if (!part) continue;
+    const before = Pairing.histories({ players: part.players, rounds: part.rounds.slice(0, draft.number - part.first) });
+    const where = severalSections() ? ` in ${s.name}` : "";
+    const full = s.byes.filter((b) => Pairing.byeKind(b) === "bye");
+    if (part.extra && full.length) warnings.push(`An extra games section gives no full-point bye (28M4)${where}; make it unplayed.`);
+    if (full.length > 1) warnings.push(`${full.length} full-point byes${where}: only the odd player has one (28L1).`);
+    if (full.length && (s.games.length * 2 + full.length) % 2 === 0) warnings.push(`A full-point bye${where} with no odd player left to pair (28L1).`);
+    for (const b of full) {
+      const p = before.get(b.id);
+      if (!p) continue;
+      const name = nameOf(b.id);
+      if (p.hadFullBye) warnings.push(`${name} has had a full-point bye already; 28L3 allows one.`);
+      if (p.hadForfeitWin) warnings.push(`${name} won a game by forfeit; 28L3 says not to give them a full-point bye.`);
+      if (p.hadHalfBye || p.committed) warnings.push(`${name} took or asked for a half-point bye; 28L4 gives them the full point only when no one else in their score group can take it.`);
+      const placed = s.games.flatMap((g) => [g.white, g.black]);
+      const rated = placed.map((id) => before.get(id)).filter((q) => q && q.rating != null && q.score <= p.score && !q.hadFullBye && !q.hadForfeitWin);
+      if (p.rating == null && rated.length) warnings.push(`${name} is unrated; 28L2 gives the bye to a rated player in the lowest score group who can take it.`);
+    }
+  }
+  return [...new Set(warnings)];
+}
+
 function editButton(text, hint, focus, onClick) {
   const button = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: text });
   button.append(hidden(hint));
@@ -404,6 +444,9 @@ function renderDraft() {
   const problems = draftProblems();
   runProblems.hidden = !problems.length;
   runProblems.querySelector("ul").replaceChildren(...problems.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
+  const warnings = draftWarnings();
+  runWarnings.hidden = !warnings.length;
+  runWarnings.querySelector("ul").replaceChildren(...warnings.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
 }
 
 function editSection(s, n, several) {
@@ -576,7 +619,7 @@ async function enterResult(g, s, number, value, control) {
 
 function renderResults(number) {
   runPairings.hidden = false;
-  runEditButtons.hidden = runProblems.hidden = true;
+  runEditButtons.hidden = runProblems.hidden = runWarnings.hidden = true;
   runResultButtons.hidden = false;
   runPairingsHint.textContent = "Enter each board's result with its menu, which overrides anything reported. Players can report their "
     + "results on the Pairings page; a report counts once you confirm it. Check for reports to see new ones.";
@@ -866,13 +909,18 @@ document.querySelector(".run-report-folder").addEventListener("click", async () 
 document.getElementById("run-report-td").addEventListener("change", () => current && syncReport(choice.value, current));
 document.getElementById("run-report-control").addEventListener("change", (e) => current && checkControl(e.target, ""));
 
-/** Every round without a game, each with a menu to reclassify it (saved as soon as it changes). With an
- *  extra games section, a round is the section's own, and its section says which bye of a player's it is. */
+/** Every round without a game, each with a menu to reclassify it (saved as soon as it changes), including a
+ *  posted round a player has no row in, such as one a late entrant missed (28K). With an extra games
+ *  section, a round is the section's own, and its section says which bye of a player's it is. */
 function renderByesAll() {
   const box = document.querySelector(".run-byes-all");
   const extra = (current.sections || []).some((d) => d.extra);
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
-  const rows = parts.flatMap((s) => s.rounds.flatMap((r, i) => r.byes.map((b) => {
+  const missing = (s, r, i) => (current.rounds[s.first + i - 1].posted ? s.players.filter((p) => !(p.out && p.out <= s.first + i)
+    && !r.games.some((g) => g.white === p.id || g.black === p.id) && !r.byes.some((b) => b.id === p.id))
+    .map((p) => ({ id: p.id, points: 0, kind: "unplayed", missing: r }))
+    : []);
+  const rows = parts.flatMap((s) => s.rounds.flatMap((r, i) => [...r.byes, ...missing(s, r, i)].map((b) => {
     const row = document.createElement("tr");
     const where = extra ? `${s.name} round ${i + 1}` : `round ${i + 1}`;
     if (extra) row.insertCell().textContent = s.name;
@@ -885,8 +933,7 @@ function renderByesAll() {
     select.addEventListener("change", async () => {
       const [event, date] = keyParts();
       select.disabled = true;
-      const result = await call("byeKind", { event, date, number: s.first + i, id: b.id, kind: select.value,
-        ...(extra ? { section: s.key } : {}) });
+      const result = await call("byeKind", { event, date, number: s.first + i, id: b.id, kind: select.value, section: s.key });
       select.disabled = false;
       if (!result.ok) {
         select.value = kind;
@@ -894,6 +941,10 @@ function renderByesAll() {
       }
       b.kind = select.value;
       b.points = Pairing.BYE_KINDS[select.value];
+      if (b.missing) {
+        current.rounds[s.first + i - 1].byes.push({ id: b.id, points: b.points, kind: b.kind, section: s.key });
+        delete b.missing;
+      }
       runStatus.textContent = `${nameOf(b.id)}, ${where}: ${BYE_LABELS[select.value]}.`;
       renderStandings();
     });

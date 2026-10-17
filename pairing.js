@@ -11,8 +11,9 @@
 //     byes: the rounds players have no game in; kind is bye (1 point), half (0.5), zero, or unplayed (0)
 //     out: withdrawn or expelled before this round, and in every later round
 //
-// pairRound(tournament, { halfByes, zeroByes, absent, out, coin }) returns { games: [{ board, white, black }], byes, notes }
-// for the next round. coin, for round one: "white" if the higher-rated player on board one has white.
+// pairRound(tournament, { halfByes, zeroByes, absent, out, coin, extra }) returns { games: [{ board, white, black }], byes, notes }
+// for the next round. coin, for round one: "white" if the higher-rated player on board one has white; extra, for
+// an extra rated games section, whose odd player has the round unplayed rather than a full-point bye.
 //
 // A tournament with sections also has sections: [{ name, under }] and each player's section;
 // sections(t) splits it into one such tournament per section, and pairSections pairs them all.
@@ -389,9 +390,15 @@
     }
     if (playing.length % 2) {
       const bye = chooseBye(playing);
-      byes.push({ id: bye.id, points: 1, kind: "bye" });
       playing.splice(playing.indexOf(bye), 1);
-      notes.push(`Full-point bye: ${bye.name || bye.id}.`);
+      if (options.extra) {
+        // 28M4: the section is for rated games, so the odd player has none and no point.
+        byes.push({ id: bye.id, points: 0, kind: "unplayed" });
+        notes.push(`No game: ${bye.name || bye.id}. An extra games section gives no full-point bye.`);
+      } else {
+        byes.push({ id: bye.id, points: 1, kind: "bye" });
+        notes.push(`Full-point bye: ${bye.name || bye.id}.`);
+      }
     }
     const firstGames = tournament.rounds.every((r) => !r.games.length);
     let pairs = firstGames ? firstRound(playing, options.coin) : pairGroups(playing);
@@ -633,18 +640,30 @@
   }
 
   /** Quad standings, group by group: score, then Sonneborn-Berger, then the games between the
-   *  tied players (34F). Players with equal scores and tiebreaks share a place. */
+   *  tied players (34F). Players with equal scores and tiebreaks share a place. A player who
+   *  withdrew before playing half their three games is scored as not having competed (30B): their
+   *  games stay rated, but count in no one's score here, and they have no place. */
   function quadStandings(tournament) {
     const info = histories(tournament);
     const numbers = new Map(tournament.players.map((p) => [p.id, Number(p.number)]));
     const results = new Map([...info.keys()].map((id) => [id, []]));
+    const against = new Map([...info.keys()].map((id) => [id, []]));
     for (const round of tournament.rounds) {
       for (const g of round.games) {
         const [w, b] = POINTS[g.result] || [null, null];
-        if (w == null || FORFEIT(g.result)) continue;
+        if (w == null) continue;
+        against.get(g.white)?.push({ opponent: g.black, points: w });
+        against.get(g.black)?.push({ opponent: g.white, points: b });
+        if (FORFEIT(g.result)) continue;
         results.get(g.white)?.push({ opponent: g.black, points: w });
         results.get(g.black)?.push({ opponent: g.white, points: b });
       }
+    }
+    const gone = new Set([...info.values()].filter((p) => p.out && results.get(p.id).length < 1.5).map((p) => p.id));
+    for (const p of info.values()) {
+      if (gone.has(p.id)) continue;
+      p.score -= against.get(p.id).filter((r) => gone.has(r.opponent)).reduce((sum, r) => sum + r.points, 0);
+      results.set(p.id, results.get(p.id).filter((r) => !gone.has(r.opponent)));
     }
     const perf = performance(tournament, info);
     const estimate = ratingEstimates(tournament);
@@ -661,11 +680,12 @@
         const tied = mine.filter((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger);
         r.headToHead = headToHead(r, tied);
       }
-      mine.sort((a, b) => b.score - a.score || b.sonnebornBerger - a.sonnebornBerger || b.headToHead - a.headToHead);
+      mine.sort((a, b) => gone.has(a.id) - gone.has(b.id) || b.score - a.score || b.sonnebornBerger - a.sonnebornBerger
+        || b.headToHead - a.headToHead);
       mine.forEach((r, i) => {
         const prev = mine[i - 1];
-        r.place = prev && prev.score === r.score && prev.sonnebornBerger === r.sonnebornBerger && prev.headToHead === r.headToHead
-          ? prev.place : i + 1;
+        r.place = gone.has(r.id) ? null
+          : prev && prev.score === r.score && prev.sonnebornBerger === r.sonnebornBerger && prev.headToHead === r.headToHead ? prev.place : i + 1;
       });
       out.push(...mine);
     }
@@ -751,7 +771,7 @@
     let board = 0;
     return sections(t).filter((s) => s.players.length && playsIn(s, number)).map((s) => {
       const result = s.format === "quad" ? pairQuadRound(s.players, number)
-        : pairRound(s, typeof options === "function" ? options(s) : options);
+        : pairRound(s, { ...(typeof options === "function" ? options(s) : options), extra: s.extra });
       const offset = s.key ? 0 : board;
       board += result.games.length;
       return { section: s.key, name: s.name, format: s.format, ...result, games: result.games.map((g) => ({ ...g, board: g.board + offset })) };
