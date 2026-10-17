@@ -315,11 +315,6 @@ function pairingsSection(t, ti) {
   return section;
 }
 
-/** Quad head-to-head counts only between players tied on score and Sonneborn-Berger. */
-function headToHead(r, rows) {
-  return rows.some((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger) ? r.headToHead : "";
-}
-
 const ESTIMATE = "Est. rating estimates the regular rating US Chess will give each player for the games played so far, by its "
   + "published formula, from their rating as entered, their floor, and their rated games before the event. Checked against US "
   + "Chess's own ratings of a 63-player section, it was within a point for three players in four and within 10 for most of the "
@@ -379,13 +374,6 @@ function hideTip() {
   tipFor = null;
 }
 
-/** A player's rounds, each as the result, the opponent's place in the table, and the color: "W4 b". */
-function roundCells(t, rows) {
-  const place = new Map(rows.map((r, i) => [r.id, r.place ?? i + 1]));
-  const rounds = Pairing.roundByRound(t);
-  return (id) => rounds.get(id).map((x) => `${x.code}${x.opponent ? place.get(x.opponent) : ""}${x.color ? ` ${x.color}` : ""}`);
-}
-
 function standingsSection(t, ti) {
   const section = document.createElement("section");
   section.append(heading(2, t.name));
@@ -417,16 +405,16 @@ function standingsSection(t, ti) {
       const label = `${several ? s.name : t.name} standings`;
       if (quad) {
         const rows = Pairing.quadStandings(sofar);
-        const cells = roundCells(sofar, rows);
+        const cells = Pairing.roundCells(sofar, rows);
         return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", estimateHeading()],
-          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, headToHead(r, rows),
+          rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, r.headToHead ?? "",
             r.performance ?? "", r.estimate ?? ""]), label)];
       }
       const rows = Pairing.standings(sofar);
-      const cells = roundCells(sofar, rows);
+      const cells = Pairing.roundCells(sofar, rows);
       return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance",
         estimateHeading()],
-        rows.map((r, i) => [i + 1, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
+        rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.median, r.solkoff, r.cumulative, r.opposition,
           r.performance ?? "", r.estimate ?? ""]), label)];
     };
     section.append(...roundMenu(`after-${ti}-${si}`, "After round", several ? s.name : "", rounds, `${t.key}|${s.name}`, draw),

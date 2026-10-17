@@ -465,6 +465,14 @@
     return out;
   }
 
+  /** A player's rounds, each as the result, the opponent's row in the table, and the color: "W4 b".
+   *  The row, since tied players share a place. */
+  function roundCells(tournament, rows) {
+    const place = new Map(rows.map((r, i) => [r.id, i + 1]));
+    const rounds = roundByRound(tournament);
+    return (id) => rounds.get(id).map((x) => `${x.code}${x.opponent ? place.get(x.opponent) : ""}${x.color ? ` ${x.color}` : ""}`);
+  }
+
   // US Chess's rating system, as specified April 6, 2026 (glicko.net/ratings/rating.system.pdf);
   // section numbers below are that document's.
 
@@ -617,8 +625,12 @@
         performance: perf.get(id), estimate: estimate.get(id),
       };
     });
-    return rows.sort((a, b) => b.score - a.score || b.median - a.median || b.solkoff - a.solkoff
-      || b.cumulative - a.cumulative || b.opposition - a.opposition || (b.rating ?? 0) - (a.rating ?? 0));
+    const tiebreaks = (a, b) => b.score - a.score || b.median - a.median || b.solkoff - a.solkoff
+      || b.cumulative - a.cumulative || b.opposition - a.opposition;
+    // 34E has no rating tiebreak: players tied on all four share a place, listed by rating.
+    rows.sort((a, b) => tiebreaks(a, b) || (b.rating ?? 0) - (a.rating ?? 0));
+    rows.forEach((r, i) => { r.place = i && !tiebreaks(rows[i - 1], r) ? rows[i - 1].place : i + 1; });
+    return rows;
   }
 
   // 30G: quads. Players numbered 1 to 4 in each group of four by rating (numbers 5 to 8 are
@@ -679,7 +691,7 @@
       const mine = rows.filter((r) => r.group === group);
       for (const r of mine) {
         const tied = mine.filter((x) => x !== r && x.score === r.score && x.sonnebornBerger === r.sonnebornBerger);
-        r.headToHead = headToHead(r, tied);
+        r.headToHead = tied.length ? headToHead(r, tied) : null;
       }
       mine.sort((a, b) => gone.has(a.id) - gone.has(b.id) || b.score - a.score || b.sonnebornBerger - a.sonnebornBerger
         || b.headToHead - a.headToHead);
@@ -780,7 +792,7 @@
     });
   }
 
-  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, sections, playsIn, pairSections, placeIn, mayEnter,
+  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, roundCells, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, sections, playsIn, pairSections, placeIn, mayEnter,
     QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;

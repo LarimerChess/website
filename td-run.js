@@ -968,8 +968,8 @@ function roundsInWords(numbers) {
   return dates.every(Boolean) ? nightsInWords(dates) : `${numbers.length > 1 ? "rounds" : "round"} ${andList.format(numbers.map(String))}`;
 }
 
-const SWISS_HEADINGS = ["Place", "Name", "Rating", "Score", "Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance", "Est. rating"];
-const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "Performance", "Est. rating"];
+const SWISS_HEADINGS = ["Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance", "Est. rating"];
+const QUAD_HEADINGS = ["Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating"];
 
 function renderStandings() {
   if (!current?.rounds.length) return;
@@ -983,12 +983,14 @@ function renderStandings() {
     + " applied to the games played so far.";
   runStandings.replaceChildren(...parts.flatMap((s) => {
     const quad = s.format === "quad";
-    const rows = (quad ? Pairing.quadStandings(s) : Pairing.standings(s)).map((r, i) => {
+    const table = quad ? Pairing.quadStandings(s) : Pairing.standings(s);
+    const rounds = Pairing.roundCells(s, table);
+    const rows = table.map((r) => {
       const row = document.createElement("tr");
       const p = current.players.find((x) => x.id === r.id);
       const name = r.name + (p?.out ? ` (out from round ${p.out})` : "");
-      const cells = quad ? [r.place, name, r.rating ?? "Unrated", r.score, r.sonnebornBerger, r.performance ?? "", r.estimate ?? ""]
-        : [i + 1, name, r.rating ?? "Unrated", r.score, r.median, r.solkoff, r.cumulative, r.opposition, r.performance ?? "", r.estimate ?? ""];
+      const cells = [r.place, name, r.rating ?? "Unrated", r.score, ...rounds(r.id), ...(quad ? [r.sonnebornBerger, r.headToHead ?? ""]
+        : [r.median, r.solkoff, r.cumulative, r.opposition]), r.performance ?? "", r.estimate ?? ""];
       for (const text of cells) row.insertCell().textContent = text;
       const button = document.createElement("button");
       button.type = "button";
@@ -1005,7 +1007,8 @@ function renderStandings() {
       row.insertCell().append(button);
       return row;
     });
-    return sectionTable("run-standings", [...(quad ? QUAD_HEADINGS : SWISS_HEADINGS), hidden("Withdraw")], rows, s.name, parts.length > 1);
+    const headings = ["Place", "Name", "Rating", "Score", ...s.rounds.map((_, i) => `Round ${i + 1}`), ...(quad ? QUAD_HEADINGS : SWISS_HEADINGS)];
+    return sectionTable("run-standings", [...headings, hidden("Withdraw")], rows, s.name, parts.length > 1);
   }));
 }
 

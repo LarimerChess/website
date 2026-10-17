@@ -116,7 +116,7 @@ class Quads(unittest.TestCase):
         self.assertIn("<h2>Quad 2</h2>", page)
         self.assertIn("<td>X4", page)
         self.assertEqual(page.count("<table"), 2)  # one per quad
-        self.assertIn('Score</th><th scope="col">Sonneborn-Berger</th><th scope="col">Performance</th></tr>', page)
+        self.assertIn('Score</th><th scope="col">Sonneborn-Berger</th><th scope="col">Head-to-head</th><th scope="col">Performance</th></tr>', page)
 
 
 class Sections(unittest.TestCase):

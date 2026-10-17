@@ -2046,8 +2046,10 @@ JSON.stringify(now.map((s) => [s.name, s.after, s.options, s.rows.length])) === 
   ["Open", "2", ["1", "2 (in progress)"], 4], ["Under 1400", "1", ["1"], 3]])
   && now[0].head.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Median|Solkoff|Cumulative|Opp. cumulative|Performance|Est. rating ?"
   && now[0].rows.slice(0, 2).every((r) => r[3] === "1.5")
+  // Ann and Ben, Cal and Dee, and Eve and Fay tie on every 34E tiebreak, so each pair shares a place.
+  && now.map((s) => s.rows.map((r) => r[0]).join()).join("|") === "1,1,3,3|1,2,2"
   && now.every((s) => s.note === "")
-  // Each round: the result, the opponent's place, and the color; Cal and Dee's game has no result yet.
+  // Each round: the result, the opponent's row, and the color; Cal and Dee's game has no result yet.
   && now[0].rows.map((r) => `${r[1]} ${r[4]}, ${r[5]}`).join("|") === "Ann W3 w, D2 b|Ben W4 b, D1 w|Cal L1 b, 4 w|Dee L2 w, 3 b"
   && now[1].rows.map((r) => `${r[1]} ${r[4]}`).join("|") === "Gus B|Eve D3 w|Fay D2 b"
   && now.flatMap((s) => s.rows.map((r) => `${r[1]} ${r[s.head.indexOf("Performance")]} ${r[s.head.indexOf("Est. rating ?")]}`)).join("|")
@@ -2206,8 +2208,10 @@ await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standing
 const resulted = sectionCalls.find((c) => c.action === "result") || {};
 resulted.section === "Under 1400" && resulted.board === "1" && resulted.result === "1-0"
   ? pass("TD desk enters a result by section and board, with each section's standings") : fail(`TD desk result: ${JSON.stringify(resulted)}`);
-const deskPerformance = await sectionDesk.$$eval(".run-standings", (tables) => tables.map((t) => [t.tHead.rows[0].cells[8]?.textContent,
-  ...[...t.tBodies[0].rows].map((r) => `${r.cells[1].textContent} ${r.cells[8].textContent}`)]));
+const deskPerformance = await sectionDesk.$$eval(".run-standings", (tables) => tables.map((t) => {
+  const at = [...t.tHead.rows[0].cells].findIndex((c) => c.textContent === "Performance");
+  return [t.tHead.rows[0].cells[at]?.textContent, ...[...t.tBodies[0].rows].map((r) => `${r.cells[1].textContent} ${r.cells[at].textContent}`)];
+}));
 // Eve beat an unrated player, so she has no rated games; Gus lost to a 1300.
 JSON.stringify(deskPerformance[1]) === JSON.stringify(["Performance", "Eve ", "Gus 500"])
   ? pass("TD desk shows performance ratings in the standings") : fail(`TD desk performance: ${JSON.stringify(deskPerformance)}`);
@@ -3038,9 +3042,22 @@ await signIn(quadExtra);
 await quadExtra.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 4: check in");
 const quadShown = await quadExtra.evaluate(() => ({
   options: [...document.querySelector(".run-this-round").options].map((o) => o.value),
-  standings: [...document.querySelectorAll(".run-standings")].map((t) => t.tHead.rows[0].cells[4].textContent),
-  planned: [...document.querySelectorAll("#run-planned-section option")].map((o) => o.value), plannedShown: !document.querySelector(".run-planned").hidden }));
+  standings: [...document.querySelectorAll(".run-standings")].map((t) => [...t.tHead.rows[0].cells].map((c) => c.textContent)
+    .find((h) => !/^(Place|Name|Rating|Score|Round \d+)$/.test(h))),
+  planned: [...document.querySelectorAll("#run-planned-section option")].map((o) => o.value), plannedShown: !document.querySelector(".run-planned").hidden,
+  quadHead: [...document.querySelector(".run-standings").tHead.rows[0].cells].map((c) => c.textContent),
+  quadTop: [...document.querySelector(".run-standings").tBodies[0].rows[0].cells].slice(0, 9).map((c) => c.textContent) }));
 await axeBoth(quadExtra, "TD desk with quads and an extra games section");
+for (const width of [1600, 390]) {
+  await quadExtra.setViewport({ width, height: 900 });
+  if (process.env.SHOTS) await quadExtra.screenshot({ path: `${process.env.SHOTS}/quad-standings-${width}.png`, fullPage: true });
+}
+await fitsPhone(quadExtra, "TD desk with quads and an extra games section");
+// Q3 beats Q1 and Q4 and loses to Q2, and Q1 beats Q2 and Q4: tied on 2, Q3 is ahead on Sonneborn-Berger, so no head-to-head.
+quadShown.quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Round 3|Sonneborn-Berger|Head-to-head|Performance|Est. rating|Withdraw"
+  && quadShown.quadTop.join("|") === "1|Q3|1900|2|L3 b|W2 w|W4 w|3|"
+  ? pass("TD desk quad standings show each round and head-to-head, as the Standings page does")
+  : fail(`TD desk quad standings: ${JSON.stringify([quadShown.quadHead, quadShown.quadTop])}`);
 JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", "zero", "withdraw"])
   && quadShown.standings.join() === "Sonneborn-Berger,Sonneborn-Berger,Median" && quadShown.planned.join() === "Extra games" && quadShown.plannedShown
   ? pass("TD desk runs quads' extra games section as a Swiss, and changes only its rounds")

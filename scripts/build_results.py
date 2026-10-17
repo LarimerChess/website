@@ -75,8 +75,9 @@ def rating_text(p):
 
 
 def round_cells(t, order):
-    """Each player's rounds as the result, the opponent's place in order, and the color, as 'W4 b'."""
-    place = {r["id"]: r.get("place", i) for i, r in enumerate(order, 1)}
+    """Each player's rounds as the result, the opponent's row in order, and the color, as 'W4 b'.
+    The row, since tied players share a place."""
+    place = {r["id"]: i for i, r in enumerate(order, 1)}
     place_by_number = {p["number"]: place[p["id"]] for p in t["players"]}
     chart = wall_chart(t)
     return {pid: [f"{code}{place_by_number[opponent] if opponent else ''}{' ' + color if color else ''}"
@@ -212,10 +213,10 @@ def swiss_standings(s, label):
     by_id = {p["id"]: p for p in s["players"]}
     order = standings(s)
     rounds = round_cells(s, order)
-    rows = [[str(i), escaped(r["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]], score_text(r["score"]),
+    rows = [[str(r["place"]), escaped(r["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]], score_text(r["score"]),
              score_text(r["median"]), score_text(r["solkoff"]), score_text(r["cumulative"]), score_text(r["opposition"]),
              performance_text(r)]
-            for i, r in enumerate(order, 1)]
+            for r in order]
     return table(["Place", "Name", "Rating", *round_headings(s), "Score", "Median", "Solkoff", "Cumulative",
                   "Opp. cumulative", "Performance"], rows, label) + withdrawals(s)
 
@@ -243,12 +244,13 @@ def quad_main(t):
         order = standings(q, "quadStandings")
         rounds = round_cells(q, order)
         rows = [[str(r["place"] or ""), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
-                 score_text(r["score"]), score_text(r["sonnebornBerger"]), performance_text(r)]
+                 score_text(r["score"]), score_text(r["sonnebornBerger"]),
+                 "" if r["headToHead"] is None else score_text(r["headToHead"]), performance_text(r)]
                 for r in order]
         name = q["name"]
         out.append(f"""<section id="{anchor(name)}">
       <h2>{escaped(name)}</h2>
-      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger", "Performance"], rows,
+      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger", "Head-to-head", "Performance"], rows,
              f"{name} standings")}{withdrawals(q)}
     </section>""")
     return "\n\n    ".join(out)

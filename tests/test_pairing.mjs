@@ -133,6 +133,12 @@ test("34E: modified median, Solkoff, and cumulative from the rulebook's definiti
   assert.equal(rows.b.cumulative, 2.5);
 });
 
+test("34E: players tied on score and all four tiebreaks share a place; rating only orders the rows", () => {
+  const players = ["a", "b", "c", "d"].map((id, i) => ({ id, name: id, rating: 2000 - i * 100 }));
+  const t = { players, rounds: [{ games: [{ white: "a", black: "c", result: "1-0" }, { white: "b", black: "d", result: "1-0" }], byes: [] }] };
+  assert.deepEqual(Pairing.standings(t).map((r) => [r.id, r.place]), [["a", 1], ["b", 1], ["c", 3], ["d", 3]]);
+});
+
 test("performance rating: Elo over rated games played, capped at 800, without forfeits, byes, or unrated opponents", () => {
   const players = [["a", 2000], ["b", 1800], ["c", 1600], ["d", null], ["e", 1500]].map(([id, rating]) => ({ id, name: id, rating }));
   const t = { players, rounds: [
@@ -272,7 +278,9 @@ test("34F: quad standings by score, then Sonneborn-Berger, then the game between
     [["a", 2, 2, 1], ["b", 2, 2, 1], ["c", 2, 2, 1], ["d", 0, 0, 4]]);
   // Change b's loss to a into a draw: b now has 2.5 and wins outright.
   rounds[2].games[0].result = "1/2-1/2";
-  assert.equal(Pairing.quadStandings({ players, rounds })[0].id, "b");
+  const changed = Pairing.quadStandings({ players, rounds });
+  assert.equal(changed[0].id, "b");
+  assert.equal(changed[0].headToHead, null, "head-to-head only between tied players");
 });
 
 /** Players [id, rating, section] numbered by rating across the whole tournament, as the desk starts them. */
