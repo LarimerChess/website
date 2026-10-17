@@ -17,8 +17,8 @@
 // A tournament with sections also has sections: [{ name, under }] and each player's section;
 // sections(t) splits it into one such tournament per section, and pairSections pairs them all.
 // An extra rated games section (28M4), { name, extra: true, first, last, players: [ids] }, holds
-// players who are also in another section, from round first to round last of the tournament;
-// once a tournament has one, its other sections carry last too.
+// players who are also in another section, from round first to round last of the tournament,
+// and is a Swiss even among quads; once a tournament has one, its other sections carry last too.
 
 (function (root) {
   "use strict";
@@ -680,7 +680,7 @@
 
   /**
    * A tournament's sections in order, each a tournament of its own (28A, 29): { name, key, under,
-   * extra, first, last, players, rounds }. A player plays in one section, and may also be in extra
+   * extra, format, first, last, players, rounds }. A player plays in one section, and may also be in extra
    * sections, numbered 1 up within each in the order of their numbers; the rounds are the
    * section's own, from the tournament's round first to last (null for through the planned
    * rounds), keeping only the section's games and byes. key is what the spreadsheet's Section
@@ -723,7 +723,7 @@
         games: r.games.filter((x) => ids.has(x.white) && ids.has(x.black) && here(x, g.key)),
         byes: (r.byes || []).filter((b) => ids.has(b.id) && here(b, g.key)),
         out: (r.out || []).filter((id) => ids.has(id)) }));
-      return { extra: false, ...g, first, last, players, rounds };
+      return { extra: false, ...g, format: g.extra ? "swiss" : t.format || "swiss", first, last, players, rounds };
     });
   }
 
@@ -741,11 +741,11 @@
     const number = t.rounds.length + 1;
     let board = 0;
     return sections(t).filter((s) => s.players.length && playsIn(s, number)).map((s) => {
-      const result = t.format === "quad" ? pairQuadRound(s.players, number)
+      const result = s.format === "quad" ? pairQuadRound(s.players, number)
         : pairRound(s, typeof options === "function" ? options(s) : options);
       const offset = s.key ? 0 : board;
       board += result.games.length;
-      return { section: s.key, name: s.name, ...result, games: result.games.map((g) => ({ ...g, board: g.board + offset })) };
+      return { section: s.key, name: s.name, format: s.format, ...result, games: result.games.map((g) => ({ ...g, board: g.board + offset })) };
     });
   }
 

@@ -355,6 +355,17 @@ test("quads as sections: each quad pairs from the table with its own numbers 1 t
     [["Quad 1", [[1, "p1", "p4"], [2, "p2", "p3"]]], ["Quad 2", [[1, "p5", "p8"], [2, "p6", "p7"]]]]);
 });
 
+test("quads with an extra games section: the quads play their table, the extra section a Swiss", () => {
+  const players = [...Array(8)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1,
+    section: i < 4 ? "Quad 1" : "Quad 2" }));
+  const t = { format: "quad", players, rounds: [],
+    sections: [{ name: "Quad 1", last: 3 }, { name: "Quad 2", last: 3 }, { name: "Extra games", extra: true, first: 1, last: 2, players: ["p1", "p5", "p6"] }] };
+  const [one, two, extra] = Pairing.pairSections(t, { coin: "white" });
+  assert.deepEqual([one.format, two.format, extra.format], ["quad", "quad", "swiss"]);
+  assert.deepEqual(one.games.map((g) => [g.white, g.black]), [["p1", "p4"], ["p2", "p3"]], "the quad table");
+  assert.deepEqual([extra.games.length, extra.byes.length], [1, 1], "three players in a Swiss: one game and a bye");
+});
+
 test("no sections: one section, paired exactly as before, and old quads keep their boards", () => {
   const players = field([["a", 2000], ["b", 1800], ["c", 1600], ["d", 1500], ["e", 1300]]);
   const t = { players, rounds: [] };

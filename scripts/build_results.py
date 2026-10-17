@@ -233,6 +233,12 @@ def swiss_main(t):
 def quad_main(t):
     out = []
     for q in sections(t):
+        if q.get("extra"):
+            out.append(f"""<section id="{anchor(q['name'])}">
+      <h2>{escaped(q['name'])}</h2>
+      {swiss_standings(q, f"{q['name']} standings")}
+    </section>""")
+            continue
         by_id = {p["id"]: p for p in q["players"]}
         order = standings(q, "quadStandings")
         rounds = round_cells(q, order)

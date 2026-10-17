@@ -11,6 +11,7 @@ import puppeteer from "puppeteer-core";
 
 const require = createRequire(import.meta.url);
 const axeSource = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
+const Pairing = require("../pairing.js");
 const base = process.argv[2] || "http://127.0.0.1:8765";
 const chrome = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const events = JSON.parse(readFileSync(new URL("../events.json", import.meta.url), "utf8"));
@@ -2990,6 +2991,33 @@ extraReports.length === 1 && extraReports[0].number === "3" && extraReports[0].s
   ? pass("Pairings page reports an extra games section's game by the tournament's round")
   : fail(`Pairings page extra games report: ${JSON.stringify(extraReports)}`);
 await extraPairings.close();
+
+// Quads with an extra games section: its round checks in as a Swiss's, with byes, and it ranks as a Swiss beside the quads.
+const quadPlayers = [...Array(8)].map((_, i) => ({ id: `9000002${i}`, number: i + 1, name: `Q${i + 1}`, rating: 2000 - i * 50,
+  section: i < 4 ? "Quad 1" : "Quad 2", out: null }));
+const quadRounds = [1, 2, 3].map((n) => {
+  const games = Pairing.pairQuadRound(quadPlayers, n).games.map((g) => ({ ...g, result: "1-0",
+    section: quadPlayers.find((p) => p.id === g.white).section }));
+  games.forEach((g) => { if (g.section === "Quad 2") g.board -= 2; });
+  return { games, byes: [], out: [], posted: true };
+});
+const quadDesk = deskState(quadRounds);
+Object.assign(quadDesk.held, { format: "quad", players: quadPlayers,
+  sections: [{ name: "Quad 1", last: 3 }, { name: "Quad 2", last: 3 },
+    { name: "Extra games", extra: true, first: 4, last: 4, players: quadPlayers.slice(0, 3).map((p) => p.id) }], plannedRounds: 4 });
+const quadExtra = await mocked("/td/ quads with an extra games section", (p) => quadDesk.answer(p));
+await signIn(quadExtra);
+await quadExtra.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 4: check in");
+const quadShown = await quadExtra.evaluate(() => ({
+  options: [...document.querySelector(".run-this-round").options].map((o) => o.value),
+  standings: [...document.querySelectorAll(".run-standings")].map((t) => t.tHead.rows[0].cells[4].textContent),
+  planned: [...document.querySelectorAll("#run-planned-section option")].map((o) => o.value), plannedShown: !document.querySelector(".run-planned").hidden }));
+await axeBoth(quadExtra, "TD desk with quads and an extra games section");
+JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", "zero", "withdraw"])
+  && quadShown.standings.join() === "Sonneborn-Berger,Sonneborn-Berger,Median" && quadShown.planned.join() === "Extra games" && quadShown.plannedShown
+  ? pass("TD desk runs quads' extra games section as a Swiss, and changes only its rounds")
+  : fail(`TD desk quads with an extra games section: ${JSON.stringify(quadShown)}`);
+await quadExtra.close();
 
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
 // in place of the real ones.

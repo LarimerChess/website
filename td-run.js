@@ -148,7 +148,8 @@ function renderRun() {
   runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
   if (current && current.status !== "rated") {
     runManage.hidden = false;
-    runPlanned.hidden = current.format !== "swiss";
+    // A quad plays three rounds, but its extra games sections as many as the TD gives them.
+    runPlanned.hidden = current.format !== "swiss" && !(current.format === "quad" && (current.sections || []).some((d) => d.extra));
     fillPlanned();
     renderExtras();
   }
@@ -212,12 +213,14 @@ function renderRun() {
 
 function renderCheckin(t, parts, next) {
   const quad = t.format === "quad";
+  const active = parts.filter((s) => s.players.length && Pairing.playsIn(s, next));
   runTitle.textContent = `Round ${next}: check in`;
   runCheckin.hidden = false;
   runPairings.hidden = true;
   // A quad's pairings come from the table, so a player not here loses that game by forfeit.
-  runCheckinHint.textContent = quad
+  runCheckinHint.textContent = active.some((s) => s.format === "quad")
     ? "Everyone starts as Present; change anyone who isn't here. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
+      + (active.some((s) => s.extra) ? " In an extra games section, a player not here has the round unplayed." : "")
     : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
@@ -228,7 +231,8 @@ function renderCheckin(t, parts, next) {
   const defs = (t.sections || []).filter((d) => !d.extra);
   const choosing = editable && defs.length > 1;
   const several = parts.length > 1;
-  runAttendance.replaceChildren(...parts.filter((s) => s.players.length && Pairing.playsIn(s, next)).flatMap((s) => {
+  runAttendance.replaceChildren(...active.flatMap((s) => {
+    const table = s.format === "quad";
     const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
     const own = next - s.first + 1;
     const rows = s.players.filter((p) => !p.out).map((p) => {
@@ -239,7 +243,7 @@ function renderCheckin(t, parts, next) {
       row.insertCell().textContent = p.rating ?? "Unrated";
       row.insertCell().textContent = scores.get(p.id) ?? 0;
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
-      if (!quad) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
+      if (!table) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
         .replaceAll(" ", " ")).join(", ");
       if (choosing && !s.extra) {
         const move = document.createElement("select");
@@ -248,7 +252,7 @@ function renderCheckin(t, parts, next) {
         move.addEventListener("change", () => moveTo(p, move.value));
         row.insertCell().append(move);
       }
-      const asked = !quad && byes.includes(own);
+      const asked = !table && byes.includes(own);
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
@@ -256,13 +260,13 @@ function renderCheckin(t, parts, next) {
       select.className = "run-this-round";
       select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
       select.append(option("play", "Present", !asked),
-        option("absent", quad ? "Not here: loses by forfeit" : "Not here: unplayed", false),
-        ...(quad ? [] : [option("half", "Half-point bye (asked for)", asked), option("zero", "Zero-point bye (asked for)", false)]),
+        option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", false),
+        ...(table ? [] : [option("half", "Half-point bye (asked for)", asked), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
       row.insertCell().append(select);
       return row;
     });
-    return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(quad ? [] : ["Byes asked for"]),
+    return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(table ? [] : ["Byes asked for"]),
       ...(choosing && !s.extra ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
   }));
 }
@@ -822,15 +826,16 @@ const QUAD_HEADINGS = ["Place", "Name", "Rating", "Score", "Sonneborn-Berger", "
 
 function renderStandings() {
   if (!current?.rounds.length) return;
-  const quad = current.format === "quad";
-  runStandingsHint.textContent = (quad
-    ? "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F)."
-    : "Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.")
-    + " Performance is the Elo performance rating over the games played against rated opponents; Est. rating, US Chess's formula"
-    + " applied to the games played so far.";
   const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
+  const formats = new Set(parts.map((s) => s.format));
+  runStandingsHint.textContent = [formats.has("quad") && "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F).",
+    formats.has("swiss") && `${formats.has("quad") ? "An extra games section's tiebreaks are" : "Tiebreaks"} in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.`]
+    .filter(Boolean).join(" ")
+    + " Performance is the Elo performance rating over the games played against rated opponents; Est. rating, US Chess's formula"
+    + " applied to the games played so far.";
   runStandings.replaceChildren(...parts.flatMap((s) => {
+    const quad = s.format === "quad";
     const rows = (quad ? Pairing.quadStandings(s) : Pairing.standings(s)).map((r, i) => {
       const row = document.createElement("tr");
       const p = current.players.find((x) => x.id === r.id);
@@ -946,15 +951,13 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
   }));
   // A quad's table pairs absent players too; their games are forfeits.
   const away = new Set(choicesMade.filter(([, v]) => v === "absent").map(([id]) => id));
-  if (current.format === "quad") {
-    for (const s of sections) {
-      for (const g of s.games) {
-        if (away.has(g.white) || away.has(g.black)) g.result = away.has(g.white) ? (away.has(g.black) ? "0F-0F" : "0F-1F") : "1F-0F";
-      }
-      s.byes = s.byes.filter((b) => !away.has(b.id));
+  for (const s of sections.filter((x) => x.format === "quad")) {
+    for (const g of s.games) {
+      if (away.has(g.white) || away.has(g.black)) g.result = away.has(g.white) ? (away.has(g.black) ? "0F-0F" : "0F-1F") : "1F-0F";
     }
+    s.byes = s.byes.filter((b) => !away.has(b.id));
   }
-  draft = { number, sections };
+  draft = { number, sections: sections.map(({ format, ...s }) => s) };
   if (withdrawn.length) current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
   renderDraft();
 });
@@ -972,7 +975,7 @@ document.querySelector(".run-by-hand").addEventListener("click", async () => {
     for (const p of s.players) {
       const choice = chosen.get(`${s.key}|${p.id}`);
       if (!choice || withdrawn.includes(p.id)) continue;
-      const kind = { half: "half", zero: "zero", absent: anyone && current.format !== "quad" ? "unplayed" : "" }[choice];
+      const kind = { half: "half", zero: "zero", absent: anyone && s.format !== "quad" ? "unplayed" : "" }[choice];
       if (kind) part.byes.push({ id: p.id, kind, points: Pairing.BYE_KINDS[kind] });
       else part.waiting.push(p.id);
     }
@@ -1047,7 +1050,7 @@ document.querySelector(".run-save").addEventListener("click", () => saveDraft(fa
 const plannedSection = document.getElementById("run-planned-section");
 
 function fillPlanned() {
-  const defs = (current.sections || []).some((d) => d.extra) ? current.sections : [];
+  const defs = (current.sections || []).some((d) => d.extra) ? current.sections.filter((d) => current.format === "swiss" || d.extra) : [];
   plannedSection.hidden = document.querySelector('[for="run-planned-section"]').hidden = !defs.length;
   const chosen = plannedSection.value;
   plannedSection.replaceChildren(...defs.map((d) => option(d.name, d.name, d.name === chosen)));
@@ -1063,7 +1066,7 @@ const extraForm = document.querySelector(".run-extra");
 function renderExtras() {
   const list = document.querySelector(".run-extra-list");
   const extras = (current.sections || []).filter((d) => d.extra);
-  extraForm.closest("details").hidden = current.format !== "swiss" || !(current.sections || []).length;
+  extraForm.closest("details").hidden = !["swiss", "quad"].includes(current.format) || !(current.sections || []).length;
   list.replaceChildren(...extras.map((d) => {
     const item = document.createElement("li");
     const first = d.first, last = d.last;

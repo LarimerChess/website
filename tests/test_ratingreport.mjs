@@ -76,3 +76,16 @@ test("an extra rated games section (28M4) is a section of its own, with its own 
     ["1", "90000061", "W3B", ""], ["2", "90000062", "D4W", ""], ["3", "90000064", "L1W", ""], ["4", "90000066", "D2B", ""]]);
   assert.deepEqual(rows.filter((p) => p.D_MEM_ID === "90000061").map((p) => p.D_SEC_NUM), ["1", "3"]);
 });
+
+test("quads' extra games section is a Swiss in the report", () => {
+  const t = structuredClone(fixtures.find((x) => x.format === "quad"));
+  t.players.forEach((p) => { p.section = p.number <= 4 ? "Quad 1" : "Quad 2"; });
+  t.sections = [{ name: "Quad 1", last: 3 }, { name: "Quad 2", last: 3 },
+    { name: "Extra games", extra: true, first: 4, last: 4, players: [t.players[0].id, t.players[4].id] }];
+  t.rounds.push({ games: [{ board: 1, white: t.players[4].id, black: t.players[0].id, result: "1/2-1/2", section: "Extra games" }],
+    byes: [], out: [], posted: true });
+  t.rounds.forEach((r, i) => { if (i < 3) r.games.forEach((g) => { g.section = t.players.find((p) => p.id === g.white).section; }); });
+  const sections = read(RatingReport.files(t, REPORT)["TSEXPORT.DBF"]);
+  assert.deepEqual(sections.map((s) => [s.S_SEC_NAME, s.S_TRN_TYPE, s.S_TOT_RNDS, s.S_LST_PAIR]),
+    [["Quad 1", "R", "3", "4"], ["Quad 2", "R", "3", "4"], ["Extra games", "S", "1", "2"]]);
+});

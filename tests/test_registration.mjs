@@ -749,6 +749,23 @@ for (const store of STORES) {
 }
 
 for (const store of STORES) {
+  test(`quads can add an extra games section, whose rounds change though the quads' can't (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });
+    gs.entries = () => [...Array(8)].map((_, i) => ({ id: `9000001${i}`, name: `Q${i}`, rating: String(2000 - i * 50), out: "" }));
+    const p = { event: "quad", date: "2026-11-14" };
+    gs.startTournament({ ...p, format: "quad" });
+    assert.match(gs.setRounds({ ...p, rounds: "4" }).error, /Only a Swiss/);
+    assert.equal(gs.addExtraSection({ ...p, name: "Extra games", rounds: "2", players: '["90000010","90000014"]' }).message,
+      "Extra games: 2 players, 2 rounds from round 1.");
+    eq(JSON.parse(rows("Tournaments")[0].Sections).map((s) => [s.name, s.last]), [["Quad 1", 3], ["Quad 2", 3], ["Extra games", 2]]);
+    assert.match(gs.setRounds({ ...p, section: "Quad 1", rounds: "4" }).error, /three rounds/);
+    assert.equal(gs.setRounds({ ...p, section: "Extra games", rounds: "4" }).ok, true);
+    assert.equal(rows("Tournaments")[0].Rounds, "4");
+  });
+}
+
+for (const store of STORES) {
   test(`quads are sections Quad 1 and Quad 2, still numbered 1 to 8 across them (${store})`, () => {
     const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
     gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry" } });

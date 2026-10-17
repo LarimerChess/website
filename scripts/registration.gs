@@ -1089,7 +1089,8 @@ function startTournament(p, signedIn) {
 }
 
 /** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Once it has an
- *  extra rated games section, every section has its own rounds, and p.section names the one to change. */
+ *  extra rated games section, every section has its own rounds, and p.section names the one to change;
+ *  a quad's extra games sections change too, but its quads play three rounds. */
 function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
@@ -1099,12 +1100,14 @@ function setRounds(p) {
     const t = table("Tournaments");
     const line = t.rows.find((r) => r.Key === key);
     if (!line) return { error: "No such tournament." };
-    if (line.Format !== "swiss") return { error: "Only a Swiss can change its number of rounds." };
-    const lines = table("Rounds").rows.filter((r) => r.Key === key);
     const defs = sectionsOf(line);
-    if (defs.some((s) => s.extra)) {
+    const extras = defs.some((s) => s.extra);
+    if (line.Format !== "swiss" && !(line.Format === "quad" && extras)) return { error: "Only a Swiss can change its number of rounds." };
+    const lines = table("Rounds").rows.filter((r) => r.Key === key);
+    if (extras) {
       const def = defs.find((s) => s.name === p.section);
       if (!def) return { error: "Which section's rounds?" };
+      if (line.Format === "quad" && !def.extra) return { error: "A quad plays three rounds (30G)." };
       const first = Number(def.first) || 1;
       const paired = lines.filter((r) => r.Section === def.name).reduce((m, r) => Math.max(m, Number(r.Round) - first + 1), 0);
       if (Number(rounds) < paired) return { error: `${def.name} has ${paired} rounds paired already, so it can't have fewer.` };
@@ -1126,7 +1129,7 @@ function setRounds(p) {
 const lastRound = (defs) => defs.reduce((m, s) => Math.max(m, Number(s.last) || 0), 0);
 
 /**
- * Adds an extra rated games section (28M4) to a Swiss: p.players, a JSON list of its players' IDs, play
+ * Adds an extra rated games section (28M4) to a Swiss or quads, paired as a Swiss: p.players, a JSON list of its players' IDs, play
  * p.rounds rounds in it from the next round, apart from their own section's standings and alongside any
  * rounds it has left, and the rating report has it as a section of its own. The other sections keep the
  * rounds they had, as their last.
@@ -1150,7 +1153,7 @@ function addExtraSection(p) {
     const t = table("Tournaments");
     const line = t.rows.find((r) => r.Key === key);
     if (!line) return { error: "No such tournament." };
-    if (line.Format !== "swiss") return { error: "Only a Swiss can add an extra games section." };
+    if (!["swiss", "quad"].includes(line.Format)) return { error: "Only a Swiss or quads can add an extra games section." };
     const defs = sectionsOf(line);
     if (!defs.length) return { error: "This tournament started before sections, so it can't add one." };
     if (defs.some((s) => s.name.toLowerCase() === name.toLowerCase())) return { error: `There's already a section named ${name}.` };

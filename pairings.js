@@ -390,7 +390,6 @@ function standingsSection(t, ti) {
   const section = document.createElement("section");
   section.append(heading(2, t.name));
   if (t.format === "arena") return arenaStandings(section, t);
-  const quad = t.format === "quad";
   const name = namer(t);
   const { parts, several } = partsOf(t);
   const scored = (round) => round.games.some((g) => g.result) || (!round.games.length && round.byes.length);
@@ -398,13 +397,14 @@ function standingsSection(t, ti) {
     section.append(paragraph("Standings appear here once round 1 has results."));
     return section;
   }
-  // A Swiss's tiebreaks are in the page's opening paragraph.
-  if (quad) {
+  // A Swiss's tiebreaks, and an extra games section's, are in the page's opening paragraph.
+  if (parts.some((s) => s.format === "quad")) {
     section.append(paragraph("Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). "
       + "Players tied on all three share a place."));
   }
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
+    const quad = s.format === "quad";
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
       .map(([n, round]) => [n, `${n}${round.games.every((g) => g.result) ? "" : " (in progress)"}`]);
     if (!rounds.length) {
