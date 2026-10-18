@@ -407,11 +407,13 @@ function publishEntries(list) {
   }
 }
 
-/** What the TD desk can register for: every club event key whose date hasn't passed. */
+/** What the TD desk can register for: every club event key whose date hasn't passed, and every
+ *  tournament US Chess hasn't yet rated, so the TD can still report it. */
 function choices() {
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  const started = new Set(table("Tournaments").rows.map((r) => r.Key));
   return Object.entries(clubEvents())
-    .filter(([, e]) => e.last >= today)
+    .filter(([key, e]) => e.last >= today || (started.has(key) && !rated(key)))
     .map(([key, e]) => ({ key, name: e.name, label: e.label, kind: e.kind, first: e.first, format: e.format || "",
       rounds: e.rounds || "", closed: Boolean(e.closed) }))
     .sort((a, b) => a.first.localeCompare(b.first) || (a.kind === "month" ? -1 : 1));
@@ -2483,6 +2485,19 @@ function clubEvents() {
         closes: start, first: start.slice(0, 10), last: start.slice(0, 10),
       };
     }
+  }
+  // The calendar drops an event once its day is over, but the desk still has to report its tournament.
+  for (const r of table("Tournaments").rows) {
+    if (!r.Key || out[r.Key]) continue;
+    const [name, date] = r.Key.split("/");
+    const dates = r["Round dates"] ? JSON.parse(r["Round dates"]) : [date.length === 7 ? `${date}-01` : date];
+    const noon = new Date(`${dates[0]}T12:00:00Z`);
+    const label = date.length === 7
+      ? `all ${Utilities.formatDate(noon, TZ, "EEEE")}s in ${Utilities.formatDate(noon, TZ, "MMMM yyyy")}`
+      : Utilities.formatDate(noon, TZ, "EEEE, MMMM d, yyyy");
+    out[r.Key] = { event: r.Event || name, name: r.Name.endsWith(`, ${label}`) ? r.Name.slice(0, -label.length - 2) : r.Name || name,
+      page: "", kind: date.length === 7 ? "month" : "entry", label, closes: `${dates[dates.length - 1]}T23:59:00Z`,
+      first: dates[0], last: dates[dates.length - 1], closed: true, format: r.Format, rounds: r.Rounds };
   }
   cache.put("clubEvents", JSON.stringify(out), 600);
   return out;

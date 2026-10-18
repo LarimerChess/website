@@ -1504,6 +1504,35 @@ test("the desk's New tournament adds a Closed events row by heading, which the d
   assert.equal(sheets["Closed events"].data.length, 2);
 });
 
+test("the desk lists a past tournament, though the calendar has dropped it, until US Chess has rated it", () => {
+  const { gs, ratings, cache } = load({
+    "Closed events": [["Fee", "Event", "Start", "Name", "Format", "Rounds"],
+      ["10", "alley-cat-quad-2", "2026-10-17T09:00:00-06:00", "Alley Cat Quad 2", "quad", ""],
+      ["10", "never-started", "2026-10-17T09:00:00-06:00", "Never Started", "quad", ""]],
+    Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Round dates"],
+      ["alley-cat-quad-2/2026-10-17", "alley-cat-quad-2", "Alley Cat Quad 2, Saturday, October 17, 2026", "quad", "3", "running", ""],
+      ["first-saturday-classic/2026-10-03", "first-saturday-classic", "First Saturday Classic, Saturday, October 3, 2026", "swiss", "4", "running", ""],
+      ["monday-club-night-at-peak/2026-09", "monday-club-night-at-peak", "Monday Club Night at Peak, all Mondays in September 2026", "swiss", "4",
+        "running", '["2026-09-07","2026-09-14","2026-09-21","2026-09-28"]']],
+  });
+  const formatDate = gs.Utilities.formatDate;
+  gs.Utilities = { ...gs.Utilities, formatDate: (d, tz, f) => (f === "yyyy-MM-dd" ? "2026-10-18"
+    : f === "EEEE, MMMM d, yyyy" ? d.toLocaleDateString("en-US", { timeZone: "America/Denver", dateStyle: "full" })
+    : f === "EEEE" ? d.toLocaleDateString("en-US", { timeZone: "America/Denver", weekday: "long" })
+    : f === "MMMM yyyy" ? d.toLocaleDateString("en-US", { timeZone: "America/Denver", month: "long", year: "numeric" }) : formatDate(d, tz, f)) };
+  const fetch = gs.UrlFetchApp.fetch;
+  gs.UrlFetchApp = { ...gs.UrlFetchApp, fetch: (url, o) => (url.endsWith("/events.json")
+    ? { getResponseCode: () => 200, getContentText: () => "[]" } : fetch(url, o)) };
+  const listed = () => gs.choices().map((c) => [c.key, c.name, c.label, c.kind]);
+  eq(listed(), [
+    ["monday-club-night-at-peak/2026-09", "Monday Club Night at Peak", "all Mondays in September 2026", "month"],
+    ["first-saturday-classic/2026-10-03", "First Saturday Classic", "Saturday, October 3, 2026", "entry"],
+    ["alley-cat-quad-2/2026-10-17", "Alley Cat Quad 2", "Saturday, October 17, 2026", "entry"]]);
+  ratings["first-saturday-classic/2026-10-03"] = "202610030001";
+  delete cache.rated;
+  eq(listed().map(([key]) => key), ["monday-club-night-at-peak/2026-09", "alley-cat-quad-2/2026-10-17"]);
+});
+
 test("New tournament makes the Closed events tab when it's missing", () => {
   const { gs, sheets } = load({});
   gs.clubEvents = () => ({});
