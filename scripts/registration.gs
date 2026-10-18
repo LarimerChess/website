@@ -22,7 +22,7 @@
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
- *                               sync, sections, section, extraSection, extraPlayer, dropSection, timeControl, round, result, results, byeKind,
+ *                               sync, sections, sectionNames, section, extraSection, extraPlayer, dropSection, timeControl, round, result, results, byeKind,
  *                               out, rounds, restart, and for arenas:
  *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
  *
@@ -61,8 +61,9 @@
  * page, and the TD can set them on the desk. The Byes column holds a tournament date's rounds, "2, 4", or a
  * month's nights, "2026-10-19, 2026-10-26"; the running tournament's Players row holds them as rounds. Quads
  * and arenas take none, and a round already paired changes only under the desk's Byes and unplayed rounds.
- * Online, a tournament date takes one bye, and once round 1 is posted its last round can be neither asked for
- * nor dropped (22C4).
+ * A player has one, as each event's page announces, online or from the TD; once round 1 is posted, a bye in its
+ * last round can't be asked for, and only the TD can drop one (22C4, 22C5). All the rules the script holds
+ * byes to are in the comment above HALF_BYE_LIMIT.
  *
  * The club turns no one away: a TD can give a discount, which lowers what an entry owes (the
  * Discount column, with its reason and TD in Discount note), and refund what was paid, less any
@@ -114,7 +115,7 @@ const TOURNAMENT_HEADERS = {
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+const TOURNAMENT_WRITES = ["sync", "sections", "sectionNames", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
   "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
@@ -186,6 +187,7 @@ function doPost(e) {
       case "extraSection": return json(addExtraSection(p));
       case "extraPlayer": return json(addExtraPlayer(p));
       case "dropSection": return json(dropExtraSection(p));
+      case "sectionNames": return json(setSectionNames(p));
       case "timeControl": return json(setTimeControl(p));
       case "round": return json(saveRound(p));
       case "result": return json(saveResult(p));
@@ -258,7 +260,7 @@ function register(p, td, signedIn) {
     if (month) return { error: `${name} is already registered for the whole month.` };
     const asked = byeList(p.byes);
     const run = asked.length ? runOf(key) : null;
-    const checked = run ? checkByes(asked, [], key, event, run, !td) : { list: [] };
+    const checked = run ? checkByes(asked, [], key, event, run, !td, id) : { list: [] };
     if (checked.error) return checked;
     byes = checked.list;
     token = Utilities.getUuid();
@@ -1026,6 +1028,14 @@ function tournament(key, td) {
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players,
     td: info.TD || "", timeControl: info["Time control"] || "" };
+  // The half-point byes it offers, for the desk to check a round against before saving it; saving checks them again.
+  if (td && info.Format === "swiss") {
+    try {
+      result.halfByes = { limit: HALF_BYE_LIMIT, everyRound: offersHalfBye(clubEvents()[key], Infinity, 0) };
+    } catch (err) {
+      console.error(err);
+    }
+  }
   const dates = roundDates(info);
   if (dates.length) result.roundDates = dates;
   const event = ratedEvents()[key];
@@ -1359,31 +1369,30 @@ function syncPlayers(key) {
         Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
-    const missed = swiss ? added.flatMap((a) => lateByes(key, info, defs.find((d) => d.name === a.Section), a["US Chess ID"], a.Section)) : [];
+    const missed = swiss ? added.flatMap((a) => lateByes(key, info, a)) : [];
     addRows(table("Rounds"), missed);
     setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
     clearTournamentCache(key);
-    const byes = missed.length ? ` They have half-point byes for the ${missed.length === 1 ? "round" : "rounds"} posted before (28K),`
-      + " under Byes and unplayed rounds, where each can be made unplayed instead." : "";
+    const byes = missed.length ? " A late entrant has a half-point bye for the first round they missed that offers one (28K), under Byes"
+      + " and unplayed rounds, where it can be made unplayed instead." : "";
     return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).${byes}` : "No new entrants." };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** 28K: a late entrant's Rounds rows for the rounds of their section posted before they joined, a
- *  half-point bye in each round the tournament offers byes in. An event whose page takes registrations
- *  offers them in every round, as its Register form does; any other only in the first half and an odd
- *  count's middle round, which need no notice (22C1). A round with no row is unplayed. */
-function lateByes(key, info, def, id, section) {
-  const first = (def && def.first) || 1;
-  const last = (def && def.last) || Number(info.Rounds) || 0;
+/** 28K: a late entrant's Rounds rows for the rounds of their section posted before they joined: a half-point
+ *  bye in the first that offers one (offersHalfBye), unless the byes they asked for already take the one a
+ *  player may have. A round with no row is unplayed. */
+function lateByes(key, info, player) {
+  const id = player["US Chess ID"], section = player.Section || "";
+  const last = lastRoundOf(info, section);
   const event = clubEvents()[key];
-  const everyRound = Boolean(event && event.page && !event.closed);
   const posted = {};
   for (const r of table("Rounds").rows) if (r.Key === key && r.Posted) posted[r.Round] = r.Posted;
-  return Object.keys(posted).map(Number).filter((n) => n >= first && n <= last && (everyRound || n - first + 1 <= Math.ceil((last - first + 1) / 2)))
-    .sort((a, b) => a - b)
+  const room = HALF_BYE_LIMIT - byeList(player.Byes).length;
+  return Object.keys(posted).map(Number).filter((n) => n <= last && offersHalfBye(event, n, last))
+    .sort((a, b) => a - b).slice(0, Math.max(0, room))
     .map((n) => ({ Key: key, Round: String(n), Board: "", White: id, Black: "", Result: "", "Bye points": String(BYE_KINDS.half),
       Posted: posted[n], Section: section || "", "Bye kind": "half" }));
 }
@@ -1393,6 +1402,75 @@ const FORFEITS = ["1F-0F", "0F-1F", "0F-0F"];
 // A round without a game: a full-point bye, a half-point bye, a zero-point bye asked for in
 // advance, or unplayed (such as a no-show), with the points each scores. pairing.js has the same.
 const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
+
+// Byes by the rule book, refused whoever asks. Half-point byes (22C): in a Swiss only, one per player as
+// each event's page announces, in the rounds that offer them (offersHalfBye), and in the last round only
+// when asked for before round 1 is posted (22C4), as the page also announces. Full-point byes (28L): one
+// in a section's round, never a second for a player (28L3), and none in a quad or an extra games section
+// (28M4). Which player gets the full point is up to the scores (28L2, 28L4), which the desk checks with
+// pairing.js before saving.
+const HALF_BYE_LIMIT = 1;
+const halfRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "half" : Number(r["Bye points"]) === BYE_KINDS.half);
+const fullRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "bye" : Number(r["Bye points"]) === BYE_KINDS.bye);
+const extraNames = (info) => sectionsOf(info).filter((d) => d.extra).map((d) => d.name);
+
+/** Whether round n of a section whose last round is last offers half-point byes: every round when the
+ *  event's page takes registrations, as its Register form offers them; otherwise the first half and an odd
+ *  count's middle round, which need no notice (22C1). pairing.js's offersHalfBye is the same. */
+function offersHalfBye(event, n, last) {
+  return Boolean(event && event.page && !event.closed) || n <= Math.ceil(last / 2);
+}
+
+/** A section's last round: the tournament's, or the section's own once it has an extra games section. */
+function lastRoundOf(info, section) {
+  const def = sectionsOf(info).find((d) => d.name === section && !d.extra);
+  return Number(def && def.last) || Number(info.Rounds) || 0;
+}
+
+/** Round n in a message: "round 3", or a month's night, "October 19". */
+function roundName(info, n) {
+  const date = roundDates(info)[n - 1];
+  return date ? Utilities.formatDate(new Date(date + "T12:00:00Z"), TZ, "MMMM d") : `round ${n}`;
+}
+
+/** Why the player (their Players row) can't have a half-point bye in round n, or "": rows are the
+ *  tournament's Rounds rows, and asked the rounds the player asked for. */
+function halfByeProblem(key, info, player, n, rows, asked) {
+  if (info.Format !== "swiss") return "This tournament has no half-point byes.";
+  const last = lastRoundOf(info, player.Section);
+  if (!offersHalfBye(clubEvents()[key], n, last)) {
+    return `The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and ${roundName(info, n)} isn't one.`;
+  }
+  const extras = extraNames(info);
+  const others = [...new Set([...rows.filter((r) => r.Key === key && r.White === player["US Chess ID"] && halfRow(r) && !extras.includes(r.Section))
+    .map((r) => Number(r.Round)), ...asked])].filter((x) => x !== n).sort((a, b) => a - b);
+  if (others.length >= HALF_BYE_LIMIT) {
+    return `${player.Name} already has or asked for a half-point bye, in ${roundName(info, others[0])}, and the event allows one per player.`;
+  }
+  if (n === last && n > 1 && !asked.includes(n)) return `${player.Name} didn't ask for a last-round bye before round 1, so they can't have one (22C4).`;
+  return "";
+}
+
+/** Why the player (their Players row) can't have a full-point bye in round n of the section, or "". */
+function fullByeProblem(key, info, player, n, section, rows) {
+  if (extraNames(info).includes(section)) return "An extra games section gives no full-point bye (28M4); make the round unplayed.";
+  if (info.Format === "quad") return "A quad gives no full-point bye: its table pairs everyone.";
+  const id = player["US Chess ID"];
+  const here = rows.filter((r) => r.Key === key && fullRow(r) && r.Section === section);
+  if (here.some((r) => Number(r.Round) === n && r.White !== id)) return "Only the odd player has a full-point bye, one in each section's round (28L1).";
+  const before = here.find((r) => r.White === id && Number(r.Round) !== n);
+  if (before) return `${player.Name} had a full-point bye in ${roundName(info, Number(before.Round))}, and 28L3 allows one.`;
+  return "";
+}
+
+/** Why a round without a game can't be the kind, or "". */
+function byeProblem(key, info, player, n, section, kind, rows) {
+  if (kind === "half") {
+    if (extraNames(info).includes(section)) return "An extra games section has no half-point byes; make the round unplayed.";
+    return halfByeProblem(key, info, player, n, rows, byeRounds(byeList(player.Byes), info));
+  }
+  return kind === "bye" ? fullByeProblem(key, info, player, n, section, rows) : "";
+}
 
 /** Reclassifies a player's round without a game, such as an unplayed round the TD later excuses
  *  as a half-point bye; the points follow the kind. p.section, when sent, names the section's row. */
@@ -1405,11 +1483,19 @@ function saveByeKind(p) {
     const here = t.rows.filter((r) => r.Key === key && Number(r.Round) === Number(p.number)
       && (p.section === undefined || r.Section === p.section));
     const line = here.find((r) => r.White === p.id && !r.Black);
+    const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (line && player && info) {
+      const problem = byeProblem(key, info, player, Number(p.number), line.Section, p.kind, t.rows);
+      if (problem) return { error: problem };
+    }
     if (!line) {
       // A round with no row for the player, such as one a late entrant missed (28K), gets one.
       if (!here.length) return { error: "That round isn't paired yet." };
       if (here.some((r) => r.White === p.id || r.Black === p.id)) return { error: "That player has a game that round, not a bye." };
-      if (!table("Players").rows.some((r) => r.Key === key && r["US Chess ID"] === p.id)) return { error: "Not a player in this tournament." };
+      if (!player) return { error: "Not a player in this tournament." };
+      const problem = byeProblem(key, info, player, Number(p.number), String(p.section || ""), p.kind, t.rows);
+      if (problem) return { error: problem };
       addRows(t, [{ Key: key, Round: String(p.number), Board: "", White: p.id, Black: "", Result: "", "Bye points": String(BYE_KINDS[p.kind]),
         Posted: (here.find((r) => r.Posted) || { Posted: "" }).Posted, Section: String(p.section || ""), "Bye kind": p.kind }]);
       clearTournamentCache(key);
@@ -1435,6 +1521,18 @@ function saveRound(p) {
     const old = t.rows.filter((r) => r.Key === key && Number(r.Round) === round);
     // A saved round can hold forfeits for quad players not here; only a posted round's results block re-pairing.
     if (old.some((r) => r.Result && r.Posted)) return { error: "This round has results; clear them before re-pairing (29G)." };
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    const players = table("Players").rows.filter((r) => r.Key === key);
+    const others = t.rows.filter((r) => r.Key === key && Number(r.Round) !== round);
+    for (const b of byes) {
+      const player = players.find((r) => r["US Chess ID"] === b.id);
+      if (!info || !player || BYE_KINDS[b.kind] === undefined) continue;
+      const section = String(b.section || "");
+      const rows = [...others, ...byes.filter((x) => x !== b && x.kind === "bye" && String(x.section || "") === section)
+        .map((x) => ({ Key: key, Round: String(round), White: x.id, Black: "", "Bye kind": "bye", Section: section }))];
+      const problem = byeProblem(key, info, player, round, section, b.kind, rows);
+      if (problem) return { error: problem };
+    }
     deleteRows(t, old);
     const posted = p.post === "yes" ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
     addRows(table("Rounds"), [
@@ -1442,7 +1540,7 @@ function saveRound(p) {
         Black: g.black, Result: FORFEITS.includes(g.result) ? g.result : "", "Bye points": "", Posted: posted,
         Section: String(g.section || "") })),
       ...byes.map((b) => ({ Key: key, Round: String(round), Board: "", White: b.id, Black: "",
-        Result: "", "Bye points": String(b.points), Posted: posted, Section: String(b.section || ""),
+        Result: "", "Bye points": String(BYE_KINDS[b.kind] !== undefined ? BYE_KINDS[b.kind] : b.points), Posted: posted, Section: String(b.section || ""),
         "Bye kind": BYE_KINDS[b.kind] !== undefined ? b.kind : "" })),
     ]);
     clearTournamentCache(key);
@@ -1600,6 +1698,46 @@ function setSections(p) {
       .map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
     clearTournamentCache(key);
     return { ok: true, message: `Sections: ${parsed.sections.map((s) => s.name).join(", ")}. Everyone is placed by rating.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Renames and orders a tournament's sections at any time, extra games sections and quads too: p.sections is
+ *  every one, in the new order, as [{ from, name }]. Each player's and pairing's section follows its name. */
+function setSectionNames(p) {
+  const key = `${p.event}/${p.date}`;
+  let list;
+  try {
+    list = JSON.parse(p.sections || "[]");
+  } catch (err) {
+    list = null;
+  }
+  if (!Array.isArray(list)) return { error: "Which sections?" };
+  const lock = lockTournaments();
+  try {
+    const info = table("Tournaments");
+    const line = info.rows.find((r) => r.Key === key);
+    if (!line) return { error: "No such tournament." };
+    const defs = sectionsOf(line);
+    const from = list.map((x) => String((x && x.from) || ""));
+    if (from.length !== defs.length || defs.some((d) => !from.includes(d.name)) || new Set(from).size !== from.length) {
+      return { error: "The sections changed since the desk loaded them. Refresh and try again." };
+    }
+    const names = list.map((x) => String((x && x.name) || "").trim().replace(/\s+/g, " "));
+    // US Chess's rating report keeps 30 characters of a section's name.
+    if (names.some((name) => !name || name.length > 30)) return { error: "Each section needs a name of up to 30 characters." };
+    const twice = names.find((name, i) => names.findIndex((x) => x.toLowerCase() === name.toLowerCase()) !== i);
+    if (twice) return { error: `Two sections are named ${twice}.` };
+    const renamed = Object.fromEntries(from.map((name, i) => [name, names[i]]));
+    setCell(info, line.row, "Sections", JSON.stringify(from.map((name, i) => ({ ...defs.find((d) => d.name === name), name: names[i] }))));
+    for (const tab of ["Players", "Rounds"]) {
+      const t = table(tab);
+      setCells(t, Object.fromEntries(t.rows.filter((r) => r.Key === key && Object.prototype.hasOwnProperty.call(renamed, r.Section) && renamed[r.Section] !== r.Section)
+        .map((r) => [r.row, { Section: renamed[r.Section] }])));
+    }
+    clearTournamentCache(key);
+    return { ok: true, message: `Sections: ${names.join(", ")}.` };
   } finally {
     lock.releaseLock();
   }
@@ -2134,7 +2272,7 @@ function setByes(p, td) {
     const run = runOf(key);
     // doPost's check of TOURNAMENT_WRITES goes by p.event and p.date, which the desk may leave out and the Entries page skips.
     if (run.info && rated(key)) return { error: "US Chess has rated this tournament, so its byes can't change." };
-    const checked = checkByes(byeList(p.byes), byeList(r[col.Byes]), key, event, run, !td);
+    const checked = checkByes(byeList(p.byes), byeList(r[col.Byes]), key, event, run, !td, r[col["US Chess ID"]]);
     if (checked.error) return checked;
     sheet.getRange(index + 2, col.Byes + 1).setNumberFormat("@").setValue(checked.list.join(", "));
     if (run.info) setPlayerByes(key, r[col["US Chess ID"]], checked.list, run.info);
@@ -2149,7 +2287,7 @@ function setByes(p, td) {
 /** Checks the byes asked for, a list as byeList makes it, for the event with the key: against old, the entry's
  *  list before, and run (runOf), its tournament's rows once it has started. online is the player's own change,
  *  not the TD's. Returns { list }, as the Byes column keeps it, or { error }. */
-function checkByes(asked, old, key, event, run, online) {
+function checkByes(asked, old, key, event, run, online, id) {
   if (event.kind === "night") {
     return asked.length ? { error: "A single night has no byes; register for the whole month to miss a night." } : { list: [] };
   }
@@ -2178,12 +2316,24 @@ function checkByes(asked, old, key, event, run, online) {
     const what = month ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
     return { error: `${what} is already paired, so only the TD can change it.` };
   }
-  // One online, a month's too, as the Denver Chess Club's monthly Tuesdays allow; the TD can give more.
-  if (online && list.length > 1) return { error: "One half-point bye per player; ask the TD for more." };
-  // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable.
+  // A tournament date's rounds are its own; a month's are only known once it starts.
+  const unoffered = !month && list.find((x) => !old.includes(x) && !offersHalfBye(event, Number(x), rounds));
+  if (unoffered) return { error: `The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round ${unoffered} isn't one.` };
+  const given = lines.filter((r) => r.White === id && halfRow(r) && !extraNames(info).includes(r.Section)
+    && !list.some((x) => byeRound(x, dates) === Number(r.Round)));
+  if (list.length + new Set(given.map((r) => r.Round)).size > HALF_BYE_LIMIT) {
+    return { error: given.length ? `There's a half-point bye in ${roundName(info, Number(given[0].Round))} already, and the event allows one per player.`
+      : "One half-point bye per player, as the event's page announces." };
+  }
+  // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable;
+  // only the TD can cancel one, and then a win counts as a draw for prizes (22C5).
   const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
-  if (online && lines.some((r) => Number(r.Round) === 1 && r.Posted) && list.includes(last) !== old.includes(last)) {
-    return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1 and can't be dropped after it (22C4); tell the TD.` };
+  const started = lines.some((r) => Number(r.Round) === 1 && r.Posted);
+  if (started && list.includes(last) && !old.includes(last)) {
+    return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1, so it can't be added now (22C4).` };
+  }
+  if (started && online && old.includes(last) && !list.includes(last)) {
+    return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} asked for before round 1 can't be dropped after it (22C4); tell the TD.` };
   }
   return { list };
 }

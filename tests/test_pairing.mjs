@@ -485,3 +485,50 @@ test("30B: in a quad, a player who withdrew before playing half their games coun
   const rows = Pairing.quadStandings({ players: players.map((p) => (p.id === "q3" ? { ...p, out: 2 } : p)), rounds });
   assert.deepEqual(rows.map((r) => [r.id, r.score, r.place]), [["q1", 1, 1], ["q2", 1, 1], ["q4", 1, 1], ["q3", 0.5, null]]);
 });
+
+test("byeProblems: a round's byes by the rules, half-point (22C) and full-point (28L), each with its reason", () => {
+  const p = (id, rating, extra) => ({ id, name: id, rating, number: 0, section: "", ...extra });
+  const g = (white, black, result = "") => ({ white, black, result });
+  const swiss = (players, rounds) => Pairing.sections({ format: "swiss", players, rounds })[0];
+  const page = { limit: 1, everyRound: true };
+  const check = (s, number, games, byes, halfByes = page, last = 4) => Pairing.byeProblems(s, number, games, byes, last, halfByes);
+  const half = (id) => ({ id, kind: "half", points: 0.5 });
+  const full = (id) => ({ id, kind: "bye", points: 1 });
+  // Round 1 to come: A to E, rated 2000 down to 1600.
+  const five = ["A", "B", "C", "D", "E"].map((id, i) => p(id, 2000 - i * 100));
+  const fresh = swiss(five, []);
+  assert.deepEqual(check(fresh, 1, [g("A", "C"), g("B", "D")], [full("E")]), [], "the lowest rated (28L2)");
+  assert.match(check(fresh, 1, [g("A", "C"), g("B", "E")], [full("D")])[0], /D is rated 1700; .* E \(1600\), or with 28L2a someone within 80 points/);
+  assert.deepEqual(check(swiss(five.map((x) => (x.id === "D" ? { ...x, rating: 1650 } : x)), []), 1, [g("A", "C"), g("B", "E")], [full("D")]), [],
+    "within 80 points, 28L2a");
+  assert.match(check(fresh, 1, [g("A", "B")], [full("C"), full("D"), half("E")])[0], /^2 full-point byes: only the odd player has one \(28L1\)\.$/);
+  // Unrated players come after rated ones; a new player after one who has played rated games.
+  const unrated = swiss([...five.slice(0, 4), p("N", null, { games: 0 }), p("U", null, { games: 6 })].slice(1), []);
+  assert.match(check(unrated, 1, [g("B", "C"), g("D", "U")], [full("N")])[0], /^N is a new player; 28L2 gives .* to a rated player/);
+  // Half-point byes: up to one, with those asked for; in the last round only when asked for (22C4); and without a
+  // page announcing them, only the first half's rounds (22C1).
+  const asked = swiss([...five.slice(0, 4), p("E", 1600, { byes: [3] })], [{ games: [g("A", "C", "1-0"), g("B", "D", "1-0")], byes: [full("E")] }]);
+  assert.deepEqual(check(asked, 3, [], [half("E")]), []);
+  assert.equal(check(asked, 2, [], [half("E")])[0], "E already has or asked for a half-point bye, in round 3, and the event allows one per player.");
+  assert.equal(check(asked, 4, [], [half("A")])[0], "A didn't ask for a last-round bye before round 1, so they can't have one (22C4).");
+  assert.match(check(asked, 3, [], [half("E")], { limit: 1, everyRound: false })[0], /\(22C1\), and round 3 isn't one\.$/);
+  assert.deepEqual(check(asked, 2, [], [half("A")], { limit: 1, everyRound: false }), [], "round 2 of 4 is in the first half");
+  // After round 1, E has had the full point (28L3 forbids a second); A and B lead.
+  assert.equal(check(asked, 2, [g("A", "B"), g("C", "D")], [full("E")])[0], "E has had a full-point bye already, and 28L3 allows one.");
+  assert.deepEqual(check(asked, 2, [g("A", "B")], [full("C"), full("E"), half("D")]).slice(-2),
+    ["2 full-point byes: only the odd player has one (28L1).", "E has had a full-point bye already, and 28L3 allows one."]);
+  assert.match(check(asked, 2, [g("C", "D"), g("B", "E")], [full("A")])[0], /^A has 1; 28L2 gives the full-point bye to the lowest score group where someone can take it, 0 points\.$/);
+  assert.deepEqual(check(asked, 2, [g("A", "B"), g("C", "E")], [full("D")]), []);
+  // 28L4: not a player who asked for a half-point bye, while another in the group can take it.
+  const later = swiss([p("A", 2000), p("B", 1900), p("C", 1800, { byes: [3] })], []);
+  assert.match(check(later, 1, [g("A", "B")], [full("C")], page, 3)[0], /^C took or asked for a half-point bye, so 28L4/);
+  // 28L3: not a player who won by a no-show's forfeit, while someone else can take it.
+  const forfeit = swiss(["A", "B", "C", "D", "E"].map((id, i) => p(id, 2000 - i * 100)),
+    [{ games: [g("A", "D", "1-0"), g("E", "B", "1F-0F")], byes: [half("C")] }]);
+  assert.match(check(forfeit, 2, [g("A", "C"), g("B", "D")], [full("E")])[0], /^E won a game by forfeit, and 28L3 says not to/);
+  // None in an extra games section (28M4) or a quad, of either kind.
+  const extra = Pairing.sections({ format: "swiss", sections: [{ name: "Open" }, { name: "Extra", extra: true, first: 2, last: 2, players: ["A", "B", "C"] }],
+    players: five.slice(0, 3).map((x) => ({ ...x, section: "Open" })), rounds: [{ games: [g("A", "B", "1-0")], byes: [full("C")] }] })[1];
+  assert.match(check(extra, 2, [g("A", "B")], [full("C")])[0], /^An extra games section gives no full-point bye \(28M4\); make C's round unplayed\.$/);
+  assert.match(check(extra, 2, [g("A", "B")], [half("C")])[0], /^An extra games section has no half-point byes/);
+});

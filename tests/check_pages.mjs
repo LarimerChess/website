@@ -2144,13 +2144,20 @@ const sectionDesk = await mocked("/td/ running a Swiss in two sections", (p) => 
       .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, out: null,
         section: rating != null && rating >= 1400 ? "Open" : "Under 1400" }));
     sectioned = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: Number(p.rounds), status: "running",
-      coin: p.coin, sections, players, rounds: [] };
+      coin: p.coin, sections, players, rounds: [], halfByes: { limit: 1, everyRound: true } };
     return { ok: true, message: "Added 7 player(s)." };
   }
   if (p.action === "section") {
     sectioned.players.find((x) => x.id === p.id).section = p.section;
     for (const b of sectioned.rounds.flatMap((r) => r.byes).filter((b) => b.id === p.id)) b.section = p.section;
     return { ok: true, message: "Moved." };
+  }
+  if (p.action === "sectionNames") {
+    const list = JSON.parse(p.sections);
+    const renamed = Object.fromEntries(list.map((x) => [x.from, x.name]));
+    sectioned.sections = list.map((x) => ({ ...sectioned.sections.find((d) => d.name === x.from), name: x.name }));
+    for (const x of [...sectioned.players, ...sectioned.rounds.flatMap((r) => [...r.games, ...r.byes])]) x.section = renamed[x.section] ?? x.section;
+    return { ok: true, message: `Sections: ${list.map((x) => x.name).join(", ")}.` };
   }
   if (p.action === "sync") {
     sectioned.players.push({ id: "88888888", number: 8, name: "Hal", rating: 1100, out: null, section: "Under 1400" });
@@ -2249,6 +2256,30 @@ lateMove.id === "88888888" && lateMove.section === "Open" ? pass("TD desk moves 
   : fail(`TD desk late section move: ${JSON.stringify(lateMove)}`);
 await axeBoth(sectionDesk, "TD desk checking in a late entrant");
 await fitsPhone(sectionDesk, "TD desk checking in a late entrant");
+// The TD renames Under 1400 and moves it first; check-in follows the new names and order.
+await sectionDesk.click(".run-names-wrap summary");
+await press(sectionDesk, '.run-names-list button[data-focus="Under 1400-Up"]');
+const focusKept = await sectionDesk.evaluate(() => document.activeElement?.dataset.focus);
+const reserve = await sectionDesk.$('input[aria-label="New name for Under 1400"]');
+await reserve.click({ clickCount: 3 });
+await reserve.type("Reserve");
+await fitsPhone(sectionDesk, "TD desk renaming and ordering sections");
+await axeBoth(sectionDesk, "TD desk renaming and ordering sections");
+if (process.env.SHOTS) {
+  for (const width of [390, 1600]) {
+    await sectionDesk.setViewport({ width, height: 900 });
+    await sectionDesk.screenshot({ path: `${process.env.SHOTS}/late-entrant-and-section-names-${width}.png`, fullPage: true });
+  }
+  await sectionDesk.setViewport(PHONE);
+}
+await press(sectionDesk, ".run-names button[type=submit]");
+await sectionDesk.waitForFunction(() => document.querySelector(".run-attendance-all h4")?.textContent.startsWith("Reserve"));
+const named = sectionCalls.find((c) => c.action === "sectionNames") || {};
+const namedHeadings = await sectionDesk.$$eval(".run-attendance-all h4", (h) => h.map((x) => x.textContent));
+named.sections === JSON.stringify([{ from: "Under 1400", name: "Reserve" }, { from: "Open", name: "Open" }])
+  && focusKept === "Under 1400-Up" && JSON.stringify(namedHeadings) === JSON.stringify(["Reserve (2)", "Open (6)"])
+  ? pass("TD desk renames and reorders the sections, and checks in under the new names in the new order")
+  : fail(`TD desk section names: ${JSON.stringify({ named, focusKept, namedHeadings })}`);
 await sectionDesk.close();
 
 // Players reporting results on the Pairings page: Ben is saved on this device by the Register
@@ -2327,7 +2358,7 @@ await reportPage.close();
 // A desk that keeps a Swiss of four in memory, for the checks below. rounds, if given, starts it with them.
 function deskState(rounds) {
   const state = { calls: [], held: rounds ? { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running",
-    coin: "white", players: fourPlayers(), rounds, timeControl: "G/70;d10" } : null };
+    coin: "white", players: fourPlayers(), rounds, timeControl: "G/70;d10", halfByes: { limit: 1, everyRound: true } } : null };
   state.answer = (p) => {
     state.calls.push(p);
     const held = state.held;
@@ -2336,7 +2367,8 @@ function deskState(rounds) {
     if (p.action === "incidents") return { incidents: [] };
     if (p.action === "tournament") return { tournament: held && JSON.parse(JSON.stringify(held)) };
     if (p.action === "start") {
-      state.held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: p.coin, players: fourPlayers(), rounds: [] };
+      state.held = { key: "classic/2026-11-07", name: "Classic", format: "swiss", plannedRounds: 3, status: "running", coin: p.coin, players: fourPlayers(), rounds: [],
+        halfByes: { limit: 1, everyRound: true } };
       return { ok: true, message: "Added 4 player(s)." };
     }
     if (p.action === "round") {
@@ -2491,13 +2523,13 @@ reopened.cancel && JSON.stringify(reopened.games) === JSON.stringify(byHand.game
   : fail(`TD desk editing a posted round: ${JSON.stringify({ reopened, reposted })}`);
 await handPage.close();
 
-// Byes asked for in advance at check-in: Ben asked for round 2 and Cal for rounds 2 and 3, so both start round 2
+// Byes asked for in advance at check-in: Ben and Cal asked for round 2, so both start round 2
 // as half-point byes, which the pairing takes, without counting as unsaved work that holds back the desk's
 // reloads. The rounds not yet paired are listed under Byes and unplayed rounds, and the register form offers only those.
 const checkinByeDesk = deskState([{ games: [{ board: 1, white: "11111111", black: "33333333", result: "1-0", section: "" },
   { board: 2, white: "44444444", black: "22222222", result: "0-1", section: "" }], byes: [], out: [], posted: true }]);
 checkinByeDesk.held.players[1].byes = [2];
-checkinByeDesk.held.players[2].byes = [2, 3];
+checkinByeDesk.held.players[2].byes = [2];
 const checkinByePage = await mocked("/td/ checking in byes asked for", checkinByeDesk.answer);
 await signIn(checkinByePage);
 await checkinByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
@@ -2513,12 +2545,12 @@ await checkinByePage.select('select[aria-label="Ann this round"]', "absent");
 const checkinByesBusy = await checkinByePage.evaluate(() => { document.activeElement?.blur(); return runBusy(); });
 await checkinByePage.select('select[aria-label="Ann this round"]', "play");
 JSON.stringify(checkinByes.head) === JSON.stringify(["No.", "Name", "Rating", "Score", "Byes asked for", "This round"])
-  && JSON.stringify(checkinByes.rows) === JSON.stringify([["Ann", "", "play"], ["Ben", "2", "half"], ["Cal", "2, 3", "half"], ["Dee", "", "play"]])
+  && JSON.stringify(checkinByes.rows) === JSON.stringify([["Ann", "", "play"], ["Ben", "2", "half"], ["Cal", "2", "half"], ["Dee", "", "play"]])
   && checkinByes.hint.startsWith("Everyone starts as Present, or as a half-point bye if they asked for one this round;")
   && !checkinByes.busy && checkinByesBusy
   ? pass("TD desk starts a player who asked for a bye this round as a half-point bye, shows the byes asked for, and counts only a changed choice as unsaved")
   : fail(`TD desk check-in with byes: ${JSON.stringify({ checkinByes, checkinByesBusy })}`);
-checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), rounds 2 and 3. Change them in the entries list."
+checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), round 2. Change them in the entries list."
   && JSON.stringify(checkinByes.offered) === JSON.stringify(["Round 2", "Round 3"])
   ? pass("TD desk lists the byes asked for rounds not yet paired, and the register form offers only those rounds")
   : fail(`TD desk byes asked for: ${JSON.stringify({ asked: checkinByes.asked, offered: checkinByes.offered })}`);
@@ -2536,12 +2568,12 @@ await checkinByePage.close();
 // A started month's tournament that comes back after the entries gives them its nights, past ones too; and a bye
 // saved from the entries list reaches check-in through the tournament's copy.
 const monthByeEntries = [{ name: "Ann", id: "11111111", rating: "1900", for: "Whole month", category: "Adult", amount: "17", due: "17",
-  card: "17.80", email: "", expires: "2027-01-31", token: "ann1", date: "2026-10", byes: ["2026-10-12"] }];
+  card: "17.80", email: "", expires: "2027-01-31", token: "ann1", date: "2026-10", byes: [] }];
 const monthByeHeld = { key: "club-night/2026-10", name: "Club Night", format: "swiss", plannedRounds: 3, status: "running", coin: "white",
   roundDates: ["2026-10-12", "2026-10-19", "2026-10-26"], players: fourPlayers(),
-  rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" }], byes: [{ id: "11111111", points: 0.5, kind: "half", section: "" },
-    { id: "44444444", points: 1, kind: "bye", section: "" }], out: [], posted: true }] };
-monthByeHeld.players[0].byes = [1];
+  halfByes: { limit: 1, everyRound: true },
+  rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" },
+    { board: 2, white: "11111111", black: "44444444", result: "1-0", section: "" }], byes: [], out: [], posted: true }] };
 let releaseMonthBye;
 const monthByeLoad = new Promise((resolve) => { releaseMonthBye = resolve; });
 const monthByePage = await mocked("/td/ with a month's byes", async (p) => {
@@ -2573,9 +2605,9 @@ await monthByePage.click('.td-entries input[value="2026-10-19"]');
 const monthByeCheckin = await monthByePage.waitForFunction(() => [...document.querySelectorAll(".run-attendance tbody tr")]
   .find((r) => r.cells[1].textContent === "Ann" && r.querySelector("select").value === "half")?.cells[4].textContent, { timeout: 5000 })
   .then((cell) => cell.jsonValue(), () => null);
-JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26", "October 12"]) && monthByesRedrawn
-  && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12 (checked)", "2026-10-19", "2026-10-26"])
-  && monthByeCheckin?.replaceAll(" ", " ") === "1 (October 12), 2 (October 19)"
+JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26"]) && monthByesRedrawn
+  && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12", "2026-10-19", "2026-10-26"])
+  && monthByeCheckin?.replaceAll(" ", " ") === "2 (October 19)"
   ? pass("TD desk shows a started month's nights, past ones too, once its tournament loads, and check-in follows a bye saved from the entries")
   : fail(`TD desk month byes: ${JSON.stringify({ monthByesEarly, monthByesRedrawn, monthByesLoaded, monthByeCheckin })}`);
 await monthByePage.close();
@@ -3084,9 +3116,9 @@ quadShown.quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Round 
   && quadShown.quadTop.join("|") === "1|Q3|1900|2|L3 b|W2 w|W4 w|3|"
   ? pass("TD desk quad standings show each round and head-to-head, as the Standings page does")
   : fail(`TD desk quad standings: ${JSON.stringify([quadShown.quadHead, quadShown.quadTop])}`);
-JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", "zero", "withdraw"])
+JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "zero", "withdraw"])
   && quadShown.standings.join() === "Sonneborn-Berger,Sonneborn-Berger,Median" && quadShown.planned.join() === "Extra games" && quadShown.plannedShown
-  ? pass("TD desk runs quads' extra games section as a Swiss, and changes only its rounds")
+  ? pass("TD desk runs quads' extra games section as a Swiss without half-point byes, and changes only its rounds")
   : fail(`TD desk quads with an extra games section: ${JSON.stringify(quadShown)}`);
 await quadExtra.close();
 
@@ -3143,7 +3175,7 @@ await latePage.close();
 
 // Byes by the rules on the desk: Cal lost round 1 by forfeit, so he starts round 2 as not here (28P); Fay entered
 // late and has no round 1, which the TD can make a half-point bye (28K); and a full-point bye the TD gives Ann,
-// who had one in round 1, is flagged (28L3) without stopping the post.
+// who had one in round 1, keeps the round from being saved or posted (28L3).
 const byeRules = deskState([{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1F-0F", section: "" },
   { board: 2, white: "44444444", black: "55555555", result: "1-0", section: "" }],
 byes: [{ id: "11111111", points: 1, kind: "bye", section: "" }], out: [], posted: true }]);
@@ -3163,13 +3195,16 @@ await byePage.waitForFunction(() => document.querySelector(".run-round-title").t
 await byePage.select("#run-move-0", "11111111");
 await byePage.select("#run-move-kind-0", "bye");
 await press(byePage, ".run-tools button[data-focus='0|move']");
-const warned = await byePage.evaluate(() => ({ hidden: document.querySelector(".run-warnings").hidden,
-  items: [...document.querySelectorAll(".run-warnings li")].map((li) => li.textContent), blocked: !document.querySelector(".run-problems").hidden }));
+await press(byePage, ".run-post");
+const warned = await byePage.evaluate(() => ({ items: [...document.querySelectorAll(".run-problems li")].map((li) => li.textContent),
+  status: document.querySelector(".run-status").textContent }));
+const postedAnyway = byeRules.calls.some((c) => c.action === "round");
 noShow.value === "absent" && noShow.name.includes("28P") && lateBye.id === "66666666" && lateBye.number === "1" && lateBye.kind === "half"
-  && lateBye.section === "" && !warned.hidden && warned.items.some((w) => w.startsWith("Ann (1900) has had a full-point bye already"))
-  ? pass("TD desk starts a forfeit loser as not here (28P), lets a late entrant's missed round be a half-point bye (28K), and flags a second full-point bye (28L3)")
+  && lateBye.section === "" && warned.items.includes("Ann has had a full-point bye already, and 28L3 allows one.")
+  && warned.status.startsWith("Not saved yet.") && !postedAnyway
+  ? pass("TD desk starts a forfeit loser as not here (28P), lets a late entrant's missed round be a half-point bye (28K), and refuses a second full-point bye (28L3)")
   : fail(`TD desk byes by the rules: ${JSON.stringify({ noShow, lateBye, warned })}`);
-await axeBoth(byePage, "TD desk flagging a full-point bye");
+await axeBoth(byePage, "TD desk refusing a full-point bye");
 await byePage.close();
 
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows

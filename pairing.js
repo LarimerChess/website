@@ -362,6 +362,87 @@
     return order(players.filter((p) => !p.hadFullBye))[0] || players[0];
   }
 
+  /** Whether the tournament's round number offers half-point byes in a section whose last round is last: every
+   *  round when the event's page announces them (halfByes.everyRound), otherwise the first half and an odd
+   *  count's middle round, which need no notice (22C1). registration.gs's offersHalfBye is the same. */
+  const offersHalfBye = (halfByes, number, last) => Boolean(halfByes?.everyRound) || number <= Math.ceil(last / 2);
+
+  /** Why a full-point bye to p, one of the players in the round's games or byes, breaks 28L2 to 28L4, as chooseBye
+   *  applies them, or "". 28L2a lets it go to a higher-rated player in the group, within 80 points (29E5a). */
+  function fullByeProblem(p, playing) {
+    if (p.hadFullBye) return `${p.name} has had a full-point bye already, and 28L3 allows one.`;
+    const fits = (q) => pairable(playing.filter((x) => x !== q));
+    const can = (q, forfeitWins) => !q.hadFullBye && (forfeitWins || !q.hadForfeitWin) && fits(q);
+    const strict = playing.some((q) => q !== p && can(q, false));
+    if (p.hadForfeitWin && strict) return `${p.name} won a game by forfeit, and 28L3 says not to give them a full-point bye while someone else can take it.`;
+    const pool = playing.filter((q) => q === p || can(q, !strict));
+    const lowest = Math.min(...pool.map((q) => q.score));
+    if (p.score > lowest) {
+      return `${p.name} has ${p.score}; 28L2 gives the full-point bye to the lowest score group where someone can take it, ${lowest} points.`;
+    }
+    const halfTaken = (q) => q.hadHalfBye || q.committed;
+    const group = pool.filter((q) => q.score === p.score && q !== p);
+    if (halfTaken(p) && group.some((q) => !halfTaken(q))) {
+      return `${p.name} took or asked for a half-point bye, so 28L4 gives them the full point only when everyone else in their score group has had a bye or a no-show's forfeit win.`;
+    }
+    const peers = [p, ...group.filter((q) => halfTaken(q) === halfTaken(p))];
+    const tier = (q) => (q.rating != null ? 0 : q.priorGames > 0 ? 1 : 2);
+    const best = Math.min(...peers.map(tier));
+    if (tier(p) > best) {
+      return `${p.name} ${tier(p) === 2 ? "is a new player" : "is unrated"}; 28L2 gives the full-point bye to ${best ? "an unrated player who has played rated games" : "a rated player"} in the score group first.`;
+    }
+    if (p.rating == null) return "";
+    const low = peers.filter((q) => q.rating != null).sort((a, b) => a.rating - b.rating)[0];
+    if (p.rating - low.rating > 80) {
+      return `${p.name} is rated ${p.rating}; 28L2 gives the full-point bye to the lowest-rated in the score group, ${low.name} (${low.rating}), or with 28L2a someone within 80 points of them (29E5a).`;
+    }
+    return "";
+  }
+
+  /**
+   * Why a section's round breaks the rules on byes, in words for the TD, [] when it doesn't: s is from sections(),
+   * number the tournament's round, games and byes the round's in s, last the section's last round, and halfByes the
+   * tournament's { limit, everyRound }. Half-point byes (22C): in a Swiss section that isn't an extra games one, in
+   * a round that offers them, up to the limit with those asked for, and in the last round only when asked for before
+   * round 1 (22C4). Full-point byes (28L): only the odd player's, none in a quad or an extra games section (28M4),
+   * and to the player 28L2 to 28L4 choose. registration.gs refuses the same, except the choice, which needs the scores.
+   */
+  function byeProblems(s, number, games, byes, last, halfByes) {
+    const own = number - s.first + 1;
+    const info = histories({ players: s.players, rounds: s.rounds.slice(0, own - 1) });
+    const name = (id) => info.get(id)?.name || id;
+    const problems = [];
+    const swiss = s.format !== "quad" && !s.extra;
+    for (const b of byes.filter((x) => byeKind(x) === "half")) {
+      if (!swiss) {
+        problems.push(`${s.extra ? "An extra games section" : "A quad"} has no half-point byes; make ${name(b.id)}'s round unplayed.`);
+        continue;
+      }
+      const asked = (s.players.find((p) => p.id === b.id)?.byes || []).map(Number);
+      const taken = s.rounds.flatMap((r, i) => (r.byes || []).filter((x) => x.id === b.id && byeKind(x) === "half").map(() => s.first + i));
+      const others = [...new Set([...taken, ...asked])].filter((n) => n !== number).sort((a, b2) => a - b2);
+      if (!offersHalfBye(halfByes, number, last)) {
+        problems.push(`The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round ${number} isn't one.`);
+      } else if (others.length >= (halfByes?.limit ?? 1)) {
+        problems.push(`${name(b.id)} already has or asked for a half-point bye, in round ${others[0]}, and the event allows one per player.`);
+      } else if (number === last && number > 1 && !asked.includes(number)) {
+        problems.push(`${name(b.id)} didn't ask for a last-round bye before round 1, so they can't have one (22C4).`);
+      }
+    }
+    const full = byes.filter((x) => byeKind(x) === "bye");
+    if (full.length && !swiss) {
+      problems.push(`${s.extra ? "An extra games section gives no full-point bye (28M4)" : "A quad gives no full-point bye"}; make ${name(full[0].id)}'s round unplayed.`);
+    } else if (full.length > 1) {
+      problems.push(`${full.length} full-point byes: only the odd player has one (28L1).`);
+      for (const b of full) if (info.get(b.id)?.hadFullBye) problems.push(`${name(b.id)} has had a full-point bye already, and 28L3 allows one.`);
+    } else if (full.length) {
+      const playing = [...games.flatMap((g) => [g.white, g.black]), full[0].id].map((id) => info.get(id)).filter(Boolean);
+      const problem = info.get(full[0].id) ? fullByeProblem(info.get(full[0].id), playing) : "";
+      if (problem) problems.push(problem);
+    }
+    return problems;
+  }
+
   /** 28J: round one. Upper half against lower half by rating, colors alternating down from the coin. */
   function firstRound(players, coin) {
     const sorted = [...players].sort(byRank);
@@ -754,6 +835,9 @@
       groups.push({ name: d.name, key: d.name, under: null, extra: true,
         members: t.players.filter((p) => ids.has(p.id)).map(({ byes, ...p }) => p) });
     }
+    // In the order the TD gave them, sections a player names without a definition last.
+    const at = (g) => (all.some((s) => s.name === g.name) ? all.findIndex((s) => s.name === g.name) : Infinity);
+    groups = groups.map((g, i) => [g, i]).sort(([a, i], [b, j]) => at(a) - at(b) || i - j).map(([g]) => g);
     // A player in two sections has a game or bye in each, told apart by its section.
     const here = (x, key) => !extras.length || (x.section || "") === key;
     return groups.map(({ members, ...g }) => {
@@ -793,7 +877,7 @@
   }
 
   const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, roundCells, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, sections, playsIn, pairSections, placeIn, mayEnter,
-    QUAD_TABLE, dueColor, assignColors, histories, POINTS };
+    offersHalfBye, byeProblems, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;
 })(typeof window !== "undefined" ? window : globalThis);

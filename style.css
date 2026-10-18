@@ -479,6 +479,9 @@ section.td-table td { white-space: nowrap; }
 .run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
 .run-section-row input { width: 100%; box-sizing: border-box; }
+.run-names-list { margin: 8px 0 12px; padding-left: 24px; }
+.run-names-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin-top: 8px; }
+.run-names-list input { width: 100%; box-sizing: border-box; }
 .run-sections-edit { margin: 16px 0; }
 .run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 .td-byes { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
@@ -510,9 +513,9 @@ section.td-table td { white-space: nowrap; }
 .run-tools strong { flex-basis: 100%; }
 .run-field { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; font-size: 14px; }
 .run-field select, .run-games select { max-width: 100%; }
-.run-problems, .run-warnings { margin: 12px 0; padding-left: 12px; border-left: 4px solid var(--accent); }
-.run-problems p, .run-warnings p { margin: 0; font-weight: 600; }
-.run-problems ul, .run-warnings ul { margin: 4px 0 0; padding-left: 20px; }
+.run-problems { margin: 12px 0; padding-left: 12px; border-left: 4px solid var(--accent); }
+.run-problems p { margin: 0; font-weight: 600; }
+.run-problems ul { margin: 4px 0 0; padding-left: 20px; }
 .td-saving { list-style: none; padding: 0; margin: 8px 0 0; }
 .td-saving li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .td-save-pending { color: var(--muted); }

@@ -22,7 +22,6 @@ const runGames = document.querySelector(".run-games-all");
 const runEditButtons = document.querySelector(".run-edit-buttons");
 const runPairingsHint = document.querySelector(".run-pairings-hint");
 const runProblems = document.querySelector(".run-problems");
-const runWarnings = document.querySelector(".run-warnings");
 const runCancel = document.querySelector(".run-cancel");
 const runResultButtons = document.querySelector(".run-result-buttons");
 const runStandingsWrap = document.querySelector(".run-standings-wrap");
@@ -152,6 +151,7 @@ function renderRun() {
     // A quad plays three rounds, but its extra games sections as many as the TD gives them.
     runPlanned.hidden = current.format !== "swiss" && !(current.format === "quad" && (current.sections || []).some((d) => d.extra));
     fillPlanned();
+    renderSectionNames();
     renderExtras();
   }
   const selectedChoice = choices.find((c) => c.key === choice.value);
@@ -261,7 +261,8 @@ function renderCheckin(t, parts, next) {
         row.insertCell().append(move);
       }
       const asked = !table && byes.includes(own);
-      const start = noShow ? "absent" : asked ? "half" : "play";
+      const half = !table && !byeProblemsIn(s, next, [], [{ id: p.id, kind: "half" }]).length;
+      const start = noShow ? "absent" : asked && half ? "half" : "play";
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
@@ -270,7 +271,7 @@ function renderCheckin(t, parts, next) {
       select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
       select.append(option("play", "Present", start === "play"),
         option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", start === "absent"),
-        ...(table ? [] : [option("half", "Half-point bye (asked for)", start === "half"), option("zero", "Zero-point bye (asked for)", false)]),
+        ...(table ? [] : [...(half ? [option("half", "Half-point bye (asked for)", start === "half")] : []), option("zero", "Zero-point bye (asked for)", false)]),
         option("withdraw", "Withdraw from the tournament", false));
       const lastRound = s.last ? s.last - s.first + 1 : t.plannedRounds;
       if (asked && own === lastRound) {
@@ -362,7 +363,10 @@ function renumber() {
   }
 }
 
-/** What keeps the draft from being saved, in words for the TD. */
+/** Pairing.byeProblems for a section's round, with the section's last round and the tournament's half-point byes. */
+const byeProblemsIn = (part, number, games, byes) => Pairing.byeProblems(part, number, games, byes, part.last ?? current.plannedRounds, current.halfByes);
+
+/** What keeps the draft from being saved, in words for the TD, the rules on byes among them. */
 function draftProblems() {
   const problems = [];
   const several = severalSections();
@@ -377,35 +381,10 @@ function draftProblems() {
       seen.add(id);
     }
     for (const id of active) if (!placed.includes(id)) problems.push(`${nameOf(id)}${where} isn't paired yet: add a board for them, or choose a round without a game.`);
+    const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
+    if (part) problems.push(...byeProblemsIn(part, draft.number, s.games, s.byes).map((text) => (several ? `${s.name}: ${text}` : text)));
   }
   return [...new Set(problems)];
-}
-
-/** Full-point byes in the draft that the rules wouldn't give, in words for the TD; posting is still allowed. */
-function draftWarnings() {
-  const warnings = [];
-  for (const s of draft.sections) {
-    const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
-    if (!part) continue;
-    const before = Pairing.histories({ players: part.players, rounds: part.rounds.slice(0, draft.number - part.first) });
-    const where = severalSections() ? ` in ${s.name}` : "";
-    const full = s.byes.filter((b) => Pairing.byeKind(b) === "bye");
-    if (part.extra && full.length) warnings.push(`An extra games section gives no full-point bye (28M4)${where}; make it unplayed.`);
-    if (full.length > 1) warnings.push(`${full.length} full-point byes${where}: only the odd player has one (28L1).`);
-    if (full.length && (s.games.length * 2 + full.length) % 2 === 0) warnings.push(`A full-point bye${where} with no odd player left to pair (28L1).`);
-    for (const b of full) {
-      const p = before.get(b.id);
-      if (!p) continue;
-      const name = nameOf(b.id);
-      if (p.hadFullBye) warnings.push(`${name} has had a full-point bye already; 28L3 allows one.`);
-      if (p.hadForfeitWin) warnings.push(`${name} won a game by forfeit; 28L3 says not to give them a full-point bye.`);
-      if (p.hadHalfBye || p.committed) warnings.push(`${name} took or asked for a half-point bye; 28L4 gives them the full point only when no one else in their score group can take it.`);
-      const placed = s.games.flatMap((g) => [g.white, g.black]);
-      const rated = placed.map((id) => before.get(id)).filter((q) => q && q.rating != null && q.score <= p.score && !q.hadFullBye && !q.hadForfeitWin);
-      if (p.rating == null && rated.length) warnings.push(`${name} is unrated; 28L2 gives the bye to a rated player in the lowest score group who can take it.`);
-    }
-  }
-  return [...new Set(warnings)];
 }
 
 function editButton(text, hint, focus, onClick) {
@@ -447,9 +426,6 @@ function renderDraft() {
   const problems = draftProblems();
   runProblems.hidden = !problems.length;
   runProblems.querySelector("ul").replaceChildren(...problems.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
-  const warnings = draftWarnings();
-  runWarnings.hidden = !warnings.length;
-  runWarnings.querySelector("ul").replaceChildren(...warnings.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
 }
 
 function editSection(s, n, several) {
@@ -622,7 +598,7 @@ async function enterResult(g, s, number, value, control) {
 
 function renderResults(number) {
   runPairings.hidden = false;
-  runEditButtons.hidden = runProblems.hidden = runWarnings.hidden = true;
+  runEditButtons.hidden = runProblems.hidden = true;
   runResultButtons.hidden = false;
   runPairingsHint.textContent = "Enter each board's result with its menu, which overrides anything reported. Players can report their "
     + "results on the Pairings page; a report counts once you confirm it. Check for reports to see new ones.";
@@ -934,6 +910,14 @@ function renderByesAll() {
     const kind = Pairing.byeKind(b);
     for (const [value, text] of Object.entries(BYE_LABELS)) select.append(option(value, text, value === kind));
     select.addEventListener("change", async () => {
+      // Only the change is checked, so a round posted before the rules were held to doesn't block it.
+      const changed = { id: b.id, kind: select.value };
+      const others = select.value === "bye" ? r.byes.filter((x) => x.id !== b.id && Pairing.byeKind(x) === "bye") : [];
+      const problems = ["bye", "half"].includes(select.value) ? byeProblemsIn(s, s.first + i, select.value === "bye" ? r.games : [], [...others, changed]) : [];
+      if (problems.length) {
+        select.value = kind;
+        return void (runStatus.textContent = problems[0]);
+      }
       const [event, date] = keyParts();
       select.disabled = true;
       const result = await call("byeKind", { event, date, number: s.first + i, id: b.id, kind: select.value, section: s.key });
@@ -1022,7 +1006,7 @@ function runBusy() {
   const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
   const checkingIn = !runRound.hidden && !runCheckin.hidden
     && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
-  return Boolean(field || edited || checkingIn || runSectionsEdit.open || (!runStart.hidden && startEdited));
+  return Boolean(field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || (!runStart.hidden && startEdited));
 }
 
 // The format menu and the hint on starting sit on the status line, outside the form.
@@ -1212,6 +1196,46 @@ function fillPlanned() {
   runPlanned.elements.rounds.value = def ? def.last - (def.first || 1) + 1 : current.plannedRounds || "";
 }
 plannedSection.addEventListener("change", fillPlanned);
+
+// Renaming and ordering the sections: each a name field with buttons to move it, kept as the TD left it while open.
+const namesForm = document.querySelector(".run-names");
+const namesWrap = namesForm.closest("details");
+
+function renderSectionNames() {
+  const defs = current.sections || [];
+  namesWrap.hidden = !defs.length;
+  if (namesWrap.open && namesForm.dataset.key === current.key) return;
+  namesForm.dataset.key = current.key;
+  const list = namesForm.querySelector(".run-names-list");
+  list.replaceChildren(...defs.map((d) => {
+    const item = document.createElement("li");
+    item.dataset.from = d.name;
+    const name = Object.assign(document.createElement("input"), { type: "text", value: d.name, maxLength: 30, autocomplete: "off" });
+    name.setAttribute("aria-label", `New name for ${d.name}`);
+    const move = (text, step) => editButton(text, ` ${d.name}`, `${d.name}-${text}`, () => {
+      const other = step < 0 ? item.previousElementSibling : item.nextElementSibling;
+      if (!other) return;
+      if (step < 0) other.before(item);
+      else other.after(item);
+      item.querySelector(`[data-focus="${CSS.escape(`${d.name}-${text}`)}"]`).focus();
+      runStatus.textContent = `${d.name} is ${[...list.children].indexOf(item) + 1} of ${list.children.length}.`;
+    });
+    item.append(name, move("Up", -1), move("Down", 1));
+    return item;
+  }));
+}
+
+namesForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const sections = [...namesForm.querySelectorAll(".run-names-list li")].map((li) => ({ from: li.dataset.from, name: li.querySelector("input").value.trim() }));
+  const [event, date] = keyParts();
+  const result = await call("sectionNames", { event, date, sections: JSON.stringify(sections) });
+  if (result.ok) {
+    namesWrap.open = false;
+    await loadRun();
+  }
+  runStatus.textContent = result.message || result.error;
+});
 
 const extraForm = document.querySelector(".run-extra");
 
