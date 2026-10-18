@@ -998,6 +998,7 @@ const keyOf = (node) => node.replace(/:/g, "/");
 function tournament(key, td) {
   const info = table("Tournaments").rows.find((r) => r.Key === key);
   if (!info) return null;
+  const entered = td ? nightRounds(key, info) : {};
   const players = table("Players").rows.filter((r) => r.Key === key)
     .sort((a, b) => Number(a["No."]) - Number(b["No."]))
     .map((r) => {
@@ -1008,6 +1009,7 @@ function tournament(key, td) {
         state: r.State || "" };
       const byes = byeRounds(byeList(r.Byes), info);
       if (byes.length) player.byes = byes;
+      if (entered[player.id]) player.nights = entered[player.id];
       return player;
     });
   const lines = table("Rounds").rows.filter((r) => r.Key === key && (td || r.Posted));
@@ -1449,7 +1451,11 @@ function syncPlayers(key) {
         Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
-    const missed = swiss ? added.filter((a) => !ROUND_ROBINS.includes(formatOf(info, defs.find((d) => d.name === a.Section)))).flatMap((a) => lateByes(key, info, a)) : [];
+    // A player who entered single nights of a month didn't enter the rounds before them, so has no late bye.
+    const month = key.split("/")[1].length === 7;
+    const whole = new Set(entrants.filter((e) => !month || e.for === "Whole month").map((e) => e.id));
+    const missed = swiss ? added.filter((a) => whole.has(a["US Chess ID"]) && !ROUND_ROBINS.includes(formatOf(info, defs.find((d) => d.name === a.Section))))
+      .flatMap((a) => lateByes(key, info, a)) : [];
     addRows(table("Rounds"), missed);
     setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
     if (added.length && defs.length) {
@@ -2487,6 +2493,24 @@ function byeRound(x, dates) {
 function byeRounds(list, info) {
   const dates = roundDates(info);
   return [...new Set(list.map((x) => byeRound(x, dates)))].filter(Boolean).sort((a, b) => a - b);
+}
+
+/** The rounds of a month that each player who entered it night by night plays, by US Chess ID: their nights'
+ *  places in its Round dates. A player with the whole month, or with no entry, plays every round, so isn't here. */
+function nightRounds(key, info) {
+  const dates = roundDates(info);
+  if (!dates.length) return {};
+  const [event, month] = key.split("/");
+  const { col, rows } = readEntries();
+  const mine = rows.filter((r) => r[col.Event] === event && active(r[col.Status]) && r[col.Date].startsWith(month));
+  const whole = new Set(mine.filter((r) => r[col.Date] === month).map((r) => r[col["US Chess ID"]]));
+  const out = {};
+  for (const r of mine) {
+    const id = r[col["US Chess ID"]];
+    if (whole.has(id)) continue;
+    out[id] = [...(out[id] || []), dates.indexOf(r[col.Date]) + 1].filter(Boolean).sort((a, b) => a - b);
+  }
+  return out;
 }
 
 /** A month's nights in round order, from its Tournaments row's Round dates (JSON), which Start sets from the

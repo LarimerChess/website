@@ -175,12 +175,14 @@ checkinByeDraft.games.length === 1 && checkinByeDraft.games[0].slice(1, 3).sort(
   ? pass("TD desk pairs the round with the half-point byes asked for") : fail(`TD desk pairing byes asked for: ${JSON.stringify(checkinByeDraft)}`);
 await checkinByePage.close();
 
-// A started month's tournament that comes back after the entries gives them its nights, past ones too; and a bye
-// saved from the entries list reaches check-in through the tournament's copy.
+// A started month's tournament that comes back after the entries gives them its nights, past ones too; a bye
+// saved from the entries list reaches check-in through the tournament's copy; and a player who entered only
+// another night starts as not here.
 const monthByeEntries = [{ name: "Ann", id: "11111111", rating: "1900", for: "Whole month", category: "Adult", amount: "17", due: "17",
   card: "17.80", email: "", expires: "2027-01-31", token: "ann1", date: "2026-10", byes: [] }];
 const monthByeHeld = { key: "club-night/2026-10", name: "Club Night", format: "swiss", plannedRounds: 3, status: "running", coin: "white",
-  roundDates: ["2026-10-12", "2026-10-19", "2026-10-26"], players: fourPlayers(),
+  roundDates: ["2026-10-12", "2026-10-19", "2026-10-26"],
+  players: fourPlayers().map((p) => ({ ...p, ...{ "33333333": { nights: [2] }, "44444444": { nights: [1] } }[p.id] })),
   halfByes: { limit: 1, everyRound: true },
   rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" },
     { board: 2, white: "11111111", black: "44444444", result: "1-0", section: "" }], byes: [], out: [], posted: true }] };
@@ -215,6 +217,10 @@ await monthByePage.click('.td-entries input[value="2026-10-19"]');
 const monthByeCheckin = await monthByePage.waitForFunction(() => [...document.querySelectorAll(".run-attendance tbody tr")]
   .find((r) => r.cells[1].textContent === "Ann" && r.querySelector("select").value === "half")?.cells[4].textContent, { timeout: 5000 })
   .then((cell) => cell.jsonValue(), () => null);
+const nightsCheckin = await monthByePage.$$eval(".run-attendance tbody tr", (rows) => rows.slice(2).map((r) => [r.cells[1].textContent, r.querySelector("select").value]));
+JSON.stringify(nightsCheckin) === JSON.stringify([["Cal", "play"], ["Dee (entered for October 12 only)", "absent"]])
+  ? pass("TD desk's check-in starts a player who entered only another night of the month as not here")
+  : fail(`TD desk check-in by nights: ${JSON.stringify(nightsCheckin)}`);
 JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26"]) && monthByesRedrawn
   && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12", "2026-10-19", "2026-10-26"])
   && monthByeCheckin?.replaceAll(" ", " ") === "2 (October 19)"

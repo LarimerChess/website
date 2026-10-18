@@ -165,7 +165,9 @@ function eventSection(event) {
     table.className = "entries";
     const head = table.createTHead().insertRow();
     const month = event.entries.some((e) => e.for === "Whole month") || switchers.length;
-    const byesColumn = event.entries.some((e) => e.byes?.length) || changers.length;
+    // A whole month's byes are its nights, each shown on its own night's list.
+    const byesHere = (e) => (night ? (e.byes || []).filter((b) => b === event.key.split("/")[1]) : e.byes || []);
+    const byesColumn = event.entries.some((e) => byesHere(e).length) || changers.length;
     // Players get sections when the tournament starts.
     const sectioned = event.entries.some((e) => e.section);
     for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(byesColumn ? ["Byes"] : []),
@@ -192,7 +194,7 @@ function eventSection(event) {
       if (month || player) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
       if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }, e.for === "Whole month"));
       const changer = changers.find((p) => p.id === e.id);
-      if (byesColumn) cell(row, byesText(e.byes));
+      if (byesColumn) cell(row, night ? (byesHere(e).length ? "Half-point bye" : "") : byesText(e.byes));
       if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
       if (sectioned) cell(row, e.section || "");
     }

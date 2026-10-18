@@ -1574,12 +1574,23 @@ for (const store of STORES) {
     t.handEdit("Entries", 0, { Byes: "2099-10-05" });
     t.gs.syncPlayers(month);
     eq(players(month), [["Ann Ash", "3, 4"], ["Ben Birch", ""], ["Cal", "1, 4"]]);
+    eq(t.gs.tournament(month, true).players.map((p) => p.nights), [undefined, [1], undefined], "the desk gets the nights of one who entered night by night");
     // Ben, a player from the night he registered for, moves to the whole month with a bye.
     const ben = t.register({ event: "monday-club-night-at-peak", date: "2099-10", id: "77777777", last: "Birch", email: "ben@example.com",
       byes: "2099-10-26" });
     assert.equal(ben.ok, true, JSON.stringify(ben));
     eq(players(month), [["Ann Ash", "3, 4"], ["Ben Birch", "4"], ["Cal", "1, 4"]]);
     eq(t.gs.tournament(month, false).players.map((p) => p.byes || []), [[3, 4], [4], [1, 4]]);
+    // Dee enters October 19 and 26 alone after the first night is posted: she plays only those, and has no late bye for it.
+    t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "1", post: "yes", byes: "[]",
+      games: JSON.stringify([{ board: 1, white: "66666666", black: "77777777" }]) });
+    for (const night of ["2099-10-19", "2099-10-26"]) {
+      t.sheets.Entries.data.push(["", "monday-club-night-at-peak", night, "44444444", "Dee", "", "registered", `t${night}`, "1300", ""]);
+    }
+    t.gs.syncPlayers(month);
+    eq(t.rows("Rounds").filter((r) => r.White === "44444444"), [], "no late bye");
+    eq(t.gs.tournament(month, true).players.map((p) => p.nights), [undefined, undefined, undefined, [3, 4]], "the month is every night");
+    assert.ok(t.gs.tournament(month, false).players.every((p) => !("nights" in p)), "the public copy has no nights");
     assert.equal(start("classic", "2026-11-07", "swiss").ok, true);
     eq(players("classic/2026-11-07"), [["Ann Ash", "2, 4"]]);
     eq(t.rows("Tournaments").map((r) => r["Round dates"]), [JSON.stringify(NIGHTS), ""], "a tournament date has none");

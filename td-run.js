@@ -48,7 +48,8 @@ function forEngine(t) {
   return {
     format: t.format, sections: t.sections || [],
     players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "",
-      games: p.games, floor: p.floor, sweep: p.sweep, ...(p.byes ? { byes: p.byes } : {}) })),
+      games: p.games, floor: p.floor, sweep: p.sweep, ...(p.byes ? { byes: p.byes } : {}),
+      ...(p.nights ? { nights: p.nights } : {}) })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
   };
 }
@@ -236,7 +237,8 @@ function renderCheckin(t, parts, next) {
   runCheckinHint.textContent = active.some(Pairing.roundRobin)
     ? "Everyone starts as Present; change anyone who isn't here. A round robin's table fixes its pairings, so a player not here loses that round's game by forfeit."
       + (active.some((s) => s.extra) ? " In an extra games section, a player not here has the round unplayed." : "")
-    : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
+    : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings."
+      + (t.players.some((p) => p.nights) ? " A player who entered other nights of the month only starts as not here." : "");
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section), and a late entrant moved until their first game.
@@ -258,9 +260,13 @@ function renderCheckin(t, parts, next) {
     const rows = s.players.filter((p) => !p.out).map((p) => {
       const byes = p.byes || [];
       const noShow = forfeited.has(p.id);
+      // A player who entered single nights of a month plays only those.
+      const elsewhere = p.nights && !p.nights.includes(next);
       const row = document.createElement("tr");
       row.insertCell().textContent = p.number;
-      row.insertCell().textContent = noShow ? `${p.name} (lost round ${own - 1} by forfeit: not here unless excused, 28P)` : p.name;
+      row.insertCell().textContent = noShow ? `${p.name} (lost round ${own - 1} by forfeit: not here unless excused, 28P)`
+        : elsewhere ? `${p.name} (${p.nights.length ? `entered for ${nightsInWords(p.nights.map((n) => t.roundDates[n - 1]))} only` : "not entered for this night"})`
+        : p.name;
       row.insertCell().textContent = p.rating ?? "Unrated";
       row.insertCell().textContent = scores.get(p.id) ?? 0;
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
@@ -276,7 +282,7 @@ function renderCheckin(t, parts, next) {
       }
       const asked = !table && byes.includes(own);
       const half = !table && !byeProblemsIn(s, next, [], [{ id: p.id, kind: "half" }]).length;
-      const start = noShow ? "absent" : asked && half ? "half" : "play";
+      const start = noShow || elsewhere ? "absent" : asked && half ? "half" : "play";
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
