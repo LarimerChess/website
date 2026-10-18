@@ -2149,7 +2149,13 @@ const sectionDesk = await mocked("/td/ running a Swiss in two sections", (p) => 
   }
   if (p.action === "section") {
     sectioned.players.find((x) => x.id === p.id).section = p.section;
+    for (const b of sectioned.rounds.flatMap((r) => r.byes).filter((b) => b.id === p.id)) b.section = p.section;
     return { ok: true, message: "Moved." };
+  }
+  if (p.action === "sync") {
+    sectioned.players.push({ id: "88888888", number: 8, name: "Hal", rating: 1100, out: null, section: "Under 1400" });
+    sectioned.rounds[0].byes.push({ id: "88888888", points: 0.5, kind: "half", section: "Under 1400" });
+    return { ok: true, message: "Added 1 player(s)." };
   }
   if (p.action === "round") {
     sectioned.rounds = [{ games: JSON.parse(p.games).map((g) => ({ ...g, result: "" })), byes: JSON.parse(p.byes), out: [], posted: p.post === "yes" }];
@@ -2223,6 +2229,26 @@ reclassified.id === "66666666" && reclassified.number === "1" && reclassified.ki
   ? pass("TD desk reclassifies a full-point bye as a half-point bye afterward") : fail(`TD desk reclassify: ${JSON.stringify(reclassified)}`);
 await axeBoth(sectionDesk, "TD desk entering results in two sections");
 await fitsPhone(sectionDesk, "TD desk entering results in two sections");
+// A late entrant, added after round 1 with its half-point bye (28K), can still be moved up until their
+// first game; everyone who has played, or had the full-point bye, stays in their section.
+await sectionDesk.select('select[aria-label="Open board 1 result"]', "1-0");
+await sectionDesk.select('select[aria-label="Open board 2 result"]', "0-1");
+await sectionDesk.waitForSelector(".run-checkin:not([hidden])");
+await press(sectionDesk, ".run-sync");
+await sectionDesk.waitForFunction(() => document.querySelector('select[aria-label="Hal\'s section"]'));
+const late = await sectionDesk.evaluate(() => ({
+  menus: [...document.querySelectorAll('.run-attendance select[aria-label$="\'s section"]')].map((m) => [m.getAttribute("aria-label"), [...m.options].map((o) => o.value)]),
+  bye: document.querySelector('.run-byes-all select[aria-label="Hal (1100), round 1"]')?.value }));
+JSON.stringify(late) === JSON.stringify({ menus: [["Hal's section", ["Open", "Under 1400"]]], bye: "half" })
+  ? pass("TD desk offers a section only to a late entrant who hasn't played, whose missed round is a half-point bye")
+  : fail(`TD desk late entrant: ${JSON.stringify(late)}`);
+await sectionDesk.select('select[aria-label="Hal\'s section"]', "Open");
+await sectionDesk.waitForFunction(() => document.querySelector(".run-attendance-all h4")?.textContent === "Open (6)");
+const lateMove = sectionCalls.filter((c) => c.action === "section").at(-1) || {};
+lateMove.id === "88888888" && lateMove.section === "Open" ? pass("TD desk moves a late entrant up a section after round 1")
+  : fail(`TD desk late section move: ${JSON.stringify(lateMove)}`);
+await axeBoth(sectionDesk, "TD desk checking in a late entrant");
+await fitsPhone(sectionDesk, "TD desk checking in a late entrant");
 await sectionDesk.close();
 
 // Players reporting results on the Pairings page: Ben is saved on this device by the Register

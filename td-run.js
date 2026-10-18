@@ -225,14 +225,16 @@ function renderCheckin(t, parts, next) {
     : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
-  // Sections are set until round 1 is posted (a player plays in one section).
+  // Sections are set until round 1 is posted (a player plays in one section), and a late entrant moved until their first game.
   const editable = !quad && next === 1;
   runSectionsEdit.hidden = !editable;
   if (editable && !runSectionsEdit.open) fillSections(runSectionsEdit.querySelector(".run-sections"), t.sections || []);
   const defs = (t.sections || []).filter((d) => !d.extra);
-  const choosing = editable && defs.length > 1;
   const several = parts.length > 1;
   runAttendance.replaceChildren(...active.flatMap((s) => {
+    const movable = (p) => !quad && !s.extra && defs.length > 1 && !s.rounds.some((r) => r.games.some((g) => g.white === p.id || g.black === p.id)
+      || r.byes.some((b) => b.id === p.id && Pairing.byeKind(b) === "bye"));
+    const choosing = s.players.some((p) => !p.out && movable(p));
     const table = s.format === "quad";
     const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
     const own = next - s.first + 1;
@@ -250,7 +252,8 @@ function renderCheckin(t, parts, next) {
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
       if (!table) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
         .replaceAll(" ", " ")).join(", ");
-      if (choosing && !s.extra) {
+      if (choosing && !movable(p)) row.insertCell();
+      else if (choosing) {
         const move = document.createElement("select");
         move.setAttribute("aria-label", `${p.name}'s section`);
         for (const d of defs) if (Pairing.mayEnter(d, p.rating) || d.name === s.name) move.append(option(d.name, d.name, d.name === s.name));
@@ -280,7 +283,7 @@ function renderCheckin(t, parts, next) {
       return row;
     });
     return sectionTable("run-attendance", ["No.", "Name", "Rating", "Score", ...(table ? [] : ["Byes asked for"]),
-      ...(choosing && !s.extra ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
+      ...(choosing ? ["Section"] : []), "This round"], rows, `${s.name} (${rows.length})`, several);
   }));
 }
 
@@ -910,7 +913,7 @@ document.getElementById("run-report-td").addEventListener("change", () => curren
 document.getElementById("run-report-control").addEventListener("change", (e) => current && checkControl(e.target, ""));
 
 /** Every round without a game, each with a menu to reclassify it (saved as soon as it changes), including a
- *  posted round a player has no row in, such as one a late entrant missed (28K). With an extra games
+ *  posted round a player has no row in, such as one a late entrant missed that offers no bye (28K). With an extra games
  *  section, a round is the section's own, and its section says which bye of a player's it is. */
 function renderByesAll() {
   const box = document.querySelector(".run-byes-all");

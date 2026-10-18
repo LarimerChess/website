@@ -1333,7 +1333,8 @@ function numberQuads(key) {
 }
 
 /** Adds registered entrants who aren't players yet, numbered after the others (28B), each in the
- *  section their rating puts them in, and in a Swiss with the byes they asked for. */
+ *  section their rating puts them in, and in a Swiss with the byes they asked for and lateByes for the
+ *  rounds already posted. */
 function syncPlayers(key) {
   const lock = lockTournaments();
   try {
@@ -1358,12 +1359,33 @@ function syncPlayers(key) {
         Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
+    const missed = swiss ? added.flatMap((a) => lateByes(key, info, defs.find((d) => d.name === a.Section), a["US Chess ID"], a.Section)) : [];
+    addRows(table("Rounds"), missed);
     setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
     clearTournamentCache(key);
-    return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).` : "No new entrants." };
+    const byes = missed.length ? ` They have half-point byes for the ${missed.length === 1 ? "round" : "rounds"} posted before (28K),`
+      + " under Byes and unplayed rounds, where each can be made unplayed instead." : "";
+    return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).${byes}` : "No new entrants." };
   } finally {
     lock.releaseLock();
   }
+}
+
+/** 28K: a late entrant's Rounds rows for the rounds of their section posted before they joined, a
+ *  half-point bye in each round the tournament offers byes in. An event whose page takes registrations
+ *  offers them in every round, as its Register form does; any other only in the first half and an odd
+ *  count's middle round, which need no notice (22C1). A round with no row is unplayed. */
+function lateByes(key, info, def, id, section) {
+  const first = (def && def.first) || 1;
+  const last = (def && def.last) || Number(info.Rounds) || 0;
+  const event = clubEvents()[key];
+  const everyRound = Boolean(event && event.page && !event.closed);
+  const posted = {};
+  for (const r of table("Rounds").rows) if (r.Key === key && r.Posted) posted[r.Round] = r.Posted;
+  return Object.keys(posted).map(Number).filter((n) => n >= first && n <= last && (everyRound || n - first + 1 <= Math.ceil((last - first + 1) / 2)))
+    .sort((a, b) => a - b)
+    .map((n) => ({ Key: key, Round: String(n), Board: "", White: id, Black: "", Result: "", "Bye points": String(BYE_KINDS.half),
+      Posted: posted[n], Section: section || "", "Bye kind": "half" }));
 }
 
 /** Saves a round's pairings and byes; posted makes them public. Replaces the round if it was saved before. */
@@ -1583,7 +1605,8 @@ function setSections(p) {
   }
 }
 
-/** Moves a player to another section before round 1. A player may play up, never down. */
+/** Moves a player to another section before round 1, or later before their first game or full-point bye,
+ *  with their byes. A player may play up, never down. */
 function setSection(p) {
   const key = `${p.event}/${p.date}`;
   const lock = lockTournaments();
@@ -1600,8 +1623,19 @@ function setSection(p) {
     if (def.under && r >= def.under) {
       return { error: `${line.Name} is rated ${line.Rating}, too high for ${def.name}. A player may play up, not down.` };
     }
-    const late = beforeRoundOne(key);
-    if (late) return { error: late };
+    const rounds = table("Rounds");
+    const mine = rounds.rows.filter((r) => r.Key === key);
+    if (mine.some((r) => r.Posted || r.Result)) {
+      const placed = (r) => r.Section === line.Section && (r.Black ? r.White === p.id || r.Black === p.id
+        : r.White === p.id && Number(r["Bye points"]) === BYE_KINDS.bye);
+      if (mine.some(placed)) {
+        return { error: `Round 1 is posted and ${line.Name} has had a game or a full-point bye in ${line.Section || "their section"}, so they stay in it: a player plays in one section.` };
+      }
+      setCells(rounds, Object.fromEntries(mine.filter((r) => r.White === p.id && !r.Black && r.Section === line.Section)
+        .map((r) => [r.row, { Section: def.name }])));
+    } else {
+      beforeRoundOne(key);
+    }
     setCell(t, line.row, "Section", def.name);
     clearTournamentCache(key);
     return { ok: true, message: `${line.Name} plays in ${def.name}.` };

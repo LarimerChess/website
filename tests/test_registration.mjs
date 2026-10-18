@@ -678,7 +678,7 @@ for (const store of STORES) {
     assert.equal(rows("Rounds").length, 0);
     gs.setSection({ ...p, id: "55555555", section: "Open" });
     gs.saveRound({ ...p, number: "1", post: "yes", games: JSON.stringify(games), byes: JSON.stringify(byes) });
-    assert.match(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).error, /posted/);
+    assert.match(gs.setSection({ ...p, id: "55555555", section: "Under 1400" }).error, /has had a game or a full-point bye in Open/);
     assert.match(gs.setSections({ ...p, sections: '[{"name":"Open"}]' }).error, /posted/);
     const lines = rows("Rounds");
     eq(lines.filter((r) => r.Black).map((r) => [r.Section, r.Board]), [["Open", "1"], ["Open", "2"], ["Under 1400", "1"]]);
@@ -690,6 +690,60 @@ for (const store of STORES) {
     eq(back.rounds[0].games.map((g) => [g.section, g.board]), [["Open", 1], ["Under 1400", 1], ["Open", 2]]);
     eq(back.rounds[0].games.filter((g) => g.section === "Open").flatMap((g) => [g.white, g.black]).sort(), ["11111111", "22222222", "33333333", "55555555"]);
     assert.equal(gs.sectionsByKey()["classic/2026-11-07"]["44444444"], "Under 1400");
+  });
+}
+
+for (const store of STORES) {
+  test(`a late entrant gets a half-point bye for each posted round that offers one (28K), can be moved until their first game, and can have a bye made unplayed (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    const key = "classic/2026-11-07";
+    const event = { event: "classic", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry" };
+    gs.clubEvents = () => ({ [key]: event });
+    let registered = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1300"], ["44444444", "Dee", "1200"]]
+      .map(([id, name, rating]) => ({ id, name, rating, out: "" }));
+    gs.entries = () => registered;
+    const p = { event: "classic", date: "2026-11-07" };
+    gs.startTournament({ ...p, format: "swiss", rounds: "4", coin: "white", sections: '[{"name":"Open"},{"name":"Under 1400","under":1400}]' });
+    const game = (white, black, section, board = 1) => ({ board, white, black, section, result: "1-0" });
+    for (const n of [1, 2, 3]) {
+      gs.saveRound({ ...p, number: String(n), post: "yes", byes: "[]",
+        games: JSON.stringify([game("11111111", "22222222", "Open"), game("33333333", "44444444", "Under 1400")]) });
+    }
+    const byesOf = (id) => rows("Rounds").filter((r) => r.White === id && !r.Black).map((r) => [r.Round, r.Section, r["Bye kind"], r["Bye points"]]);
+    // Without a page offering byes, only the first half's rounds offer them without notice (22C1).
+    registered = [...registered, { id: "55555555", name: "Eve", rating: "1250", out: "" }];
+    assert.match(gs.syncPlayers(key).message, /^Added 1 player\(s\)\. They have half-point byes for the rounds posted before \(28K\)/);
+    eq(byesOf("55555555"), [["1", "Under 1400", "half", "0.5"], ["2", "Under 1400", "half", "0.5"]]);
+    const eve = gs.tournament(key, true);
+    eq(Pairing.standings(Pairing.sections(eve).find((s) => s.name === "Under 1400")).find((r) => r.id === "55555555").score, 1);
+    // An event whose page takes registrations offers them in every round, as its form does.
+    gs.clubEvents = () => ({ [key]: { ...event, page: "/events/classic/" } });
+    registered = [...registered, { id: "66666666", name: "Fay", rating: "1100", out: "" }];
+    gs.syncPlayers(key);
+    eq(byesOf("66666666").map((b) => b[0]), ["1", "2", "3"]);
+    // Before their first game, a late entrant can play up, and their byes go with them; never down.
+    assert.match(gs.setSection({ ...p, id: "11111111", section: "Under 1400" }).error, /play up, not down/);
+    assert.equal(gs.setSection({ ...p, id: "66666666", section: "Open" }).ok, true);
+    eq(byesOf("66666666").map((b) => b[1]), ["Open", "Open", "Open"]);
+    assert.match(gs.setSection({ ...p, id: "33333333", section: "Open" }).error, /has had a game or a full-point bye in Under 1400/);
+    // Revoked on request, a bye is unplayed, and scores nothing.
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "66666666", kind: "unplayed", section: "Open" }).ok, true);
+    eq(byesOf("66666666")[1], ["2", "Open", "unplayed", "0"]);
+    // Once they've played, or had a full-point bye, they stay.
+    gs.saveRound({ ...p, number: "4", post: "yes", byes: JSON.stringify([{ id: "55555555", points: 1, kind: "bye", section: "Under 1400" }]),
+      games: JSON.stringify([game("11111111", "66666666", "Open"), game("22222222", "33333333", "Open", 2)]) });
+    assert.match(gs.setSection({ ...p, id: "66666666", section: "Under 1400" }).error, /has had a game or a full-point bye in Open/);
+    assert.match(gs.setSection({ ...p, id: "55555555", section: "Open" }).error, /has had a game or a full-point bye in Under 1400/);
+    // A quad's late entrants get none: the table fixes its games.
+    const quad = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    quad.gs.clubEvents = () => ({ "quad/2026-11-14": { event: "quad", name: "Quad", label: "Saturday", kind: "entry", page: "/events/quad/" } });
+    let entered = registered.slice(0, 4);
+    quad.gs.entries = () => entered;
+    quad.gs.startTournament({ event: "quad", date: "2026-11-14", format: "quad", rounds: "3", coin: "white" });
+    quad.gs.saveRound({ event: "quad", date: "2026-11-14", number: "1", post: "yes", byes: "[]", games: JSON.stringify([game("11111111", "22222222", "Quad 1")]) });
+    entered = registered;
+    quad.gs.syncPlayers("quad/2026-11-14");
+    eq(quad.rows("Rounds").filter((r) => !r.Black), []);
   });
 }
 
