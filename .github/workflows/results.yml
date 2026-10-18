@@ -26,7 +26,7 @@ jobs:
           node-version: "24"
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.15"
       # Adds each tournament US Chess has rated with the desk's results to ratings.json, and sends
       # the morning reminders for the rest. A reminder that fails to send fails the run, after the
       # steps below.

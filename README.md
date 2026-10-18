@@ -117,7 +117,7 @@ Use one Google account for everything, the one that owns the calendars and sends
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and enable the Google Calendar, Google Sheets, and Gmail APIs.
 2. Set up the OAuth consent screen. With Workspace, choose Internal. With a personal Gmail account, choose External and then publish the app (In production): while it is in Testing, Google expires its sign-ins after seven days and every Action stops.
 3. Under Credentials, create an OAuth client ID of type Desktop app, download its JSON, and save it as ~/.config/lccc/google-client.json.
-4. Install the Python libraries: python3 -m venv ~/.local/share/lccc/venv, then ~/.local/share/lccc/venv/bin/pip install -r scripts/requirements.txt.
+4. Install the Python libraries with Python 3.15, as the Actions use: python3.15 -m venv ~/.local/share/lccc/venv, then ~/.local/share/lccc/venv/bin/pip install -r scripts/requirements.txt.
 
 ### 4. Calendars
 
