@@ -74,7 +74,7 @@ python -m http.server 8765 --bind 127.0.0.1 &
 npm run check:pages
 ```
 
-tests/check_pages.mjs drives the pages in Chrome against a stand-in for the registration script, and checks accessibility in light and dark mode and the layout at 1100px and on a 390px phone. New behavior gets a check there.
+tests/check_pages.mjs runs the files in tests/pages, each in its own Chrome and all at once. They drive the pages against a stand-in for the registration script, and check accessibility in light and dark mode and the layout at 1100px and on a 390px phone. New behavior gets a check in the file for its page, or in a new file there. To rerun only some files, name them: npm run check:pages -- desk menu. A push that changes nothing the site serves (only scripts/, .github/, or tests outside tests/pages) can skip check:pages.
 
 ## Running your own club
 

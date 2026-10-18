@@ -1,0 +1,284 @@
+// The events page: its cards, filters, paging, details dialog, and structured data, and each club event's page.
+import { axeSource, base, browser, clubEvents, done, events, fail, outside, pass, seriesPages } from "./common.mjs";
+
+const page = await browser.newPage();
+await page.setRequestInterception(true);
+page.on("request", (request) => (outside(request) ? request.abort() : request.continue()));
+// Every filter group sits in a menu, which has to be opened first. The list shows a page of
+// cards at a time, so the rest are shown before anything is counted. Show more is clicked in
+// the page rather than with page.click, whose scrolling to the button would show more on its own.
+async function choose(group, value) {
+  await page.click(`[popovertarget="filter-${group}"]`);
+  await page.click(`[data-filter-group="${group}"] button[data-value="${value}"]`);
+  await showAll();
+}
+async function showAll() {
+  while (await page.$(".events-more:not([hidden])")) await page.$eval(".events-more", (b) => b.click());
+}
+page.on("pageerror", (error) => fail(`JavaScript error on ${page.url()}: ${error.message}`));
+await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+await page.goto(base + "/events/", { waitUntil: "networkidle0" });
+const allUpcoming = events.filter((e) => new Date(e.end) > new Date());
+const isYouth = (e) => (e.tags || []).includes("youth");
+const upcoming = allUpcoming.filter((e) => !isYouth(e));
+
+const cards = await page.$$eval(".event", (c) => c.length);
+cards === upcoming.length ? pass(`events page has all ${cards} upcoming events`)
+  : fail(`events page has ${cards} cards for ${upcoming.length} upcoming events`);
+
+// 30 cards at first; Show more adds the next 30 and moves focus to the first of them, and so
+// does scrolling to the end of the list, without moving focus.
+const PAGE = 30;
+const paging = await page.evaluate(() => ({
+  shown: document.querySelectorAll(".event:not([hidden])").length,
+  more: !document.querySelector(".events-more").hidden,
+}));
+if (upcoming.length > PAGE) {
+  await page.$eval(".events-more", (b) => b.click());
+  const after = await page.evaluate(() => ({
+    shown: document.querySelectorAll(".event:not([hidden])").length,
+    focused: document.activeElement.closest(".event") === document.querySelectorAll(".event:not([hidden])")[30],
+    status: document.getElementById("filter-status").textContent,
+  }));
+  const next = Math.min(2 * PAGE, upcoming.length);
+  paging.shown === PAGE && paging.more && after.shown === next && after.focused
+    ? pass(`shows ${PAGE} events, then ${next} after Show more, with focus on the first new one ("${after.status}")`)
+    : fail(`paging: ${paging.shown} shown at first (button ${paging.more ? "shown" : "hidden"}), ${after.shown} after Show more, focus ${after.focused ? "on" : "not on"} the first new card`);
+  await page.reload({ waitUntil: "networkidle0" });
+  const kept = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  kept === next ? pass(`a reload keeps the ${next} shown`) : fail(`a reload shows ${kept}, not the ${next} shown before`);
+  await showAll();
+  // A reload keeps the history entry's count and the scroll position, so both are cleared for a
+  // fresh list.
+  await page.evaluate(() => { history.replaceState(null, ""); scrollTo(0, 0); });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.$eval(".events-more", (b) => b.scrollIntoView());
+  const grew = await page.waitForFunction((n) => document.querySelectorAll(".event:not([hidden])").length === n,
+    { timeout: 2000 }, next).then(() => true, () => false);
+  const focusMoved = await page.evaluate(() => Boolean(document.activeElement.closest(".event")));
+  grew && !focusMoved ? pass(`scrolling to the end shows ${next}, leaving focus alone`)
+    : fail(`scrolling to the end: ${grew ? "" : `didn't show ${next}; `}focus ${focusMoved ? "moved" : "stayed"}`);
+  await showAll();
+}
+
+const cities = [...new Set(upcoming.map((e) => e.city).filter(Boolean))].sort();
+const cityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));
+JSON.stringify(cityButtons) === JSON.stringify(["All cities", ...cities]) ? pass(`city filters: ${cityButtons.join(", ")}`)
+  : fail(`city filters ${JSON.stringify(cityButtons)} don't match event cities ${JSON.stringify(cities)}`);
+
+for (const [group, kind] of [["kind", "club"], ["kind", "all"], ["age", "all-ages"], ["age", "senior"], ["age", "all"]]) {
+  await choose(group, kind);
+  const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  const expected = kind === "all" ? upcoming.length : upcoming.filter((e) => (e.tags || []).includes(kind)).length;
+  const status = await page.$eval("#filter-status", (s) => s.textContent);
+  shown === expected && status.startsWith(`Showing ${expected} `) ? pass(`filter ${kind}: ${status}`)
+    : fail(`filter ${kind} shows ${shown}, expected ${expected}; announced "${status}"`);
+}
+
+for (const [value, keep] of [["weekly", true], ["not-weekly", false]]) {
+  await choose("schedule", value);
+  const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  const expected = upcoming.filter((e) => (e.tags || []).includes("weekly") === keep).length;
+  shown === expected ? pass(`schedule ${value}: ${shown} events`) : fail(`schedule ${value} shows ${shown}, expected ${expected}`);
+}
+await choose("schedule", "all");
+
+for (const value of ["free", "free-youth", "reduced-youth", "reduced-senior", "cost-unknown"]) {
+  await choose("cost", value);
+  const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+  const expected = upcoming.filter((e) => (e.tags || []).includes(value)).length;
+  shown === expected ? pass(`cost ${value}: ${shown} events`) : fail(`cost ${value} shows ${shown}, expected ${expected}`);
+}
+const costMenu = await page.$eval('[popovertarget="filter-cost"]', (b) =>
+  ({ text: b.textContent, open: document.getElementById("filter-cost").matches(":popover-open") }));
+costMenu.text === "Cost: Cost unknown" && !costMenu.open ? pass(`cost menu closes and reads "${costMenu.text}"`)
+  : fail(`cost menu reads "${costMenu.text}" and is ${costMenu.open ? "still open" : "closed"}`);
+await choose("cost", "all");
+
+const SPEEDS = ["regular", "quick", "blitz"];
+async function checkSpeeds(label, events) {
+  const present = SPEEDS.filter((s) => events.some((e) => (e.tags || []).includes(s)));
+  const buttons = await page.$$eval('[data-filter-group="speed"] button', (b) => b.map((x) => x.dataset.value));
+  const expected = present.length ? ["all", ...present] : [];
+  if (JSON.stringify(buttons) !== JSON.stringify(expected)) {
+    return fail(`${label} time control buttons ${JSON.stringify(buttons)}, expected ${JSON.stringify(expected)}`);
+  }
+  for (const value of present) {
+    await choose("speed", value);
+    const shown = await page.$$eval(".event:not([hidden])", (c) => c.length);
+    const want = events.filter((e) => (e.tags || []).includes(value)).length;
+    if (shown !== want) return fail(`${label} time control ${value} shows ${shown}, expected ${want}`);
+  }
+  if (present.length) await choose("speed", "all");
+  pass(`${label} time control filters: ${present.length ? present.join(", ") : "none, menu left out"}`);
+}
+await checkSpeeds("events page", upcoming);
+
+const lines = await page.$$eval(".event", (cards) => cards.map((c) => ({
+  title: c.querySelector("h3 button").firstChild.textContent,
+  runBy: (c.querySelector(".event-organizer")?.firstChild?.nodeType === 3 && c.querySelector(".event-organizer").firstChild.textContent) || "",
+  details: c.querySelector(".event-organizer a")?.getAttribute("href") || "",
+})));
+const wrongLines = lines.filter((card, i) => {
+  const e = upcoming[i];
+  const runBy = e.organizer && e.organizer !== "Larimer County Chess Club" ? `Run by ${e.organizer}` : "";
+  return card.title !== e.title || card.runBy !== runBy || card.details !== (e.url || e.page || "");
+});
+wrongLines.length === 0 ? pass("each card's Run by line and Details link match its event")
+  : fail(`Run by or Details wrong on: ${[...new Set(wrongLines.map((c) => c.title))].join(", ")}`);
+
+const unratedPaid = upcoming.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated")
+  && !(e.tags || []).includes("free"));
+unratedPaid.length === 0 ? pass("every club event is tagged rated, or free")
+  : fail(`club events neither rated nor free: ${[...new Set(unratedPaid.map((e) => e.title))].join(", ")}`);
+
+const described = upcoming.findIndex((e) => e.description);
+await page.focus(`.event:nth-of-type(1) .event-open`);
+const firstTitle = await page.evaluate(() => document.activeElement.firstChild.textContent);
+await page.keyboard.press("Enter");
+const opened = await page.evaluate(() => {
+  const dialog = document.querySelector("dialog.event-dialog");
+  return {
+    open: dialog?.open,
+    modal: dialog?.matches(":modal"),
+    label: document.getElementById(dialog?.getAttribute("aria-labelledby"))?.textContent,
+    focus: document.activeElement.id,
+    // The add-to-calendar links come before the description.
+    order: [...dialog.querySelectorAll(".event-add a, .event-description")].map((n) => n.className),
+  };
+});
+opened.open && opened.modal && opened.label === firstTitle && opened.focus === "event-dialog-title"
+  && opened.order[0] === "button" && opened.order[1] === "button button-secondary"
+  ? pass("Enter opens the details dialog, labelled by the title and focused on it, add buttons first")
+  : fail(`Enter on a card: ${JSON.stringify(opened)}`);
+await page.keyboard.press("Escape");
+// The dialog's close event, which resets the card's button, fires a task later.
+await page.waitForFunction(() => !document.querySelector("dialog.event-dialog").open, { timeout: 2000 }).catch(() => {});
+await new Promise((resolve) => setTimeout(resolve, 50));
+const closed = await page.evaluate(() => !document.querySelector("dialog.event-dialog").open
+  && document.activeElement.classList.contains("event-open")
+  && document.activeElement.getAttribute("aria-expanded") === "false");
+closed ? pass("Escape closes the details and returns focus to the card") : fail("Escape didn't close the details or return focus");
+
+if (described >= 0) {
+  const cardsAll = await page.$$(".event-open");
+  await cardsAll[described].click();
+  const text = await page.$eval(".event-description", (d) => d.textContent);
+  const firstLine = upcoming[described].description.trim().split("\n")[0].replace(/^\s*[•*-]\s+/, "");
+  text.includes(firstLine.replace(/https?:\/\/\S+/g, "").trim()) ? pass(`details show the description of ${upcoming[described].title}`)
+    : fail(`details of ${upcoming[described].title} lack its description`);
+  await page.evaluate(axeSource);
+  const inDialog = await page.evaluate(() => axe.run(document.querySelector("dialog"),
+    { runOnly: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa", "best-practice"] }));
+  inDialog.violations.length === 0 ? pass("axe on the open details dialog")
+    : inDialog.violations.forEach((v) => fail(`axe dialog: ${v.id}: ${v.help} at ${v.nodes[0].target}`));
+  await page.click(".event-dialog-x");
+  await new Promise((r) => setTimeout(r));
+  await page.evaluate(() => !document.querySelector("dialog.event-dialog").open)
+    ? pass("the corner × closes the details") : fail("the corner × didn't close the details");
+}
+
+// The data is in the HTML, so it is read from the page as served, before any script runs.
+async function eventData(path) {
+  const served = await (await fetch(base + path)).text();
+  return [...served.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs)]
+    .flatMap((m) => [JSON.parse(m[1])].flat()).filter((d) => d["@type"] === "Event");
+}
+const complete = (d) => d.name && d.startDate && d.location?.address && d.url;
+const listed = await eventData("/events/");
+listed.length === clubEvents.length && listed.every(complete)
+  ? pass(`events page has structured data for all ${clubEvents.length} club events`)
+  : fail(`events page structured data: ${listed.length} events for ${clubEvents.length} club events, ${listed.filter((d) => !complete(d)).length} incomplete`);
+for (const path of seriesPages) {
+  const own = clubEvents.filter((e) => e.page === path);
+  const data = await eventData(path);
+  data.length === own.length && data.every((d) => complete(d) && d.url === `https://larimerchess.org${path}`)
+    ? pass(`${path} has structured data for its ${own.length} date(s)`)
+    : fail(`${path} structured data: ${data.length} events for ${own.length} dates, or a wrong url`);
+}
+
+// A reload while scrolled down must come back to the same place without the page jumping.
+await page.evaluateOnNewDocument(() => {
+  window.layoutShift = 0;
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) if (!e.hadRecentInput) window.layoutShift += e.value; })
+    .observe({ type: "layout-shift", buffered: true });
+});
+await page.evaluate(() => scrollTo(0, document.getElementById("subscribe").offsetTop - 200));
+const scrolledTo = await page.evaluate(() => scrollY);
+await page.reload({ waitUntil: "networkidle0" });
+const afterReload = await page.evaluate(() => ({ y: scrollY, shift: window.layoutShift }));
+Math.abs(afterReload.y - scrolledTo) <= 1 && afterReload.shift < 0.1
+  ? pass(`reload while scrolled keeps the place (layout shift ${afterReload.shift.toFixed(3)})`)
+  : fail(`reload at ${scrolledTo} came back at ${afterReload.y} with layout shift ${afterReload.shift.toFixed(3)}`);
+
+await page.goto(base + "/scholastic/", { waitUntil: "networkidle0" });
+const youthEvents = allUpcoming.filter(isYouth);
+const youthCards = await page.$$eval(".event", (c) => c.length);
+youthCards === youthEvents.length ? pass(`scholastic page shows all ${youthCards} youth events`)
+  : fail(`scholastic page shows ${youthCards} cards for ${youthEvents.length} youth events`);
+const youthCities = [...new Set(youthEvents.map((e) => e.city).filter(Boolean))].sort();
+const youthCityButtons = await page.$$eval('[data-filter-group="city"] button', (b) => b.map((x) => x.textContent));
+JSON.stringify(youthCityButtons) === JSON.stringify(["All cities", ...youthCities]) ? pass(`scholastic city filters: ${youthCityButtons.join(", ")}`)
+  : fail(`scholastic city filters ${JSON.stringify(youthCityButtons)} don't match ${JSON.stringify(youthCities)}`);
+await checkSpeeds("scholastic page", youthEvents);
+await choose("kind", "tournament");
+const youthTournaments = await page.$$eval(".event:not([hidden])", (c) => c.length);
+const expectedTournaments = youthEvents.filter((e) => e.tags.includes("tournament")).length;
+youthTournaments === expectedTournaments ? pass(`scholastic tournaments: ${youthTournaments}`)
+  : fail(`scholastic tournaments show ${youthTournaments}, expected ${expectedTournaments}`);
+
+await page.goto(base + "/", { waitUntil: "networkidle0" });
+const homeCards = await page.$$eval(".event", (c) => c.length);
+homeCards > 0 && homeCards <= 6 ? pass(`home page shows ${homeCards} events`) : fail(`home page shows ${homeCards} events`);
+
+// Every rated club event's card, and its details at the top and bottom, offer Register; an unrated one, such as a class, doesn't.
+await page.goto(base + "/events/", { waitUntil: "networkidle0" });
+const invitationalIds = new Set(events.filter((e) => (e.tags || []).includes("invitational")).map((e) => e.title));
+const unratedIds = new Set(events.filter((e) => e.organizer === "Larimer County Chess Club" && !(e.tags || []).includes("rated")).map((e) => e.title));
+const clubCards = await page.$$(".event-club");
+let clubCard = null;
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!invitationalIds.has(title) && !unratedIds.has(title)) { clubCard = card; break; }
+}
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!unratedIds.has(title)) continue;
+  await card.$eval(".event-open", (b) => b.click());
+  const offered = await page.$$eval("dialog.event-dialog .event-register", (a) => a.length)
+    + await card.$$eval(".event-card-register", (a) => a.length);
+  await page.keyboard.press("Escape");
+  offered === 0
+    ? pass(`the unrated ${title} offers no Register`)
+    : fail(`unrated card ${title} offers Register`);
+  break;
+}
+for (const card of clubCards) {
+  const title = await card.$eval(".event-open", (b) => b.firstChild.textContent);
+  if (!invitationalIds.has(title)) continue;
+  const shown = await card.evaluate((c) => ({ register: !!c.querySelector(".event-card-register"), text: c.textContent }));
+  !shown.register && shown.text.includes("registration is closed")
+    ? pass(`the invitational ${title} says registration is closed instead of offering Register`)
+    : fail(`invitational card ${title}: ${JSON.stringify(shown)}`);
+  break;
+}
+if (clubCard) {
+  const cardLink = await clubCard.$eval(".event-card-register", (a) => a.getAttribute("href")).catch(() => null);
+  await clubCard.$eval(".event-open", (b) => b.click());
+  const dialogLinks = await page.$$eval("dialog.event-dialog .event-register", (a) => a.map((x) => x.getAttribute("href")));
+  const otherCards = await page.$$eval(".event:not(.event-club) .event-card-register", (a) => a.length);
+  const clubTags = await clubCard.evaluate((c) => c.dataset.tags.split(" "));
+  (clubTags.includes("tournament") ? /^\/events\/[^/]+\/\?date=\d{4}-\d\d-\d\d#register$/ : /^\/events\/[^/]+\/\?date=\d{4}-\d\d#register$/)
+    .test(cardLink || "") && dialogLinks.length === 2
+    && dialogLinks.every((h) => h === cardLink) && otherCards === 0
+    ? pass(`club cards and their details offer Register (${cardLink})`)
+    : fail(`Register links: card ${cardLink}, details ${JSON.stringify(dialogLinks)}, on other cards ${otherCards}`);
+  await page.keyboard.press("Escape");
+}
+const cardDates = await page.$$eval(".event-club .event-card-register", (a) => a.map((x) => ({
+  tournament: x.closest(".event").dataset.tags.split(" ").includes("tournament"), date: new URL(x.href).searchParams.get("date") })));
+const wrongDates = cardDates.filter((c) => !(c.tournament ? /^\d{4}-\d\d-\d\d$/ : /^\d{4}-\d\d$/).test(c.date));
+cardDates.some((c) => !c.tournament) && !wrongDates.length ? pass("club night cards' Register opens on the whole month, and tournaments' on their date")
+  : fail(`Register dates on club cards: ${JSON.stringify(wrongDates.length ? wrongDates : cardDates)}`);
+
+await done();
