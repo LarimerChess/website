@@ -376,7 +376,7 @@ test("quads with an extra games section: the quads play their table, the extra s
   const t = { format: "quad", players, rounds: [],
     sections: [{ name: "Quad 1", last: 3 }, { name: "Quad 2", last: 3 }, { name: "Extra games", extra: true, first: 1, last: 2, players: ["p1", "p5", "p6"] }] };
   const [one, two, extra] = Pairing.pairSections(t, { coin: "white" });
-  assert.deepEqual([one.format, two.format, extra.format], ["quad", "quad", "swiss"]);
+  assert.deepEqual([one.format, two.format, extra.format], ["rr", "rr", "swiss"]);
   assert.deepEqual(one.games.map((g) => [g.white, g.black]), [["p1", "p4"], ["p2", "p3"]], "the quad table");
   assert.deepEqual([extra.games.length, extra.byes.map((b) => b.kind)], [1, ["unplayed"]], "three players in a Swiss: one game, and one without");
 });
@@ -531,4 +531,100 @@ test("byeProblems: a round's byes by the rules, half-point (22C) and full-point 
     players: five.slice(0, 3).map((x) => ({ ...x, section: "Open" })), rounds: [{ games: [g("A", "B", "1-0")], byes: [full("C")] }] })[1];
   assert.match(check(extra, 2, [g("A", "B")], [full("C")])[0], /^An extra games section gives no full-point bye \(28M4\); make C's round unplayed\.$/);
   assert.match(check(extra, 2, [g("A", "B")], [half("C")])[0], /^An extra games section has no half-point byes/);
+});
+
+test("30: a round robin of 2 to 12 plays everyone once, colors even and never three in a row; a double one twice, reversed (30F)", () => {
+  for (let n = 2; n <= 12; n++) {
+    const table = Pairing.roundRobinTable(n, "rr");
+    assert.equal(table.length, n % 2 ? n : n - 1, `${n} players' rounds`);
+    const met = new Map();
+    const colors = new Map([...Array(n + 1)].map((_, i) => [i + 1, ""]));
+    for (const round of table) {
+      const seen = round.flat();
+      assert.equal(new Set(seen).size, seen.length, `${n} players: nobody twice in a round`);
+      for (const [w, b] of round) {
+        const pair = [w, b].sort((x, y) => x - y).join("-");
+        met.set(pair, (met.get(pair) || 0) + 1);
+        colors.set(w, colors.get(w) + "W");
+        colors.set(b, colors.get(b) + "B");
+      }
+    }
+    const size = n + (n % 2);
+    assert.equal(met.size, size * (size - 1) / 2, `${n} players: every pair meets`);
+    assert.ok([...met.values()].every((c) => c === 1));
+    for (let p = 1; p <= n; p++) {
+      const c = colors.get(p);
+      assert.ok(Math.abs(c.split("W").length - c.split("B").length) <= 1, `${n} players: player ${p} has ${c}`);
+      assert.ok(!/WWW|BBB/.test(c), `${n} players: player ${p} has ${c}`);
+    }
+    const double = Pairing.roundRobinTable(n, "drr");
+    assert.equal(double.length, table.length * 2);
+    assert.deepEqual(double.slice(table.length), table.map((round) => round.map(([w, b]) => [b, w])));
+  }
+  assert.deepEqual(Pairing.roundRobinTable(4, "rr"), Pairing.QUAD_TABLE, "four players play 30G's table");
+});
+
+test("a Swiss section changed to a round robin pairs by its lot order, the odd player sitting out; the other section stays a Swiss", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1900, "Open"], ["c", 1800, "Open"], ["d", 1700, "Open"], ["e", 1600, "Open"],
+    ["f", 1300, "Reserve"], ["g", 1200, "Reserve"], ["h", 1100, "Reserve"], ["i", 1000, "Reserve"]]);
+  const t = { format: "swiss", players, rounds: [], sections: [{ name: "Open", format: "rr", order: ["c", "a", "e", "b", "d"], last: 5 },
+    { name: "Reserve", last: 4 }] };
+  const [open, reserve] = Pairing.sections(t);
+  assert.deepEqual([open.format, open.size, open.players.map((p) => [p.id, p.number])],
+    ["rr", 5, [["c", 1], ["a", 2], ["e", 3], ["b", 4], ["d", 5]]]);
+  assert.equal(reserve.format, "swiss");
+  const [r1, s1] = Pairing.pairSections(t, { coin: "white" });
+  const byNumber = (n) => open.players[n - 1].id;
+  assert.deepEqual(r1.games.map((g) => [g.white, g.black]),
+    Pairing.roundRobinTable(5, "rr")[0].filter((pair) => !pair.includes(6)).map(([w, b]) => [byNumber(w), byNumber(b)]));
+  assert.deepEqual(r1.byes.map((b) => [b.kind, b.points]), [["unplayed", 0]]);
+  assert.equal(s1.games.length, 2);
+  // Over its five rounds, everyone plays the other four once and sits out once.
+  let rounds = [];
+  for (let n = 1; n <= 5; n++) {
+    const [r] = Pairing.pairSections({ ...t, sections: [t.sections[0]], rounds });
+    rounds = [...rounds, { games: r.games.map((g) => ({ ...g, section: "Open", result: "1-0" })), byes: r.byes.map((b) => ({ ...b, section: "Open" })) }];
+  }
+  for (const p of open.players) {
+    assert.equal(rounds.filter((r) => r.games.some((g) => g.white === p.id || g.black === p.id)).length, 4);
+    assert.equal(rounds.filter((r) => r.byes.some((b) => b.id === p.id)).length, 1);
+  }
+});
+
+test("an extra games section can be a double round robin, and a quad a Swiss", () => {
+  const players = [...Array(5)].map((_, i) => ({ id: `p${i + 1}`, name: `p${i + 1}`, rating: 2000 - i * 50, number: i + 1, section: "Quad 1" }));
+  const t = { format: "quad", players, rounds: [], sections: [{ name: "Quad 1", format: "swiss", last: 3 },
+    { name: "Extra games", extra: true, format: "drr", order: ["p2", "p1"], first: 1, last: 2, players: ["p1", "p2"] }] };
+  const [quad, extra] = Pairing.pairSections(t, { coin: "white" });
+  assert.deepEqual([quad.format, quad.byes.map((b) => b.kind)], ["swiss", ["bye"]]);
+  assert.deepEqual(extra.games.map((g) => [g.white, g.black]), [["p2", "p1"]]);
+  const next = { ...t, rounds: [{ games: [...quad.games.map((g) => ({ ...g, section: "Quad 1", result: "1-0" })),
+    { ...extra.games[0], section: "Extra games", result: "1-0" }], byes: quad.byes.map((b) => ({ ...b, section: "Quad 1" })) }] };
+  const [, again] = Pairing.pairSections(next, { coin: "white" });
+  assert.deepEqual(again.games.map((g) => [g.white, g.black]), [["p1", "p2"]], "the second game with colors reversed");
+});
+
+test("a round robin pairs no one against a withdrawn player, and refuses byes; one who joined after it began waits", () => {
+  const players = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100, number: i + 1, section: "RR" }));
+  const t = { format: "swiss", players, rounds: [], sections: [{ name: "RR", format: "rr", order: ["a", "b", "c", "d", "e"] }] };
+  const [s] = Pairing.sections(t);
+  const { games, byes, notes } = Pairing.pairRoundRobin(s, 1, { out: ["b"] });
+  const sitting = byes.map((b) => b.id);
+  assert.ok(games.every((g) => g.white !== "b" && g.black !== "b"));
+  assert.equal(sitting.length, 2, "the odd player's sit-out and b's opponent's");
+  assert.ok(notes.some((n) => n.includes("f joined after the round robin began")));
+  assert.deepEqual(Pairing.byeProblems(s, 1, [], [{ id: "a", kind: "half", points: 0.5 }], 5, { limit: 1, everyRound: true }),
+    ["A round robin has no half-point byes; make a's round unplayed."]);
+});
+
+test("30B: in a round robin of six, a player who withdrew after two of five games counts in no one's score", () => {
+  const players = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, name: id, rating: 1800 - i * 100, number: i + 1 }));
+  const rounds = Pairing.roundRobinTable(6, "rr").slice(0, 2).map((round) => ({
+    games: round.map(([w, b]) => ({ white: players[w - 1].id, black: players[b - 1].id, result: "1-0" })), byes: [], out: [] }));
+  rounds[1].out = ["f"];
+  const rows = Pairing.roundRobinStandings({ format: "rr", players, rounds: rounds.map((r, i) => (i ? r : { ...r, out: [] })) });
+  assert.equal(rows.find((r) => r.id === "f").place, null);
+  const withdrawnAfterThree = Pairing.roundRobinStandings({ format: "rr", players, rounds: [...rounds, ...Pairing.roundRobinTable(6, "rr").slice(2, 3).map((round) => ({
+    games: round.map(([w, b]) => ({ white: players[w - 1].id, black: players[b - 1].id, result: "1-0" })), byes: [], out: ["f"] }))] });
+  assert.notEqual(withdrawnAfterThree.find((r) => r.id === "f").place, null, "three of five is more than half");
 });

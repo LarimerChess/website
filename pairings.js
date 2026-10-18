@@ -386,13 +386,13 @@ function standingsSection(t, ti) {
     return section;
   }
   // A Swiss's tiebreaks, and an extra games section's, are in the page's opening paragraph.
-  if (parts.some((s) => s.format === "quad")) {
-    section.append(paragraph("Each quad is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). "
+  if (parts.some(Pairing.roundRobin)) {
+    section.append(paragraph("Each round robin, a quad too, is ranked by score, then Sonneborn-Berger, then the games between tied players (34F). "
       + "Players tied on all three share a place."));
   }
   parts.forEach((s, si) => {
     if (several) section.append(heading(3, s.name));
-    const quad = s.format === "quad";
+    const quad = Pairing.roundRobin(s);
     const rounds = s.rounds.map((round, i) => [i + 1, round]).filter(([, round]) => scored(round))
       .map(([n, round]) => [n, `${n}${round.games.every((g) => g.result) ? "" : " (in progress)"}`]);
     if (!rounds.length) {
@@ -400,11 +400,11 @@ function standingsSection(t, ti) {
       return;
     }
     const draw = (n) => {
-      const sofar = { players: s.players, rounds: s.rounds.slice(0, n) };
+      const sofar = { format: s.format, players: s.players, rounds: s.rounds.slice(0, n) };
       const heads = sofar.rounds.map((_, i) => `Round ${i + 1}`);
       const label = `${several ? s.name : t.name} standings`;
       if (quad) {
-        const rows = Pairing.quadStandings(sofar);
+        const rows = Pairing.roundRobinStandings(sofar);
         const cells = Pairing.roundCells(sofar, rows);
         return [tableOf(["Place", "Name", "Rating", "Score", ...heads, "Sonneborn-Berger", "Head-to-head", "Performance", estimateHeading()],
           rows.map((r) => [r.place, r.name, r.rating ?? "Unrated", r.score, ...cells(r.id), r.sonnebornBerger, r.headToHead ?? "",

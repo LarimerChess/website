@@ -492,11 +492,18 @@ section.td-table td { white-space: nowrap; }
 .hint-pop:popover-open { display: block; position: fixed; inset: auto; margin: 0; }
 .run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
 .run-sections legend { position: relative; padding: 0; font-weight: 600; }
-.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
+.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em; gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
-.run-section-row input { width: 100%; box-sizing: border-box; }
+.run-section-row input, .run-section-row select { width: 100%; box-sizing: border-box; }
 .run-names-list { margin: 8px 0 12px; padding-left: 24px; }
 .run-names-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin-top: 8px; }
+/* On a phone, a section's format goes under its name. */
+.run-names-format { grid-column: 1 / -1; grid-row: 2; }
+@media (min-width: 600px) {
+  .run-section-row { grid-template-columns: minmax(0, 1fr) 6.5em auto auto; }
+  .run-names-list li { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .run-names-format { grid-column: auto; grid-row: auto; }
+}
 .run-names-list input { width: 100%; box-sizing: border-box; }
 .run-sections-edit { margin: 16px 0; }
 .run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
@@ -640,14 +647,14 @@ section.td-table td { white-space: nowrap; }
               <option value="arena">Arena</option>
             </select>
             <span class="run-format-set" hidden></span>
-            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the formats" aria-describedby="run-format-hint">?</button><span id="run-format-hint" class="hint-text" role="tooltip">Swiss: US Chess rules 27 to 29. Quads: round robins of four, 30G. Arena: players wait in a queue and are paired as they finish games, until the cutoff.</span></span>
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the formats" aria-describedby="run-format-hint">?</button><span id="run-format-hint" class="hint-text" role="tooltip">Swiss: US Chess rules 27 to 29, each section a Swiss or a round robin. Quads: round robins of four, 30G, each of which can become a Swiss before it starts. Arena: players wait in a queue and are paired as they finish games, until the cutoff.</span></span>
           </span>
         </div>
         <form id="run-start" class="register-form run-start" hidden>
           <div class="field-row" data-format="swiss">
             <label for="run-rounds">Rounds</label>
             <input id="run-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-describedby="run-rounds-hint">
-            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About rounds" aria-describedby="run-rounds-hint">?</button><span id="run-rounds-hint" class="hint-text" role="tooltip">For a club night's month, one round a night.</span></span>
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About rounds" aria-describedby="run-rounds-hint">?</button><span id="run-rounds-hint" class="hint-text" role="tooltip">For a club night's month, one round a night. The Swiss sections' rounds; a round robin's players set its own.</span></span>
           </div>
           <div class="field-row" data-format="arena" hidden>
             <label for="run-cutoff">No new games after</label>
@@ -661,7 +668,7 @@ section.td-table td { white-space: nowrap; }
             </select>
           </div>
           <fieldset class="run-sections" data-format="swiss">
-            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About sections" aria-describedby="run-sections-hint">?</button><span id="run-sections-hint" class="hint-text" role="tooltip">Each section is paired and ranked on its own. A player goes in the section with the lowest limit their rating is under, unrated players too, and can be moved up before round 1. Leave the limit empty for an open section.</span></span></legend>
+            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About sections" aria-describedby="run-sections-hint">?</button><span id="run-sections-hint" class="hint-text" role="tooltip">Each section is paired and ranked on its own. A player goes in the section with the lowest limit their rating is under, unrated players too, and can be moved up before round 1. Leave the limit empty for an open section. A round robin (30) plays everyone once, and a double round robin (30F) twice, colors reversed; their players are numbered by lot and set their rounds.</span></span></legend>
             <div class="run-section-rows"></div>
             <p><button class="button button-secondary run-section-add" type="button">Add a section</button></p>
           </fieldset>
@@ -747,9 +754,9 @@ section.td-table td { white-space: nowrap; }
             <button class="button button-secondary" type="submit">Change the rounds</button>
           </form>
           <details class="run-names-wrap" hidden>
-            <summary>Rename or reorder the sections</summary>
+            <summary>Rename, reorder, or change the format of the sections</summary>
             <form class="register-form run-names">
-              <p class="register-hint">Players, pairings, and results stay in their sections under the new names, which go on the Pairings and Standings pages and in the rating report, in this order.</p>
+              <p class="register-hint">Players, pairings, and results stay in their sections under the new names, which go on the Pairings and Standings pages and in the rating report, in this order. A section's format changes until it has a posted round: a round robin (30) plays everyone once, and a double round robin (30F) twice, colors reversed, its players numbered by lot and its rounds set by how many there are.</p>
               <ol class="run-names-list"></ol>
               <button class="button button-secondary" type="submit">Save the sections</button>
             </form>
@@ -761,6 +768,12 @@ section.td-table td { white-space: nowrap; }
               <p class="register-hint">Rated games for players who are also in another section, such as everyone playing again once the tournament is over (28M4). They are rated with the tournament, as a section of their own in its rating report, and don't count in the other sections' standings. The section starts with the next round to pair, alongside any rounds the other sections have left. An entrant who isn't playing yet, such as one who came after the quads were made, can play in it only.</p>
               <label for="run-extra-name">Section</label>
               <input id="run-extra-name" name="name" type="text" maxlength="30" autocomplete="off">
+              <label for="run-extra-format">Format</label>
+              <select id="run-extra-format" name="format">
+                <option value="swiss">Swiss</option>
+                <option value="rr">Round robin</option>
+                <option value="drr">Double round robin</option>
+              </select>
               <label for="run-extra-rounds">Rounds</label>
               <input id="run-extra-rounds" name="rounds" type="text" inputmode="numeric" maxlength="2" autocomplete="off">
               <fieldset class="run-extra-set">
@@ -961,9 +974,9 @@ section.td-table td { white-space: nowrap; }
   <script src="../live.js?v=d1a40ee2c6" defer></script>
   <script src="../td.js?v=6fbece8429" defer></script>
   <script src="../td-contacts.js?v=e28e0908c5" defer></script>
-  <script src="../pairing.js?v=38e7a2e84e" defer></script>
-  <script src="../ratingreport.js?v=7273def179" defer></script>
-  <script src="../td-run.js?v=36f9bb45eb" defer></script>
+  <script src="../pairing.js?v=4c86f5a22b" defer></script>
+  <script src="../ratingreport.js?v=40a64c2901" defer></script>
+  <script src="../td-run.js?v=0a80942f69" defer></script>
   <script src="../arena.js?v=051926af16" defer></script>
   <script src="../td-arena.js?v=508eec2a45" defer></script>
 </body>

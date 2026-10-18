@@ -842,6 +842,10 @@ function readIncidents() {
 // "under":1400}], and each Players and Rounds row names its section; boards are numbered within
 // each. Quads are sections Quad 1, Quad 2, and so on. A tournament started before sections has
 // none of these, and runs as one section, or as quads by number, as it always did.
+//
+// Each section, an extra games one too, has a format until its first round is posted: a Swiss, a
+// round robin (30), or a double round robin (30F), as pairing.js's header describes; a round robin
+// draws its order by lot (30A) and plays as many rounds as its players need (fitSections).
 
 function tournamentBook() {
   const id = PropertiesService.getScriptProperties().getProperty("TOURNAMENT_SHEET_ID");
@@ -1092,7 +1096,8 @@ function startTournament(p, signedIn) {
     addRows(t, [{ Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
       Coin: p.coin === "black" ? "black" : "white", Finished: "", Cutoff: cutoff,
-      Sections: defined.sections.length ? JSON.stringify(defined.sections) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "",
+      // A round robin's numbers are drawn by lot once its players are added.
+      Sections: defined.sections.length ? JSON.stringify(defined.sections.map((d) => (ROUND_ROBINS.includes(d.format) ? { ...d, order: [] } : d))) : "", TD: [p.td, signedIn && signedIn.usChessId].find((id) => /^\d{8}$/.test(id || "")) || "",
       "Round dates": event.kind === "month" ? JSON.stringify(monthNights(key)) : "",
       "Time control": String(p.timeControl || "").trim().slice(0, 40) }]);
   } finally {
@@ -1104,8 +1109,8 @@ function startTournament(p, signedIn) {
 }
 
 /** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Once it has an
- *  extra rated games section, every section has its own rounds, and p.section names the one to change;
- *  a quad's extra games sections change too, but its quads play three rounds. */
+ *  extra rated games section or a round robin, every section has its own rounds, and p.section names the
+ *  Swiss to change; a round robin's come from its players. */
 function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
@@ -1116,13 +1121,13 @@ function setRounds(p) {
     const line = t.rows.find((r) => r.Key === key);
     if (!line) return { error: "No such tournament." };
     const defs = sectionsOf(line);
-    const extras = defs.some((s) => s.extra);
-    if (line.Format !== "swiss" && !(line.Format === "quad" && extras)) return { error: "Only a Swiss can change its number of rounds." };
+    const separate = defs.some((s) => s.last);
+    if (line.Format !== "swiss" && !separate) return { error: "Only a Swiss can change its number of rounds." };
     const lines = table("Rounds").rows.filter((r) => r.Key === key);
-    if (extras) {
+    if (separate) {
       const def = defs.find((s) => s.name === p.section);
       if (!def) return { error: "Which section's rounds?" };
-      if (line.Format === "quad" && !def.extra) return { error: "A quad plays three rounds (30G)." };
+      if (ROUND_ROBINS.includes(formatOf(line, def))) return { error: `${def.name} is ${FORMAT_NAMES[formatOf(line, def)]}, which plays everyone, so its players set its rounds.` };
       const first = Number(def.first) || 1;
       const paired = lines.filter((r) => r.Section === def.name).reduce((m, r) => Math.max(m, Number(r.Round) - first + 1), 0);
       if (Number(rounds) < paired) return { error: `${def.name} has ${paired} rounds paired already, so it can't have fewer.` };
@@ -1143,9 +1148,82 @@ function setRounds(p) {
 
 const lastRound = (defs) => defs.reduce((m, s) => Math.max(m, Number(s.last) || 0), 0);
 
+const ROUND_ROBINS = ["rr", "drr"];
+const FORMAT_NAMES = { swiss: "a Swiss", rr: "a round robin", drr: "a double round robin" };
+
+/** A section's format: its own, or as pairing.js's sections() gives one without, a quad's a round robin. */
+function formatOf(info, def) {
+  if (def && FORMAT_NAMES[def.format]) return def.format;
+  return def && !def.extra && info.Format === "quad" ? "rr" : "swiss";
+}
+
+/** pairing.js's roundRobinRounds: n - 1 rounds for an even n, n for an odd one, which sits one out each round, twice over for a double. */
+function roundRobinRounds(n, format) {
+  const once = n < 2 ? 0 : n % 2 ? n : n - 1;
+  return format === "drr" ? once * 2 : once;
+}
+
+/** Shuffles a list in place, for numbers by lot (30A). */
+function byLot(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+/** The IDs of a section's players, not withdrawn, by number: an extra games section's own list, or those whose Section is its name. */
+function membersOf(def, players) {
+  const ids = def.extra ? def.players || [] : players.filter((r) => r.Section === def.name).map((r) => r["US Chess ID"]);
+  return players.filter((r) => ids.includes(r["US Chess ID"]) && !r["Out from round"])
+    .sort((a, b) => Number(a["No."]) - Number(b["No."])).map((r) => r["US Chess ID"]);
+}
+
+/** Whether a section has a posted round or a result, after which its players and format stay. */
+const sectionStarted = (def, rounds) => rounds.some((r) => r.Section === def.name && (r.Posted || r.Result));
+
 /**
- * Adds an extra rated games section (28M4) to a Swiss or quads, paired as a Swiss: p.players, a JSON list of its players' IDs, play
- * p.rounds rounds in it from the next round, apart from their own section's standings and alongside any
+ * Fits a tournament's sections, defs, to their players after either changes, and returns its rounds: a round robin
+ * that hasn't started keeps its order by lot (30A), a new player drawn into it and one who left taken out (one without
+ * an order, a quad's, starts from their numbers, drawn when the quads were made), and plays the rounds its players
+ * need. Once a section has rounds of its own, every section carries its last round; without, they share the tournament's.
+ */
+function fitSections(key, line, defs) {
+  const players = table("Players").rows.filter((r) => r.Key === key);
+  const rounds = table("Rounds").rows.filter((r) => r.Key === key);
+  const paired = rounds.reduce((m, r) => Math.max(m, Number(r.Round)), 0);
+  const planned = Number(line.Rounds) || 0;
+  for (const d of defs) {
+    const format = formatOf(line, d);
+    if (!ROUND_ROBINS.includes(format)) {
+      delete d.order;
+      continue;
+    }
+    if (sectionStarted(d, rounds)) continue;
+    const ids = membersOf(d, players);
+    const order = d.order ? d.order.filter((id) => ids.includes(id)) : ids.slice();
+    for (const id of ids) if (!order.includes(id)) order.splice(Math.floor(Math.random() * (order.length + 1)), 0, id);
+    d.order = order;
+    d.last = (Number(d.first) || 1) + Math.max(roundRobinRounds(order.length, format), 1) - 1;
+  }
+  if (!defs.some((d) => d.extra || ROUND_ROBINS.includes(formatOf(line, d)))) {
+    const shared = Math.max(lastRound(defs) || planned, paired);
+    for (const d of defs) delete d.last;
+    return shared;
+  }
+  for (const d of defs) if (!d.last) d.last = Math.max(planned, paired, 1);
+  return lastRound(defs);
+}
+
+/** Writes a tournament's sections, fitted to their players (fitSections). */
+function saveSections(t, key, line, defs) {
+  const rounds = fitSections(key, line, defs);
+  setCells(t, { [line.row]: { Sections: JSON.stringify(defs), Rounds: String(rounds || line.Rounds || "") } });
+}
+
+/**
+ * Adds an extra rated games section (28M4) to a Swiss or quads, of p.format, a Swiss unless it names another: p.players, a JSON
+ * list of its players' IDs, play p.rounds rounds in it (a round robin, the rounds its players need) from the next round, apart from their own section's standings and alongside any
  * rounds it has left, and the rating report has it as a section of its own. The other sections keep the
  * rounds they had, as their last. A registered entrant who isn't a player yet plays in it only.
  */
@@ -1161,7 +1239,8 @@ function addExtraSection(p) {
   }
   // US Chess's rating report keeps 30 characters of a section's name.
   if (!name || name.length > 30) return { error: "Name the section, in up to 30 characters." };
-  if (!/^[1-9]\d?$/.test(rounds)) return { error: "Rounds is a number from 1 to 99." };
+  const format = FORMAT_NAMES[p.format] ? p.format : "swiss";
+  if (format === "swiss" && !/^[1-9]\d?$/.test(rounds)) return { error: "Rounds is a number from 1 to 99." };
   if (!Array.isArray(ids)) return { error: "Choose the section's players." };
   const lock = lockTournaments();
   try {
@@ -1182,10 +1261,14 @@ function addExtraSection(p) {
     const planned = Math.max(Number(line.Rounds) || 0, paired);
     for (const s of defs) if (!s.last) s.last = planned;
     const first = paired + 1;
-    defs.push({ name, extra: true, first, last: first + Number(rounds) - 1, players });
-    setCells(t, { [line.row]: { Sections: JSON.stringify(defs), Rounds: String(lastRound(defs)) } });
+    const def = { name, extra: true, first, last: first + (Number(rounds) || 1) - 1, players };
+    if (format !== "swiss") Object.assign(def, { format, order: byLot(players.slice()) });
+    defs.push(def);
+    saveSections(t, key, line, defs);
     clearTournamentCache(key);
-    return { ok: true, message: `${name}: ${players.length} players, ${rounds} ${rounds === "1" ? "round" : "rounds"} from round ${first}.` };
+    const count = def.last - first + 1;
+    const length = `${count} ${count === 1 ? "round" : "rounds"}`;
+    return { ok: true, message: `${name}: ${players.length} players, ${format === "swiss" ? length : `${FORMAT_NAMES[format]} of ${length}`} from round ${first}.` };
   } finally {
     lock.releaseLock();
   }
@@ -1212,9 +1295,10 @@ function addExtraPlayer(p) {
     const entrant = row ? null : newEntrants(key, [id])[0];
     if (!row && !entrant) return { error: "Not a player or a registered entrant of this tournament." };
     if (row && row["Out from round"]) return { error: `${row.Name} has withdrawn.` };
+    if (ROUND_ROBINS.includes(formatOf(line, def)) && paired) return { error: `${def.name} is ${FORMAT_NAMES[formatOf(line, def)]} that has begun, so its table has no place for another player.` };
     if (entrant) addEntrants(key, [entrant], def.name);
     def.players = [...(def.players || []), id];
-    setCell(t, line.row, "Sections", JSON.stringify(defs));
+    saveSections(t, key, line, defs);
     clearTournamentCache(key);
     return { ok: true, message: `${row ? row.Name : entrant.name} plays in ${def.name} from round ${from}.` };
   } finally {
@@ -1284,11 +1368,7 @@ function dropExtraSection(p) {
     const mine = rows.rows.filter((r) => r.Key === key && r.Section === def.name);
     if (mine.some((r) => r.Posted)) return { error: `${def.name} has posted pairings, so it stays; lower its rounds to stop it.` };
     deleteRows(rows, mine);
-    const kept = defs.filter((s) => s !== def);
-    // Without an extra section, the others play through the tournament's rounds again.
-    if (!kept.some((s) => s.extra)) for (const s of kept) delete s.last;
-    const paired = table("Rounds").rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Round)), 0);
-    setCells(t, { [line.row]: { Sections: JSON.stringify(kept), Rounds: String(Math.max(lastRound(kept), paired)) } });
+    saveSections(t, key, line, defs.filter((s) => s !== def));
     clearTournamentCache(key);
     return { ok: true, message: `${def.name} is taken off.` };
   } finally {
@@ -1369,9 +1449,14 @@ function syncPlayers(key) {
         Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
-    const missed = swiss ? added.flatMap((a) => lateByes(key, info, a)) : [];
+    const missed = swiss ? added.filter((a) => !ROUND_ROBINS.includes(formatOf(info, defs.find((d) => d.name === a.Section)))).flatMap((a) => lateByes(key, info, a)) : [];
     addRows(table("Rounds"), missed);
     setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
+    if (added.length && defs.length) {
+      const tournaments = table("Tournaments");
+      const line = tournaments.rows.find((r) => r.Key === key);
+      saveSections(tournaments, key, line, sectionsOf(line));
+    }
     clearTournamentCache(key);
     const byes = missed.length ? " A late entrant has a half-point bye for the first round they missed that offers one (28K), under Byes"
       + " and unplayed rounds, where it can be made unplayed instead." : "";
@@ -1406,13 +1491,17 @@ const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
 // Byes by the rule book, refused whoever asks. Half-point byes (22C): in a Swiss only, one per player as
 // each event's page announces, in the rounds that offer them (offersHalfBye), and in the last round only
 // when asked for before round 1 is posted (22C4), as the page also announces. Full-point byes (28L): one
-// in a section's round, never a second for a player (28L3), and none in a quad or an extra games section
+// in a section's round, never a second for a player (28L3), and none in a round robin or an extra games section
 // (28M4). Which player gets the full point is up to the scores (28L2, 28L4), which the desk checks with
 // pairing.js before saving.
 const HALF_BYE_LIMIT = 1;
 const halfRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "half" : Number(r["Bye points"]) === BYE_KINDS.half);
 const fullRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "bye" : Number(r["Bye points"]) === BYE_KINDS.bye);
 const extraNames = (info) => sectionsOf(info).filter((d) => d.extra).map((d) => d.name);
+function roundRobinSection(info, section) {
+  const def = sectionsOf(info).find((d) => d.name === section);
+  return def ? ROUND_ROBINS.includes(formatOf(info, def)) : info.Format === "quad";
+}
 
 /** Whether round n of a section whose last round is last offers half-point byes: every round when the
  *  event's page takes registrations, as its Register form offers them; otherwise the first half and an odd
@@ -1454,7 +1543,7 @@ function halfByeProblem(key, info, player, n, rows, asked) {
 /** Why the player (their Players row) can't have a full-point bye in round n of the section, or "". */
 function fullByeProblem(key, info, player, n, section, rows) {
   if (extraNames(info).includes(section)) return "An extra games section gives no full-point bye (28M4); make the round unplayed.";
-  if (info.Format === "quad") return "A quad gives no full-point bye: its table pairs everyone.";
+  if (roundRobinSection(info, section)) return "A round robin gives no full-point bye: its table pairs everyone.";
   const id = player["US Chess ID"];
   const here = rows.filter((r) => r.Key === key && fullRow(r) && r.Section === section);
   if (here.some((r) => Number(r.Round) === n && r.White !== id)) return "Only the odd player has a full-point bye, one in each section's round (28L1).";
@@ -1467,6 +1556,7 @@ function fullByeProblem(key, info, player, n, section, rows) {
 function byeProblem(key, info, player, n, section, kind, rows) {
   if (kind === "half") {
     if (extraNames(info).includes(section)) return "An extra games section has no half-point byes; make the round unplayed.";
+    if (roundRobinSection(info, section)) return "A round robin has no half-point byes; make the round unplayed.";
     return halfByeProblem(key, info, player, n, rows, byeRounds(byeList(player.Byes), info));
   }
   return kind === "bye" ? fullByeProblem(key, info, player, n, section, rows) : "";
@@ -1634,7 +1724,7 @@ function sectionsOf(info) {
   }
 }
 
-/** The sections the desk sent, [{ name, under }], or an error. */
+/** The sections the desk sent, [{ name, under, format }], or an error; a Swiss leaves out its format. */
 function parseSections(text) {
   let list;
   try {
@@ -1651,7 +1741,9 @@ function parseSections(text) {
     if (!name || name.length > 30) return { error: "Each section needs a name of up to 30 characters." };
     if (sections.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { error: `Two sections are named ${name}.` };
     if (under && !/^\d{3,4}$/.test(under)) return { error: `${name}: the rating limit is a number, such as 1400, or empty for none.` };
-    sections.push(under ? { name, under: Number(under) } : { name });
+    const format = s && s.format ? String(s.format) : "swiss";
+    if (!FORMAT_NAMES[format]) return { error: `${name}: the format is a Swiss, a round robin, or a double round robin.` };
+    sections.push({ name, ...(under ? { under: Number(under) } : {}), ...(format === "swiss" ? {} : { format }) });
   }
   return { sections };
 }
@@ -1692,10 +1784,11 @@ function setSections(p) {
     if (extras.length && last) for (const s of parsed.sections) s.last = last;
     const late = beforeRoundOne(key);
     if (late) return { error: late };
-    setCell(info, line.row, "Sections", JSON.stringify([...parsed.sections, ...extras]));
     const t = table("Players");
     setCells(t, Object.fromEntries(t.rows.filter((x) => x.Key === key && !extras.some((s) => s.name === x.Section))
       .map((r) => [r.row, { Section: placeIn(parsed.sections, r.Rating) }])));
+    // Everyone is placed again, so each round robin draws its numbers again.
+    saveSections(info, key, line, [...parsed.sections.map((d) => (ROUND_ROBINS.includes(d.format) ? { ...d, order: [] } : d)), ...extras]);
     clearTournamentCache(key);
     return { ok: true, message: `Sections: ${parsed.sections.map((s) => s.name).join(", ")}. Everyone is placed by rating.` };
   } finally {
@@ -1703,8 +1796,10 @@ function setSections(p) {
   }
 }
 
-/** Renames and orders a tournament's sections at any time, extra games sections and quads too: p.sections is
- *  every one, in the new order, as [{ from, name }]. Each player's and pairing's section follows its name. */
+/** Renames and orders a tournament's sections at any time, extra games sections and quads too, and changes their
+ *  formats until each has a posted round: p.sections is every one, in the new order, as [{ from, name, format }].
+ *  Each player's and pairing's section follows its name. A section whose format changes draws its round robin's
+ *  numbers by lot, and any of its pairings saved but not posted are deleted. */
 function setSectionNames(p) {
   const key = `${p.event}/${p.date}`;
   let list;
@@ -1729,15 +1824,34 @@ function setSectionNames(p) {
     if (names.some((name) => !name || name.length > 30)) return { error: "Each section needs a name of up to 30 characters." };
     const twice = names.find((name, i) => names.findIndex((x) => x.toLowerCase() === name.toLowerCase()) !== i);
     if (twice) return { error: `Two sections are named ${twice}.` };
+    const rounds = table("Rounds");
+    const mine = rounds.rows.filter((r) => r.Key === key);
+    const changed = [];
+    const next = from.map((name, i) => {
+      const def = { ...defs.find((d) => d.name === name) };
+      const format = list[i].format === undefined ? formatOf(line, def) : String(list[i].format);
+      if (!FORMAT_NAMES[format]) return { error: `${name}: the format is a Swiss, a round robin, or a double round robin.` };
+      if (format === formatOf(line, def)) return def;
+      if (sectionStarted(def, mine)) return { error: `${name} has a posted round, so it stays ${FORMAT_NAMES[formatOf(line, def)]}.` };
+      changed.push(name);
+      def.format = format;
+      def.order = ROUND_ROBINS.includes(format) ? byLot(membersOf(def, table("Players").rows.filter((r) => r.Key === key))) : undefined;
+      if (format === "swiss" && !def.extra) delete def.last;
+      return def;
+    });
+    const refused = next.find((d) => d.error);
+    if (refused) return refused;
+    deleteRows(rounds, mine.filter((r) => changed.includes(r.Section)));
     const renamed = Object.fromEntries(from.map((name, i) => [name, names[i]]));
-    setCell(info, line.row, "Sections", JSON.stringify(from.map((name, i) => ({ ...defs.find((d) => d.name === name), name: names[i] }))));
     for (const tab of ["Players", "Rounds"]) {
       const t = table(tab);
       setCells(t, Object.fromEntries(t.rows.filter((r) => r.Key === key && Object.prototype.hasOwnProperty.call(renamed, r.Section) && renamed[r.Section] !== r.Section)
         .map((r) => [r.row, { Section: renamed[r.Section] }])));
     }
+    saveSections(info, key, line, next.map((d, i) => JSON.parse(JSON.stringify({ ...d, name: names[i] }))));
     clearTournamentCache(key);
-    return { ok: true, message: `Sections: ${names.join(", ")}.` };
+    const named = (d, i) => (formatOf(line, d) === "swiss" ? names[i] : `${names[i]} (${FORMAT_NAMES[formatOf(line, d)]})`);
+    return { ok: true, message: `Sections: ${next.map(named).join(", ")}.` };
   } finally {
     lock.releaseLock();
   }
@@ -1763,6 +1877,9 @@ function setSection(p) {
     }
     const rounds = table("Rounds");
     const mine = rounds.rows.filter((r) => r.Key === key);
+    if (ROUND_ROBINS.includes(formatOf(info, def)) && sectionStarted(def, mine)) {
+      return { error: `${def.name} is ${FORMAT_NAMES[formatOf(info, def)]} that has begun, so its table has no place for another player.` };
+    }
     if (mine.some((r) => r.Posted || r.Result)) {
       const placed = (r) => r.Section === line.Section && (r.Black ? r.White === p.id || r.Black === p.id
         : r.White === p.id && Number(r["Bye points"]) === BYE_KINDS.bye);
@@ -1775,6 +1892,9 @@ function setSection(p) {
       beforeRoundOne(key);
     }
     setCell(t, line.row, "Section", def.name);
+    const tournaments = table("Tournaments");
+    const row = tournaments.rows.find((r) => r.Key === key);
+    saveSections(tournaments, key, row, sectionsOf(row));
     clearTournamentCache(key);
     return { ok: true, message: `${line.Name} plays in ${def.name}.` };
   } finally {

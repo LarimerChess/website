@@ -501,11 +501,18 @@ section.td-table td { white-space: nowrap; }
 .hint-pop:popover-open { display: block; position: fixed; inset: auto; margin: 0; }
 .run-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
 .run-sections legend { position: relative; padding: 0; font-weight: 600; }
-.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em auto; gap: 8px; align-items: end; margin-top: 8px; }
+.run-section-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em; gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
-.run-section-row input { width: 100%; box-sizing: border-box; }
+.run-section-row input, .run-section-row select { width: 100%; box-sizing: border-box; }
 .run-names-list { margin: 8px 0 12px; padding-left: 24px; }
 .run-names-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin-top: 8px; }
+/* On a phone, a section's format goes under its name. */
+.run-names-format { grid-column: 1 / -1; grid-row: 2; }
+@media (min-width: 600px) {
+  .run-section-row { grid-template-columns: minmax(0, 1fr) 6.5em auto auto; }
+  .run-names-list li { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .run-names-format { grid-column: auto; grid-row: auto; }
+}
 .run-names-list input { width: 100%; box-sizing: border-box; }
 .run-sections-edit { margin: 16px 0; }
 .run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }

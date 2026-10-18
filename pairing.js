@@ -19,8 +19,12 @@
 // sections(t) splits it into one such tournament per section, and pairSections pairs them all.
 // An extra rated games section (28M4), { name, extra: true, first, last, players: [ids] }, holds
 // players who are also in another section, or whose section is its name and who play in it only,
-// from round first to round last of the tournament, and is a Swiss even among quads; once a
-// tournament has one, its other sections carry last too.
+// from round first to round last of the tournament; once a tournament has one, its other sections
+// carry last too, as they do once any section plays a round robin.
+//
+// Any section, an extra games one too, has a format: "swiss", "rr" for a round robin (30), or "drr"
+// for a double round robin (30F). Without one it is a Swiss, except a quad's (30G), a round robin;
+// order, a round robin's players' IDs by lot (30A), numbers them.
 
 (function (root) {
   "use strict";
@@ -404,7 +408,7 @@
    * number the tournament's round, games and byes the round's in s, last the section's last round, and halfByes the
    * tournament's { limit, everyRound }. Half-point byes (22C): in a Swiss section that isn't an extra games one, in
    * a round that offers them, up to the limit with those asked for, and in the last round only when asked for before
-   * round 1 (22C4). Full-point byes (28L): only the odd player's, none in a quad or an extra games section (28M4),
+   * round 1 (22C4). Full-point byes (28L): only the odd player's, none in a round robin or an extra games section (28M4),
    * and to the player 28L2 to 28L4 choose. registration.gs refuses the same, except the choice, which needs the scores.
    */
   function byeProblems(s, number, games, byes, last, halfByes) {
@@ -412,10 +416,10 @@
     const info = histories({ players: s.players, rounds: s.rounds.slice(0, own - 1) });
     const name = (id) => info.get(id)?.name || id;
     const problems = [];
-    const swiss = s.format !== "quad" && !s.extra;
+    const swiss = !roundRobin(s) && !s.extra;
     for (const b of byes.filter((x) => byeKind(x) === "half")) {
       if (!swiss) {
-        problems.push(`${s.extra ? "An extra games section" : "A quad"} has no half-point byes; make ${name(b.id)}'s round unplayed.`);
+        problems.push(`${s.extra ? "An extra games section" : "A round robin"} has no half-point byes; make ${name(b.id)}'s round unplayed.`);
         continue;
       }
       const asked = (s.players.find((p) => p.id === b.id)?.byes || []).map(Number);
@@ -431,7 +435,7 @@
     }
     const full = byes.filter((x) => byeKind(x) === "bye");
     if (full.length && !swiss) {
-      problems.push(`${s.extra ? "An extra games section gives no full-point bye (28M4)" : "A quad gives no full-point bye"}; make ${name(full[0].id)}'s round unplayed.`);
+      problems.push(`${s.extra ? "An extra games section gives no full-point bye (28M4)" : "A round robin gives no full-point bye"}; make ${name(full[0].id)}'s round unplayed.`);
     } else if (full.length > 1) {
       problems.push(`${full.length} full-point byes: only the odd player has one (28L1).`);
       for (const b of full) if (info.get(b.id)?.hadFullBye) problems.push(`${name(b.id)} has had a full-point bye already, and 28L3 allows one.`);
@@ -733,11 +737,67 @@
     return { games, byes: [], notes };
   }
 
-  /** Quad standings, group by group: score, then Sonneborn-Berger, then the games between the
-   *  tied players (34F). Players with equal scores and tiebreaks share a place. A player who
-   *  withdrew before playing half their three games is scored as not having competed (30B): their
-   *  games stay rated, but count in no one's score here, and they have no place. */
-  function quadStandings(tournament) {
+  const ROUND_ROBINS = ["rr", "drr"];
+  const roundRobin = (s) => ROUND_ROBINS.includes(s.format);
+
+  /**
+   * A round robin's pairings for n players by pairing number, [[[white, black]]] by round. Chapter 12's
+   * Crenshaw tables aren't in the rule book's PDF, so four players (three with a sit-out) play 30G's
+   * table and the others the Berger tables, which give everyone at most two of a color in a row; an
+   * odd count adds a number whose opponent sits out. A double round robin plays it again with the
+   * colors reversed (30F).
+   */
+  function roundRobinTable(n, format) {
+    const size = n + (n % 2);
+    let once = [];
+    if (size === 4) once = QUAD_TABLE;
+    else if (size >= 2) {
+      for (let k = 0; k < size - 1; k++) {
+        const r = (k * size / 2) % (size - 1);
+        const round = [k % 2 ? [size, r + 1] : [r + 1, size]];
+        for (let i = 1; i < size / 2; i++) round.push([((r + i) % (size - 1)) + 1, ((r - i + size - 1) % (size - 1)) + 1]);
+        once.push(round);
+      }
+    }
+    return format === "drr" ? [...once, ...once.map((round) => round.map(([w, b]) => [b, w]))] : once;
+  }
+
+  /** How many rounds a round robin of n players plays. */
+  const roundRobinRounds = (n, format) => roundRobinTable(n, format).length;
+
+  /**
+   * A round robin section's games in its own round, from its table; a player whose opponent is the
+   * odd number or has withdrawn (options.out, or out in an earlier round) sits out, the round
+   * unplayed. Players beyond the table's, such as one added after it began, wait to be paired by hand.
+   */
+  function pairRoundRobin(s, own, options = {}) {
+    const size = s.size || s.players.length;
+    const gone = new Set([...(options.out || []), ...s.rounds.flatMap((r) => r.out || [])]);
+    const byNumber = new Map(s.players.filter((p) => p.number <= size).map((p) => [p.number, p]));
+    const games = [], byes = [], notes = [];
+    for (const [w, b] of roundRobinTable(size, s.format)[own - 1] || []) {
+      const white = byNumber.get(w), black = byNumber.get(b);
+      const here = [white, black].filter((p) => p && !gone.has(p.id));
+      if (here.length === 2) games.push({ board: games.length + 1, white: white.id, black: black.id });
+      else if (here.length) {
+        byes.push({ id: here[0].id, points: 0, kind: "unplayed" });
+        notes.push(`${here[0].name || here[0].id} sits out this round.`);
+      }
+    }
+    const extra = s.players.filter((p) => p.number > size && !gone.has(p.id));
+    if (extra.length) notes.push(`${extra.map((p) => p.name || p.id).join(", ")} joined after the round robin began, so the table doesn't pair them; pair them by hand or move them.`);
+    return { games, byes, notes };
+  }
+
+  /** Quad standings, group by group, as roundRobinStandings ranks each. */
+  const quadStandings = (tournament) => roundRobinStandings(tournament, (number) => Math.ceil(number / 4), 3);
+
+  /** Round robin standings, group by group (groupOf a player's number; one group unless given): score,
+   *  then Sonneborn-Berger, then the games between the tied players (34F). Players with equal scores and
+   *  tiebreaks share a place. A player who withdrew before playing half their scheduled games (each group's
+   *  table's, unless given) is scored as not having competed (30B): their games stay rated, but count in no
+   *  one's score here, and they have no place. */
+  function roundRobinStandings(tournament, groupOf = () => 1, scheduled) {
     const info = histories(tournament);
     const numbers = new Map(tournament.players.map((p) => [p.id, Number(p.number)]));
     const results = new Map([...info.keys()].map((id) => [id, []]));
@@ -753,7 +813,9 @@
         results.get(g.black)?.push({ opponent: g.white, points: b });
       }
     }
-    const gone = new Set([...info.values()].filter((p) => p.out && results.get(p.id).length < 1.5).map((p) => p.id));
+    const groupSize = (id) => tournament.players.filter((p) => groupOf(Number(p.number)) === groupOf(numbers.get(id))).length;
+    const games = (id) => scheduled ?? (groupSize(id) - 1) * (tournament.format === "drr" ? 2 : 1);
+    const gone = new Set([...info.values()].filter((p) => p.out && results.get(p.id).length < games(p.id) / 2).map((p) => p.id));
     for (const p of info.values()) {
       if (gone.has(p.id)) continue;
       p.score -= against.get(p.id).filter((r) => gone.has(r.opponent)).reduce((sum, r) => sum + r.points, 0);
@@ -762,7 +824,7 @@
     const perf = performance(tournament, info);
     const estimate = ratingEstimates(tournament);
     const rows = [...info.values()].map((p) => ({
-      id: p.id, name: p.name, rating: p.rating, performance: perf.get(p.id), estimate: estimate.get(p.id), number: numbers.get(p.id), group: Math.ceil(numbers.get(p.id) / 4), score: p.score,
+      id: p.id, name: p.name, rating: p.rating, performance: perf.get(p.id), estimate: estimate.get(p.id), number: numbers.get(p.id), group: groupOf(numbers.get(p.id)), score: p.score,
       // Nothing is added for losses or unplayed games.
       sonnebornBerger: results.get(p.id).reduce((sum, r) => sum + r.points * info.get(r.opponent).score, 0),
     }));
@@ -803,9 +865,9 @@
 
   /**
    * A tournament's sections in order, each a tournament of its own (28A, 29): { name, key, under,
-   * extra, format, first, last, players, rounds }. A player plays in one section, and may also be in extra
-   * sections, or in extra sections only when their section names one; they're numbered 1 up within
-   * each in the order of their numbers. The rounds are the section's own, from the tournament's round first to last (null for through the planned
+   * extra, format, first, last, players, rounds }, and a round robin's size, the players its table pairs. A player
+   * plays in one section, and may also be in extra sections, or in extra sections only when their section names
+   * one; they're numbered 1 up within each in the order of their numbers, or a round robin's order. The rounds are the section's own, from the tournament's round first to last (null for through the planned
    * rounds), keeping only the section's games and byes. key is what the spreadsheet's Section
    * cells hold for it, empty for a tournament started before sections, which is one section, or
    * for quads one per four numbers.
@@ -845,12 +907,16 @@
       const first = Number(def.first) || 1;
       const last = Number(def.last) || null;
       const ids = new Set(members.map((p) => p.id));
-      const players = [...members].sort((a, b) => Number(a.number) - Number(b.number)).map((p, i) => ({ ...p, number: i + 1 }));
+      const order = def.order || [];
+      const rank = (p) => (order.includes(p.id) ? order.indexOf(p.id) : order.length + Number(p.number));
+      const players = [...members].sort((a, b) => rank(a) - rank(b)).map((p, i) => ({ ...p, number: i + 1 }));
+      const format = def.format || (g.extra || t.format !== "quad" ? "swiss" : "rr");
       const rounds = t.rounds.slice(first - 1, last ?? undefined).map((r) => ({ ...r,
         games: r.games.filter((x) => ids.has(x.white) && ids.has(x.black) && here(x, g.key)),
         byes: (r.byes || []).filter((b) => ids.has(b.id) && here(b, g.key)),
         out: (r.out || []).filter((id) => ids.has(id)) }));
-      return { extra: false, ...g, format: g.extra ? "swiss" : t.format || "swiss", first, last, players, rounds };
+      const size = ROUND_ROBINS.includes(format) ? (order.length ? players.filter((p) => order.includes(p.id)).length : players.length) : null;
+      return { extra: false, ...g, format, size, first, last, players, rounds };
     });
   }
 
@@ -868,15 +934,15 @@
     const number = t.rounds.length + 1;
     let board = 0;
     return sections(t).filter((s) => s.players.length && playsIn(s, number)).map((s) => {
-      const result = s.format === "quad" ? pairQuadRound(s.players, number)
-        : pairRound(s, { ...(typeof options === "function" ? options(s) : options), extra: s.extra });
+      const own = typeof options === "function" ? options(s) : options;
+      const result = roundRobin(s) ? pairRoundRobin(s, number - s.first + 1, own) : pairRound(s, { ...own, extra: s.extra });
       const offset = s.key ? 0 : board;
       board += result.games.length;
       return { section: s.key, name: s.name, format: s.format, ...result, games: result.games.map((g) => ({ ...g, board: g.board + offset })) };
     });
   }
 
-  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, roundCells, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, sections, playsIn, pairSections, placeIn, mayEnter,
+  const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, roundCells, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, roundRobin, roundRobinTable, roundRobinRounds, pairRoundRobin, roundRobinStandings, sections, playsIn, pairSections, placeIn, mayEnter,
     offersHalfBye, byeProblems, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;

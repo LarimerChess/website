@@ -7,7 +7,7 @@
 
 - Each rated tournament gets results/<slug>/, the slug being its key with "/" as "-"
   (first-saturday-classic-2026-11-07). A Swiss shows each section's final standings with the
-  US Chess tiebreaks, from pairing.js run with node; a quad tournament, each quad's standings;
+  US Chess tiebreaks, from pairing.js run with node, or a round robin's, as each quad's are;
   an arena, its leaderboard and games. A tournament is rated
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable.
@@ -140,9 +140,9 @@ def pairing_js(function, tournament):
 
 def standings(t, function="standings"):
     """Pairing.standings from pairing.js: score, then modified median, Solkoff, cumulative, and
-    cumulative of opposition (34E). With "quadStandings", a quad's: score, Sonneborn-Berger, then
-    head-to-head."""
-    tournament = {"players": [{k: p.get(k) for k in ("id", "name", "rating", "number", "games", "sweep", "floor")}
+    cumulative of opposition (34E). With "quadStandings" or "roundRobinStandings", a round robin's:
+    score, Sonneborn-Berger, then head-to-head."""
+    tournament = {"format": t.get("format"), "players": [{k: p.get(k) for k in ("id", "name", "rating", "number", "games", "sweep", "floor")}
                               for p in t["players"]],
                   "rounds": [{"games": r["games"], "byes": r.get("byes", []), "out": r.get("out", [])}
                              for r in t["rounds"]]}
@@ -221,39 +221,31 @@ def swiss_standings(s, label):
                   "Opp. cumulative", "Performance"], rows, label) + withdrawals(s)
 
 
-def swiss_main(t):
+def round_robin_standings(s, label):
+    by_id = {p["id"]: p for p in s["players"]}
+    order = standings(s, "roundRobinStandings")
+    rounds = round_cells(s, order)
+    rows = [[str(r["place"] or ""), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
+             score_text(r["score"]), score_text(r["sonnebornBerger"]),
+             "" if r["headToHead"] is None else score_text(r["headToHead"]), performance_text(r)]
+            for r in order]
+    return table(["Place", "Name", "Rating", *round_headings(s), "Score", "Sonneborn-Berger", "Head-to-head", "Performance"], rows,
+                 label) + withdrawals(s)
+
+
+def section_standings(s, label):
+    return (round_robin_standings if s.get("format") in ("rr", "drr") else swiss_standings)(s, label)
+
+
+def sections_main(t):
+    """Each section's standings by its format; a Swiss in one section has no heading."""
     parts = sections(t)
-    if len(parts) == 1:
-        return swiss_standings(parts[0], "Final standings")
+    if len(parts) == 1 and t.get("format") != "quad":
+        return section_standings(parts[0], "Final standings")
     return "\n\n    ".join(f"""<section id="{anchor(part['name'])}">
       <h2>{escaped(part['name'])}</h2>
-      {swiss_standings(part, f"{part['name']} standings")}
+      {section_standings(part, f"{part['name']} standings")}
     </section>""" for part in parts)
-
-
-def quad_main(t):
-    out = []
-    for q in sections(t):
-        if q.get("extra"):
-            out.append(f"""<section id="{anchor(q['name'])}">
-      <h2>{escaped(q['name'])}</h2>
-      {swiss_standings(q, f"{q['name']} standings")}
-    </section>""")
-            continue
-        by_id = {p["id"]: p for p in q["players"]}
-        order = standings(q, "quadStandings")
-        rounds = round_cells(q, order)
-        rows = [[str(r["place"] or ""), escaped(by_id[r["id"]]["name"]), rating_text(by_id[r["id"]]), *rounds[r["id"]],
-                 score_text(r["score"]), score_text(r["sonnebornBerger"]),
-                 "" if r["headToHead"] is None else score_text(r["headToHead"]), performance_text(r)]
-                for r in order]
-        name = q["name"]
-        out.append(f"""<section id="{anchor(name)}">
-      <h2>{escaped(name)}</h2>
-      {table(["Place", "Name", "Rating", *round_headings(q), "Score", "Sonneborn-Berger", "Head-to-head", "Performance"], rows,
-             f"{name} standings")}{withdrawals(q)}
-    </section>""")
-    return "\n\n    ".join(out)
 
 
 def arena_scores(t):
@@ -301,7 +293,7 @@ def results_page(t):
     shows = "leaderboard and games" if form == "arena" else "standings"
     kind = {"arena": "arena tournament", "quad": "quad tournament"}.get(form, f"{len(t['rounds'])}-round Swiss")
     description = f"Final {shows} of the {name}, a US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado."
-    body = {"arena": arena_main, "quad": quad_main}.get(form, swiss_main)(t)
+    body = arena_main(t) if form == "arena" else sections_main(t)
     event = t.get("usChessEvent")
     rated = (f'<p>US Chess rated it as event <a href="https://ratings.uschess.org/event/{html.escape(event)}" target="_blank" '
              f'rel="noopener">{escaped(event)}<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>\n\n    '

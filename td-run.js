@@ -7,7 +7,8 @@
 // A tournament's sections play each round together: one check-in, one Pair button that pairs
 // every section on its own, one review, and one Post, with each section in its own tables. An
 // extra rated games section (28M4) plays only its own rounds, and its players are also in another
-// section, so the desk tells their check-ins, games, and byes apart by section.
+// section, so the desk tells their check-ins, games, and byes apart by section. Each section is a
+// Swiss, a round robin, or a double round robin, which the TD can change until it has a posted round.
 
 const runStatus = document.querySelector(".run-status");
 const runStart = document.querySelector(".run-start");
@@ -77,6 +78,15 @@ function sectionTable(className, headings, rows, name, several) {
   return several ? [Object.assign(document.createElement("h4"), { textContent: name }), wrap] : [wrap];
 }
 
+const FORMATS = [["swiss", "Swiss"], ["rr", "Round robin"], ["drr", "Double round robin"]];
+
+/** A menu of the formats a section can have. */
+function formatMenu(value, attributes) {
+  const menu = Object.assign(document.createElement("select"), attributes);
+  menu.append(...FORMATS.map(([v, text]) => option(v, text, v === (value || "swiss"))));
+  return menu;
+}
+
 // The sections editor, in the start form and before round 1.
 let sectionRow = 0;
 function addSectionRow(rows, section = {}) {
@@ -94,9 +104,12 @@ function addSectionRow(rows, section = {}) {
   remove.addEventListener("click", () => {
     if (rows.children.length > 1) row.remove();
   });
+  const format = document.createElement("div");
+  format.append(Object.assign(document.createElement("label"), { htmlFor: `run-section-format-${n}`, textContent: "Format" }),
+    formatMenu(section.format, { id: `run-section-format-${n}`, className: "run-section-format" }));
   row.append(field("Section", `run-section-name-${n}`, section.name, { maxLength: 30, className: "run-section-name" }),
     field("Rated under", `run-section-under-${n}`, section.under, { inputMode: "numeric", maxLength: 4, className: "run-section-under" }),
-    remove);
+    format, remove);
   rows.append(row);
 }
 
@@ -109,10 +122,11 @@ function fillSections(fieldset, defs) {
 /** The sections typed in, or an error. */
 function readSections(fieldset) {
   const list = [...fieldset.querySelectorAll(".run-section-row")].map((row) => ({
-    name: row.querySelector(".run-section-name").value.trim(), under: row.querySelector(".run-section-under").value.trim() }));
+    name: row.querySelector(".run-section-name").value.trim(), under: row.querySelector(".run-section-under").value.trim(),
+    format: row.querySelector(".run-section-format").value }));
   if (list.some((s) => !s.name)) return { error: "Name every section, or remove it." };
   if (list.some((s) => s.under && !/^\d{3,4}$/.test(s.under))) return { error: "A section's limit is a rating, such as 1400, or empty for none." };
-  return { sections: list.map((s) => (s.under ? { name: s.name, under: Number(s.under) } : { name: s.name })) };
+  return { sections: list.map((s) => ({ name: s.name, ...(s.under ? { under: Number(s.under) } : {}), ...(s.format === "swiss" ? {} : { format: s.format }) })) };
 }
 
 for (const fieldset of document.querySelectorAll(".run-sections")) {
@@ -148,8 +162,8 @@ function renderRun() {
   runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
   if (current && current.status !== "rated") {
     runManage.hidden = false;
-    // A quad plays three rounds, but its extra games sections as many as the TD gives them.
-    runPlanned.hidden = current.format !== "swiss" && !(current.format === "quad" && (current.sections || []).some((d) => d.extra));
+    // A round robin's players set its rounds; a Swiss plays as many as the TD gives it.
+    runPlanned.hidden = (current.sections || []).some((d) => d.last) ? !plannedSections().length : current.format !== "swiss";
     fillPlanned();
     renderSectionNames();
     renderExtras();
@@ -218,9 +232,9 @@ function renderCheckin(t, parts, next) {
   runTitle.textContent = `Round ${next}: check in`;
   runCheckin.hidden = false;
   runPairings.hidden = true;
-  // A quad's pairings come from the table, so a player not here loses that game by forfeit.
-  runCheckinHint.textContent = active.some((s) => s.format === "quad")
-    ? "Everyone starts as Present; change anyone who isn't here. The quad table fixes the pairings, so a player not here loses that round's game by forfeit."
+  // A round robin's pairings come from its table, so a player not here loses that game by forfeit.
+  runCheckinHint.textContent = active.some(Pairing.roundRobin)
+    ? "Everyone starts as Present; change anyone who isn't here. A round robin's table fixes its pairings, so a player not here loses that round's game by forfeit."
       + (active.some((s) => s.extra) ? " In an extra games section, a player not here has the round unplayed." : "")
     : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.";
   // Quads are numbered once, at the start, so later entrants can't be added.
@@ -235,7 +249,7 @@ function renderCheckin(t, parts, next) {
     const movable = (p) => !quad && !s.extra && defs.length > 1 && !s.rounds.some((r) => r.games.some((g) => g.white === p.id || g.black === p.id)
       || r.byes.some((b) => b.id === p.id && Pairing.byeKind(b) === "bye"));
     const choosing = s.players.some((p) => !p.out && movable(p));
-    const table = s.format === "quad";
+    const table = Pairing.roundRobin(s);
     const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
     const own = next - s.first + 1;
     // 28P: a player who lost the last round by forfeit is dropped unless the TD accepts their excuse.
@@ -962,15 +976,15 @@ function renderStandings() {
   if (!current?.rounds.length) return;
   const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
-  const formats = new Set(parts.map((s) => s.format));
-  runStandingsHint.textContent = [formats.has("quad") && "Each quad is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F).",
-    formats.has("swiss") && `${formats.has("quad") ? "An extra games section's tiebreaks are" : "Tiebreaks"} in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.`]
+  const robins = parts.some(Pairing.roundRobin);
+  runStandingsHint.textContent = [robins && "Each round robin, a quad too, is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F).",
+    parts.some((s) => !Pairing.roundRobin(s)) && `${robins ? "A Swiss's tiebreaks are" : "Tiebreaks"} in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.`]
     .filter(Boolean).join(" ")
     + " Performance is the Elo performance rating over the games played against rated opponents; Est. rating, US Chess's formula"
     + " applied to the games played so far.";
   runStandings.replaceChildren(...parts.flatMap((s) => {
-    const quad = s.format === "quad";
-    const table = quad ? Pairing.quadStandings(s) : Pairing.standings(s);
+    const quad = Pairing.roundRobin(s);
+    const table = quad ? Pairing.roundRobinStandings(s) : Pairing.standings(s);
     const rounds = Pairing.roundCells(s, table);
     const rows = table.map((r) => {
       const row = document.createElement("tr");
@@ -1025,10 +1039,11 @@ runStart.addEventListener("submit", async (event) => {
   event.preventDefault();
   const [eventName, date] = keyParts();
   const fields = Object.fromEntries(new FormData(runStart));
-  if (fields.format === "swiss" && !/^\d+$/.test(fields.rounds)) return void (runStatus.textContent = "How many rounds?");
   if (fields.format === "swiss") {
     const defined = readSections(runStart.querySelector(".run-sections"));
     if (defined.error) return void (runStatus.textContent = defined.error);
+    // A round robin's players set its rounds, so only a Swiss section needs them.
+    if (defined.sections.some((d) => !d.format) && !/^\d+$/.test(fields.rounds)) return void (runStatus.textContent = "How many rounds?");
     fields.sections = JSON.stringify(defined.sections);
   }
   if (fields.format === "quad" && !confirm("Start the quads? Players are grouped by rating and numbered by lot now, so register everyone first.")) return;
@@ -1087,13 +1102,12 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
     out: withdrawn,
     coin: current.coin,
   }));
-  // A quad's table pairs absent players too; their games are forfeits.
+  // A round robin's table pairs absent players too; their games are forfeits.
   const away = new Set(choicesMade.filter(([, v]) => v === "absent").map(([id]) => id));
-  for (const s of sections.filter((x) => x.format === "quad")) {
+  for (const s of sections.filter(Pairing.roundRobin)) {
     for (const g of s.games) {
       if (away.has(g.white) || away.has(g.black)) g.result = away.has(g.white) ? (away.has(g.black) ? "0F-0F" : "0F-1F") : "1F-0F";
     }
-    s.byes = s.byes.filter((b) => !away.has(b.id));
   }
   draft = { number, sections: sections.map(({ format, ...s }) => s) };
   if (withdrawn.length) current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
@@ -1101,7 +1115,7 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
 });
 
 // By hand, the players marked present start out not yet paired, as does everyone when nobody is
-// marked present; the others are unplayed, except in a quad, where the TD gives them forfeits.
+// marked present; the others are unplayed, except in a round robin, where the TD gives them forfeits.
 document.querySelector(".run-by-hand").addEventListener("click", async () => {
   const number = current.rounds.length + 1;
   const { choicesMade, withdrawn } = await checkIn(number);
@@ -1113,7 +1127,7 @@ document.querySelector(".run-by-hand").addEventListener("click", async () => {
     for (const p of s.players) {
       const choice = chosen.get(`${s.key}|${p.id}`);
       if (!choice || withdrawn.includes(p.id)) continue;
-      const kind = { half: "half", zero: "zero", absent: anyone && s.format !== "quad" ? "unplayed" : "" }[choice];
+      const kind = { half: "half", zero: "zero", absent: anyone && !Pairing.roundRobin(s) ? "unplayed" : "" }[choice];
       if (kind) part.byes.push({ id: p.id, kind, points: Pairing.BYE_KINDS[kind] });
       else part.waiting.push(p.id);
     }
@@ -1184,11 +1198,19 @@ async function saveDraft(post) {
 document.querySelector(".run-post").addEventListener("click", () => saveDraft(true));
 document.querySelector(".run-save").addEventListener("click", () => saveDraft(false));
 
-// Once a tournament has an extra games section, each section has its own rounds, changed one at a time.
+// Once a tournament has an extra games section or a round robin, each section has its own rounds, and a Swiss's change one at a time.
 const plannedSection = document.getElementById("run-planned-section");
 
+/** The Swiss sections whose rounds change one at a time, none while the sections share the tournament's. */
+function plannedSections() {
+  const defs = current.sections || [];
+  if (!defs.some((d) => d.last)) return [];
+  const swiss = new Set(Pairing.sections(forEngine(current)).filter((s) => !Pairing.roundRobin(s)).map((s) => s.key));
+  return defs.filter((d) => swiss.has(d.name));
+}
+
 function fillPlanned() {
-  const defs = (current.sections || []).some((d) => d.extra) ? current.sections.filter((d) => current.format === "swiss" || d.extra) : [];
+  const defs = plannedSections();
   plannedSection.hidden = document.querySelector('[for="run-planned-section"]').hidden = !defs.length;
   const chosen = plannedSection.value;
   plannedSection.replaceChildren(...defs.map((d) => option(d.name, d.name, d.name === chosen)));
@@ -1197,7 +1219,8 @@ function fillPlanned() {
 }
 plannedSection.addEventListener("change", fillPlanned);
 
-// Renaming and ordering the sections: each a name field with buttons to move it, kept as the TD left it while open.
+// Renaming, ordering, and changing the formats of the sections: each a name field, buttons to move it, and a format
+// menu, fixed once the section has a posted round, kept as the TD left them while open.
 const namesForm = document.querySelector(".run-names");
 const namesWrap = namesForm.closest("details");
 
@@ -1207,9 +1230,13 @@ function renderSectionNames() {
   if (namesWrap.open && namesForm.dataset.key === current.key) return;
   namesForm.dataset.key = current.key;
   const list = namesForm.querySelector(".run-names-list");
+  const parts = Pairing.sections(forEngine(current));
   list.replaceChildren(...defs.map((d) => {
     const item = document.createElement("li");
     item.dataset.from = d.name;
+    const format = formatMenu(parts.find((s) => s.key === d.name)?.format, { className: "run-names-format" });
+    format.setAttribute("aria-label", `Format of ${d.name}`);
+    format.disabled = current.rounds.some((r) => r.posted && r.games.concat(r.byes).some((x) => x.section === d.name));
     const name = Object.assign(document.createElement("input"), { type: "text", value: d.name, maxLength: 30, autocomplete: "off" });
     name.setAttribute("aria-label", `New name for ${d.name}`);
     const move = (text, step) => editButton(text, ` ${d.name}`, `${d.name}-${text}`, () => {
@@ -1220,14 +1247,18 @@ function renderSectionNames() {
       item.querySelector(`[data-focus="${CSS.escape(`${d.name}-${text}`)}"]`).focus();
       runStatus.textContent = `${d.name} is ${[...list.children].indexOf(item) + 1} of ${list.children.length}.`;
     });
-    item.append(name, move("Up", -1), move("Down", 1));
+    item.append(name, format, move("Up", -1), move("Down", 1));
     return item;
   }));
 }
 
 namesForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const sections = [...namesForm.querySelectorAll(".run-names-list li")].map((li) => ({ from: li.dataset.from, name: li.querySelector("input").value.trim() }));
+  const sections = [...namesForm.querySelectorAll(".run-names-list li")].map((li) => ({ from: li.dataset.from, name: li.querySelector("input").value.trim(),
+    format: li.querySelector(".run-names-format").value }));
+  const changed = sections.filter((x) => x.format !== Pairing.sections(forEngine(current)).find((s) => s.key === x.from)?.format);
+  if (changed.length && !confirm(`Change the format of ${changed.map((x) => x.from).join(" and ")}? Any of its pairings saved but not posted are deleted,`
+    + " and a round robin draws its players' numbers by lot.")) return;
   const [event, date] = keyParts();
   const result = await call("sectionNames", { event, date, sections: JSON.stringify(sections) });
   if (result.ok) {
@@ -1267,7 +1298,8 @@ function renderExtras() {
   list.replaceChildren(...extras.map((d) => {
     const item = document.createElement("li");
     const first = d.first, last = d.last;
-    item.append(`${d.name}: ${d.players.length} players, ${first === last ? `round ${first}` : `rounds ${first} to ${last}`}. `);
+    const kind = { rr: " a round robin,", drr: " a double round robin," }[d.format] || "";
+    item.append(`${d.name}: ${d.players.length} players,${kind} ${first === last ? `round ${first}` : `rounds ${first} to ${last}`}. `);
     const posted = current.rounds.some((r) => r.posted && r.games.concat(r.byes).some((x) => x.section === d.name));
     if (!posted) {
       item.append(editButton("Take off", ` ${d.name}`, `drop-${d.name}`, async () => {
@@ -1305,6 +1337,8 @@ function renderExtras() {
     for (let n = 2; names.has(name.toLowerCase()); n++) name = `Extra games ${n}`;
     extraForm.elements.name.value = name;
     extraForm.elements.rounds.value = "1";
+    extraForm.elements.format.value = "swiss";
+    showExtraRounds();
   }
   const box = (id, text, checked) => {
     const label = document.createElement("label");
@@ -1315,12 +1349,19 @@ function renderExtras() {
     ...entrants.map((e) => box(e.id, entrantLabel(e), false)));
 }
 
+// A round robin's players set its rounds.
+function showExtraRounds() {
+  const swiss = extraForm.elements.format.value === "swiss";
+  extraForm.elements.rounds.hidden = extraForm.querySelector('[for="run-extra-rounds"]').hidden = !swiss;
+}
+extraForm.elements.format.addEventListener("change", showExtraRounds);
+
 extraForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const players = [...extraForm.querySelectorAll(".run-extra-players input:checked")].map((box) => box.value);
   const [event, date] = keyParts();
   const result = await call("extraSection", { event, date, name: extraForm.elements.name.value.trim(),
-    rounds: extraForm.elements.rounds.value.trim(), players: JSON.stringify(players) });
+    format: extraForm.elements.format.value, rounds: extraForm.elements.rounds.value.trim(), players: JSON.stringify(players) });
   if (result.ok) {
     delete extraForm.dataset.key;
     extraForm.closest("details").open = false;

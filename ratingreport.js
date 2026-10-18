@@ -115,7 +115,7 @@
 
   /** Each player's D_RNDnn: the result letter, the opponent's number (0 without a game), and the color.
    *  W, L, D; X and F for a win or loss by forfeit; B and H for a full- or half-point bye; U not played.
-   *  A quad's are by round too, though the format page has a round robin's D_RNDnn be the game against
+   *  A round robin's are by round too, though the format page has a round robin's D_RNDnn be the game against
    *  player n: MUIR rated the 2026-10-10 quad by round, and reads a player's own blank field as a game. */
   function roundCells(section, count) {
     const numbers = new Map(section.players.map((p) => [p.id, p.number]));
@@ -153,7 +153,7 @@
       const written = parseControl(control)?.text || control || "";
       sectionRecords.push({ S_SEC_NUM: number, S_SEC_NAME: s.name, S_R_SYSTEM: ratingSystem(control),
         S_TIMECTL: written.replace(/^G\//, "Game/"), S_CTD_ID: report.td,
-        S_TRN_TYPE: s.format === "quad" ? "R" : "S",
+        S_TRN_TYPE: Pairing.roundRobin(s) ? "R" : "S",
         S_TOT_RNDS: String(s.rounds.length), S_LST_PAIR: String(s.players.length), S_BEG_DATE: ymd(report.begin),
         // S_SCH_LVL is MUIR's participant code: N Non-Scholastic, S Scholastic, J JTP K-12, P JTP Primary.
         // Club events are open to all ages and not tied to a school (docs/tds/rating-an-event.md).

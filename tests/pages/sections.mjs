@@ -510,7 +510,7 @@ await press(sectionDesk, ".run-names button[type=submit]");
 await sectionDesk.waitForFunction(() => document.querySelector(".run-attendance-all h4")?.textContent.startsWith("Reserve"));
 const named = sectionCalls.find((c) => c.action === "sectionNames") || {};
 const namedHeadings = await sectionDesk.$$eval(".run-attendance-all h4", (h) => h.map((x) => x.textContent));
-named.sections === JSON.stringify([{ from: "Under 1400", name: "Reserve" }, { from: "Open", name: "Open" }])
+named.sections === JSON.stringify([{ from: "Under 1400", name: "Reserve", format: "swiss" }, { from: "Open", name: "Open", format: "swiss" }])
   && focusKept === "Under 1400-Up" && JSON.stringify(namedHeadings) === JSON.stringify(["Reserve (2)", "Open (6)"])
   ? pass("TD desk renames and reorders the sections, and checks in under the new names in the new order")
   : fail(`TD desk section names: ${JSON.stringify({ named, focusKept, namedHeadings })}`);
