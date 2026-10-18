@@ -57,6 +57,8 @@ python3 scripts/archive_tournaments.py --fixture tests/fixtures/sheets.json --ra
 node scripts/rating_check.mjs --now 2026-11-08T09:17 --from tests/fixtures/tournaments.json --uschess tests/fixtures/uschess.json
 ```
 
+The president's machine runs scripts/backup_firebase.py from cron at 2:15 every night. It copies the whole database to ~/.local/share/lccc/backups, which is private to that account, and prunes old copies there.
+
 ## Checks
 
 Check site runs these on every push; run them before pushing:
