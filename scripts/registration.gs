@@ -677,6 +677,9 @@ function deleteContact(id) {
 
 // Google Voice emails the club number's texts, voicemail, and missed calls to the club's Gmail account,
 // which forwards them to the president's inbox; the desk's Messages section reads them there.
+// The Gmail advanced service in appsscript.json is there only because adding it turns the Gmail API on
+// in the script's own Cloud project, which the Cloud console can't open. The script calls the API itself,
+// so it can fetch every message at once.
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
 const VOICE_SEARCH = "from:(txt.voice.google.com OR voice-noreply@google.com) newer_than:90d";
 const VOICE_KINDS = { "text message": "Text", "group message": "Text", voicemail: "Voicemail", "missed call": "Missed call" };
