@@ -1751,3 +1751,40 @@ for (const store of STORES) {
     assert.match(gs.addExtraPlayer({ ...p, section: "Extra games", id: "90000017" }).error, /has begun/);
   });
 }
+
+test("the desk's messages: Voice's texts, voicemail, and missed calls from Gmail, newest first, with the caller's contact", () => {
+  const { gs } = load({ Contacts: [["Name", "Email", "Phone", "Other phones"], ["Cora", "", "970-555-0103", ""], ["Dan", "", "", "(970) 555-0104, 303-555-0000"]] });
+  const encoded = (text) => Buffer.from(text).toString("base64url");
+  const mail = (id, at, subject, from, body) => ({ id, internalDate: String(Date.parse(at)),
+    payload: { mimeType: "multipart/alternative", headers: [{ name: "Subject", value: subject }, { name: "From", value: from }],
+      parts: [{ mimeType: "text/html", body: { data: encoded("<p>html</p>") } }, { mimeType: "text/plain", body: { data: encoded(body) } }] } });
+  const mails = {
+    m1: mail("m1", "2026-10-18T15:00:00Z", "New text message from Cora", "\"Cora (SMS)\" <19702867339.19705550103.abc@txt.voice.google.com>",
+      "Running late, save me a board\r\n<https://voice.google.com/>\r\nTo respond to this text message, reply to this email or visit Google Voice.\r\nYOUR ACCOUNT HELP CENTER"),
+    m2: mail("m2", "2026-10-19T09:30:00Z", "New voicemail from (970) 555-0104 at 3:30 AM", "Google Voice <voice-noreply@google.com>",
+      "Hi, is there a tournament Saturday?\r\nPlay message\r\nhttps://voice.google.com/u/0/voicemail"),
+    m3: mail("m3", "2026-10-17T20:00:00Z", "New missed call from (720) 555-0199", "Google Voice <voice-noreply@google.com>", "YOUR ACCOUNT"),
+    m4: mail("m4", "2026-10-16T20:00:00Z", "Your Google Voice number is about to expire", "Google Voice <voice-noreply@google.com>", "Use it"),
+  };
+  const asked = [];
+  const reply = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
+  const gmail = (url, options) => {
+    asked.push([url, options.headers.Authorization]);
+    const id = url.match(/messages\/(\w+)\?format=full$/);
+    return id ? reply(200, mails[id[1]]) : reply(200, { messages: Object.keys(mails).map((m) => ({ id: m })) });
+  };
+  gs.UrlFetchApp = { fetch: gmail, fetchAll: (requests) => requests.map((r) => gmail(r.url, r)) };
+  const { messages } = gs.voiceMessages();
+  eq(messages.map(({ id, kind, phone, from, name, text }) => [id, kind, phone, from, name, text]), [
+    ["m2", "Voicemail", "9705550104", "(970) 555-0104", "Dan", "Hi, is there a tournament Saturday?"],
+    ["m1", "Text", "9705550103", "(970) 555-0103", "Cora", "Running late, save me a board"],
+    ["m3", "Missed call", "7205550199", "(720) 555-0199", "", ""]]);
+  assert.equal(messages[0].at, "2026-10-19T09:30:00.000Z");
+  assert.ok(decodeURIComponent(asked[0][0]).includes("q=from:(txt.voice.google.com OR voice-noreply@google.com)"), asked[0][0]);
+  assert.ok(asked.every(([, auth]) => auth === "Bearer president-token"));
+  gs.UrlFetchApp = { fetch: () => reply(403, { error: { message: "Insufficient Permission" } }) };
+  const realError = console.error;
+  console.error = () => {};
+  assert.match(gs.voiceMessages().error, /Gmail didn't answer/);
+  console.error = realError;
+});

@@ -1,5 +1,5 @@
 // The Register form, the home page's register cards, and the TD desk's entries, against a stand-in for the script.
-import { axeSource, base, browser, clubEvents, done, fail, mocked, offline, pass, press, seriesPages } from "./common.mjs";
+import { axeBoth, axeSource, base, browser, clubEvents, done, fail, mocked, offline, pass, press, seriesPages } from "./common.mjs";
 
 // Registration, against a stand-in for the Apps Script: register.js is served with its
 // ENDPOINT pointed at it, whatever the real one is.
@@ -249,6 +249,9 @@ desk.on("request", async (request) => {
             contacts: [{ id: "c1", Name: "Cora Contact", Email: "cora@example.com", Phone: "970-555-0103", Status: "Player", Notes: "", "US Chess ID": "" }] },
           contactSave: { ok: true, id: "c1", message: "Cora Contact is saved." },
           contactDelete: { ok: true, message: "Cora Contact is deleted." },
+          messages: { messages: [
+            { id: "m2", at: "2026-10-19T21:30:00.000Z", kind: "Voicemail", phone: "9705550103", from: "(970) 555-0103", name: "Cora Contact", text: "Is there a tournament Saturday?\nCall me back." },
+            { id: "m1", at: "2026-10-18T15:05:00.000Z", kind: "Missed call", phone: "", from: "Unknown", name: "", text: "" }] },
           refresh: { ok: true, message: "Refreshed 3 entry lists and 1 tournament." },
           search: { players: [{ id: "87654321", name: "Zed Newcomer", state: "CO", rating: "1100", expires: "2027-01-31" }] },
           register: { ok: true, message: "Test Player is registered." },
@@ -364,6 +367,20 @@ JSON.stringify(contactRows) === '["Cora Contact"]' && saved.id === "c1" && saved
   : fail(`TD desk contacts: ${JSON.stringify({ contactRows, saved, addedContact, addDeleteHidden })}`);
 await desk.waitForFunction(() => !document.querySelector("dialog.td-contact").open);
 await desk.click(".td-contacts-panel summary");
+// The Messages section loads the club number's texts and voicemail when it opens.
+await desk.click(".td-messages-panel summary");
+await desk.waitForFunction(() => document.querySelectorAll(".td-messages li").length === 2);
+const messageItems = await desk.$$eval(".td-messages li", (items) => items.map((li) => ({
+  head: li.childNodes[0].textContent + li.childNodes[1].textContent, text: li.querySelector("p")?.innerText || "",
+  links: [...li.querySelectorAll("a")].map((a) => a.getAttribute("href")) })));
+await axeBoth(desk, "TD desk messages");
+JSON.stringify(messageItems) === JSON.stringify([
+  { head: "Cora Contact, (970) 555-0103 · Voicemail · Monday, October 19, 3:30 PM", text: "Is there a tournament Saturday?\nCall me back.",
+    links: ["tel:+19705550103", "sms:+19705550103"] },
+  { head: "Unknown · Missed call · Sunday, October 18, 9:05 AM", text: "", links: [] }])
+  ? pass("TD desk shows the club number's messages with the caller's contact, and links to call or text back")
+  : fail(`TD desk messages: ${JSON.stringify(messageItems)}`);
+await desk.click(".td-messages-panel summary");
 await desk.click(".td-refresh");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.startsWith("Refreshed"));
 deskCalls.some((c) => c.action === "refresh") ? pass("TD desk refreshes the public pages' copies") : fail("TD desk didn't ask to refresh");

@@ -446,7 +446,10 @@ main > h1:first-child { margin-top: 32px; }
 .td-action + .td-action { margin-left: 6px; }
 .td-out td { color: var(--muted); }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
-.td-incidents, .td-ledger { padding-left: 20px; }
+.td-incidents, .td-ledger, .td-messages { padding-left: 20px; }
+.td-messages li + li { margin-top: 12px; }
+.td-messages p { margin: 4px 0; white-space: pre-line; }
+.td-messages a + a { margin-left: 16px; }
 .entries-all section .entries { margin-bottom: 16px; }
 /* Room for the lists before they load, so the footer doesn't start on screen and jump down. */
 .entries-all { min-height: calc(100vh - 200px); }
@@ -902,6 +905,17 @@ section.td-table td { white-space: nowrap; }
           </div>
         </details>
       </section>
+
+      <section class="td-panel td-span">
+        <h2>Messages</h2>
+        <details class="td-messages-panel">
+          <summary>Texts and voicemail</summary>
+          <p>Texts, voicemail, and missed calls to the club's number, (970) 286-7339, from the last 90 days. Call or text back from your own phone.</p>
+          <p><button class="td-action td-messages-reload" type="button">Reload</button></p>
+          <p class="td-messages-status" role="status"></p>
+          <ul class="td-messages"></ul>
+        </details>
+      </section>
       </div>
     </div>
 
@@ -973,7 +987,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../register.js?v=d4f1af7701" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
   <script src="../td.js?v=6fbece8429" defer></script>
-  <script src="../td-contacts.js?v=e28e0908c5" defer></script>
+  <script src="../td-contacts.js?v=767ef2a766" defer></script>
   <script src="../pairing.js?v=4c86f5a22b" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>
   <script src="../td-run.js?v=225b0ecb53" defer></script>

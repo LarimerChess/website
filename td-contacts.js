@@ -1,7 +1,8 @@
 // The TD desk's Contacts section: the registration Sheet's Contacts tab, searched as you type, with
 // each contact added, changed, or deleted through the registration script (contacts, contactSave,
 // contactDelete), and donations to the club from a contact or anonymous (donation). td.js loads the contacts at sign-in into contactBook and says so with a
-// "td-contacts" event; call() and hidden() come from it too.
+// "td-contacts" event; call() and hidden() come from it too. Also the Messages section: the club number's texts,
+// voicemail, and missed calls (messages), loaded when it opens.
 
 const contactsPanel = document.querySelector(".td-contacts-panel");
 const contactsSearch = document.getElementById("td-contacts-search");
@@ -13,6 +14,9 @@ const contactStatus = contactDialog.querySelector(".td-contact-status");
 const contactDelete = contactDialog.querySelector(".td-contact-delete");
 const anonymousTotal = document.querySelector(".td-contacts-anonymous");
 const SHOWN = 100;
+const messagesPanel = document.querySelector(".td-messages-panel");
+const messagesStatus = document.querySelector(".td-messages-status");
+const messagesList = document.querySelector(".td-messages");
 let editing = null;
 
 function showContacts() {
@@ -126,3 +130,37 @@ const anonymous = document.querySelector(".td-contacts-give");
 anonymous.addEventListener("click", () => recordDonation(null, anonymous));
 contactsSearch.addEventListener("input", showContacts);
 document.addEventListener("td-contacts", showContacts);
+
+async function showMessages() {
+  messagesStatus.textContent = "Loading…";
+  const result = await call("messages");
+  if (!result.messages) {
+    messagesStatus.textContent = result.error || "The messages didn't load. Try again.";
+    return;
+  }
+  messagesStatus.textContent = result.messages.length ? "" : "No texts, voicemail, or missed calls in the last 90 days.";
+  messagesList.replaceChildren(...result.messages.map((m) => {
+    const item = document.createElement("li");
+    const who = m.name ? `${m.name}, ${m.from}` : m.from;
+    const at = new Date(m.at);
+    const day = at.toLocaleDateString("en-US", { timeZone: "America/Denver", weekday: "long", month: "long", day: "numeric" });
+    const time = at.toLocaleTimeString("en-US", { timeZone: "America/Denver", hour: "numeric", minute: "2-digit" });
+    item.append(Object.assign(document.createElement("strong"), { textContent: who }), ` · ${m.kind} · ${day}, ${time}`);
+    if (m.text) item.append(Object.assign(document.createElement("p"), { textContent: m.text }));
+    if (m.phone) {
+      const back = document.createElement("p");
+      for (const [scheme, label] of [["tel", "Call"], ["sms", "Text"]]) {
+        const link = Object.assign(document.createElement("a"), { href: `${scheme}:+1${m.phone}`, textContent: label });
+        link.append(hidden(` ${who}`));
+        back.append(link, " ");
+      }
+      item.append(back);
+    }
+    return item;
+  }));
+}
+
+messagesPanel.addEventListener("toggle", () => {
+  if (messagesPanel.open) showMessages();
+});
+document.querySelector(".td-messages-reload").addEventListener("click", showMessages);

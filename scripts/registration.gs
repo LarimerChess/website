@@ -19,7 +19,7 @@
  *                         replaces the half-point byes a player has asked for
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
- * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete,
+ * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete, messages,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, sectionNames, section, extraSection, extraPlayer, dropSection, timeControl, round, result, results, byeKind,
@@ -167,6 +167,7 @@ function doPost(e) {
       case "donation": return json(giveDonation(p, td));
       case "contactSave": return json(saveContact(p));
       case "contactDelete": return json(deleteContact(p.id));
+      case "messages": return json(voiceMessages());
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true, td));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
@@ -672,6 +673,78 @@ function deleteContact(id) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// Google Voice emails the club number's texts, voicemail, and missed calls to the club's Gmail account,
+// which forwards them to the president's inbox; the desk's Messages section reads them there.
+const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
+const VOICE_SEARCH = "from:(txt.voice.google.com OR voice-noreply@google.com) newer_than:90d";
+const VOICE_KINDS = { "text message": "Text", "group message": "Text", voicemail: "Voicemail", "missed call": "Missed call" };
+const MESSAGES_SHOWN = 50;
+
+/** The club number's latest texts, voicemail, and missed calls, newest first, each with the contact
+ *  whose Phone or Other phones is the caller's. */
+function voiceMessages() {
+  const auth = { headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }, muteHttpExceptions: true };
+  const listed = UrlFetchApp.fetch(`${GMAIL}?maxResults=${MESSAGES_SHOWN}&q=${encodeURIComponent(VOICE_SEARCH)}`, auth);
+  if (listed.getResponseCode() !== 200) {
+    console.error(`Gmail: ${listed.getContentText()}`);
+    return { error: "Gmail didn't answer, so the messages can't show. Try again later." };
+  }
+  const ids = (JSON.parse(listed.getContentText()).messages || []).map((m) => m.id);
+  const names = contactsByPhone();
+  const found = UrlFetchApp.fetchAll(ids.map((id) => ({ url: `${GMAIL}/${id}?format=full`, ...auth })))
+    .filter((r) => r.getResponseCode() === 200).map((r) => voiceMessage(JSON.parse(r.getContentText()), names)).filter(Boolean);
+  return { messages: found.sort((a, b) => b.at.localeCompare(a.at)) };
+}
+
+const phoneDigits = (text) => String(text || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+
+/** Contacts' names by each of their phones' ten digits. */
+function contactsByPhone() {
+  const { col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+  const names = {};
+  for (const r of rows) {
+    const others = col["Other phones"] === undefined ? [] : r[col["Other phones"]].split(/[,;]\s*/);
+    for (const phone of [r[col.Phone], ...others].map(phoneDigits)) if (phone && r[col.Name]) names[phone] = r[col.Name];
+  }
+  return names;
+}
+
+/** One Voice email as { id, at, kind, phone, from, name, text }, or null for one that isn't a call or text,
+ *  such as Voice's notices about the account. */
+function voiceMessage(mail, names) {
+  const header = (name) => (mail.payload.headers.find((h) => h.name.toLowerCase() === name.toLowerCase()) || {}).value || "";
+  const subject = header("Subject").match(/^New (text message|group message|voicemail|missed call) from (.+?)(?: at \d.*)?$/i);
+  if (!subject) return null;
+  // A text's sender address is <club number>.<caller>.<code>@txt.voice.google.com; it's the one place
+  // the number shows when the caller is in the account's own Google contacts.
+  const address = header("From").match(/\d{11}\.(\d{11})\.[^@]*@txt\.voice\.google\.com/);
+  const phone = phoneDigits(address ? address[1] : subject[2]);
+  const from = /^\d{10}$/.test(phone) ? `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}` : subject[2];
+  return { id: mail.id, at: new Date(Number(mail.internalDate)).toISOString(), kind: VOICE_KINDS[subject[1].toLowerCase()],
+    phone: /^\d{10}$/.test(phone) ? phone : "", from, name: names[phone] || "", text: voiceText(plainPart(mail.payload)) };
+}
+
+function plainPart(part) {
+  if (part.mimeType === "text/plain" && part.body && part.body.data) {
+    return Utilities.newBlob(Utilities.base64DecodeWebSafe(part.body.data)).getDataAsString();
+  }
+  for (const inner of part.parts || []) {
+    const text = plainPart(inner);
+    if (text) return text;
+  }
+  return "";
+}
+
+/** What the caller said or wrote, without Voice's links and footer. */
+function voiceText(body) {
+  const lines = [];
+  for (const line of body.replace(/\r/g, "").split("\n")) {
+    if (/^(play message|to respond to this|your account|help center|help forum|google llc|this email was sent)/i.test(line.trim())) break;
+    if (!/^<?https?:\/\/\S+>?$/.test(line.trim())) lines.push(line);
+  }
+  return lines.join("\n").trim();
 }
 
 /** US Chess members by ID or name, Colorado first, for the TD desk's search. */

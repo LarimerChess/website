@@ -430,7 +430,10 @@ main > h1:first-child { margin-top: 32px; }
 .td-action + .td-action { margin-left: 6px; }
 .td-out td { color: var(--muted); }
 .register-form textarea { font: inherit; padding: 8px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
-.td-incidents, .td-ledger { padding-left: 20px; }
+.td-incidents, .td-ledger, .td-messages { padding-left: 20px; }
+.td-messages li + li { margin-top: 12px; }
+.td-messages p { margin: 4px 0; white-space: pre-line; }
+.td-messages a + a { margin-left: 16px; }
 .entries-all section .entries { margin-bottom: 16px; }
 /* Room for the lists before they load, so the footer doesn't start on screen and jump down. */
 .entries-all { min-height: calc(100vh - 200px); }
