@@ -160,7 +160,7 @@ JSON.stringify(checkinByes.head) === JSON.stringify(["No.", "Name", "Rating", "S
   && !checkinByes.busy && checkinByesBusy
   ? pass("TD desk starts a player who asked for a bye this round as a half-point bye, shows the byes asked for, and counts only a changed choice as unsaved")
   : fail(`TD desk check-in with byes: ${JSON.stringify({ checkinByes, checkinByesBusy })}`);
-checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), round 2. Change them in the entries list."
+checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), round 2. Change them under Give a bye or in the entries list."
   && JSON.stringify(checkinByes.offered) === JSON.stringify(["Round 2", "Round 3"])
   ? pass("TD desk lists the byes asked for rounds not yet paired, and the register form offers only those rounds")
   : fail(`TD desk byes asked for: ${JSON.stringify({ asked: checkinByes.asked, offered: checkinByes.offered })}`);

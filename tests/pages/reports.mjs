@@ -1,5 +1,5 @@
 // The rating report files, restarts, extra games sections, time controls, byes by the rules, and the Results page.
-import { Pairing, axeBoth, axeSource, base, browser, deskState, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers, twoSections } from "./common.mjs";
+import { PHONE, Pairing, axeBoth, axeSource, base, browser, deskState, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers, twoSections } from "./common.mjs";
 
 // With every round in, the desk has no Finish button: it offers the rating report files for MUIR and keeps
 // them in a folder the TD picks (a stand-in here for the browser's folder picker), rewritten when a result
@@ -347,6 +347,54 @@ noShow.value === "absent" && noShow.name.includes("28P") && lateBye.id === "6666
   : fail(`TD desk byes by the rules: ${JSON.stringify({ noShow, lateBye, warned })}`);
 await axeBoth(byePage, "TD desk refusing a full-point bye");
 await byePage.close();
+
+// Give a bye, under the standings, offers only the byes the rules allow: Fay's missed round 1 can't be a second
+// full-point bye (28L1), a round to come is saved as the half-point bye she asks for through her entry, and then
+// she has her one (22C), which check-in starts her on; Ann can't add a last-round bye once round 1 is posted (22C4).
+const giveRules = deskState(JSON.parse(JSON.stringify(byeRules.held.rounds.slice(0, 1))));
+giveRules.held.players = sixPlayers;
+const giveAnswer = giveRules.answer;
+giveRules.answer = (p) => {
+  if (p.action === "entries") return { entries: sixPlayers.map((x) => ({ name: x.name, id: x.id, rating: x.rating, for: "Saturday, November 7",
+    date: "2026-11-07", token: `t-${x.id}`, ...(x.id === "66666666" && giveRules.fayByes ? { byes: giveRules.fayByes } : {}) })) };
+  if (p.action === "byes") {
+    giveRules.calls.push(p);
+    giveRules.fayByes = p.byes.split(", ");
+    giveRules.held.players = sixPlayers.map((x) => (x.id === "66666666" ? { ...x, byes: [2] } : x));
+    return { ok: true, message: `Fay's byes: round ${p.byes}.` };
+  }
+  return giveAnswer(p);
+};
+const givePage = await mocked("/td/ giving a bye", (p) => giveRules.answer(p));
+await signIn(givePage);
+await givePage.waitForFunction(() => !document.querySelector(".run-give-bye").hidden && document.querySelectorAll(".td-entries tbody tr").length === 6);
+const offered = () => givePage.evaluate(() => ({ rounds: [...document.querySelectorAll("#run-bye-round option")].map((o) => o.textContent),
+  kinds: [...document.querySelectorAll("#run-bye-kind option")].map((o) => o.value), why: document.getElementById("run-bye-why").textContent }));
+await givePage.select("#run-bye-player", "66666666");
+const fayRound1 = await offered();
+await givePage.select("#run-bye-round", "Round 2");
+await givePage.select("#run-bye-kind", "half");
+await press(givePage, ".run-give-bye button");
+await givePage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("half-point bye asked for"));
+const asked = giveRules.calls.find((c) => c.action === "byes") || {};
+await givePage.select("#run-bye-round", "Round 3");
+const fayRound3 = await offered();
+const checkinStart = await givePage.waitForFunction(() => document.querySelector('.run-this-round[data-id="66666666"]')?.value === "half")
+  .then(() => "half", () => "");
+await givePage.select("#run-bye-player", "11111111");
+await givePage.select("#run-bye-round", "Round 3");
+const annRound3 = await offered();
+JSON.stringify(fayRound1.rounds) === JSON.stringify(["Round 1, unplayed (0)", "Round 2, to come", "Round 3, to come"])
+  && fayRound1.kinds.join() === "half,zero,unplayed" && fayRound1.why.includes("28L1")
+  && asked.token === "t-66666666" && asked.byes === "2"
+  && fayRound3.rounds[1] === "Round 2, half-point bye asked for" && fayRound3.kinds.join() === "play" && fayRound3.why.includes("allows one per player")
+  && annRound3.kinds.join() === "play" && annRound3.why.includes("22C4") && checkinStart === "half"
+  ? pass("TD desk's Give a bye offers only the byes the rules allow, in rounds played and to come, and saves one to come with the entry")
+  : fail(`TD desk Give a bye: ${JSON.stringify({ fayRound1, asked, fayRound3, annRound3, checkinStart })}`);
+await givePage.setViewport(PHONE);
+await fitsPhone(givePage, "TD desk giving a bye");
+await axeBoth(givePage, "TD desk giving a bye");
+await givePage.close();
 
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
 // in place of the real ones.

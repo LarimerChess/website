@@ -208,6 +208,7 @@ function renderRun() {
   runStandingsWrap.hidden = !t.rounds.length;
   renderStandings();
   if (t.rounds.length) renderByesAll();
+  renderGiveBye();
   runReport.hidden = !reportReady(t);
   if (t.status === "rated") return;
   runRound.hidden = false;
@@ -930,13 +931,10 @@ function renderByesAll() {
     const kind = Pairing.byeKind(b);
     for (const [value, text] of Object.entries(BYE_LABELS)) select.append(option(value, text, value === kind));
     select.addEventListener("change", async () => {
-      // Only the change is checked, so a round posted before the rules were held to doesn't block it.
-      const changed = { id: b.id, kind: select.value };
-      const others = select.value === "bye" ? r.byes.filter((x) => x.id !== b.id && Pairing.byeKind(x) === "bye") : [];
-      const problems = ["bye", "half"].includes(select.value) ? byeProblemsIn(s, s.first + i, select.value === "bye" ? r.games : [], [...others, changed]) : [];
-      if (problems.length) {
+      const problem = postedByeProblem(s, i, b.id, select.value);
+      if (problem) {
         select.value = kind;
-        return void (runStatus.textContent = problems[0]);
+        return void (runStatus.textContent = problem);
       }
       const [event, date] = keyParts();
       select.disabled = true;
@@ -954,6 +952,7 @@ function renderByesAll() {
       }
       runStatus.textContent = `${nameOf(b.id)}, ${where}: ${BYE_LABELS[select.value]}.`;
       renderStandings();
+      renderGiveBye();
     });
     row.insertCell().append(select);
     return row;
@@ -965,9 +964,138 @@ function renderByesAll() {
     .filter(([, later]) => later.length);
   if (asked.length) {
     box.append(Object.assign(document.createElement("p"), {
-      textContent: `Asked for: ${asked.map(([p, later]) => `${nameOf(p.id)}, ${roundsInWords(later)}`).join("; ")}. Change them in the entries list.` }));
+      textContent: `Asked for: ${asked.map(([p, later]) => `${nameOf(p.id)}, ${roundsInWords(later)}`).join("; ")}. Change them under Give a bye or in the entries list.` }));
   }
 }
+
+/** Why a player's posted round i of section s, which has no game for them, can't be the kind, or "".
+ *  Only the change is checked, so a round posted before the rules were held to doesn't block it. */
+function postedByeProblem(s, i, id, kind) {
+  if (!["bye", "half"].includes(kind)) return "";
+  const r = s.rounds[i];
+  const others = kind === "bye" ? r.byes.filter((x) => x.id !== id && Pairing.byeKind(x) === "bye") : [];
+  return byeProblemsIn(s, s.first + i, kind === "bye" ? r.games : [], [...others, { id, kind }])[0] || "";
+}
+
+const giveBye = document.querySelector(".run-give-bye");
+const FUTURE_LABELS = { play: "Plays", half: "Half-point bye (½), asked for" };
+
+/** The rounds the player has no game in, which Give a bye can change: each posted one, as byeKind saves it, and,
+ *  in a Swiss section, each still to be paired, as the half-point byes they ask for. A round paired but not posted
+ *  changes in the draft, and a withdrawn player's rounds from then on stay unplayed. A player who entered single
+ *  nights of a month has a night's entry, which takes no byes. */
+function byeSlots(p) {
+  const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.some((x) => x.id === p.id));
+  return parts.flatMap((s) => {
+    const last = s.last ?? current.plannedRounds ?? current.rounds.length;
+    const swiss = !Pairing.roundRobin(s) && !s.extra && !p.nights;
+    return Array.from({ length: Math.max(0, last - s.first + 1) }, (_, i) => s.first + i).flatMap((n) => {
+      if (p.out && n >= p.out) return [];
+      const r = s.rounds[n - s.first];
+      if (!r) return swiss ? [{ s, n, posted: false, kind: (p.byes || []).map(Number).includes(n) ? "half" : "play" }] : [];
+      if (!current.rounds[n - 1].posted || r.games.some((g) => g.white === p.id || g.black === p.id)) return [];
+      const bye = r.byes.find((b) => b.id === p.id);
+      return [{ s, n, posted: true, bye, kind: bye ? Pairing.byeKind(bye) : "unplayed" }];
+    });
+  });
+}
+
+/** Why the slot can't be the kind, or "": a posted round by its section's rules, a round to come as the half-point
+ *  bye asked for, which before round 1 is posted may be the last round's (22C4). */
+function slotProblem(slot, id, kind) {
+  if (kind === slot.kind) return "";
+  if (slot.posted) return postedByeProblem(slot.s, slot.n - slot.s.first, id, kind);
+  if (kind !== "half") return "";
+  const asking = current.rounds[0]?.posted ? slot.s
+    : { ...slot.s, players: slot.s.players.map((x) => (x.id === id ? { ...x, byes: [...(x.byes || []), slot.n] } : x)) };
+  return byeProblemsIn(asking, slot.n, [], [{ id, kind }])[0] || "";
+}
+
+function slotName(slot) {
+  const extra = (current.sections || []).some((d) => d.extra);
+  const date = current.roundDates?.[slot.n - 1];
+  return `${extra ? `${slot.s.name} round` : "Round"} ${slot.n - slot.s.first + 1}${date ? ` (${byeDate(date)})` : ""}`;
+}
+
+/** Give a bye's menus: the players with a round they have no game in, that player's rounds, and the kinds the rules
+ *  allow for the round, with why the others aren't offered. What the TD chose stays chosen as the tournament changes. */
+function renderGiveBye() {
+  const { player, round, kind } = giveBye.elements;
+  const players = current?.rounds.length && current.status !== "rated"
+    ? current.players.filter((p) => byeSlots(p).length).sort((a, b) => a.name.localeCompare(b.name)) : [];
+  giveBye.hidden = !players.length;
+  if (!players.length) return;
+  const chosen = player.value;
+  player.replaceChildren(...players.map((p) => option(p.id, nameOf(p.id), p.id === chosen)));
+  const p = current.players.find((x) => x.id === player.value);
+  const slots = byeSlots(p);
+  const was = round.value;
+  round.replaceChildren(...slots.map((slot) => option(slotName(slot), `${slotName(slot)}, ${slot.posted
+    ? BYE_LABELS[slot.kind].toLowerCase() : slot.kind === "half" ? "half-point bye asked for" : "to come"}`, slotName(slot) === was)));
+  const slot = slots.find((x) => slotName(x) === round.value);
+  const labels = slot.posted ? BYE_LABELS : FUTURE_LABELS;
+  const refused = [];
+  kind.replaceChildren(...Object.entries(labels).filter(([value]) => {
+    const problem = slotProblem(slot, p.id, value);
+    if (problem) refused.push(problem);
+    return !problem;
+  }).map(([value, text]) => option(value, text, value === slot.kind)));
+  document.getElementById("run-bye-why").textContent = refused.length ? `Not offered: ${[...new Set(refused)].join(" ")}` : "";
+}
+
+giveBye.elements.player.addEventListener("change", renderGiveBye);
+giveBye.elements.round.addEventListener("change", renderGiveBye);
+
+giveBye.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const { player, round, kind } = giveBye.elements;
+  const p = current.players.find((x) => x.id === player.value);
+  const slot = byeSlots(p).find((x) => slotName(x) === round.value);
+  const where = `${nameOf(p.id)}, ${slotName(slot).toLowerCase()}`;
+  if (kind.value === slot.kind) return void (runStatus.textContent = `${where} is already that.`);
+  const problem = slotProblem(slot, p.id, kind.value);
+  if (problem) return void (runStatus.textContent = problem);
+  const [eventName, date] = keyParts();
+  const button = giveBye.querySelector("button");
+  button.disabled = true;
+  runStatus.textContent = "Saving the bye…";
+  try {
+    if (slot.posted) {
+      const result = await call("byeKind", { event: eventName, date, number: slot.n, id: p.id, kind: kind.value, section: slot.s.key });
+      if (!result.ok) return void (runStatus.textContent = result.error);
+      const points = Pairing.BYE_KINDS[kind.value];
+      if (slot.bye) Object.assign(slot.bye, { kind: kind.value, points });
+      else current.rounds[slot.n - 1].byes.push({ id: p.id, points, kind: kind.value, section: slot.s.key });
+      runStatus.textContent = `${where}: ${BYE_LABELS[kind.value]}.`;
+    } else {
+      // The entry keeps the byes asked for, and the script copies them to the player.
+      const entry = deskEntries.key === current.key && deskEntries.entries.find((e) => e.id === p.id && e.date === date && e.token);
+      if (!entry) return void (runStatus.textContent = `${p.name} has no entry in the entries list below, so the bye can't be saved. Reload the page and try again.`);
+      const value = current.roundDates?.[slot.n - 1] || String(slot.n);
+      const asked = entry.byes || [];
+      const byes = (kind.value === "half" ? [...asked, value] : asked.filter((b) => b !== value))
+        .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+      const result = await call("byes", { token: entry.token, byes: byes.join(", ") });
+      if (!result.ok) return void (runStatus.textContent = result.error);
+      entry.byes = byes;
+      p.byes = kind.value === "half" ? [...(p.byes || []), slot.n].sort((a, b) => a - b) : (p.byes || []).filter((n) => Number(n) !== slot.n);
+      const lastRound = slot.s.last ?? current.plannedRounds;
+      runStatus.textContent = `${where}: ${kind.value === "half" ? "half-point bye asked for" : "plays"}.`
+        + (kind.value === "play" && slot.n === lastRound && current.rounds[0]?.posted
+          ? " They asked for this last-round bye before round 1, so a win counts as a draw for prizes (22C5)." : "");
+      pending.add("entries");
+      applyChanges();
+      if (!runCheckin.hidden && !runBusy()) renderCheckin(current, Pairing.sections(forEngine(current)), current.rounds.length + 1);
+    }
+    renderStandings();
+    renderByesAll();
+    renderGiveBye();
+  } catch {
+    runStatus.textContent = "Couldn't reach the registration service. Try again.";
+  } finally {
+    button.disabled = false;
+  }
+});
 
 /** Rounds in words, "round 3" or "rounds 2 and 4", or a month's nights, "October 19 and 26". */
 function roundsInWords(numbers) {

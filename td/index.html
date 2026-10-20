@@ -866,6 +866,18 @@ section.td-table td { white-space: nowrap; }
         <h3>Standings</h3>
         <p class="register-hint run-standings-hint">Tiebreaks in the US Chess default order (34E): modified median, Solkoff, cumulative, cumulative of opposition.</p>
         <div class="run-standings-all"></div>
+        <form class="register-form run-give-bye" hidden>
+          <h3>Give a bye</h3>
+          <p class="register-hint">For any round a player has no game in. A round already posted can be any kind. A round still to come can be a half-point bye the player asks for (22C), which check-in then starts them on. Only the byes the rules allow for the player and round are offered.</p>
+          <label for="run-bye-player">Player</label>
+          <select id="run-bye-player" name="player"></select>
+          <label for="run-bye-round">Round</label>
+          <select id="run-bye-round" name="round"></select>
+          <label for="run-bye-kind">Bye</label>
+          <select id="run-bye-kind" name="kind" aria-describedby="run-bye-why"></select>
+          <p id="run-bye-why" class="register-hint"></p>
+          <button class="button button-secondary" type="submit">Save the bye</button>
+        </form>
         <h3>Byes and unplayed rounds</h3>
         <p class="register-hint">Every round a player had no game in. Change one if it was classified wrongly, such as an unplayed round the TD excuses as a half-point bye; the score follows. Add new entrants gives a late entrant a half-point bye for the first round they missed that offers one, unless they asked for one to come (28K); make it unplayed if they ask. A bye the rules don't allow isn't saved, and the status line says why.</p>
         <div class="run-byes-all"></div>
@@ -1004,7 +1016,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../td-contacts.js?v=767ef2a766" defer></script>
   <script src="../pairing.js?v=4c86f5a22b" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>
-  <script src="../td-run.js?v=225b0ecb53" defer></script>
+  <script src="../td-run.js?v=8559c00264" defer></script>
   <script src="../arena.js?v=051926af16" defer></script>
   <script src="../td-arena.js?v=508eec2a45" defer></script>
 </body>
