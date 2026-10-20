@@ -120,7 +120,15 @@ footer { color: var(--muted); font-size: 14px; padding: 32px 16px; }
 
 main > h1 { font-size: clamp(32px, 6vw, 48px); margin: 8px 0 12px; }
 main > .kicker { padding-top: 32px; }
-.minutes-link { margin-top: 20px; }
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin: 20px 0;
+}
+.section-head h2 { margin: 0; }
 .events {
   list-style: none;
   margin: 0;
