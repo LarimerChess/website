@@ -439,6 +439,7 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
 
   <footer class="wrap">
     <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
+    <p>Call or text <a href="tel:+19702867339">(970)&nbsp;286&#8209;7339</a></p>
     <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     <p><a href="/minutes/"{' aria-current="page"' if current == "/minutes/" else ''}>Board minutes</a></p>
     <p><a href="/privacy/"{' aria-current="page"' if current == "/privacy/" else ''}>Privacy</a></p>
