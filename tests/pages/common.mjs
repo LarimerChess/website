@@ -15,7 +15,7 @@ export const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean)
 // The results pages outlive the events, so they come from the sitemap, not events.json.
 export const resultsPages = [...readFileSync(new URL("../../sitemap.xml", import.meta.url), "utf8")
   .matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
-export const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/",
+export const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/minutes/2026-10-19.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/",
   ...seriesPages, ...resultsPages];
 export const failures = [];
 export const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
