@@ -153,7 +153,7 @@ def fingerprint(record):
             lines.append(f"B {number(r['Round'])} {r['White']} {float(r.get('Bye points') or 0):g}{in_section(r)}"
                          f"{' ' + r['Bye kind'] if r.get('Bye kind') else ''}")
     lines += [f"A {number(g.get('Game'))} {g['White']} {g['Black']} {g.get('Result', '')} "
-              f"{pact(g.get('White pact'))} {pact(g.get('Black pact'))}" for g in record["arena"]]
+              f"{pact(g.get('White pact'))} {pact(g.get('Black pact'))}{in_section(g)}" for g in record["arena"]]
     return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()[:16]
 
 

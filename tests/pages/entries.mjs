@@ -435,8 +435,9 @@ runAxe.violations.length ? fail(`TD desk running a tournament: ${runAxe.violatio
 await runPage.close();
 
 // Running an arena on the TD desk, against a stand-in for the Apps Script that keeps it in
-// memory, with the clock at 11:00 AM on the day: start it, queue four players, pair them,
-// record a win with a Blood Pact, and check that the two who just played aren't paired again.
+// memory, with the clock at 11:00 AM on the day: start it in the three Knightmare sections, make
+// four players available, pair them section by section, record a win with a Blood Pact, confirm
+// a result the players reported, and rename a section.
 const arenaPage = await browser.newPage();
 arenaPage.on("pageerror", (error) => fail(`JavaScript error on /td/ running an arena: ${error.message}`));
 const arenaCalls = [];
@@ -472,24 +473,27 @@ arenaPage.on("request", async (request) => {
     const players = [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", null]]
       .map(([id, name, rating], i) => ({ id, number: i + 1, name, rating, out: null }));
     arena = { key: "knightmare-arena-classical/2026-10-31", name: "Knightmare Arena Classical, Saturday, October 31, 2026",
-      format: p.format, cutoff: p.cutoff, status: "running", players, rounds: [], games: [], queue: [] };
+      format: p.format, cutoff: p.cutoff, status: "running", players, rounds: [], games: [], queue: [], sections: JSON.parse(p.sections || "[]") };
     body = { ok: true, message: "Added 4 player(s)." };
   } else if (p.action === "arenaJoin") {
-    arena.queue.push({ id: p.id, since: since() });
-    body = { ok: true, message: "Waiting." };
+    arena.queue = arena.queue.filter((q) => q.id !== p.id);
+    arena.queue.push({ id: p.id, since: since(), sections: JSON.parse(p.sections || "[]") });
+    body = { ok: true, message: "Available." };
+  } else if (p.action === "arenaLeave") {
+    arena.queue = arena.queue.filter((q) => q.id !== p.id);
   } else if (p.action === "arenaPair") {
-    for (const g of JSON.parse(p.games)) {
-      arena.games.push({ game: arena.games.length + 1, ...g, whitePact: false, blackPact: false, result: "" });
-      arena.queue = arena.queue.filter((q) => q.id !== g.white && q.id !== g.black);
-    }
+    for (const g of JSON.parse(p.games)) arena.games.push({ game: arena.games.length + 1, ...g, whitePact: false, blackPact: false, result: "" });
     body = { ok: true, message: "Started." };
   } else if (p.action === "arenaPact") {
     arena.games[p.game - 1][`${p.side}Pact`] = p.on === "yes";
   } else if (p.action === "arenaResult") {
-    const g = arena.games[p.game - 1];
-    g.result = p.result;
-    arena.queue.push({ id: g.white, since: since() }, { id: g.black, since: since() });
+    arena.games[p.game - 1].result = p.result;
     body = { ok: true, message: "Recorded." };
+  } else if (p.action === "arenaSections") {
+    const list = JSON.parse(p.sections);
+    for (const g of arena.games) g.section = list.find((x) => x.from === g.section)?.name ?? g.section;
+    arena.sections = list.map(({ from, ...x }) => x);
+    body = { ok: true, message: `Sections: ${arena.sections.map((x) => x.name).join(", ")}.` };
   }
   request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
 });
@@ -499,37 +503,76 @@ await arenaPage.click(".td-login button");
 await arenaPage.waitForSelector(".run-start:not([hidden])");
 await arenaPage.select("#run-format", "arena");
 const startFields = await arenaPage.evaluate(() => ({ cutoff: document.querySelector("#run-cutoff").checkVisibility(),
-  rounds: document.querySelector("#run-rounds").checkVisibility(), value: document.querySelector("#run-cutoff").value }));
+  rounds: document.querySelector("#run-rounds").checkVisibility(), value: document.querySelector("#run-cutoff").value,
+  sections: [...document.querySelectorAll(".run-start .run-arena-section-row")].map((r) => [r.querySelector(".run-arena-section-name").value,
+    r.querySelector(".run-arena-section-control").value, r.querySelector(".run-arena-section-rated-box").checked]) }));
 startFields.cutoff && !startFields.rounds && startFields.value === "17:30"
-  ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
+  && JSON.stringify(startFields.sections) === JSON.stringify([["Classical", "G/30;+30", true], ["Blood Pact", "G/15;+15 against G/30;+30", false], ["Blitz", "G/5;+3", false]])
+  ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed, and offers the Knightmare sections") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
 await press(arenaPage, ".run-start button[type=submit]");
 await arenaPage.waitForSelector(".run-arena:not([hidden])");
-for (let n = 1; n <= 4; n++) {
-  await press(arenaPage, ".run-away tbody tr:first-child button");
-  await arenaPage.waitForFunction((n) => document.querySelectorAll(".run-queue tbody tr").length === n, {}, n);
+const startCall = arenaCalls.find((c) => c.action === "start") || {};
+JSON.parse(startCall.sections || "[]").map((x) => x.name).join() === "Classical,Blood Pact,Blitz" && JSON.parse(startCall.sections)[1].rated === false
+  ? pass("TD desk starts an arena with its sections") : fail(`TD desk arena start: ${JSON.stringify(startCall)}`);
+// Players are listed by name; toggle Classical for the first two, Blood Pact for the other two.
+const rowsOf = () => arenaPage.$$eval(".run-players tbody tr", (rows) => rows.map((r) => [r.cells[0].textContent, r.cells[3].textContent,
+  [...r.cells[2].querySelectorAll("button")].map((b) => b.getAttribute("aria-pressed"))]));
+for (const [row, column] of [[1, 1], [2, 1], [3, 2], [4, 2]]) {
+  await press(arenaPage, `.run-players tbody tr:nth-child(${row}) td:nth-child(3) button:nth-child(${column})`);
+  await arenaPage.waitForFunction((n) => document.querySelectorAll('.run-players tbody tr td:nth-child(3) button[aria-pressed="true"]').length === n, {}, row);
 }
+const joined = arenaCalls.filter((c) => c.action === "arenaJoin").map((c) => [c.id, c.sections]);
+JSON.stringify(joined) === JSON.stringify([["11111111", '["Classical"]'], ["22222222", '["Classical"]'], ["33333333", '["Blood Pact"]'], ["44444444", '["Blood Pact"]']])
+  && (await rowsOf()).every((r) => r[1].startsWith("Waiting since 11:00"))
+  ? pass("TD desk makes players available in the sections chosen") : fail(`TD desk arena availability: ${JSON.stringify({ joined, rows: await rowsOf() })}`);
 await press(arenaPage, ".run-arena-pair");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 2);
 const paired = JSON.parse(arenaCalls.find((c) => c.action === "arenaPair")?.games || "[]");
-JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222" }, { white: "33333333", black: "44444444" }])
-  ? pass("TD desk starts an arena, queues players, and pairs them in queue order") : fail(`TD desk arena pairing: ${JSON.stringify(paired)}`);
-await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(2) input[type=checkbox]");
-await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(2) input:checked:not(:disabled)"));
+const sectionCells = await arenaPage.$$eval(".run-arena-games tbody tr td:nth-child(2)", (cells) => cells.map((c) => [c.textContent, c.hidden]));
+JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical" }, { white: "33333333", black: "44444444", section: "Blood Pact" }])
+  && JSON.stringify(sectionCells) === JSON.stringify([["Classical", false], ["Blood Pact", false]])
+  ? pass("TD desk pairs the players waiting section by section") : fail(`TD desk arena pairing: ${JSON.stringify({ paired, sectionCells })}`);
+await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(3) input[type=checkbox]");
+await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(3) input:checked:not(:disabled)"));
 await press(arenaPage, ".run-arena-games tbody tr:first-child .td-buttons button:first-child");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
 const board = await arenaPage.$$eval(".run-leaderboard tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
+const boards = await arenaPage.$$eval(".run-arena-boards h4", (hs) => hs.map((h) => h.textContent));
 const pact = arenaCalls.find((c) => c.action === "arenaPact") || {};
 pact.game === "1" && pact.side === "white" && pact.on === "yes"
   && JSON.stringify(board[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"])
   && board.slice(1).every((r) => r[0] === "2 (tied)" && r[3] === "0")
-  ? pass("TD desk records a Blood Pact win and the leaderboard shows it, with ties shared")
-  : fail(`TD desk arena leaderboard: ${JSON.stringify({ pact, board })}`);
-const queued = await arenaPage.$$eval(".run-queue tbody tr td:first-child", (cells) => cells.map((c) => c.textContent));
+  && JSON.stringify(boards) === JSON.stringify(["Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)", "Blitz, G/5;+3 (not US Chess rated)"])
+  ? pass("TD desk records a Blood Pact win and the leaderboards show it, with ties shared")
+  : fail(`TD desk arena leaderboard: ${JSON.stringify({ pact, board, boards })}`);
+const after = await rowsOf();
 await press(arenaPage, ".run-arena-pair");
 await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("just played each other"));
-JSON.stringify(queued) === JSON.stringify(["Ann", "Ben"]) && arenaCalls.filter((c) => c.action === "arenaPair").length === 1
-  ? pass("TD desk puts both players back in the queue and doesn't pair them again at once")
-  : fail(`TD desk arena rematch: ${JSON.stringify(queued)}`);
+JSON.stringify(after.map((r) => [r[0], r[1].slice(0, 7)])) === JSON.stringify([["Ann", "Waiting"], ["Ben", "Waiting"], ["Cal", "Game 2"], ["Dee", "Game 2"]])
+  && arenaCalls.filter((c) => c.action === "arenaPair").length === 1
+  ? pass("TD desk shows both players waiting again, the others in their game, and doesn't pair a rematch at once")
+  : fail(`TD desk arena after a result: ${JSON.stringify(after)}`);
+// The players report game 2 themselves; the desk shows it and confirms it in one press.
+arena.games[1].reports = { white: "0-1", black: "0-1" };
+await press(arenaPage, ".run-arena-refresh");
+await arenaPage.waitForSelector(".run-arena-confirm:not([hidden])");
+const reportedCell = await arenaPage.$eval(".run-arena-games tbody tr:first-child td:nth-child(5)", (c) => c.textContent);
+await press(arenaPage, ".run-arena-confirm");
+await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-done tbody tr").length === 2);
+const confirmed = arenaCalls.filter((c) => c.action === "arenaResult").at(-1);
+reportedCell === "0–1 by both" && confirmed.game === "2" && confirmed.result === "0-1"
+  ? pass("TD desk shows the players' agreed report and confirms it") : fail(`TD desk arena reports: ${JSON.stringify({ reportedCell, confirmed })}`);
+const doneRows = await arenaPage.$$eval(".run-arena-done tbody tr", (rows) => rows.map((r) => [r.cells[0].textContent, r.cells[1].textContent]));
+JSON.stringify(doneRows) === JSON.stringify([["2 (not rated: section not US Chess rated)", "Blood Pact"], ["1 (not rated: time odds)", "Classical"]])
+  ? pass("TD desk marks games US Chess won't rate: an unrated section's and one-sided Blood Pacts") : fail(`TD desk finished games: ${JSON.stringify(doneRows)}`);
+// Rename Blitz.
+await arenaPage.$eval(".run-arena-sections-wrap", (d) => { d.open = true; });
+await arenaPage.$eval(".run-arena-sections-form .run-arena-section-row:nth-child(3) .run-arena-section-name", (input) => { input.value = "Bullet"; });
+await press(arenaPage, ".run-arena-sections-form button[type=submit]");
+await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Sections: Classical, Blood Pact, Bullet"));
+const renamed = JSON.parse(arenaCalls.find((c) => c.action === "arenaSections")?.sections || "[]");
+renamed.length === 3 && renamed[2].from === "Blitz" && renamed[2].name === "Bullet" && renamed[1].rated === false && renamed[0].timeControl === "G/30;+30"
+  ? pass("TD desk renames an arena section") : fail(`TD desk arena sections: ${JSON.stringify(renamed)}`);
 for (const scheme of ["light", "dark"]) {
   await arenaPage.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
   await arenaPage.evaluate(axeSource);
@@ -537,6 +580,8 @@ for (const scheme of ["light", "dark"]) {
   result.violations.length ? fail(`TD desk running an arena (${scheme}): ${result.violations.map((v) => `${v.id} at ${v.nodes[0].target}`).join(", ")}`)
     : pass(`TD desk running an arena has no axe violations (${scheme})`);
 }
+await arenaPage.setViewport({ width: 390, height: 844 });
+await fitsPhone(arenaPage, "TD desk running an arena");
 await arenaPage.close();
 
 await done();

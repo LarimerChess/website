@@ -142,10 +142,34 @@ class Sections(unittest.TestCase):
 
 class Arena(unittest.TestCase):
     def test_scoring(self):
-        board, scored = br.arena_scores(ARENA)
+        board, scored, boards = br.arena_scores(ARENA)
         self.assertEqual([(p["name"], p["points"]) for p in board], [("Vic Vine", 9), ("Xan Yew", 2), ("Wren Willow", 1)])
         # Game 2: a Blood Pact win over an opponent who kept the full time; game 3: a third straight win.
-        self.assertEqual([got for _, got in scored], [[2, 0], [0, 3], [3, 0], [1, 1], [1, 1]])
+        self.assertEqual([got for _, got, _ in scored], [[2, 0], [0, 3], [3, 0], [1, 1], [1, 1]])
+        self.assertEqual([why for _, _, why in scored], ["", "time odds", "", "", ""])
+        self.assertEqual(boards, [])
+        page = br.arena_main(ARENA)
+        self.assertIn("<th scope=\"col\">US Chess rated</th>", page)
+        self.assertNotIn("Section", page)
+        self.assertIn("No, time odds", page)
+
+    def test_sections(self):
+        t = json.loads(json.dumps(ARENA))
+        t["sections"] = [{"name": "Classical", "timeControl": "G/30;+30", "rated": True},
+                         {"name": "Blood Pact", "timeControl": "G/15;+15 against G/30;+30", "rated": False}]
+        for g, section in zip(t["arena"], ["Classical", "Classical", "Blood Pact", "Classical", "Classical"]):
+            g["section"] = section
+        board, scored, boards = br.arena_scores(t)
+        self.assertEqual([(p["name"], p["points"]) for p in board], [("Vic Vine", 9), ("Xan Yew", 2), ("Wren Willow", 1)])
+        self.assertEqual([why for _, _, why in scored], ["", "time odds", "section not US Chess rated", "", ""])
+        self.assertEqual([name for name, _ in boards], ["Classical", "Blood Pact"])
+        self.assertEqual([(p["name"], p["points"]) for p in boards[1][1]], [("Vic Vine", 2), ("Wren Willow", 0), ("Xan Yew", 0)])
+        page = br.arena_main(t)
+        self.assertIn("<h2>Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)</h2>", page)
+        self.assertIn("<th scope=\"col\">Section</th>", page)
+        self.assertIn("No, section not US Chess rated", page)
+        # The section is part of the fingerprint, as it is for a Swiss, so the archive's matches.
+        self.assertNotEqual(br.fingerprint(t), br.fingerprint(ARENA))
 
 
 class Fingerprint(unittest.TestCase):

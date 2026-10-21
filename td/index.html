@@ -523,6 +523,29 @@ section.td-table td { white-space: nowrap; }
 .run-names-list input { width: 100%; box-sizing: border-box; }
 .run-sections-edit { margin: 16px 0; }
 .run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.run-arena-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
+.run-arena-sections legend { position: relative; padding: 0; font-weight: 600; }
+.run-arena-section-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 8px; }
+.register-form .run-arena-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
+.run-arena-section-row input[type="text"] { width: 100%; box-sizing: border-box; }
+.run-arena-section-rated { display: flex; align-items: center; gap: 6px; min-height: 40px; }
+.register-form .run-arena-section-rated label { display: inline; font-size: 15px; }
+.run-arena-section-rated input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+@media (min-width: 600px) {
+  .run-arena-section-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
+}
+.run-arena-boards h4 { margin: 16px 0 4px; }
+.arena-note:empty { display: none; }
+.arena-available { display: grid; gap: 6px; margin: 8px 0 12px; padding: 0; list-style: none; }
+.arena-available li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.arena-available-me { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.arena-available-me input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.arena-pact { min-width: 0; margin: 0 0 8px; padding: 0; border: 0; }
+.arena-pact legend { padding: 0; font-weight: 600; }
+.arena-pact div { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.register-form .arena-pact input { width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent); }
+.register-form .arena-pact label { margin-top: 0; font-weight: 400; }
+.arena-challenge .td-buttons { align-items: center; }
 .td-byes { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
 .td-byes legend { padding: 0; font-weight: 600; }
 .td-byes-boxes { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 4px 0; }
@@ -663,7 +686,7 @@ section.td-table td { white-space: nowrap; }
               <option value="arena">Arena</option>
             </select>
             <span class="run-format-set" hidden></span>
-            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the formats" aria-describedby="run-format-hint">?</button><span id="run-format-hint" class="hint-text" role="tooltip">Swiss: US Chess rules 27 to 29, each section a Swiss or a round robin. Quads: round robins of four, 30G, each of which can become a Swiss before it starts. Arena: players wait in a queue and are paired as they finish games, until the cutoff.</span></span>
+            <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About the formats" aria-describedby="run-format-hint">?</button><span id="run-format-hint" class="hint-text" role="tooltip">Swiss: US Chess rules 27 to 29, each section a Swiss or a round robin. Quads: round robins of four, 30G, each of which can become a Swiss before it starts. Arena: its sections are time controls; players mark where they're available and challenge each other on the Pairings page, or the desk pairs those waiting, until the cutoff.</span></span>
           </span>
         </div>
         <form id="run-start" class="register-form run-start" hidden>
@@ -676,6 +699,11 @@ section.td-table td { white-space: nowrap; }
             <label for="run-cutoff">No new games after</label>
             <input id="run-cutoff" name="cutoff" type="time" value="17:30">
           </div>
+          <fieldset class="run-arena-sections" data-format="arena" hidden>
+            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About an arena's sections" aria-describedby="run-arena-sections-hint">?</button><span id="run-arena-sections-hint" class="hint-text" role="tooltip">Each section is a time control. Players choose which they're available in, and every game is in one. Untick US Chess rated for a section whose games can't be rated, such as Blood Pact games at time odds (5C1): they count for points here and stay out of the rating report. Remove every section for an arena at one time control.</span></span></legend>
+            <div class="run-arena-section-rows"></div>
+            <p><button class="button button-secondary run-arena-section-add" type="button">Add a section</button></p>
+          </fieldset>
           <div class="field-row" data-format="swiss">
             <label for="run-coin">Coin toss: board one's higher-rated player has</label>
             <select id="run-coin" name="coin">
@@ -726,37 +754,54 @@ section.td-table td { white-space: nowrap; }
           </div>
         </div>
         <div class="run-arena" hidden>
-          <h3>Waiting for a game</h3>
-          <p class="register-hint">Pairing takes the longest-waiting players first. After a result both players wait again, except one who forfeited; take a player out for a break, and back in when they return.</p>
-          <div class="td-table"><table class="entries run-queue">
-            <thead><tr><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Waiting since</th><th scope="col"><span class="visually-hidden">Take out</span></th></tr></thead>
+          <details class="run-arena-sections-wrap run-sections-edit">
+            <summary>Sections</summary>
+            <form class="register-form run-arena-sections-form">
+              <p class="register-hint">Each section is a time control, US Chess rated unless unticked. Renaming one carries its games and the players available in it along; a section with games can't be removed.</p>
+              <fieldset class="run-arena-sections">
+                <legend>Sections</legend>
+                <div class="run-arena-section-rows"></div>
+                <p><button class="button button-secondary run-arena-section-add" type="button">Add a section</button></p>
+              </fieldset>
+              <button class="button button-secondary" type="submit">Save the sections</button>
+            </form>
+          </details>
+          <h3>Players</h3>
+          <p class="register-hint">Players mark where they're available and challenge each other on the Pairings page; set it here for anyone who asks. A player in a game is available again when it ends; Take out gives them a break. Add walk-ups with Register a player, then Add new entrants.</p>
+          <div class="td-table"><table class="entries run-players">
+            <thead><tr><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Available in</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Take out</span></th></tr></thead>
             <tbody></tbody>
           </table></div>
-          <p class="run-queue-empty">Nobody is waiting.</p>
-          <p><button class="button run-arena-pair" type="button">Pair waiting players</button> <button class="button button-secondary run-arena-refresh" type="button">Refresh</button></p>
+          <p><button class="button run-arena-pair" type="button">Pair waiting players</button> <button class="button button-secondary run-arena-sync" type="button">Add new entrants</button> <button class="button button-secondary run-arena-refresh" type="button">Refresh</button></p>
+          <form class="register-form run-arena-start">
+            <p class="register-hint">Or start a game by hand, between any two players not in one.</p>
+            <label for="run-arena-white">White</label>
+            <select id="run-arena-white" name="white"></select>
+            <label for="run-arena-black">Black</label>
+            <select id="run-arena-black" name="black"></select>
+            <label for="run-arena-section">Section</label>
+            <select id="run-arena-section" name="section"></select>
+            <button class="button button-secondary" type="submit">Start the game</button>
+          </form>
           <h3>Games in progress</h3>
+          <p class="register-hint">A result the players report ends the game and counts until you confirm or change it. Reports that differ count nothing until you enter the result.</p>
           <div class="td-table"><table class="entries run-arena-games">
-            <thead><tr><th scope="col">Game</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
+            <thead><tr><th scope="col">Game</th><th scope="col">Section</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Reported</th><th scope="col">Result</th></tr></thead>
             <tbody></tbody>
           </table></div>
           <p class="run-arena-none">No games in progress.</p>
-          <h3>Not waiting</h3>
-          <p class="register-hint">Players on a break or not here yet. Add walk-ups with Register a player, then Add new entrants.</p>
-          <div class="td-table"><table class="entries run-away">
-            <thead><tr><th scope="col">Name</th><th scope="col">Rating</th><th scope="col"><span class="visually-hidden">Queue</span></th></tr></thead>
-            <tbody></tbody>
-          </table></div>
-          <p><button class="button button-secondary run-arena-sync" type="button">Add new entrants</button></p>
+          <p><button class="button run-arena-confirm" type="button" hidden>Confirm agreed results</button></p>
           <h3>Leaderboard</h3>
-          <p class="register-hint">Players with equal points share a place.</p>
+          <p class="register-hint">Players with equal points share a place. Results the players reported count until you change them.</p>
           <div class="td-table"><table class="entries run-leaderboard">
             <thead><tr><th scope="col">Place</th><th scope="col">Name</th><th scope="col">Rating</th><th scope="col">Points</th><th scope="col">Games</th><th scope="col">Wins in a row</th></tr></thead>
             <tbody></tbody>
           </table></div>
+          <div class="run-arena-boards"></div>
           <h3>Finished games</h3>
-          <p class="register-hint">Newest first. Correct a result or a Blood Pact here; the queue doesn't change.</p>
+          <p class="register-hint">Newest first. Correct a result or a Blood Pact here; a game marked not rated stays out of the rating report.</p>
           <div class="td-table"><table class="entries run-arena-done">
-            <thead><tr><th scope="col">Game</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
+            <thead><tr><th scope="col">Game</th><th scope="col">Section</th><th scope="col">White</th><th scope="col">Black</th><th scope="col">Result</th></tr></thead>
             <tbody></tbody>
           </table></div>
         </div>
@@ -1016,8 +1061,8 @@ section.td-table td { white-space: nowrap; }
   <script src="../td-contacts.js?v=767ef2a766" defer></script>
   <script src="../pairing.js?v=4c86f5a22b" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>
-  <script src="../td-run.js?v=8559c00264" defer></script>
-  <script src="../arena.js?v=051926af16" defer></script>
-  <script src="../td-arena.js?v=508eec2a45" defer></script>
+  <script src="../td-run.js?v=4259737e3e" defer></script>
+  <script src="../arena.js?v=d38a3edae1" defer></script>
+  <script src="../td-arena.js?v=dd6448eaa2" defer></script>
 </body>
 </html>

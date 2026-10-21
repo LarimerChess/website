@@ -71,13 +71,13 @@ export function endedOn(t, now) {
   return now >= `${nextDay(last)} 00:00` ? last : null;
 }
 
-/** { player: { round: [outcome, opponent, color] } } as the desk has it, for one section's rounds; an arena's games are
- *  numbered in order, leaving out those with time odds, which US Chess doesn't rate (5C1). Players with no game, bye, or
- *  result in any round are left out, as MUIR drops them. */
-function played(t) {
+/** { player: { round: [outcome, opponent, color] } } as the desk has it, for one section's rounds; an arena section's
+ *  games are numbered in order, leaving out those US Chess doesn't rate: in a section it doesn't rate, or with time odds
+ *  (5C1). Players with no game, bye, or result in any round are left out, as MUIR drops them. */
+function played(t, section) {
   const players = Object.fromEntries(t.players.map((p) => [p.id, {}]));
   const games = t.format === "arena"
-    ? [...(t.games || [])].filter((g) => !Arena.timeOdds(g) || Arena.FORFEIT(g.result)).sort((a, b) => a.game - b.game).map((g, i) => [i + 1, g])
+    ? [...(t.games || [])].filter((g) => (g.section || "") === (section || "") && !Arena.notRated(t, g)).sort((a, b) => a.game - b.game).map((g, i) => [i + 1, g])
     : t.rounds.flatMap((r, i) => (r.posted ? r.games.map((g) => [i + 1, g]) : []));
   if (t.format !== "arena") {
     t.rounds.forEach((r, i) => {
@@ -102,7 +102,7 @@ function played(t) {
 /** The desk's sections as US Chess rates them, [{ name, players }], players as played gives them: an extra rated
  *  games section (28M4) has its own rounds, from its round 1, and players who are also in another section. */
 export function ours(t) {
-  if (t.format === "arena") return [{ name: "", players: played(t) }];
+  if (t.format === "arena") return Arena.sections(t).filter((s) => s.rated !== false).map((s) => ({ name: s.name, players: played(t, s.name) }));
   return Pairing.sections(t).filter((s) => s.players.length).map((s) => ({ name: s.name, players: played({ ...s, format: t.format }) }));
 }
 
@@ -135,7 +135,7 @@ export function differences(t, standings) {
   const names = Object.fromEntries(t.players.map((p) => [p.id, p.name || p.id]));
   const mine = ours(t);
   const found = theirs(standings);
-  const extra = (t.sections || []).some((s) => s.extra);
+  const extra = (t.sections || []).some((s) => s.extra) || (t.format === "arena" && mine.length > 1);
   const byName = (a, b) => (names[a] || a).localeCompare(names[b] || b);
   const key = (cell) => cell.join("|");
   const matched = new Map();

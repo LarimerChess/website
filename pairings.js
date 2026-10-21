@@ -2,10 +2,12 @@
 // section by section, from the registration script's ?tournaments=current. Pairings shows one
 // round at a time, the latest posted unless a reader picks an earlier one; Standings shows the
 // standings after a round, the latest with results unless a reader picks an earlier one. An
-// arena's games and queue are on Pairings, its leaderboard on Standings. With LIVE_DB set, the
-// pages follow the database's public copy of the same tournaments instead, and redraw as it changes.
-// ENDPOINT, LIVE_DB, byesText, and the saved players and their list come from register.js, listenLive
-// from live.js, Pairing from pairing.js, and Arena from arena.js.
+// arena's sections, with who is available in each, and its games are on Pairings, where a player
+// saved on this device marks themself available, challenges an available player, and reports their
+// game's result; its leaderboard is on Standings. With LIVE_DB set, the pages follow the database's
+// public copy of the same tournaments instead, and redraw as it changes. ENDPOINT, LIVE_DB, byesText,
+// and the saved players and their list come from register.js, listenLive from live.js, Pairing from
+// pairing.js, and Arena from arena.js.
 
 const pairingsStatus = document.querySelector(".pairings-status");
 const pairingsAll = document.querySelector(".pairings-all");
@@ -40,6 +42,11 @@ function tableOf(headings, rows, label) {
 }
 
 const paragraph = (text) => Object.assign(document.createElement("p"), { textContent: text });
+const button = (text, className, onClick) => {
+  const b = Object.assign(document.createElement("button"), { type: "button", className, textContent: text });
+  b.addEventListener("click", onClick);
+  return b;
+};
 const heading = (level, text) => Object.assign(document.createElement(`h${level}`), { textContent: text });
 
 const link = (href, text) => Object.assign(document.createElement("a"), { href, textContent: text });
@@ -111,7 +118,8 @@ function partsOf(t) {
 // Players report their own games' results on the Pairings page, for the boards of the players
 // saved on this device: those the Register form saved (register.js), and any found here by US
 // Chess ID, which are saved the same way. Nothing proves who is reporting, so a report counts
-// only once the TD confirms it on the desk.
+// only once the TD confirms it on the desk; an arena's counts until the TD changes it, since its
+// players start their own games from here too.
 const found = new Set();
 const mine = () => new Set([...savedPlayers().map((p) => p.id), ...found]);
 const reported = new Map();
@@ -196,7 +204,7 @@ function findForm(current, render) {
   const input = Object.assign(document.createElement("input"), { id: "report-id", name: "uschess-id", type: "text",
     inputMode: "numeric", pattern: "[0-9]{8}", maxLength: 8, autocomplete: "on", required: true });
   input.setAttribute("aria-describedby", "report-id-hint");
-  const hint = Object.assign(paragraph("To report your game's result, find your board."), { id: "report-id-hint", className: "register-hint" });
+  const hint = Object.assign(paragraph("To report your game's result, or to play in an arena, find yourself here."), { id: "report-id-hint", className: "register-hint" });
   const remember = newRemember("report-remember");
   const choice = remember.querySelector("input");
   const button = Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Find my board" });
@@ -204,10 +212,13 @@ function findForm(current, render) {
     input, hint, remember, button, status);
 
   const boxOf = (id) => pairingsAll.querySelector(`.report[data-players~="${CSS.escape(id)}"]`);
+  const inArena = (id) => current().some((t) => t.status === "running" && t.format === "arena" && t.players.some((p) => p.id === id));
   const showSaved = () => showSavedIn(savedBox, (p) => {
+    render();
     const box = boxOf(p.id);
     status.textContent = box ? `${playerName(p)}: report the result with the buttons below the board.`
-      : `${playerName(p)} has no game to report in the round shown.`;
+      : inArena(p.id) ? `${playerName(p)}: mark yourself available in a section below, or challenge a player who is.`
+        : `${playerName(p)} has no game to report in the round shown.`;
     box?.querySelector("button").focus();
   }, (p) => {
     found.delete(p.id);
@@ -223,8 +234,7 @@ function findForm(current, render) {
     event.preventDefault();
     const id = input.value.trim();
     if (!/^\d{8}$/.test(id)) return void (status.textContent = "A US Chess ID is eight digits.");
-    const player = current().filter((t) => t.status === "running" && t.format !== "arena")
-      .flatMap((t) => t.players).find((p) => p.id === id);
+    const player = current().filter((t) => t.status === "running").flatMap((t) => t.players).find((p) => p.id === id);
     if (!player) return void (status.textContent = "Nobody with that US Chess ID is playing in a tournament in progress.");
     found.add(id);
     const saved = savedPlayers();
@@ -235,7 +245,9 @@ function findForm(current, render) {
     render();
     const box = boxOf(id);
     status.textContent = `${stored ? `${player.name} is saved on this device.` : `Found ${player.name}.`} ${box
-      ? "Report your game's result with the buttons below its board." : "Once your board is posted, buttons to report its result appear below it."}`;
+      ? "Report your game's result with the buttons below its board."
+      : inArena(id) ? "Mark yourself available in a section below, or challenge a player who is."
+        : "Once your board is posted, buttons to report its result appear below it."}`;
     (box?.querySelector("button") || input).focus();
   });
   return form;
@@ -243,37 +255,235 @@ function findForm(current, render) {
 
 const RECENT = 12;
 
-function arenaPairings(section, t, name) {
-  if (t.cutoff && t.status !== "rated") section.append(paragraph(`No new games start after ${clock(t.cutoff)}.`));
-  const playing = t.games.filter((g) => !g.result);
-  const pact = (g, side) => name(g[side]) + (g[`${side}Pact`] ? ", Blood Pact" : "");
+// An arena's player on this device: the one of the saved players who is in it, or the one chosen
+// when several are. Each arena action's message, and the challenge form open, are kept by key.
+const playAs = new Map();
+const arenaNotes = new Map();
+const challenging = new Map();
+const sendingArena = new Set();
+
+function arenaMine(t) {
+  const ids = mine();
+  const order = savedPlayers().map((p) => p.id);
+  return t.players.filter((p) => ids.has(p.id)).sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99));
+}
+
+function arenaMe(t) {
+  const players = arenaMine(t);
+  return players.find((p) => p.id === playAs.get(t.key))?.id ?? players[0]?.id ?? null;
+}
+
+/** Sends an arena action for the player on this device, then redraws with the script's answer. */
+async function arenaSend(t, action, fields) {
+  const [event, date] = t.key.split("/");
+  sendingArena.add(t.key);
+  arenaNotes.set(t.key, "Sending…");
+  redrawAll();
+  try {
+    const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams({ action, event, date, ...fields }) });
+    const result = await response.json();
+    arenaNotes.set(t.key, result.message || result.error || "");
+    if (result.ok) challenging.delete(t.key);
+    if (result.ok && !LIVE_DB) loadOnce();
+  } catch {
+    arenaNotes.set(t.key, "That didn't go through. Try again, or tell the TD.");
+  }
+  sendingArena.delete(t.key);
+  redrawAll();
+}
+
+/** A section's heading: its name, time control, and whether US Chess rates it. */
+function sectionTitle(def) {
+  return `${def.name}${def.timeControl ? `, ${def.timeControl}` : ""}${def.rated === false ? " (not US Chess rated)" : ""}`;
+}
+
+function pactLabel(g, side, name) {
+  return name(g[side]) + (g[`${side}Pact`] ? ", Blood Pact" : "");
+}
+
+/** The challenge form for a player in a section: who takes the Blood Pact, then Start the game. */
+function challengeForm(t, ti, def, opponent, me, name) {
+  const form = document.createElement("form");
+  form.className = "register-form report arena-challenge";
+  form.dataset.players = `${me} ${opponent}`;
+  const called = (id) => t.players.find((p) => p.id === id)?.name || id;
+  form.append(paragraph(`Challenge ${name(opponent)}${def.name ? ` in ${def.name}` : ""}, as ${called(me)}.`));
+  const pact = document.createElement("fieldset");
+  pact.className = "arena-pact";
+  pact.append(Object.assign(document.createElement("legend"), { textContent: "Blood Pact: who halves their clock?" }));
+  for (const [value, text] of [["none", "Nobody"], ["me", `Me, ${called(me)}`], ["opponent", called(opponent)], ["both", "Both of us"]]) {
+    const id = `arena-pact-${ti}-${value}`;
+    const choice = Object.assign(document.createElement("input"), { type: "radio", name: "pact", id, value, checked: value === "none" });
+    const label = Object.assign(document.createElement("label"), { htmlFor: id, textContent: text });
+    const row = document.createElement("div");
+    row.append(choice, label);
+    pact.append(row);
+  }
+  const buttons = document.createElement("p");
+  buttons.className = "td-buttons";
+  const start = Object.assign(document.createElement("button"), { type: "submit", className: "button", textContent: "Start the game", id: `arena-start-${ti}` });
+  buttons.append(start, " ", button("Cancel", "button button-secondary", () => {
+    challenging.delete(t.key);
+    redrawAll();
+    document.getElementById(`arena-challenge-${ti}-${opponent}`)?.focus();
+  }));
+  form.append(pact, buttons);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    arenaSend(t, "arenaChallenge", { id: me, opponent, section: def.name, pact: new FormData(form).get("pact") });
+  });
+  return form;
+}
+
+/** One-tap buttons that report an arena game's result for the player saved here. */
+function arenaReportBox(t, ti, g, me, name) {
+  const side = me === g.white ? "white" : "black";
+  const box = document.createElement("div");
+  box.className = "report";
+  box.dataset.players = `${g.white} ${g.black}`;
+  const called = (who) => t.players.find((p) => p.id === who)?.name || who;
+  box.append(paragraph(`Game ${g.game}${g.section ? `, ${g.section}` : ""}: ${pactLabel(g, "white", name)} with white, ${pactLabel(g, "black", name)} with black. Report the result:`));
+  const buttons = document.createElement("p");
+  buttons.className = "td-buttons";
+  for (const [value, text] of [["1-0", `1–0, ${called(g.white)} won`], ["0-1", `0–1, ${called(g.black)} won`], ["1/2-1/2", "½–½, a draw"]]) {
+    const b = button(text, "td-action", () => arenaSend(t, "arenaReport", { id: me, game: g.game, result: value }));
+    b.id = `arena-report-${ti}-${g.game}-${value.replace(/\W/g, "")}`;
+    b.setAttribute("aria-pressed", String(g.reports?.[side] === value));
+    b.disabled = sendingArena.has(t.key);
+    buttons.append(b);
+  }
+  box.append(buttons);
+  return box;
+}
+
+function arenaPairings(section, t, ti, name) {
+  const running = t.status === "running";
+  const date = (t.key || "").split("/")[1] || "";
+  const closed = running && Boolean(date) && Arena.pastCutoff(date, t.cutoff, new Date());
+  if (t.cutoff && running) {
+    section.append(paragraph(closed ? `It's past ${clock(t.cutoff)}: no new games start. Games in progress finish and count.`
+      : `No new games start after ${clock(t.cutoff)}.`));
+  }
+  const defs = Arena.sections(t);
+  const several = Boolean(t.sections?.length);
+  const me = running ? arenaMe(t) : null;
+  const open = running && !closed;
+  const sending = sendingArena.has(t.key);
+  if (open && !me) {
+    section.append(paragraph("To play, find yourself above with your US Chess ID. Then mark yourself available in a section, or challenge a player who is."));
+  }
+  const players = arenaMine(t);
+  if (open && players.length > 1) {
+    const row = paragraph("");
+    const select = Object.assign(document.createElement("select"), { id: `arena-me-${ti}` });
+    for (const p of players) select.append(new Option(p.name, p.id, false, p.id === me));
+    select.addEventListener("change", () => {
+      playAs.set(t.key, select.value);
+      redrawAll();
+    });
+    row.className = "round-menu";
+    row.append(Object.assign(document.createElement("label"), { htmlFor: select.id, textContent: "Playing as" }), " ", select);
+    section.append(row);
+  }
+  if (running) {
+    const note = paragraph(arenaNotes.get(t.key) || "");
+    note.className = "register-hint arena-note";
+    note.setAttribute("role", "status");
+    section.append(note);
+  }
+  const busy = Arena.busy(t);
+  const entry = me && t.queue.find((q) => q.id === me);
+  const myGame = me && busy.has(me) ? t.games.find((g) => Arena.inProgress(g) && (g.white === me || g.black === me)) : null;
+  if (open && me && myGame) section.append(paragraph(`You're in game ${myGame.game}. When it ends, report its result below.`));
+  for (const def of defs) {
+    if (several) section.append(heading(3, sectionTitle(def)));
+    if (open && me) {
+      const box = document.createElement("div");
+      box.className = "arena-available-me";
+      const id = `arena-available-${ti}-${defs.indexOf(def)}`;
+      const choice = Object.assign(document.createElement("input"), { type: "checkbox", id, disabled: sending,
+        checked: Boolean(entry && Arena.availableIn(entry, def.name)) });
+      choice.addEventListener("change", () => {
+        const names = defs.map((d) => d.name).filter((n) => (n === def.name ? choice.checked : entry && Arena.availableIn(entry, n)));
+        arenaSend(t, "arenaAvailable", { id: me, sections: JSON.stringify(several ? names : names.length ? [""] : []) });
+      });
+      box.append(choice, Object.assign(document.createElement("label"), { htmlFor: id,
+        textContent: several ? `I'm available in ${def.name}` : "I'm available for a game" }));
+      section.append(box);
+    }
+    const available = Arena.waiting(t, def.name);
+    if (!available.length) {
+      if (running) section.append(paragraph(several ? `Nobody is available in ${def.name} right now.` : "Nobody is available right now."));
+      continue;
+    }
+    const list = document.createElement("ul");
+    list.className = "arena-available";
+    list.setAttribute("aria-label", several ? `Available in ${def.name}` : "Available");
+    for (const id of available) {
+      const item = document.createElement("li");
+      item.append(name(id));
+      if (open && me && id !== me && !busy.has(me)) {
+        const b = button("Challenge", "td-action", () => {
+          challenging.set(t.key, { id, section: def.name });
+          arenaNotes.delete(t.key);
+          redrawAll();
+          document.getElementById(`arena-start-${ti}`)?.focus();
+        });
+        b.id = `arena-challenge-${ti}-${id}`;
+        b.disabled = sending;
+        b.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` ${name(id)}` }));
+        item.append(" ", b);
+      }
+      list.append(item);
+    }
+    section.append(list);
+    const asked = challenging.get(t.key);
+    if (open && me && asked && asked.section === def.name && available.includes(asked.id) && !busy.has(me)) {
+      section.append(challengeForm(t, ti, def, asked.id, me, name));
+    }
+  }
+  const playing = t.games.filter(Arena.inProgress);
+  const cells = (g) => [g.game, ...(several ? [g.section] : []), pactLabel(g, "white", name), pactLabel(g, "black", name)];
+  if (several || running || playing.length) section.append(heading(3, "Games in progress"));
   if (playing.length) {
-    section.append(heading(3, "Games in progress"),
-      tableOf(["Game", "White", "Black"], playing.map((g) => [g.game, pact(g, "white"), pact(g, "black")])));
-  } else if (t.status !== "rated") {
+    section.append(tableOf(["Game", ...(several ? ["Section"] : []), "White", "Black"], playing.map(cells)));
+  } else if (running) {
     section.append(paragraph("No games in progress."));
   }
-  const waiting = Arena.waiting(t);
-  if (waiting.length && t.status !== "rated") section.append(paragraph(`Waiting for a game: ${waiting.map(name).join(", ")}.`));
-  const done = t.games.filter((g) => g.result).reverse().slice(0, RECENT);
+  if (open && me) {
+    for (const g of [...t.games].reverse().filter((g) => !g.result && (g.white === me || g.black === me))) section.append(arenaReportBox(t, ti, g, me, name));
+  }
+  const done = t.games.filter((g) => !Arena.inProgress(g)).reverse().slice(0, RECENT);
   if (done.length) {
     section.append(heading(3, "Recent results"),
-      tableOf(["Game", "White", "Black", "Result"], done.map((g) => [g.game, pact(g, "white"), pact(g, "black"), SHOWN[g.result] || ""])));
+      tableOf(["Game", ...(several ? ["Section"] : []), "White", "Black", "Result"], done.map((g) => [...cells(g), shownResult(g)])));
   }
+  const pending = t.games.filter((g) => !g.result && !Arena.inProgress(g)).length;
+  if (pending) section.append(paragraph(`${pending} ${pending === 1 ? "result is" : "results are"} reported by the players and not yet confirmed by the TD.`));
   const more = paragraph("The leaderboard is on the ");
   more.append(link("/standings/", "Standings"), " page.");
   section.append(more);
   return section;
 }
 
+function leaderboardTable(arena, label) {
+  return tableOf(["Place", "Name", "Rating", "Points", "Games", "Wins in a row"], Arena.standings(arena).map((r) => [
+    `${r.place}${r.tied ? " (tied)" : ""}`, r.name, r.rating ?? "Unrated", r.points, r.games,
+    `${r.streak}${r.streak >= 2 ? " (Possessed)" : ""}`]), label);
+}
+
 function arenaStandings(section, t) {
-  const rows = Arena.standings(t);
   section.append(heading(3, t.status === "rated" ? "Final leaderboard" : "Leaderboard"),
-    paragraph("Players with equal points share a place."),
-    tableOf(["Place", "Name", "Rating", "Points", "Games", "Wins in a row"], rows.map((r) => [
-      `${r.place}${r.tied ? " (tied)" : ""}`, r.name, r.rating ?? "Unrated", r.points, r.games,
-      `${r.streak}${r.streak >= 2 ? " (Possessed)" : ""}`])));
-  const more = paragraph("Games in progress and who is waiting are on the ");
+    paragraph("Players with equal points share a place."), leaderboardTable(t, `${t.name} leaderboard`));
+  const pending = t.games.filter((g) => !g.result && Arena.resultOf(g)).length;
+  if (pending) section.append(paragraph(`${pending} ${pending === 1 ? "result" : "results"} the players reported ${pending === 1 ? "counts" : "count"} here until the TD confirms or corrects ${pending === 1 ? "it" : "them"}.`));
+  if (t.sections?.length) {
+    section.append(heading(3, "By section"));
+    for (const def of t.sections) {
+      section.append(heading(4, sectionTitle(def)), leaderboardTable(Arena.inSection(t, def.name), `${def.name} leaderboard`));
+    }
+  }
+  const more = paragraph("Games in progress and who is available are on the ");
   more.append(link("/pairings/", "Pairings"), " page.");
   section.append(more);
   return section;
@@ -283,7 +493,7 @@ function pairingsSection(t, ti) {
   const section = document.createElement("section");
   section.append(heading(2, t.name));
   const name = namer(t);
-  if (t.format === "arena") return arenaPairings(section, t, name);
+  if (t.format === "arena") return arenaPairings(section, t, ti, name);
   if (!t.rounds.length) {
     section.append(paragraph("Round 1 hasn't been posted yet."), ...byesAsked(t, t, name));
     return section;
@@ -447,7 +657,7 @@ function drawTournaments(all = false) {
   const message = current.length ? "" : onStandings ? "No tournament is in progress. Standings appear here as results come in."
     : "No tournament is in progress. Pairings appear here as each round is posted.";
   if (pairingsStatus.textContent !== message) pairingsStatus.textContent = message;
-  const reporting = !onStandings && current.some((t) => t.status === "running" && t.format !== "arena" && t.rounds.length);
+  const reporting = !onStandings && current.some((t) => t.status === "running" && (t.format === "arena" || t.rounds.length));
   if (reporting && !finder) {
     finder = findForm(() => current, () => drawTournaments(true));
     all = true;

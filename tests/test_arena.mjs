@@ -1,5 +1,5 @@
 // Tests for arena.js: Knightmare-style scoring (Possessed and Blood Pact), the queue, colors,
-// the cutoff, and a simulated day.
+// the cutoff, sections, challenges, the players' reports, and a simulated day.
 //   node --test tests/test_arena.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -170,4 +170,96 @@ test("a simulated day: everyone keeps playing, nobody meets the same opponent tw
   const finished = arena.games.filter((g) => g.result);
   assert.ok(total >= finished.length * 2, "each finished game adds at least 2 points");
   rows.slice(1).forEach((r, i) => assert.ok(r.points <= rows[i].points));
+});
+
+const SECTIONS = [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }];
+const at = (id, sections, since = "2026-10-31 10:00:00") => ({ id, since, ...(sections ? { sections } : {}) });
+
+test("sections: an arena without any is one unnamed section, and a queue entry naming none covers every section", () => {
+  const plain = { players: players("A", "B"), games: [], queue: [at("A"), at("B", [], "2026-10-31 10:00:01")] };
+  assert.deepEqual(Arena.sections(plain), [{ name: "" }]);
+  assert.deepEqual(Arena.waiting(plain, ""), ["A", "B"]);
+  assert.deepEqual(Arena.pair(plain).games, [{ white: "A", black: "B", section: "" }]);
+  const arena = { sections: SECTIONS, players: players("A", "B", "C"), games: [],
+    queue: [at("A", ["Classical"]), at("B", ["Blood Pact"], "2026-10-31 10:00:01"), at("C", undefined, "2026-10-31 10:00:02")] };
+  assert.deepEqual(Arena.waiting(arena, "Classical"), ["A", "C"]);
+  assert.deepEqual(Arena.waiting(arena, "Blood Pact"), ["B", "C"]);
+  assert.deepEqual(Arena.waiting(arena), ["A", "B", "C"]);
+  assert.equal(Arena.sectionOf(arena, "Blitz"), null);
+});
+
+test("pairing goes section by section, each player in one game, with the game's section", () => {
+  const arena = { sections: SECTIONS, players: players("A", "B", "C", "D", "E"), games: [], queue: [
+    at("A", ["Classical", "Blood Pact"]), at("B", ["Blood Pact"], "2026-10-31 10:00:01"), at("C", ["Classical"], "2026-10-31 10:00:02"),
+    at("D", ["Blood Pact"], "2026-10-31 10:00:03"), at("E", ["Blood Pact"], "2026-10-31 10:00:04")] };
+  const { games: paired, waiting } = Arena.pair(arena);
+  assert.deepEqual(paired, [{ white: "A", black: "C", section: "Classical" }, { white: "B", black: "D", section: "Blood Pact" }]);
+  assert.deepEqual(waiting, ["E"]);
+});
+
+test("a player in a game in progress is busy: available nowhere until it has a result or a report", () => {
+  const arena = { sections: SECTIONS, players: players("A", "B", "C"), queue: [at("A", ["Classical"]), at("B", ["Classical"]), at("C", ["Classical"])],
+    games: [{ game: 1, section: "Classical", white: "A", black: "B", result: "" }] };
+  assert.deepEqual([...Arena.busy(arena)], ["A", "B"]);
+  assert.deepEqual(Arena.waiting(arena, "Classical"), ["C"]);
+  assert.deepEqual(Arena.pair(arena), { games: [], waiting: ["C"] });
+  arena.games[0].reports = { white: "1-0" };
+  assert.deepEqual([...Arena.busy(arena)], []);
+  assert.deepEqual(Arena.waiting(arena, "Classical"), ["A", "B", "C"]);
+});
+
+test("a challenge takes an available player in a section, the challenger needn't be available, and colors favor the one who waited", () => {
+  const arena = { sections: SECTIONS, players: players("A", "B", "C"), games: games(["A", "X", "1-0"]),
+    queue: [at("B", ["Blood Pact"])] };
+  assert.deepEqual(Arena.challenge(arena, "A", "B", "Blood Pact"), { white: "B", black: "A", section: "Blood Pact" });
+  assert.equal(Arena.challenge(arena, "A", "B", "Classical").error, "B isn't available in Classical right now.");
+  assert.equal(Arena.challenge(arena, "A", "C", "Classical").error, "C isn't available in Classical right now.");
+  assert.equal(Arena.challenge(arena, "A", "A", "Classical").error, "You can't challenge yourself.");
+  assert.equal(Arena.challenge(arena, "A", "B", "Blitz").error, "No such section.");
+  assert.equal(Arena.challenge(arena, "Z", "B", "Blood Pact").error, "You're not in this arena yet. See the TD.");
+  assert.equal(Arena.challenge(arena, "A", "Z", "Blood Pact").error, "That player isn't in this arena.");
+});
+
+test("a challenge is refused while either player is in a game, or for an immediate rematch", () => {
+  const arena = { sections: SECTIONS, players: players("A", "B", "C", "D"), queue: [at("B", ["Classical"]), at("C", ["Classical"]), at("D", ["Classical"])],
+    games: [{ game: 1, section: "Classical", white: "A", black: "B", result: "1-0" }, { game: 2, section: "Classical", white: "C", black: "D", result: "" }] };
+  assert.equal(Arena.challenge(arena, "A", "B", "Classical").error, "You and B just played each other. Play someone else first.");
+  assert.equal(Arena.challenge(arena, "B", "A", "Classical").error, "A isn't available in Classical right now.");
+  assert.equal(Arena.challenge(arena, "A", "C", "Classical").error, "C is in a game.");
+  assert.equal(Arena.challenge(arena, "C", "B", "Classical").error, "You're in a game. Report its result first.");
+  arena.games[1].result = "0-1";
+  // Both have had one white; C, who waited, has it again since neither had black last.
+  assert.deepEqual(Arena.challenge(arena, "A", "C", "Classical"), { white: "C", black: "A", section: "Classical" });
+});
+
+test("the players' reports count until the TD's result, if they agree or only one reported; a dispute counts nothing", () => {
+  const game = (reports, result = "") => ({ game: 1, white: "A", black: "B", result, reports });
+  assert.equal(Arena.resultOf(game({ white: "1-0" })), "1-0");
+  assert.equal(Arena.resultOf(game({ white: "1-0", black: "1-0" })), "1-0");
+  assert.equal(Arena.resultOf(game({ white: "1-0", black: "0-1" })), "");
+  assert.equal(Arena.disputed(game({ white: "1-0", black: "0-1" })), true);
+  assert.equal(Arena.inProgress(game({ white: "1-0", black: "0-1" })), false);
+  assert.equal(Arena.resultOf(game({ white: "1-0", black: "0-1" }, "1/2-1/2")), "1/2-1/2");
+  assert.equal(Arena.resultOf(game({ white: "nonsense" })), "");
+  assert.equal(Arena.inProgress(game({ white: "nonsense" })), true);
+  assert.equal(Arena.inProgress(game(undefined)), true);
+  const arena = { players: players("A", "B"), queue: [], games: [game({ black: "0-1" })] };
+  assert.deepEqual(points(arena), { A: 0, B: 2 });
+  // The reported game counts as a color played, and in the run of wins.
+  assert.deepEqual(Arena.assignColors(arena.games, "A", "B"), ["B", "A"]);
+});
+
+test("a section that isn't US Chess rated, or a one-sided Blood Pact, keeps a game out of the rating report", () => {
+  const arena = { sections: SECTIONS, players: players("A", "B"), queue: [], games: [
+    { game: 1, section: "Classical", white: "A", black: "B", result: "1-0" },
+    { game: 2, section: "Classical", white: "A", black: "B", whitePact: true, result: "1-0" },
+    { game: 3, section: "Blood Pact", white: "A", black: "B", result: "1-0" },
+    { game: 4, section: "Classical", white: "A", black: "B", whitePact: true, result: "1F-0F" },
+    { game: 5, section: "Classical", white: "A", black: "B", whitePact: true, blackPact: true, result: "1-0" }] };
+  assert.deepEqual(arena.games.map((g) => Arena.notRated(arena, g)), ["", "time odds", "section not US Chess rated", "", ""]);
+  assert.equal(Arena.notRated({ players: [], games: [], queue: [] }, { game: 1, white: "A", black: "B", result: "1-0" }), "");
+  // Each section's own leaderboard counts only its games.
+  assert.deepEqual(points(Arena.inSection(arena, "Blood Pact")), { A: 2, B: 0 });
+  // Games 1, 2 (a pact bonus), the forfeit 4, and 5, with Possessed from the third win on.
+  assert.deepEqual(points(Arena.inSection(arena, "Classical")), { A: 2 + 3 + 2 + 3, B: 0 });
 });

@@ -1,8 +1,7 @@
 // The TD desk's Run the tournament section: start a tournament for the chosen event, check in
 // players, pair each round with pairing.js or by hand, review, change, and post it (and change it
 // again until it has results), enter results or confirm the ones players report, and follow the
-// standings. The script keeps everything in the Tournaments in progress spreadsheet. An arena is
-// run by td-arena.js. call, choice, choices, andList, byeDate, and nightsInWords come from td.js.
+// standings. The script keeps everything in the tournament database. An arena is run by td-arena.js. call, choice, choices, andList, byeDate, and nightsInWords come from td.js.
 //
 // A tournament's sections play each round together: one check-in, one Pair button that pairs
 // every section on its own, one review, and one Post, with each section in its own tables. An
@@ -1154,7 +1153,8 @@ function runBusy() {
   const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
   const checkingIn = !runRound.hidden && !runCheckin.hidden
     && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
-  return Boolean(field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || (!runStart.hidden && startEdited));
+  return Boolean(field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || document.querySelector(".run-arena-sections-wrap").open
+    || (!runStart.hidden && startEdited));
 }
 
 // The format menu and the hint on starting sit on the status line, outside the form.
@@ -1181,7 +1181,12 @@ runStart.addEventListener("submit", async (event) => {
     fields.sections = JSON.stringify(defined.sections);
   }
   if (fields.format === "quad" && !confirm("Start the quads? Players are grouped by rating and numbered by lot now, so register everyone first.")) return;
-  if (fields.format === "arena" && !/^\d\d:\d\d$/.test(fields.cutoff)) return void (runStatus.textContent = "No new games after what time?");
+  if (fields.format === "arena") {
+    if (!/^\d\d:\d\d$/.test(fields.cutoff)) return void (runStatus.textContent = "No new games after what time?");
+    const defined = readArenaSections(runStart.querySelector(".run-arena-sections"));
+    if (defined.error) return void (runStatus.textContent = defined.error);
+    fields.sections = JSON.stringify(defined.sections.map(({ from, ...s }) => s));
+  }
   runStatus.textContent = "Starting…";
   fields.timeControl = listedControl(await listingOf({ event: eventName }));
   const result = await call("start", { event: eventName, date, ...fields });

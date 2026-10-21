@@ -532,6 +532,29 @@ section.td-table td { white-space: nowrap; }
 .run-names-list input { width: 100%; box-sizing: border-box; }
 .run-sections-edit { margin: 16px 0; }
 .run-sections-edit summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.run-arena-sections { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; position: relative; }
+.run-arena-sections legend { position: relative; padding: 0; font-weight: 600; }
+.run-arena-section-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 8px; }
+.register-form .run-arena-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
+.run-arena-section-row input[type="text"] { width: 100%; box-sizing: border-box; }
+.run-arena-section-rated { display: flex; align-items: center; gap: 6px; min-height: 40px; }
+.register-form .run-arena-section-rated label { display: inline; font-size: 15px; }
+.run-arena-section-rated input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+@media (min-width: 600px) {
+  .run-arena-section-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
+}
+.run-arena-boards h4 { margin: 16px 0 4px; }
+.arena-note:empty { display: none; }
+.arena-available { display: grid; gap: 6px; margin: 8px 0 12px; padding: 0; list-style: none; }
+.arena-available li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.arena-available-me { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.arena-available-me input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.arena-pact { min-width: 0; margin: 0 0 8px; padding: 0; border: 0; }
+.arena-pact legend { padding: 0; font-weight: 600; }
+.arena-pact div { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.register-form .arena-pact input { width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent); }
+.register-form .arena-pact label { margin-top: 0; font-weight: 400; }
+.arena-challenge .td-buttons { align-items: center; }
 .td-byes { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
 .td-byes legend { padding: 0; font-weight: 600; }
 .td-byes-boxes { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 4px 0; }

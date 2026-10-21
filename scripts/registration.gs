@@ -19,12 +19,19 @@
  *                         replaces the half-point byes a player has asked for
  * POST action=report, event, date, number, board, section, id, result
  *                         a player's report of their game's result, which the TD confirms on the desk
+ * POST action=arenaAvailable, event, date, id, sections
+ *                         an arena player's sections to play in, a JSON list of names, [] to take a break
+ * POST action=arenaChallenge, event, date, id, opponent, section, pact
+ *                         starts the player's game against a player available in the section; pact says who takes
+ *                         the Blood Pact: me, opponent, both, or none
+ * POST action=arenaReport, event, date, id, game, result
+ *                         the player's report of an arena game's result, which counts until the TD confirms or corrects it
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete, messages,
  *                               register, entries, remove, paid, refund, discount, toNight, byes, ledger,
  *                               incident, incidents, and for running tournaments: tournament, start,
  *                               sync, sections, sectionNames, section, extraSection, extraPlayer, dropSection, timeControl, round, result, results, byeKind,
  *                               out, rounds, restart, and for arenas:
- *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel
+ *                               arenaJoin, arenaLeave, arenaPair, arenaResult, arenaPact, arenaCancel, arenaSections
  *
  * A TD signs in to the desk with Firebase Authentication (Google, or a link by email), and the
  * desk sends the account's ID token. Only verified addresses in the registration Sheet's TDs tab (Email,
@@ -112,11 +119,12 @@ const TOURNAMENT_HEADERS = {
     "Byes"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
-  Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"],
+  Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended", "Section", "White report",
+    "Black report"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
 const TOURNAMENT_WRITES = ["sync", "sections", "sectionNames", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
-  "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel"];
+  "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel", "arenaSections"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
 // signed in before.
@@ -142,6 +150,7 @@ function doPost(e) {
     // The Entries page's switch and byes; the desk's carry its sign-in and come through below.
     if (p.action === "toNight" && !p.idToken && !p.password) return json(toNight(p, null));
     if (p.action === "byes" && !p.idToken && !p.password) return json(setByes(p, null));
+    if (["arenaAvailable", "arenaChallenge", "arenaReport"].includes(p.action) && !p.idToken && !p.password) return json(arenaByPlayer(p));
     let td = null;
     if (p.idToken) {
       const signedIn = signedInTd(p.idToken);
@@ -203,6 +212,7 @@ function doPost(e) {
       case "arenaResult": return json(arenaResult(p));
       case "arenaPact": return json(arenaPact(p));
       case "arenaCancel": return json(arenaCancel(p));
+      case "arenaSections": return json(setArenaSections(p));
       default: return json({ error: "Unknown action." });
     }
   } catch (err) {
@@ -910,8 +920,9 @@ function readIncidents() {
 // night's month, whose Mondays are one Swiss with a round a night. Its players are the
 // registered entrants when it starts, and later ones added with sync. The TD desk pairs each
 // round with pairing.js and posts it here; results are entered board by board. An arena has no
-// rounds: the desk pairs its games (Arena tab) with arena.js from the players waiting (queues()),
-// and they're public as soon as they're paired.
+// rounds: its games (Arena tab) start when a player challenges one available (queues()) from the
+// Pairings page, or when the desk pairs the players waiting with arena.js, and they're public as
+// soon as they start; see the comment above runningArena.
 //
 // A Swiss may have sections, such as Open and Under 1400, each paired and ranked on its own (28A,
 // 29). Tournaments' Sections cell holds them as JSON, [{"name":"Open"},{"name":"Under 1400",
@@ -1124,10 +1135,7 @@ function tournament(key, td) {
   if (event) Object.assign(result, { status: "rated", usChessEvent: event });
   if (info.Format === "arena") {
     result.cutoff = info.Cutoff;
-    result.games = table("Arena").rows.filter((r) => r.Key === key)
-      .sort((a, b) => Number(a.Game) - Number(b.Game))
-      .map((r) => ({ game: Number(r.Game), white: r.White, black: r.Black, whitePact: r["White pact"] === "yes",
-        blackPact: r["Black pact"] === "yes", result: r.Result, started: r.Started, ended: r.Ended }));
+    result.games = table("Arena").rows.filter((r) => r.Key === key).sort((a, b) => Number(a.Game) - Number(b.Game)).map(arenaGame);
     result.queue = queues()[key] || [];
   }
   return result;
@@ -1169,7 +1177,8 @@ function startTournament(p, signedIn) {
     const rounds = format === "quad" ? "3" : format === "arena" ? "" : String(p.rounds || "").trim();
     const cutoff = format === "arena" ? String(p.cutoff || "").trim() : "";
     if (format === "arena" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return { error: "No new games after what time? Such as 17:30." };
-    const defined = format === "swiss" && p.sections !== undefined ? parseSections(p.sections) : { sections: [] };
+    const defined = p.sections === undefined ? { sections: [] } : format === "swiss" ? parseSections(p.sections)
+      : format === "arena" ? parseArenaSections(p.sections) : { sections: [] };
     if (defined.error) return defined;
     addRows(t, [{ Key: key, Event: event.event, Name: `${event.name}, ${event.label}`, Format: format,
       Rounds: rounds, Status: "running", Started: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"),
@@ -2000,31 +2009,201 @@ function sectionsByKey() {
 }
 
 // Arenas. Every write rereads the tabs under the lock, so two desks can't put a player in two games.
+// An arena's sections are its time controls, [{ name, timeControl, rated }] in Tournaments' Sections, rated
+// false for one whose games US Chess won't rate, and each game's is in the Arena tab's Section; an arena
+// without any plays as one section, "". Its queue (queues()) holds the players available for a game,
+// [{ id, since, sections }], sections the names they play in, every one when empty. A player stays in the
+// queue through a game, busy until it has a result or a report, and since is reset when it ends. Players
+// challenge from the Pairings page (arenaByPlayer), checked as arena.js's challenge checks them, and the desk
+// pairs the players waiting with arena.js's pair.
 
 const stamp = (pattern) => Utilities.formatDate(new Date(), TZ, pattern || "yyyy-MM-dd HH:mm:ss");
+const ARENA_REPORTS = ["1-0", "0-1", "1/2-1/2"];
 
 function runningArena(key) {
   const info = table("Tournaments").rows.find((r) => r.Key === key);
   if (!info || info.Format !== "arena") return { error: "No arena is running for this." };
-  if (info.Status !== "running") return { error: "This arena isn't running." };
+  if (info.Status !== "running" || rated(key)) return { error: "This arena isn't running." };
   return { info };
 }
 
-function arenaJoin(p) {
+/** An Arena row in arena.js's shape. */
+function arenaGame(r) {
+  const game = { game: Number(r.Game), section: r.Section || "", white: r.White, black: r.Black, whitePact: r["White pact"] === "yes",
+    blackPact: r["Black pact"] === "yes", result: r.Result, started: r.Started, ended: r.Ended };
+  if (r["White report"] || r["Black report"]) game.reports = { white: r["White report"], black: r["Black report"] };
+  return game;
+}
+
+/** An arena's sections, players, games, and queue in arena.js's shape. */
+function arenaOf(key, info) {
+  return { sections: sectionsOf(info),
+    players: table("Players").rows.filter((r) => r.Key === key).map((r) => ({ id: r["US Chess ID"], name: r.Name })),
+    games: table("Arena").rows.filter((r) => r.Key === key).map(arenaGame), queue: queues()[key] || [] };
+}
+
+// These do as arena.js's resultOf, inProgress, busy, lastOpponent, assignColors, availableIn, and challenge, which
+// the script can't load.
+function arenaResultOf(g) {
+  if (g.result) return g.result;
+  const sent = [g.reports && g.reports.white, g.reports && g.reports.black].filter((r) => ARENA_REPORTS.includes(r));
+  return sent.length && sent.every((r) => r === sent[0]) ? sent[0] : "";
+}
+
+const arenaInProgress = (g) => !g.result && !(g.reports && (ARENA_REPORTS.includes(g.reports.white) || ARENA_REPORTS.includes(g.reports.black)));
+const arenaBusy = (arena) => new Set(arena.games.filter(arenaInProgress).flatMap((g) => [g.white, g.black]));
+const byGame = (games) => [...games].sort((a, b) => a.game - b.game);
+
+function arenaLastOpponent(games, id) {
+  const mine = byGame(games).filter((g) => g.white === id || g.black === id);
+  const last = mine[mine.length - 1];
+  return last ? (last.white === id ? last.black : last.white) : null;
+}
+
+/** [white, black] for two players, a having waited longer. */
+function arenaColors(games, a, b) {
+  const colors = (id) => byGame(games).filter((g) => arenaResultOf(g) && !/F/.test(arenaResultOf(g)) && (g.white === id || g.black === id))
+    .map((g) => (g.white === id ? "W" : "B"));
+  const ca = colors(a), cb = colors(b);
+  const whites = (c) => c.filter((x) => x === "W").length;
+  if (whites(ca) !== whites(cb)) return whites(ca) < whites(cb) ? [a, b] : [b, a];
+  const blackLast = (c) => c[c.length - 1] === "B";
+  if (blackLast(ca) !== blackLast(cb)) return blackLast(ca) ? [a, b] : [b, a];
+  return [a, b];
+}
+
+const inSections = (entry, name) => !(entry.sections && entry.sections.length) || entry.sections.includes(name || "");
+
+function arenaChallengeOf(arena, challenger, opponent, section) {
+  const defs = arena.sections.length ? arena.sections : [{ name: "" }];
+  const def = defs.find((s) => s.name === (section || ""));
+  const name = (id) => (arena.players.find((p) => p.id === id) || { name: id }).name;
+  if (!def) return { error: "No such section." };
+  if (!arena.players.some((p) => p.id === challenger)) return { error: "You're not in this arena yet. See the TD." };
+  if (!arena.players.some((p) => p.id === opponent)) return { error: "That player isn't in this arena." };
+  if (challenger === opponent) return { error: "You can't challenge yourself." };
+  const playing = arenaBusy(arena);
+  if (playing.has(challenger)) return { error: "You're in a game. Report its result first." };
+  if (playing.has(opponent)) return { error: `${name(opponent)} is in a game.` };
+  const entry = arena.queue.find((q) => q.id === opponent);
+  if (!entry || !inSections(entry, def.name)) return { error: `${name(opponent)} isn't available${def.name ? ` in ${def.name}` : ""} right now.` };
+  if (arenaLastOpponent(arena.games, challenger) === opponent || arenaLastOpponent(arena.games, opponent) === challenger) {
+    return { error: `You and ${name(opponent)} just played each other. Play someone else first.` };
+  }
+  const [white, black] = arenaColors(arena.games, opponent, challenger);
+  return { white, black, section: def.name };
+}
+
+/** Whether no new games may start: on or after the cutoff on the date, or for a month, after it on any day. */
+function pastCutoff(info, date) {
+  if (!info.Cutoff) return false;
+  const local = stamp("yyyy-MM-dd HH:mm");
+  return date.length === 7 ? local.slice(11) >= info.Cutoff : local >= `${date} ${info.Cutoff}`;
+}
+
+/** The arena sections the desk sent, [{ name, timeControl, rated }], or an error; with from, each carries the name it had. */
+function parseArenaSections(text, withFrom) {
+  let list;
+  try {
+    list = JSON.parse(text || "[]");
+  } catch (err) {
+    list = null;
+  }
+  if (!Array.isArray(list)) return { error: "Which sections?" };
+  const sections = [];
+  for (const s of list) {
+    const name = String((s && s.name) || "").trim().replace(/\s+/g, " ");
+    // US Chess's rating report keeps 30 characters of a section's name.
+    if (!name || name.length > 30) return { error: "Each section needs a name of up to 30 characters." };
+    if (sections.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { error: `Two sections are named ${name}.` };
+    const def = { name, timeControl: String((s && s.timeControl) || "").trim().slice(0, 40), rated: !(s && (s.rated === false || s.rated === "no")) };
+    if (withFrom) def.from = String((s && s.from) || "");
+    sections.push(def);
+  }
+  return { sections };
+}
+
+/** Changes an arena's sections: p.sections, a JSON list of { from, name, timeControl, rated }, from naming the section
+ *  it was, none for a new one. Games and the queue follow a renamed section; one with games can't be dropped. */
+function setArenaSections(p) {
   const key = `${p.event}/${p.date}`;
+  const defined = parseArenaSections(p.sections, true);
+  if (defined.error) return defined;
   const lock = lockTournaments();
   try {
-    const { error } = runningArena(key);
+    const { info, error } = runningArena(key);
+    if (error) return { error };
+    const defs = sectionsOf(info);
+    const from = defined.sections.map((s) => s.from).filter(Boolean);
+    if (from.some((f) => !defs.some((d) => d.name === f)) || new Set(from).size !== from.length) {
+      return { error: "The sections changed since the desk loaded them. Refresh and try again." };
+    }
+    const arena = table("Arena");
+    const mine = arena.rows.filter((r) => r.Key === key);
+    const dropped = defs.map((d) => d.name).filter((name) => !from.includes(name));
+    const used = dropped.filter((name) => mine.some((r) => (r.Section || "") === name));
+    if (used.length) return { error: `${used.join(" and ")} ${used.length > 1 ? "have" : "has"} games, so ${used.length > 1 ? "they" : "it"} can't be dropped.` };
+    const renamed = Object.fromEntries(defined.sections.filter((s) => s.from && s.from !== s.name).map((s) => [s.from, s.name]));
+    setCells(arena, Object.fromEntries(mine.filter((r) => renamed[r.Section] !== undefined).map((r) => [r.row, { Section: renamed[r.Section] }])));
+    // A player available only in sections now dropped is out of the queue.
+    const queue = (queues()[key] || []).map((q) => {
+      const names = (q.sections || []).map((n) => (renamed[n] === undefined ? n : renamed[n])).filter((n) => !dropped.includes(n));
+      return q.sections && q.sections.length && !names.length ? null : { ...q, sections: names };
+    }).filter(Boolean);
+    setQueue(key, queue);
+    setCell(table("Tournaments"), info.row, "Sections", JSON.stringify(defined.sections.map((s) => ({ name: s.name, timeControl: s.timeControl, rated: s.rated }))));
+    clearTournamentCache(key);
+    return { ok: true, message: `Sections: ${defined.sections.map((s) => s.name).join(", ")}.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The Pairings page's arena actions, from a player with no sign-in: nothing proves who they are, so each is
+ *  checked as the desk's would be, counted against POSTS_PER_MINUTE, and open to the TD's correction. */
+function arenaByPlayer(p) {
+  if (!underLimit()) return { error: "Too many requests right now. Try again in a minute." };
+  const id = String(p.id || "").trim();
+  if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
+  if (p.action === "arenaAvailable") return arenaJoin({ ...p, id }, true);
+  if (p.action === "arenaChallenge") return arenaChallenge({ ...p, id });
+  return arenaReport({ ...p, id });
+}
+
+/** Makes a player available for a game, in the sections p.sections names (a JSON list; none, every section), or
+ *  takes them out with []. A player in a game is available once it ends. */
+function arenaJoin(p, byPlayer) {
+  const key = `${p.event}/${p.date}`;
+  let names;
+  try {
+    names = p.sections === undefined ? [] : JSON.parse(p.sections);
+  } catch (err) {
+    names = null;
+  }
+  if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) return { error: "Which sections?" };
+  const lock = lockTournaments();
+  try {
+    const { info, error } = runningArena(key);
     if (error) return { error };
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
-    if (!player) return { error: "Not a player in this arena. Add new entrants first." };
+    if (!player) return { error: byPlayer ? "You're not in this arena yet. See the TD." : "Not a player in this arena. Add new entrants first." };
+    const defs = sectionsOf(info);
+    const unknown = names.find((n) => !defs.some((s) => s.name === n) && !(n === "" && !defs.length));
+    if (unknown !== undefined) return { error: `No section is named ${unknown}.` };
     const queue = queues()[key] || [];
-    if (queue.some((q) => q.id === p.id)) return { error: `${player.Name} is already waiting.` };
-    const playing = table("Arena").rows.some((r) => r.Key === key && !r.Result && (r.White === p.id || r.Black === p.id));
-    if (playing) return { error: `${player.Name} is in a game.` };
-    setQueue(key, [...queue, { id: p.id, since: stamp() }]);
+    if (p.sections !== undefined && !names.length) {
+      setQueue(key, queue.filter((q) => q.id !== p.id));
+      clearTournamentCache(key);
+      return { ok: true, message: `${player.Name} is taking a break.` };
+    }
+    const sections = defs.length ? names : [];
+    const was = queue.find((q) => q.id === p.id);
+    const entry = { id: p.id, since: was ? was.since : stamp(), sections };
+    setQueue(key, was ? queue.map((q) => (q.id === p.id ? entry : q)) : [...queue, entry]);
     clearTournamentCache(key);
-    return { ok: true, message: `${player.Name} is waiting for a game.` };
+    const where = defs.length ? (sections.length ? ` in ${sections.join(", ")}` : " in every section") : "";
+    const busy = arenaBusy(arenaOf(key, info)).has(p.id);
+    return { ok: true, message: busy ? `${player.Name} is in a game, and available${where} once it ends.` : `${player.Name} is available${where}.` };
   } finally {
     lock.releaseLock();
   }
@@ -2037,52 +2216,121 @@ function arenaLeave(p) {
     setQueue(key, (queues()[key] || []).filter((q) => q.id !== p.id));
     clearTournamentCache(key);
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
-    return { ok: true, message: `${player ? player.Name : p.id} is out of the queue.` };
+    return { ok: true, message: `${player ? player.Name : p.id} is taking a break.` };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Starts the games the desk paired, [{ white, black }], skipping any whose players are no longer
- *  waiting because another desk paired them first. */
+/** The players' wait starts again once their game ends. Callers hold the script lock. */
+function freePlayers(key, ids) {
+  const queue = queues()[key] || [];
+  if (queue.some((q) => ids.includes(q.id))) setQueue(key, queue.map((q) => (ids.includes(q.id) ? { ...q, since: stamp() } : q)));
+}
+
+function arenaRow(key, number, game, pact) {
+  return { Key: key, Game: String(number), White: game.white, Black: game.black, "White pact": pact.includes(game.white) ? "yes" : "",
+    "Black pact": pact.includes(game.black) ? "yes" : "", Result: "", Started: stamp(), Ended: "", Section: game.section || "",
+    "White report": "", "Black report": "" };
+}
+
+const nextGame = (arena, key) => arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0) + 1;
+
+/** Starts the games the desk paired, [{ white, black, section }], skipping any whose players are in a game by
+ *  now, paired on another desk first. The players needn't be waiting: the desk can start any game by hand. */
 function arenaPair(p) {
   const key = `${p.event}/${p.date}`;
-  const games = JSON.parse(p.games || "[]");
+  let games;
+  try {
+    games = JSON.parse(p.games || "[]");
+  } catch (err) {
+    games = null;
+  }
+  if (!Array.isArray(games)) return { error: "Which games?" };
   const lock = lockTournaments();
   try {
     const { info, error } = runningArena(key);
     if (error) return { error };
-    const local = stamp("yyyy-MM-dd HH:mm");
-    if (info.Cutoff && (p.date.length === 7 ? local.slice(11) >= info.Cutoff : local >= `${p.date} ${info.Cutoff}`)) {
-      return { error: `No new games start after ${info.Cutoff}.` };
-    }
-    const queue = queues()[key] || [];
-    const waiting = new Set(queue.map((q) => q.id));
-    const arena = table("Arena");
-    let number = arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0);
-    const started = [];
+    if (pastCutoff(info, p.date)) return { error: `No new games start after ${info.Cutoff}.` };
+    const arena = arenaOf(key, info);
+    const playing = arenaBusy(arena);
+    const ids = new Set(arena.players.map((x) => x.id));
+    const defs = sectionsOf(info);
+    const t = table("Arena");
+    let number = nextGame(t, key);
     const added = [];
     for (const g of games) {
-      if (g.white === g.black || !waiting.has(g.white) || !waiting.has(g.black)) continue;
-      waiting.delete(g.white);
-      waiting.delete(g.black);
-      added.push({ Key: key, Game: String(++number), White: g.white, Black: g.black,
-        "White pact": "", "Black pact": "", Result: "", Started: stamp(), Ended: "" });
-      started.push(g.white, g.black);
+      const section = String(g.section || "");
+      if (g.white === g.black || !ids.has(g.white) || !ids.has(g.black) || playing.has(g.white) || playing.has(g.black)) continue;
+      if (defs.length ? !defs.some((s) => s.name === section) : section) continue;
+      playing.add(g.white);
+      playing.add(g.black);
+      added.push(arenaRow(key, number++, { ...g, section }, []));
     }
-    addRows(arena, added);
-    setQueue(key, queue.filter((q) => !started.includes(q.id)));
+    addRows(t, added);
     clearTournamentCache(key);
-    const count = started.length / 2;
+    const count = added.length;
     return { ok: true, message: count === games.length ? `Started ${count} game(s).`
-      : `Started ${count} of ${games.length} game(s); the others' players were no longer waiting.` };
+      : `Started ${count} of ${games.length} game(s); the others' players are in a game already, or their section is gone.` };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Records a game's result. The first result puts both players back in the queue, except one who
- *  forfeited; a later one only corrects it. */
+/** A player's challenge from the Pairings page: starts their game against a player available in the section,
+ *  with the colors arena.js gives, and the Blood Pact p.pact says: me, opponent, both, or none. */
+function arenaChallenge(p) {
+  const key = `${p.event}/${p.date}`;
+  const opponent = String(p.opponent || "").trim();
+  const lock = lockTournaments();
+  try {
+    const { info, error } = runningArena(key);
+    if (error) return { error };
+    if (pastCutoff(info, p.date)) return { error: `No new games start after ${info.Cutoff}.` };
+    const arena = arenaOf(key, info);
+    const game = arenaChallengeOf(arena, p.id, opponent, String(p.section || ""));
+    if (game.error) return { error: game.error };
+    const pact = { me: [p.id], opponent: [opponent], both: [p.id, opponent] }[p.pact] || [];
+    const t = table("Arena");
+    const number = nextGame(t, key);
+    addRows(t, [arenaRow(key, number, game, pact)]);
+    clearTournamentCache(key);
+    const name = (id) => arena.players.find((x) => x.id === id).name;
+    return { ok: true, game: number, message: `Game ${number}${game.section ? `, ${game.section}` : ""}: ${name(game.white)} has white, ${name(game.black)} black.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** A player's report of their arena game's result from the Pairings page: it counts, with the other player's if they
+ *  agree, until the TD confirms or corrects it. The first report ends the game, and both players can play again. */
+function arenaReport(p) {
+  const key = `${p.event}/${p.date}`;
+  if (!ARENA_REPORTS.includes(p.result)) return { error: "Report 1–0, 0–1, or ½–½." };
+  const lock = lockTournaments();
+  try {
+    const { error } = runningArena(key);
+    if (error) return { error };
+    const t = table("Arena");
+    const line = t.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
+    if (!line) return { error: "No such game. Reload the page." };
+    if (line.White !== p.id && line.Black !== p.id) return { error: "You're not in that game." };
+    if (line.Result) return { error: "The TD has already entered this game's result." };
+    const first = !line["White report"] && !line["Black report"];
+    setCells(t, { [line.row]: { [line.White === p.id ? "White report" : "Black report"]: p.result, ...(first ? { Ended: stamp() } : {}) } });
+    if (first) freePlayers(key, [line.White, line.Black]);
+    clearTournamentCache(key);
+    const other = line.White === p.id ? line["Black report"] : line["White report"];
+    return { ok: true, message: other && other !== p.result
+      ? `Game ${line.Game}: you reported ${REPORTS[p.result]} and your opponent ${REPORTS[other]}. See the TD.`
+      : `Game ${line.Game}: ${REPORTS[p.result]} is reported. It counts unless the TD changes it.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Records a game's result. The first result ends the game, if the players' reports hadn't, and a player who
+ *  forfeited is out of the queue; a later one only corrects it. */
 function arenaResult(p) {
   const key = `${p.event}/${p.date}`;
   if (!ARENA_RESULTS.includes(p.result)) return { error: "Not a result." };
@@ -2096,11 +2344,10 @@ function arenaResult(p) {
       clearTournamentCache(key);
       return { ok: true, message: `Game ${p.game} is corrected.` };
     }
-    setCells(arena, { [line.row]: { Result: p.result, Ended: stamp() } });
-    const back = [];
-    if (!/^0F/.test(p.result)) back.push(line.White);
-    if (!/0F$/.test(p.result)) back.push(line.Black);
-    setQueue(key, [...(queues()[key] || []), ...back.map((id) => ({ id, since: stamp() }))]);
+    setCells(arena, { [line.row]: { Result: p.result, Ended: line.Ended || stamp() } });
+    const forfeited = [/^0F/.test(p.result) && line.White, /0F$/.test(p.result) && line.Black].filter(Boolean);
+    if (forfeited.length) setQueue(key, (queues()[key] || []).filter((q) => !forfeited.includes(q.id)));
+    if (!line["White report"] && !line["Black report"]) freePlayers(key, [line.White, line.Black]);
     clearTournamentCache(key);
     return { ok: true, message: `Game ${p.game} is recorded.` };
   } finally {
@@ -2126,7 +2373,7 @@ function arenaPact(p) {
   }
 }
 
-/** Takes back a pairing made by mistake, before it has a result; both players wait again. */
+/** Takes back a game started by mistake, before the TD has entered its result; both players can play again. */
 function arenaCancel(p) {
   const key = `${p.event}/${p.date}`;
   const lock = lockTournaments();
@@ -2136,7 +2383,7 @@ function arenaCancel(p) {
     if (!line) return { error: "No such game." };
     if (line.Result) return { error: "That game has a result." };
     deleteRows(arena, [line]);
-    setQueue(key, [...(queues()[key] || []), ...[line.White, line.Black].map((id) => ({ id, since: stamp() }))]);
+    freePlayers(key, [line.White, line.Black]);
     clearTournamentCache(key);
     return { ok: true, message: `Game ${p.game} is taken back.` };
   } finally {
@@ -2144,7 +2391,7 @@ function arenaCancel(p) {
   }
 }
 
-/** Each running arena's waiting players, [{ id, since }] by tournament key, from the script property
+/** Each running arena's queue, [{ id, since, sections }] by tournament key, from the script property
  *  arenaQueues, or the database's /queues: the script alone uses them, and only while the arena runs. */
 function queues() {
   if (firebaseUrl()) {
@@ -2791,11 +3038,15 @@ function ledgerFor(key) {
     uschess: games === null ? "" : money(Math.max(uschess.minimum, Math.round(games * uschess.game * 100) / 100)) };
 }
 
-/** Games played over the board in a tournament, which US Chess rates; null when there's no tournament. */
+/** Games played over the board in a tournament, which US Chess rates: not an arena's in a section it doesn't
+ *  rate, or with time odds (5C1); null when there's no tournament. */
 function ratedGames(key) {
-  if (!table("Tournaments").rows.some((r) => r.Key === key)) return null;
+  const info = table("Tournaments").rows.find((r) => r.Key === key);
+  if (!info) return null;
   const played = (r) => r.Key === key && r.White && r.Black && ["1-0", "0-1", "1/2-1/2"].includes(r.Result);
-  return table("Rounds").rows.filter(played).length + table("Arena").rows.filter(played).length;
+  const unrated = new Set(sectionsOf(info).filter((s) => s.rated === false).map((s) => s.name));
+  const ratable = (r) => played(r) && !unrated.has(r.Section || "") && (r["White pact"] === "yes") === (r["Black pact"] === "yes");
+  return table("Rounds").rows.filter(played).length + table("Arena").rows.filter(ratable).length;
 }
 
 /** The Payments tab as rows keyed by heading. */

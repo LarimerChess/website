@@ -124,7 +124,7 @@ def fingerprint(t):
         lines += [f"B {n} {b['id']} {float(b.get('points') or 0):g}{in_section(b)}{' ' + b['kind'] if b.get('kind') else ''}"
                   for b in r.get("byes", [])]
     lines += [f"A {g.get('game')} {g['white']} {g['black']} {g.get('result') or ''} "
-              f"{pact(g.get('whitePact'))} {pact(g.get('blackPact'))}" for g in arena_games(t)]
+              f"{pact(g.get('whitePact'))} {pact(g.get('blackPact'))}{in_section(g)}" for g in arena_games(t)]
     return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()[:16]
 
 
@@ -249,41 +249,62 @@ def sections_main(t):
 
 
 def arena_scores(t):
-    """The leaderboard and each game's points, from arena.js, so the results page scores exactly as
-    the TD desk did: the leaderboard as Arena.standings gives it, and each game's points as the
-    difference it made to each player's total."""
+    """The leaderboard, each section's, each game's points, and why US Chess doesn't rate a game, from
+    arena.js, so the results page scores exactly as the TD desk did: the leaderboards as Arena.standings
+    gives them, and each game's points as the difference it made to each player's total."""
     program = ("const A = require(process.argv[1]); let s = '';"
                "process.stdin.on('data', (d) => s += d).on('end', () => {"
                " const a = JSON.parse(s); const games = [...a.games].sort((x, y) => x.game - y.game);"
                " const total = (n, id) => A.tally({ players: a.players, games: games.slice(0, n) }).get(id).points;"
                " const per = games.map((g, i) => [g.white, g.black].map((id) => total(i + 1, id) - total(i, id)));"
-               " console.log(JSON.stringify({ board: A.standings(a), per, games })); });")
-    arena = {"players": [{"id": p["id"], "name": p["name"], "rating": p.get("rating")} for p in t["players"]],
+               " const boards = a.sections.map((d) => [d.name, A.standings(A.inSection(a, d.name))]);"
+               " const notRated = games.map((g) => A.notRated(a, g));"
+               " console.log(JSON.stringify({ board: A.standings(a), boards, per, notRated, games })); });")
+    arena = {"sections": t.get("sections") or [],
+             "players": [{"id": p["id"], "name": p["name"], "rating": p.get("rating")} for p in t["players"]],
              "games": [{**g, "game": int(g.get("game") or 0)} for g in arena_games(t)]}
     run = subprocess.run(["node", "-e", program, str(ROOT / "arena.js")], input=json.dumps(arena),
                          capture_output=True, text=True, check=True)
     out = json.loads(run.stdout)
-    scored = [(g, got) for g, got in zip(out["games"], out["per"]) if g.get("result") in POINTS]
-    return out["board"], scored
+    scored = [(g, got, why) for g, got, why in zip(out["games"], out["per"], out["notRated"]) if g.get("result") in POINTS]
+    return out["board"], scored, out["boards"]
+
+
+def leaderboard_rows(board):
+    return [[str(p["place"]) + (" (tied)" if p["tied"] else ""), escaped(p["name"]), p["id"], rating_text(p),
+             str(p["games"]), str(p["wins"]), str(p["draws"]), str(p["losses"]), str(p["points"])] for p in board]
+
+
+LEADERBOARD = ["Place", "Name", "US Chess ID", "Rating", "Games", "Wins", "Draws", "Losses", "Points"]
+
+
+def section_title(d):
+    return escaped(d["name"] + (f", {d['timeControl']}" if d.get("timeControl") else "")
+                   + (" (not US Chess rated)" if d.get("rated") is False else ""))
 
 
 def arena_main(t):
-    board, scored = arena_scores(t)
+    board, scored, boards = arena_scores(t)
+    sections = t.get("sections") or []
     names = {p["id"]: p["name"] for p in t["players"]}
     name = lambda pid: escaped(names.get(pid, pid))
-    leader_rows = [[str(p["place"]) + (" (tied)" if p["tied"] else ""), escaped(p["name"]), p["id"], rating_text(p),
-                    str(p["games"]), str(p["wins"]), str(p["draws"]), str(p["losses"]), str(p["points"])] for p in board]
     pacts = lambda g: ", ".join(name(g[side]) for side in ("white", "black") if pact(g.get(side + "Pact"))) or "None"
-    game_rows = [[str(g.get("game") or ""), name(g["white"]), name(g["black"]), SHOWN[g["result"]], f"{got[0]}–{got[1]}",
-                  pacts(g)] for g, got in scored]
+    game_rows = [[str(g.get("game") or ""), *([escaped(g.get("section") or "")] if sections else []), name(g["white"]), name(g["black"]),
+                  SHOWN[g["result"]], f"{got[0]}–{got[1]}", pacts(g), f"No, {why}" if why else "Yes"] for g, got, why in scored]
+    by_section = "".join(f"""
+
+    <section id="{anchor(d['name'])}">
+      <h2>{section_title(d)}</h2>
+      {table(LEADERBOARD, leaderboard_rows(rows), f"{d['name']} leaderboard")}
+    </section>""" for d, (_, rows) in zip(sections, boards))
     return f"""<section id="standings">
       <h2>Final leaderboard</h2>
-      {table(["Place", "Name", "US Chess ID", "Rating", "Games", "Wins", "Draws", "Losses", "Points"], leader_rows, "Final leaderboard")}
-    </section>
+      {table(LEADERBOARD, leaderboard_rows(board), "Final leaderboard")}
+    </section>{by_section}
 
     <section id="games">
       <h2>Games</h2>
-      {table(["Game", "White", "Black", "Result", "Points", "Blood Pact"], game_rows, "Games")}
+      {table(["Game", *(["Section"] if sections else []), "White", "Black", "Result", "Points", "Blood Pact", "US Chess rated"], game_rows, "Games")}
     </section>"""
 
 
@@ -383,7 +404,7 @@ def from_archive(record):
          "status": info["Status"], "sections": defined, "players": players}
     if info["Format"] == "arena":
         t["games"] = [{"game": int(r["Game"]), "white": r["White"], "black": r["Black"], "whitePact": r.get("White pact") == "yes",
-                       "blackPact": r.get("Black pact") == "yes", "result": r["Result"]}
+                       "blackPact": r.get("Black pact") == "yes", "result": r["Result"], "section": r.get("Section") or ""}
                       for r in sorted(record["arena"], key=lambda r: int(r["Game"]))]
     return t
 

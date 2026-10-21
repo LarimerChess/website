@@ -387,18 +387,113 @@ for (const store of STORES) {
     else db.root.queues = { "gone:2026-10-31": JSON.stringify(gone) };
     handEdit("Tournaments", 1, null);
     assert.equal(gs.arenaJoin({ ...at, id: "11111111" }).ok, true);
-    assert.match(gs.arenaJoin({ ...at, id: "11111111" }).error, /already waiting/);
+    assert.match(gs.arenaJoin({ ...at, id: "11111111" }).message, /Ann is available/, "joining again changes nothing");
     assert.equal(gs.arenaJoin({ ...at, id: "22222222" }).ok, true);
     eq(Object.keys(queued()), [key], "a tournament no longer running loses its queue");
     eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"]);
     assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222" }]) }).ok, true);
-    eq(gs.tournament(key, true).queue, []);
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"], "a player stays in the queue through a game");
+    eq(gs.tournament(key, true).games.map((g) => [g.game, g.section, g.white, g.black, g.result]), [[1, "", "11111111", "22222222", ""]]);
+    assert.match(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222" }]) }).message, /0 of 1/, "both are in a game");
     assert.equal(gs.arenaResult({ ...at, game: "1", result: "1-0" }).ok, true);
     eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "22222222"], "both wait again after a result");
     assert.equal(gs.arenaLeave({ ...at, id: "22222222" }).ok, true);
     eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111"]);
+    assert.equal(gs.arenaResult({ ...at, game: "1", result: "0F-1F" }).ok, true, "a correction");
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111"], "a correction changes the queue no more");
     assert.equal(gs.restartTournament(key).ok, true);
     eq(queued(), {});
+  });
+
+  test(`an arena in sections: players available where they choose, challenges from the Pairings page, and their reports (${store})`, () => {
+    // On the day the stand-in clock gives, 2026-10-10 10:00, so the cutoff can pass.
+    const key = "arena/2026-10-10";
+    const at = { event: "arena", date: "2026-10-10" };
+    const sections = [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }];
+    const { gs, handEdit, rows } = load({
+      Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
+        [key, "arena", "Arena", "arena", "", "running", "2026-10-10 09:00", "white", "", "17:30", JSON.stringify(sections)]],
+      Players: [["Key", "No.", "US Chess ID", "Name", "Rating"], [key, "1", "11111111", "Ann", "1900"], [key, "2", "22222222", "Ben", "1700"],
+        [key, "3", "33333333", "Cal", "1500"]],
+      Arena: [["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended"]],
+    }, {}, store);
+    const post = (fields) => gs.doPost({ parameter: fields });
+    // Availability, as the Pairings page sends it, with no password.
+    assert.match(post({ action: "arenaAvailable", ...at, id: "1111111", sections: "[]" }).error, /eight digits/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "99999999", sections: '["Classical"]' }).error, /not in this arena yet/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "11111111", sections: '["Blitz"]' }).error, /No section is named Blitz/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "11111111", sections: '["Classical", "Blood Pact"]' }).message, /Ann is available in Classical, Blood Pact/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "22222222", sections: '["Blood Pact"]' }).message, /Ben is available in Blood Pact/);
+    assert.match(gs.arenaJoin({ ...at, id: "33333333" }).message, /Cal is available in every section/, "the desk's button names no section");
+    eq(gs.tournament(key, false).queue.map((q) => [q.id, q.sections]), [["11111111", ["Classical", "Blood Pact"]], ["22222222", ["Blood Pact"]], ["33333333", []]]);
+    eq(gs.tournament(key, false).sections, sections);
+    // A challenge.
+    assert.match(post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Classical" }).error, /Ben isn't available in Classical/);
+    assert.match(post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Blitz" }).error, /No such section/);
+    const started = post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Blood Pact", pact: "me" });
+    eq([started.ok, started.game, started.message], [true, 1, "Game 1, Blood Pact: Ben has white, Cal black."]);
+    let t = gs.tournament(key, false);
+    eq(t.games.map((g) => [g.game, g.section, g.white, g.black, g.whitePact, g.blackPact, g.result]), [[1, "Blood Pact", "22222222", "33333333", false, true, ""]]);
+    assert.match(post({ action: "arenaChallenge", ...at, id: "11111111", opponent: "22222222", section: "Blood Pact" }).error, /Ben is in a game/);
+    assert.match(post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "11111111", section: "Classical" }).error, /You're in a game/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "33333333", sections: '["Classical"]' }).message, /Cal is in a game, and available in Classical once it ends/);
+    // Reports: the first ends the game; an agreeing or lone report counts until the TD confirms it.
+    assert.match(post({ action: "arenaReport", ...at, id: "11111111", game: "1", result: "0-1" }).error, /not in that game/);
+    assert.match(post({ action: "arenaReport", ...at, id: "33333333", game: "1", result: "1F-0F" }).error, /Report 1–0/);
+    assert.match(post({ action: "arenaReport", ...at, id: "33333333", game: "1", result: "0-1" }).message, /Game 1: 0–1 is reported. It counts unless the TD changes it/);
+    t = gs.tournament(key, false);
+    eq(t.games[0].reports, { white: "", black: "0-1" });
+    assert.equal(t.games[0].result, "");
+    assert.ok(t.games[0].ended, "a report ends the game");
+    assert.match(post({ action: "arenaChallenge", ...at, id: "11111111", opponent: "33333333", section: "Classical" }).message, /Game 2, Classical: Cal has white, Ann black/, "free again, and Cal had black");
+    assert.match(post({ action: "arenaReport", ...at, id: "22222222", game: "1", result: "1-0" }).message, /you reported 1–0 and your opponent 0–1. See the TD/);
+    eq(gs.tournament(key, false).games[0].reports, { white: "1-0", black: "0-1" });
+    assert.equal(gs.arenaResult({ ...at, game: "1", result: "0-1" }).ok, true, "the TD settles it");
+    assert.match(post({ action: "arenaReport", ...at, id: "22222222", game: "1", result: "1-0" }).error, /already entered/);
+    assert.equal(gs.ledgerFor(key).games, 0, "a Blood Pact section game isn't rated");
+    assert.equal(gs.arenaResult({ ...at, game: "2", result: "1-0" }).ok, true);
+    assert.equal(gs.ledgerFor(key).games, 1);
+    // The sections change: a rename follows games and the queue, and a section with games stays.
+    assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Classical", name: "Classical", timeControl: "G/30;+30" }]) }).error,
+      /Blood Pact has games, so it can't be dropped/);
+    assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Classical", name: "Slow", timeControl: "G/30;+30" },
+      { from: "Blood Pact", name: "Pact", rated: false }, { name: "Blitz", timeControl: "G/5;+3", rated: "no" }]) }).message, /Sections: Slow, Pact, Blitz/);
+    t = gs.tournament(key, true);
+    eq(t.sections, [{ name: "Slow", timeControl: "G/30;+30", rated: true }, { name: "Pact", timeControl: "", rated: false }, { name: "Blitz", timeControl: "G/5;+3", rated: false }]);
+    eq(t.games.map((g) => g.section), ["Pact", "Slow"]);
+    eq(t.queue.map((q) => [q.id, q.sections]), [["11111111", ["Slow", "Pact"]], ["22222222", ["Pact"]], ["33333333", ["Slow"]]]);
+    assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Gone", name: "Gone" }]) }).error, /changed since the desk loaded them/);
+    assert.match(post({ action: "arenaAvailable", ...at, id: "22222222", sections: "[]" }).message, /Ben is taking a break/);
+    eq(gs.tournament(key, true).queue.map((q) => q.id), ["11111111", "33333333"]);
+    if (store === "sheet") eq(rows("Arena")[0].Section, "Pact");
+    // Past the cutoff, and once US Chess has rated it, nothing starts.
+    assert.match(post({ action: "arenaAvailable", ...at, id: "22222222", sections: '["Slow"]' }).message, /Ben is available in Slow/);
+    handEdit("Tournaments", 0, { Cutoff: "09:00" });
+    assert.match(post({ action: "arenaChallenge", ...at, id: "11111111", opponent: "22222222", section: "Slow" }).error, /No new games start after 09:00/);
+    assert.match(gs.arenaPair({ ...at, games: "[]" }).error, /No new games start after 09:00/);
+  });
+
+  test(`an arena is started in sections from the desk, and games keep their columns in the Sheet (${store})`, () => {
+    const { gs, sheets, rows } = load({
+      Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating", "Quick rating",
+        "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee"],
+        ["2026-10-01 10:00", "knightmare-arena-classical", "2026-10-31", "11111111", "Ann", "Adult", "18", "", "", "1900", "", "2027-01-01", "a@x", "", "", "t1", "", "", "3"],
+        ["2026-10-01 10:00", "knightmare-arena-classical", "2026-10-31", "22222222", "Ben", "Adult", "18", "", "", "1700", "", "2027-01-01", "b@x", "", "", "t2", "", "", "3"]],
+      Tournaments: [], Players: [], Rounds: [], Arena: [],
+    }, { clubEvents: JSON.stringify({ "knightmare-arena-classical/2026-10-31": { event: "knightmare-arena-classical", name: "Knightmare Arena Classical",
+      label: "Saturday, October 31, 2026", kind: "entry", first: "2026-10-31", last: "2026-10-31", closes: "2026-10-31T10:00:00-06:00", format: "arena" } }) }, store);
+    const at = { event: "knightmare-arena-classical", date: "2026-10-31" };
+    const bad = gs.startTournament({ ...at, format: "arena", cutoff: "17:30", sections: JSON.stringify([{ name: "A" }, { name: "a" }]) }, null);
+    assert.match(bad.error, /Two sections are named a/);
+    const started = gs.startTournament({ ...at, format: "arena", cutoff: "17:30", timeControl: "G/30;+30",
+      sections: JSON.stringify([{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }]) }, null);
+    assert.equal(started.ok, true, JSON.stringify(started));
+    const t = gs.tournament("knightmare-arena-classical/2026-10-31", true);
+    eq(t.sections, [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }]);
+    eq([t.format, t.cutoff, t.timeControl, t.players.length, t.games, t.queue], ["arena", "17:30", "G/30;+30", 2, [], []]);
+    assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical" }]) }).ok, true);
+    if (store === "sheet") eq(heading(sheets.Arena).slice(-3), ["Section", "White report", "Black report"]);
+    eq([rows("Arena")[0].Section, rows("Arena")[0].Game], ["Classical", "1"]);
   });
 }
 
