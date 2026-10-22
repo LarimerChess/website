@@ -21,7 +21,7 @@ const ARENA_RESULTS = [["1-0", "1–0", ""], ["0-1", "0–1", ""], ["1/2-1/2", "
 const SHOWN_RESULT = Object.fromEntries(ARENA_RESULTS.map(([value, text]) => [value, text]));
 // The sections a Knightmare arena starts with; the TD changes them before starting.
 const KNIGHTMARE = [{ name: "Classical", timeControl: "G/30;+30", rated: true },
-  { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }, { name: "Blitz", timeControl: "G/5;+3", rated: false }];
+  { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }, { name: "Rapid", timeControl: "G/15;+15", rated: true }];
 
 const forArena = (t) => ({ sections: t.sections || [], players: t.players, games: t.games, queue: t.queue });
 
