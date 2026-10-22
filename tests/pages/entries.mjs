@@ -436,8 +436,8 @@ await runPage.close();
 
 // Running an arena on the TD desk, against a stand-in for the Apps Script that keeps it in
 // memory, with the clock at 11:00 AM on the day: start it in the three Knightmare sections, make
-// four players available, pair them section by section, record a win with a Blood Pact, confirm
-// a result the players reported, and rename a section.
+// four players available, pair the Classical pair, start a Blood Pact game by hand saying who halves
+// their clock, confirm a result the players reported, and rename a section.
 const arenaPage = await browser.newPage();
 arenaPage.on("pageerror", (error) => fail(`JavaScript error on /td/ running an arena: ${error.message}`));
 const arenaCalls = [];
@@ -482,10 +482,11 @@ arenaPage.on("request", async (request) => {
   } else if (p.action === "arenaLeave") {
     arena.queue = arena.queue.filter((q) => q.id !== p.id);
   } else if (p.action === "arenaPair") {
-    for (const g of JSON.parse(p.games)) arena.games.push({ game: arena.games.length + 1, ...g, whitePact: false, blackPact: false, result: "" });
+    for (const g of JSON.parse(p.games)) arena.games.push({ game: arena.games.length + 1, whitePact: false, blackPact: false, ...g, result: "" });
     body = { ok: true, message: "Started." };
   } else if (p.action === "arenaPact") {
-    arena.games[p.game - 1][`${p.side}Pact`] = p.on === "yes";
+    arena.games[p.game - 1].whitePact = p.who === "white";
+    arena.games[p.game - 1].blackPact = p.who === "black";
   } else if (p.action === "arenaResult") {
     arena.games[p.game - 1].result = p.result;
     body = { ok: true, message: "Recorded." };
@@ -505,14 +506,17 @@ await arenaPage.select("#run-format", "arena");
 const startFields = await arenaPage.evaluate(() => ({ cutoff: document.querySelector("#run-cutoff").checkVisibility(),
   rounds: document.querySelector("#run-rounds").checkVisibility(), value: document.querySelector("#run-cutoff").value,
   sections: [...document.querySelectorAll(".run-start .run-arena-section-row")].map((r) => [r.querySelector(".run-arena-section-name").value,
-    r.querySelector(".run-arena-section-control").value, r.querySelector(".run-arena-section-rated-box").checked]) }));
+    r.querySelector(".run-arena-section-control").value, r.querySelector(".run-arena-section-rated-box").checked,
+    r.querySelector(".run-arena-section-pact-box").checked, r.querySelector(".run-arena-section-rated-box").disabled]) }));
 startFields.cutoff && !startFields.rounds && startFields.value === "17:30"
-  && JSON.stringify(startFields.sections) === JSON.stringify([["Classical", "G/30;+30", true], ["Blood Pact", "G/15;+15 against G/30;+30", false], ["Rapid", "G/15;+15", true]])
-  ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed, and offers the Knightmare sections") : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
+  && JSON.stringify(startFields.sections) === JSON.stringify([["Classical", "G/30;+30", true, false, false], ["Blood Pact", "G/15;+15 against G/30;+30", false, true, true], ["Rapid", "G/15;+15", true, false, false]])
+  ? pass("TD desk asks an arena for its cutoff, 17:30 unless changed, and offers the Knightmare sections, the Blood Pact one never rated")
+  : fail(`TD desk arena start form: ${JSON.stringify(startFields)}`);
 await press(arenaPage, ".run-start button[type=submit]");
 await arenaPage.waitForSelector(".run-arena:not([hidden])");
 const startCall = arenaCalls.find((c) => c.action === "start") || {};
-JSON.parse(startCall.sections || "[]").map((x) => x.name).join() === "Classical,Blood Pact,Rapid" && JSON.parse(startCall.sections)[1].rated === false
+const startSections = JSON.parse(startCall.sections || "[]");
+startSections.map((x) => x.name).join() === "Classical,Blood Pact,Rapid" && startSections[1].rated === false && startSections[1].pact === true && startSections[0].pact === false
   ? pass("TD desk starts an arena with its sections") : fail(`TD desk arena start: ${JSON.stringify(startCall)}`);
 // Players are listed by name; toggle Classical for the first two, Blood Pact for the other two.
 const rowsOf = () => arenaPage.$$eval(".run-players tbody tr", (rows) => rows.map((r) => [r.cells[0].textContent, r.cells[3].textContent,
@@ -525,34 +529,46 @@ const joined = arenaCalls.filter((c) => c.action === "arenaJoin").map((c) => [c.
 JSON.stringify(joined) === JSON.stringify([["11111111", '["Classical"]'], ["22222222", '["Classical"]'], ["33333333", '["Blood Pact"]'], ["44444444", '["Blood Pact"]']])
   && (await rowsOf()).every((r) => r[1].startsWith("Waiting since 11:00"))
   ? pass("TD desk makes players available in the sections chosen") : fail(`TD desk arena availability: ${JSON.stringify({ joined, rows: await rowsOf() })}`);
+// Pairing starts the Classical game and leaves the Blood Pact section to challenges or the by-hand form.
 await press(arenaPage, ".run-arena-pair");
-await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 2);
-const paired = JSON.parse(arenaCalls.find((c) => c.action === "arenaPair")?.games || "[]");
-const sectionCells = await arenaPage.$$eval(".run-arena-games tbody tr td:nth-child(2)", (cells) => cells.map((c) => [c.textContent, c.hidden]));
-JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical" }, { white: "33333333", black: "44444444", section: "Blood Pact" }])
-  && JSON.stringify(sectionCells) === JSON.stringify([["Classical", false], ["Blood Pact", false]])
-  ? pass("TD desk pairs the players waiting section by section") : fail(`TD desk arena pairing: ${JSON.stringify({ paired, sectionCells })}`);
-await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(3) input[type=checkbox]");
-await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(3) input:checked:not(:disabled)"));
-await press(arenaPage, ".run-arena-games tbody tr:first-child .td-buttons button:first-child");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
-const board = await arenaPage.$$eval(".run-leaderboard tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
-const boards = await arenaPage.$$eval(".run-arena-boards h4", (hs) => hs.map((h) => h.textContent));
-const pact = arenaCalls.find((c) => c.action === "arenaPact") || {};
-pact.game === "1" && pact.side === "white" && pact.on === "yes"
-  && JSON.stringify(board[0]) === JSON.stringify(["1", "Ann", "1900", "3", "1", "1"])
-  && board.slice(1).every((r) => r[0] === "2 (tied)" && r[3] === "0")
-  && JSON.stringify(boards) === JSON.stringify(["Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)", "Rapid, G/15;+15"])
-  ? pass("TD desk records a Blood Pact win and the leaderboards show it, with ties shared")
-  : fail(`TD desk arena leaderboard: ${JSON.stringify({ pact, board, boards })}`);
+const paired = JSON.parse(arenaCalls.find((c) => c.action === "arenaPair")?.games || "[]");
+const pairStatus = await arenaPage.$eval(".run-status", (e) => e.textContent);
+const sectionCells = await arenaPage.$$eval(".run-arena-games tbody tr td:nth-child(2)", (cells) => cells.map((c) => [c.textContent, c.hidden]));
+JSON.stringify(paired) === JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical" }])
+  && pairStatus.includes("Blood Pact games start by challenge or by hand") && JSON.stringify(sectionCells) === JSON.stringify([["Classical", false]])
+  ? pass("TD desk pairs the players waiting in each section but the Blood Pact one, and says so") : fail(`TD desk arena pairing: ${JSON.stringify({ paired, pairStatus, sectionCells })}`);
+// Game 1 ends 1–0; both are waiting again, and don't meet again at once.
+await press(arenaPage, ".run-arena-games tbody tr:first-child .td-buttons button:first-child");
+await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 0);
 const after = await rowsOf();
 await press(arenaPage, ".run-arena-pair");
 await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("just played each other"));
-JSON.stringify(after.map((r) => [r[0], r[1].slice(0, 7)])) === JSON.stringify([["Ann", "Waiting"], ["Ben", "Waiting"], ["Cal", "Game 2"], ["Dee", "Game 2"]])
+JSON.stringify(after.map((r) => [r[0], r[1].slice(0, 7)])) === JSON.stringify([["Ann", "Waiting"], ["Ben", "Waiting"], ["Cal", "Waiting"], ["Dee", "Waiting"]])
   && arenaCalls.filter((c) => c.action === "arenaPair").length === 1
-  ? pass("TD desk shows both players waiting again, the others in their game, and doesn't pair a rematch at once")
+  ? pass("TD desk shows both players waiting again and doesn't pair a rematch at once")
   : fail(`TD desk arena after a result: ${JSON.stringify(after)}`);
-// The players report game 2 themselves; the desk shows it and confirms it in one press.
+// A Blood Pact game by hand: once that section is chosen, the form asks who halves their clock.
+const halvesHidden = await arenaPage.$eval("#run-arena-halves", (e) => e.hidden);
+await arenaPage.select("#run-arena-white", "33333333");
+await arenaPage.select("#run-arena-black", "44444444");
+await arenaPage.select("#run-arena-section", "Blood Pact");
+await arenaPage.waitForFunction(() => !document.querySelector("#run-arena-halves").hidden);
+await press(arenaPage, ".run-arena-start button[type=submit]");
+await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Who halves their clock?"));
+await arenaPage.select("#run-arena-halves", "white");
+await press(arenaPage, ".run-arena-start button[type=submit]");
+await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
+const byHand = JSON.parse(arenaCalls.filter((c) => c.action === "arenaPair").at(-1)?.games || "[]");
+const halved = await arenaPage.$$eval(".run-arena-games tbody tr:first-child input[type=radio]", (rs) => rs.map((r) => r.checked));
+halvesHidden && JSON.stringify(byHand) === JSON.stringify([{ white: "33333333", black: "44444444", section: "Blood Pact", whitePact: true, blackPact: false }])
+  && JSON.stringify(halved) === JSON.stringify([true, false])
+  ? pass("TD desk starts a Blood Pact game by hand once told who halves their clock, and shows who did")
+  : fail(`TD desk arena by hand: ${JSON.stringify({ halvesHidden, byHand, halved })}`);
+// The desk moves the Blood Pact to Dee, and the players report her win: 2 points and the bonus.
+await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(4) input[type=radio]");
+await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(4) input[type=radio]:checked:not(:disabled)"));
+const moved = arenaCalls.find((c) => c.action === "arenaPact");
 arena.games[1].reports = { white: "0-1", black: "0-1" };
 await press(arenaPage, ".run-arena-refresh");
 await arenaPage.waitForSelector(".run-arena-confirm:not([hidden])");
@@ -560,18 +576,24 @@ const reportedCell = await arenaPage.$eval(".run-arena-games tbody tr:first-chil
 await press(arenaPage, ".run-arena-confirm");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-done tbody tr").length === 2);
 const confirmed = arenaCalls.filter((c) => c.action === "arenaResult").at(-1);
-reportedCell === "0–1 by both" && confirmed.game === "2" && confirmed.result === "0-1"
-  ? pass("TD desk shows the players' agreed report and confirms it") : fail(`TD desk arena reports: ${JSON.stringify({ reportedCell, confirmed })}`);
-const doneRows = await arenaPage.$$eval(".run-arena-done tbody tr", (rows) => rows.map((r) => [r.cells[0].textContent, r.cells[1].textContent]));
-JSON.stringify(doneRows) === JSON.stringify([["2 (not rated: section not US Chess rated)", "Blood Pact"], ["1 (not rated: time odds)", "Classical"]])
-  ? pass("TD desk marks games US Chess won't rate: an unrated section's and one-sided Blood Pacts") : fail(`TD desk finished games: ${JSON.stringify(doneRows)}`);
+const board = await arenaPage.$$eval(".run-leaderboard tbody tr", (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
+const boards = await arenaPage.$$eval(".run-arena-boards h4", (hs) => hs.map((h) => h.textContent));
+moved && moved.game === "2" && moved.who === "black" && reportedCell === "0–1 by both" && confirmed.game === "2" && confirmed.result === "0-1"
+  && JSON.stringify(board.slice(0, 2)) === JSON.stringify([["1", "Dee", "Unrated", "3", "1", "1"], ["2", "Ann", "1900", "2", "1", "1"]])
+  && board.slice(2).every((r) => r[0] === "3 (tied)" && r[3] === "0")
+  && JSON.stringify(boards) === JSON.stringify(["Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)", "Rapid, G/15;+15"])
+  ? pass("TD desk moves the Blood Pact, confirms the players' agreed report, and scores the win with its bonus, with ties shared")
+  : fail(`TD desk arena reports and leaderboard: ${JSON.stringify({ moved, reportedCell, confirmed, board, boards })}`);
+const doneRows = await arenaPage.$$eval(".run-arena-done tbody tr", (rows) => rows.map((r) => [r.cells[0].textContent, r.cells[1].textContent, r.cells[3].textContent]));
+JSON.stringify(doneRows) === JSON.stringify([["2 (not rated: section not US Chess rated)", "Blood Pact", "Dee (unrated) Blood Pact, game 2, black"], ["1", "Classical", "Ben (1700)"]])
+  ? pass("TD desk marks a Blood Pact section's games as ones US Chess won't rate") : fail(`TD desk finished games: ${JSON.stringify(doneRows)}`);
 // Rename Rapid.
 await arenaPage.$eval(".run-arena-sections-wrap", (d) => { d.open = true; });
 await arenaPage.$eval(".run-arena-sections-form .run-arena-section-row:nth-child(3) .run-arena-section-name", (input) => { input.value = "Bullet"; });
 await press(arenaPage, ".run-arena-sections-form button[type=submit]");
 await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Sections: Classical, Blood Pact, Bullet"));
 const renamed = JSON.parse(arenaCalls.find((c) => c.action === "arenaSections")?.sections || "[]");
-renamed.length === 3 && renamed[2].from === "Rapid" && renamed[2].name === "Bullet" && renamed[1].rated === false && renamed[0].timeControl === "G/30;+30"
+renamed.length === 3 && renamed[2].from === "Rapid" && renamed[2].name === "Bullet" && renamed[1].rated === false && renamed[1].pact === true && renamed[0].timeControl === "G/30;+30"
   ? pass("TD desk renames an arena section") : fail(`TD desk arena sections: ${JSON.stringify(renamed)}`);
 for (const scheme of ["light", "dark"]) {
   await arenaPage.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);

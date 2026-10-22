@@ -528,9 +528,11 @@ section.td-table td { white-space: nowrap; }
 .run-arena-section-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-arena-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
 .run-arena-section-row input[type="text"] { width: 100%; box-sizing: border-box; }
-.run-arena-section-rated { display: flex; align-items: center; gap: 6px; min-height: 40px; }
-.register-form .run-arena-section-rated label { display: inline; font-size: 15px; }
-.run-arena-section-rated input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.run-arena-sections-form { max-width: 40em; }
+.run-arena-section-checks { display: grid; gap: 4px; align-self: end; }
+.run-arena-section-check { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.register-form .run-arena-section-check label { display: inline; font-size: 15px; }
+.run-arena-section-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 @media (min-width: 600px) {
   .run-arena-section-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
 }
@@ -700,7 +702,7 @@ section.td-table td { white-space: nowrap; }
             <input id="run-cutoff" name="cutoff" type="time" value="17:30">
           </div>
           <fieldset class="run-arena-sections" data-format="arena" hidden>
-            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About an arena's sections" aria-describedby="run-arena-sections-hint">?</button><span id="run-arena-sections-hint" class="hint-text" role="tooltip">Each section is a time control. Players choose which they're available in, and every game is in one. Untick US Chess rated for a section whose games can't be rated, such as Blood Pact games at time odds (5C1): they count for points here and stay out of the rating report. Remove every section for an arena at one time control.</span></span></legend>
+            <legend>Sections <span class="hint"><button class="hint-button" type="button" aria-expanded="false" aria-label="About an arena's sections" aria-describedby="run-arena-sections-hint">?</button><span id="run-arena-sections-hint" class="hint-text" role="tooltip">Each section is a time control. Players choose which they're available in, and every game is in one. Tick Blood Pact for the section where one player, and only one, halves their clock: its games are time odds (5C1), which count for points here and stay out of the rating report, and the desk pairs nobody in it, since halving is a choice. Untick US Chess rated for any other section whose games can't be rated. Remove every section for an arena at one time control.</span></span></legend>
             <div class="run-arena-section-rows"></div>
             <p><button class="button button-secondary run-arena-section-add" type="button">Add a section</button></p>
           </fieldset>
@@ -781,6 +783,8 @@ section.td-table td { white-space: nowrap; }
             <select id="run-arena-black" name="black"></select>
             <label for="run-arena-section">Section</label>
             <select id="run-arena-section" name="section"></select>
+            <label for="run-arena-halves" hidden>Who halves their clock</label>
+            <select id="run-arena-halves" name="halves" hidden><option value="">Choose</option><option value="white">White</option><option value="black">Black</option></select>
             <button class="button button-secondary" type="submit">Start the game</button>
           </form>
           <h3>Games in progress</h3>
@@ -1062,7 +1066,7 @@ section.td-table td { white-space: nowrap; }
   <script src="../pairing.js?v=4c86f5a22b" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>
   <script src="../td-run.js?v=4259737e3e" defer></script>
-  <script src="../arena.js?v=d38a3edae1" defer></script>
-  <script src="../td-arena.js?v=ac4174c58f" defer></script>
+  <script src="../arena.js?v=86644ed875" defer></script>
+  <script src="../td-arena.js?v=f336c04456" defer></script>
 </body>
 </html>

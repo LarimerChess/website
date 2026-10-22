@@ -101,14 +101,14 @@ await createPage.close();
 
 // An arena in sections: the Pairings page shows each section with who is available in it, the games in
 // progress, and recent results. Ann, saved on this device, is available in both sections, challenges Ben
-// in Classical with the Blood Pact, and reports the game. The Standings page shows the leaderboards.
+// in Blood Pact, halving her clock, and reports the game. The Standings page shows the leaderboards.
 const arenaState = () => {
   const players = [["11111111", "Ann", 1900], ["22222222", "Ben", 1700], ["33333333", "Cal", 1500], ["44444444", "Dee", null]].map(([id, name, rating], i) => ({ id, number: i + 1, name, rating }));
   return { key: "knightmare-arena-classical/2026-10-31", name: "Knightmare Arena Classical, Saturday, October 31, 2026", format: "arena", cutoff: "17:30",
     status: "running", players, rounds: [],
-    sections: [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }],
-    queue: [{ id: "22222222", since: "2026-10-31 10:52:10", sections: ["Classical"] }, { id: "11111111", since: "2026-10-31 10:52:20", sections: ["Classical", "Blood Pact"] }],
-    games: [{ game: 1, section: "Classical", white: "11111111", black: "44444444", whitePact: true, blackPact: false, result: "1-0" },
+    sections: [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false, pact: true }],
+    queue: [{ id: "22222222", since: "2026-10-31 10:52:10", sections: ["Classical", "Blood Pact"] }, { id: "11111111", since: "2026-10-31 10:52:20", sections: ["Classical", "Blood Pact"] }],
+    games: [{ game: 1, section: "Classical", white: "11111111", black: "44444444", whitePact: false, blackPact: false, result: "1-0" },
       { game: 2, section: "Blood Pact", white: "33333333", black: "44444444", whitePact: false, blackPact: true, result: "" }] };
 };
 const arenaLive = arenaState();
@@ -117,8 +117,8 @@ const arenaAnswer = (fields) => {
   if (fields.tournaments === "current") return { tournaments: [arenaLive] };
   arenaSent.push(fields);
   if (fields.action === "arenaChallenge") {
-    arenaLive.games.push({ game: 3, section: fields.section, white: fields.id, black: fields.opponent, whitePact: fields.pact === "me", blackPact: false, result: "" });
-    return { ok: true, game: 3, message: "Game 3, Classical: Ann has white, Ben black." };
+    arenaLive.games.push({ game: 3, section: fields.section, white: fields.id, black: fields.opponent, whitePact: fields.pact === "me", blackPact: fields.pact === "opponent", result: "" });
+    return { ok: true, game: 3, message: `Game 3, ${fields.section}: Ann has white, Ben black.` };
   }
   if (fields.action === "arenaReport") {
     arenaLive.games[2].reports = { white: fields.result, black: "" };
@@ -139,31 +139,41 @@ const shownArena = await arenaPairings.evaluate(() => ({
   tables: [...document.querySelectorAll(".pairings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))) }));
 JSON.stringify(shownArena.headings) === JSON.stringify(["Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)", "Games in progress", "Recent results"])
   && shownArena.text.includes("No new games start after 5:30 PM.")
-  && JSON.stringify(shownArena.lists) === JSON.stringify([["Ben (1700) Challenge Ben (1700)", "Ann (1900)"], ["Ann (1900)"]])
-  && JSON.stringify(shownArena.available) === JSON.stringify([true, true]) && JSON.stringify(shownArena.challenge) === JSON.stringify(["arena-challenge-0-22222222"])
+  && JSON.stringify(shownArena.lists) === JSON.stringify([["Ben (1700) Challenge Ben (1700)", "Ann (1900)"], ["Ben (1700) Challenge Ben (1700)", "Ann (1900)"]])
+  && JSON.stringify(shownArena.available) === JSON.stringify([true, true])
+  && JSON.stringify(shownArena.challenge) === JSON.stringify(["arena-challenge-0-0-22222222", "arena-challenge-0-1-22222222"])
   && JSON.stringify(shownArena.tables[0]) === JSON.stringify([["2", "Blood Pact", "Cal (1500)", "Dee (unrated), Blood Pact"]])
-  && JSON.stringify(shownArena.tables[1]) === JSON.stringify([["1", "Classical", "Ann (1900), Blood Pact", "Dee (unrated)", "1–0"]]) && shownArena.standings
+  && JSON.stringify(shownArena.tables[1]) === JSON.stringify([["1", "Classical", "Ann (1900)", "Dee (unrated)", "1–0"]]) && shownArena.standings
   ? pass("Pairings page shows an arena's sections, who is available in each, its games, and results, and links to its leaderboard")
   : fail(`Pairings page arena: ${JSON.stringify(shownArena)}`);
 await axeBoth(arenaPairings, "Pairings page with an arena");
-// Ann challenges Ben, taking the Blood Pact.
-await press(arenaPairings, "#arena-challenge-0-22222222");
+// Ann challenges Ben in Classical, which asks nothing more, then in Blood Pact, which asks who halves their clock.
+await press(arenaPairings, "#arena-challenge-0-0-22222222");
 await arenaPairings.waitForSelector(".arena-challenge");
+const plain = await arenaPairings.evaluate(() => ({ pact: Boolean(document.querySelector(".arena-pact")), text: document.querySelector(".arena-challenge").textContent }));
+await press(arenaPairings, "#arena-challenge-0-1-22222222");
+await arenaPairings.waitForSelector(".arena-pact");
 await axeBoth(arenaPairings, "Pairings page with a challenge open");
+const asked = await arenaPairings.evaluate(() => ({ legend: document.querySelector(".arena-pact legend").textContent,
+  choices: [...document.querySelectorAll(".arena-pact label")].map((l) => l.textContent), checked: document.querySelectorAll(".arena-pact input:checked").length }));
+!plain.pact && plain.text.includes("Challenge Ben (1700) in Classical, as Ann.") && asked.legend === "Who halves their clock?"
+  && JSON.stringify(asked.choices) === JSON.stringify(["Me, Ann", "Ben"]) && asked.checked === 0
+  ? pass("Pairings page asks who halves their clock for a Blood Pact challenge, and nothing more for another section's")
+  : fail(`Pairings page challenge forms: ${JSON.stringify({ plain, asked })}`);
 await press(arenaPairings, "#arena-pact-0-me");
 await press(arenaPairings, "#arena-start-0");
-await arenaPairings.waitForFunction(() => document.querySelector(".arena-note")?.textContent.includes("Game 3, Classical"));
+await arenaPairings.waitForFunction(() => document.querySelector(".arena-note")?.textContent.includes("Game 3, Blood Pact"));
 await arenaPairings.waitForSelector(".report[data-players='11111111 22222222']");
 const challenged = arenaSent.find((c) => c.action === "arenaChallenge");
 const inGame = await arenaPairings.evaluate(() => ({
   text: document.querySelector(".pairings-all").textContent,
   buttons: [...document.querySelectorAll(".report .td-buttons button")].map((b) => b.textContent),
   challenge: document.querySelectorAll('[id^="arena-challenge-"]').length }));
-challenged && challenged.id === "11111111" && challenged.opponent === "22222222" && challenged.section === "Classical" && challenged.pact === "me"
+challenged && challenged.id === "11111111" && challenged.opponent === "22222222" && challenged.section === "Blood Pact" && challenged.pact === "me"
   && challenged.event === "knightmare-arena-classical" && challenged.date === "2026-10-31"
-  && inGame.text.includes("You're in game 3.") && inGame.challenge === 0
+  && inGame.text.includes("You're in game 3.") && inGame.text.includes("Ann (1900), Blood Pact with white, Ben (1700) with black") && inGame.challenge === 0
   && JSON.stringify(inGame.buttons) === JSON.stringify(["1–0, Ann won", "0–1, Ben won", "½–½, a draw"])
-  ? pass("Pairings page sends a player's challenge with the Blood Pact, then shows their game with buttons to report it")
+  ? pass("Pairings page sends a player's Blood Pact challenge, saying who halves their clock, then shows their game with buttons to report it")
   : fail(`Pairings page arena challenge: ${JSON.stringify({ challenged, inGame })}`);
 await press(arenaPairings, ".report .td-buttons button:first-child");
 await arenaPairings.waitForFunction(() => document.querySelector(".pairings-all").textContent.includes("reported, awaiting the TD"));
@@ -186,8 +196,8 @@ const leaderboards = await arenaStandings.evaluate(() => ({
   tables: [...document.querySelectorAll(".standings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))),
   pending: document.querySelector(".standings-all").textContent.includes("1 result the players reported counts here until the TD confirms or corrects it.") }));
 JSON.stringify(leaderboards.headings) === JSON.stringify(["Leaderboard", "By section", "Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)"])
-  && JSON.stringify(leaderboards.tables[0].slice(0, 2)) === JSON.stringify([["1", "Ann", "1900", "6", "2", "2 (Possessed)"], ["2 (tied)", "Ben", "1700", "0", "1", "0"]])
-  && leaderboards.tables[0].length === 4 && leaderboards.tables[1][0][3] === "6" && leaderboards.tables[2].every((r) => r[3] === "0") && leaderboards.pending
+  && JSON.stringify(leaderboards.tables[0].slice(0, 2)) === JSON.stringify([["1", "Ann", "1900", "5", "2", "2 (Possessed)"], ["2 (tied)", "Ben", "1700", "0", "1", "0"]])
+  && leaderboards.tables[0].length === 4 && leaderboards.tables[1][0][3] === "2" && leaderboards.tables[2][0][3] === "3" && leaderboards.pending
   ? pass("Standings page shows an arena's leaderboard, each section's, and the reports that count") : fail(`Standings page arena: ${JSON.stringify(leaderboards)}`);
 await axeBoth(arenaStandings, "Standings page with an arena");
 await arenaStandings.close();

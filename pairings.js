@@ -301,8 +301,8 @@ function pactLabel(g, side, name) {
   return name(g[side]) + (g[`${side}Pact`] ? ", Blood Pact" : "");
 }
 
-/** The challenge form for a player in a section: who takes the Blood Pact, then Start the game. */
-function challengeForm(t, ti, def, opponent, me, name) {
+/** The challenge form for a player in a section: in a Blood Pact section, who halves their clock; then Start the game. */
+function challengeForm(t, ti, si, def, opponent, me, name) {
   const form = document.createElement("form");
   form.className = "register-form report arena-challenge";
   form.dataset.players = `${me} ${opponent}`;
@@ -310,10 +310,10 @@ function challengeForm(t, ti, def, opponent, me, name) {
   form.append(paragraph(`Challenge ${name(opponent)}${def.name ? ` in ${def.name}` : ""}, as ${called(me)}.`));
   const pact = document.createElement("fieldset");
   pact.className = "arena-pact";
-  pact.append(Object.assign(document.createElement("legend"), { textContent: "Blood Pact: who halves their clock?" }));
-  for (const [value, text] of [["none", "Nobody"], ["me", `Me, ${called(me)}`], ["opponent", called(opponent)], ["both", "Both of us"]]) {
+  pact.append(Object.assign(document.createElement("legend"), { textContent: "Who halves their clock?" }));
+  for (const [value, text] of [["me", `Me, ${called(me)}`], ["opponent", called(opponent)]]) {
     const id = `arena-pact-${ti}-${value}`;
-    const choice = Object.assign(document.createElement("input"), { type: "radio", name: "pact", id, value, checked: value === "none" });
+    const choice = Object.assign(document.createElement("input"), { type: "radio", name: "pact", id, value, required: true });
     const label = Object.assign(document.createElement("label"), { htmlFor: id, textContent: text });
     const row = document.createElement("div");
     row.append(choice, label);
@@ -325,12 +325,12 @@ function challengeForm(t, ti, def, opponent, me, name) {
   buttons.append(start, " ", button("Cancel", "button button-secondary", () => {
     challenging.delete(t.key);
     redrawAll();
-    document.getElementById(`arena-challenge-${ti}-${opponent}`)?.focus();
+    document.getElementById(`arena-challenge-${ti}-${si}-${opponent}`)?.focus();
   }));
-  form.append(pact, buttons);
+  form.append(...(def.pact ? [pact] : []), buttons);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    arenaSend(t, "arenaChallenge", { id: me, opponent, section: def.name, pact: new FormData(form).get("pact") });
+    arenaSend(t, "arenaChallenge", { id: me, opponent, section: def.name, pact: new FormData(form).get("pact") || "none" });
   });
   return form;
 }
@@ -429,7 +429,7 @@ function arenaPairings(section, t, ti, name) {
           redrawAll();
           document.getElementById(`arena-start-${ti}`)?.focus();
         });
-        b.id = `arena-challenge-${ti}-${id}`;
+        b.id = `arena-challenge-${ti}-${defs.indexOf(def)}-${id}`;
         b.disabled = sending;
         b.append(Object.assign(document.createElement("span"), { className: "visually-hidden", textContent: ` ${name(id)}` }));
         item.append(" ", b);
@@ -439,7 +439,7 @@ function arenaPairings(section, t, ti, name) {
     section.append(list);
     const asked = challenging.get(t.key);
     if (open && me && asked && asked.section === def.name && available.includes(asked.id) && !busy.has(me)) {
-      section.append(challengeForm(t, ti, def, asked.id, me, name));
+      section.append(challengeForm(t, ti, defs.indexOf(def), def, asked.id, me, name));
     }
   }
   const playing = t.games.filter(Arena.inProgress);

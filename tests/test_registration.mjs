@@ -409,7 +409,7 @@ for (const store of STORES) {
     // On the day the stand-in clock gives, 2026-10-10 10:00, so the cutoff can pass.
     const key = "arena/2026-10-10";
     const at = { event: "arena", date: "2026-10-10" };
-    const sections = [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }];
+    const sections = [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false, pact: true }];
     const { gs, handEdit, rows } = load({
       Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections"],
         [key, "arena", "Arena", "arena", "", "running", "2026-10-10 09:00", "white", "", "17:30", JSON.stringify(sections)]],
@@ -430,6 +430,8 @@ for (const store of STORES) {
     // A challenge.
     assert.match(post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Classical" }).error, /Ben isn't available in Classical/);
     assert.match(post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Blitz" }).error, /No such section/);
+    assert.match(gs.arenaChallenge({ ...at, id: "33333333", opponent: "22222222", section: "Blood Pact" }).error, /Who halves their clock/);
+    assert.match(gs.arenaChallenge({ ...at, id: "33333333", opponent: "22222222", section: "Blood Pact", pact: "both" }).error, /Who halves their clock/);
     const started = post({ action: "arenaChallenge", ...at, id: "33333333", opponent: "22222222", section: "Blood Pact", pact: "me" });
     eq([started.ok, started.game, started.message], [true, 1, "Game 1, Blood Pact: Ben has white, Cal black."]);
     let t = gs.tournament(key, false);
@@ -445,7 +447,8 @@ for (const store of STORES) {
     eq(t.games[0].reports, { white: "", black: "0-1" });
     assert.equal(t.games[0].result, "");
     assert.ok(t.games[0].ended, "a report ends the game");
-    assert.match(post({ action: "arenaChallenge", ...at, id: "11111111", opponent: "33333333", section: "Classical" }).message, /Game 2, Classical: Cal has white, Ann black/, "free again, and Cal had black");
+    assert.match(post({ action: "arenaChallenge", ...at, id: "11111111", opponent: "33333333", section: "Classical", pact: "me" }).message, /Game 2, Classical: Cal has white, Ann black/, "free again, and Cal had black");
+    eq(gs.tournament(key, false).games[1].blackPact, false, "no pact outside the Blood Pact section");
     assert.match(post({ action: "arenaReport", ...at, id: "22222222", game: "1", result: "1-0" }).message, /you reported 1–0 and your opponent 0–1. See the TD/);
     eq(gs.tournament(key, false).games[0].reports, { white: "1-0", black: "0-1" });
     assert.equal(gs.arenaResult({ ...at, game: "1", result: "0-1" }).ok, true, "the TD settles it");
@@ -457,9 +460,10 @@ for (const store of STORES) {
     assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Classical", name: "Classical", timeControl: "G/30;+30" }]) }).error,
       /Blood Pact has games, so it can't be dropped/);
     assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Classical", name: "Slow", timeControl: "G/30;+30" },
-      { from: "Blood Pact", name: "Pact", rated: false }, { name: "Blitz", timeControl: "G/5;+3", rated: "no" }]) }).message, /Sections: Slow, Pact, Blitz/);
+      { from: "Blood Pact", name: "Pact", rated: true, pact: true }, { name: "Blitz", timeControl: "G/5;+3", rated: "no" }]) }).message, /Sections: Slow, Pact, Blitz/);
     t = gs.tournament(key, true);
-    eq(t.sections, [{ name: "Slow", timeControl: "G/30;+30", rated: true }, { name: "Pact", timeControl: "", rated: false }, { name: "Blitz", timeControl: "G/5;+3", rated: false }]);
+    eq(t.sections, [{ name: "Slow", timeControl: "G/30;+30", rated: true }, { name: "Pact", timeControl: "", rated: false, pact: true }, { name: "Blitz", timeControl: "G/5;+3", rated: false }],
+      "a Blood Pact section is never rated");
     eq(t.games.map((g) => g.section), ["Pact", "Slow"]);
     eq(t.queue.map((q) => [q.id, q.sections]), [["11111111", ["Slow", "Pact"]], ["22222222", ["Pact"]], ["33333333", ["Slow"]]]);
     assert.match(gs.setArenaSections({ ...at, sections: JSON.stringify([{ from: "Gone", name: "Gone" }]) }).error, /changed since the desk loaded them/);
@@ -486,14 +490,23 @@ for (const store of STORES) {
     const bad = gs.startTournament({ ...at, format: "arena", cutoff: "17:30", sections: JSON.stringify([{ name: "A" }, { name: "a" }]) }, null);
     assert.match(bad.error, /Two sections are named a/);
     const started = gs.startTournament({ ...at, format: "arena", cutoff: "17:30", timeControl: "G/30;+30",
-      sections: JSON.stringify([{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }]) }, null);
+      sections: JSON.stringify([{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: true, pact: true }]) }, null);
     assert.equal(started.ok, true, JSON.stringify(started));
     const t = gs.tournament("knightmare-arena-classical/2026-10-31", true);
-    eq(t.sections, [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }]);
+    eq(t.sections, [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false, pact: true }]);
     eq([t.format, t.cutoff, t.timeControl, t.players.length, t.games, t.queue], ["arena", "17:30", "G/30;+30", 2, [], []]);
-    assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical" }]) }).ok, true);
+    // A Blood Pact game by hand needs one player halving their clock; the desk can change who.
+    assert.match(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Blood Pact" }]) }).message, /Started 0 of 1 game\(s\).*nobody halves their clock/);
+    assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Blood Pact", blackPact: true }]) }).ok, true);
     if (store === "sheet") eq(heading(sheets.Arena).slice(-3), ["Section", "White report", "Black report"]);
-    eq([rows("Arena")[0].Section, rows("Arena")[0].Game], ["Classical", "1"]);
+    eq([rows("Arena")[0].Section, rows("Arena")[0].Game, rows("Arena")[0]["White pact"], rows("Arena")[0]["Black pact"]], ["Blood Pact", "1", "", "yes"]);
+    assert.equal(gs.arenaPact({ ...at, game: "1", who: "white" }).ok, true);
+    eq([rows("Arena")[0]["White pact"], rows("Arena")[0]["Black pact"]], ["yes", ""]);
+    assert.match(gs.arenaPact({ ...at, game: "1", who: "both" }).error, /Which side/);
+    assert.equal(gs.arenaResult({ ...at, game: "1", result: "1-0" }).ok, true);
+    assert.equal(gs.ledgerFor("knightmare-arena-classical/2026-10-31").games, 0, "a Blood Pact game isn't rated");
+    assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Classical", whitePact: true }]) }).ok, true);
+    eq([rows("Arena")[1].Section, rows("Arena")[1].Game, rows("Arena")[1]["White pact"]], ["Classical", "2", ""], "no pact outside the Blood Pact section");
   });
 }
 

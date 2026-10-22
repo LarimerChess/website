@@ -22,8 +22,8 @@
  * POST action=arenaAvailable, event, date, id, sections
  *                         an arena player's sections to play in, a JSON list of names, [] to take a break
  * POST action=arenaChallenge, event, date, id, opponent, section, pact
- *                         starts the player's game against a player available in the section; pact says who takes
- *                         the Blood Pact: me, opponent, both, or none
+ *                         starts the player's game against a player available in the section; in a Blood Pact
+ *                         section, pact says who halves their clock: me or opponent
  * POST action=arenaReport, event, date, id, game, result
  *                         the player's report of an arena game's result, which counts until the TD confirms or corrects it
  * POST action=..., idToken=...  the TD desk: login, whoami, refresh, choices, createEvent, history, people, search, contacts, contactSave, contactDelete, messages,
@@ -2074,7 +2074,7 @@ function arenaColors(games, a, b) {
 
 const inSections = (entry, name) => !(entry.sections && entry.sections.length) || entry.sections.includes(name || "");
 
-function arenaChallengeOf(arena, challenger, opponent, section) {
+function arenaChallengeOf(arena, challenger, opponent, section, who) {
   const defs = arena.sections.length ? arena.sections : [{ name: "" }];
   const def = defs.find((s) => s.name === (section || ""));
   const name = (id) => (arena.players.find((p) => p.id === id) || { name: id }).name;
@@ -2090,8 +2090,10 @@ function arenaChallengeOf(arena, challenger, opponent, section) {
   if (arenaLastOpponent(arena.games, challenger) === opponent || arenaLastOpponent(arena.games, opponent) === challenger) {
     return { error: `You and ${name(opponent)} just played each other. Play someone else first.` };
   }
+  if (def.pact && who !== "me" && who !== "opponent") return { error: "Who halves their clock?" };
   const [white, black] = arenaColors(arena.games, opponent, challenger);
-  return { white, black, section: def.name };
+  const halves = def.pact ? (who === "me" ? challenger : opponent) : null;
+  return { white, black, section: def.name, whitePact: white === halves, blackPact: black === halves };
 }
 
 /** Whether no new games may start: on or after the cutoff on the date, or for a month, after it on any day. */
@@ -2101,7 +2103,8 @@ function pastCutoff(info, date) {
   return date.length === 7 ? local.slice(11) >= info.Cutoff : local >= `${date} ${info.Cutoff}`;
 }
 
-/** The arena sections the desk sent, [{ name, timeControl, rated }], or an error; with from, each carries the name it had. */
+/** The arena sections the desk sent, [{ name, timeControl, rated, pact }], or an error; with from, each carries the name it
+ *  had. A Blood Pact section's games are time odds, so it's never rated. */
 function parseArenaSections(text, withFrom) {
   let list;
   try {
@@ -2116,14 +2119,16 @@ function parseArenaSections(text, withFrom) {
     // US Chess's rating report keeps 30 characters of a section's name.
     if (!name || name.length > 30) return { error: "Each section needs a name of up to 30 characters." };
     if (sections.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { error: `Two sections are named ${name}.` };
-    const def = { name, timeControl: String((s && s.timeControl) || "").trim().slice(0, 40), rated: !(s && (s.rated === false || s.rated === "no")) };
+    const pact = Boolean(s && (s.pact === true || s.pact === "yes"));
+    const def = { name, timeControl: String((s && s.timeControl) || "").trim().slice(0, 40), rated: !pact && !(s && (s.rated === false || s.rated === "no")) };
+    if (pact) def.pact = true;
     if (withFrom) def.from = String((s && s.from) || "");
     sections.push(def);
   }
   return { sections };
 }
 
-/** Changes an arena's sections: p.sections, a JSON list of { from, name, timeControl, rated }, from naming the section
+/** Changes an arena's sections: p.sections, a JSON list of { from, name, timeControl, rated, pact }, from naming the section
  *  it was, none for a new one. Games and the queue follow a renamed section; one with games can't be dropped. */
 function setArenaSections(p) {
   const key = `${p.event}/${p.date}`;
@@ -2151,7 +2156,11 @@ function setArenaSections(p) {
       return q.sections && q.sections.length && !names.length ? null : { ...q, sections: names };
     }).filter(Boolean);
     setQueue(key, queue);
-    setCell(table("Tournaments"), info.row, "Sections", JSON.stringify(defined.sections.map((s) => ({ name: s.name, timeControl: s.timeControl, rated: s.rated }))));
+    setCell(table("Tournaments"), info.row, "Sections", JSON.stringify(defined.sections.map((s) => {
+      const def = { name: s.name, timeControl: s.timeControl, rated: s.rated };
+      if (s.pact) def.pact = true;
+      return def;
+    })));
     clearTournamentCache(key);
     return { ok: true, message: `Sections: ${defined.sections.map((s) => s.name).join(", ")}.` };
   } finally {
@@ -2228,16 +2237,17 @@ function freePlayers(key, ids) {
   if (queue.some((q) => ids.includes(q.id))) setQueue(key, queue.map((q) => (ids.includes(q.id) ? { ...q, since: stamp() } : q)));
 }
 
-function arenaRow(key, number, game, pact) {
-  return { Key: key, Game: String(number), White: game.white, Black: game.black, "White pact": pact.includes(game.white) ? "yes" : "",
-    "Black pact": pact.includes(game.black) ? "yes" : "", Result: "", Started: stamp(), Ended: "", Section: game.section || "",
+function arenaRow(key, number, game) {
+  return { Key: key, Game: String(number), White: game.white, Black: game.black, "White pact": game.whitePact ? "yes" : "",
+    "Black pact": game.blackPact ? "yes" : "", Result: "", Started: stamp(), Ended: "", Section: game.section || "",
     "White report": "", "Black report": "" };
 }
 
 const nextGame = (arena, key) => arena.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r.Game) || 0), 0) + 1;
 
-/** Starts the games the desk paired, [{ white, black, section }], skipping any whose players are in a game by
- *  now, paired on another desk first. The players needn't be waiting: the desk can start any game by hand. */
+/** Starts the games the desk paired, [{ white, black, section, whitePact, blackPact }], skipping any whose players are
+ *  in a game by now, paired on another desk first, and a Blood Pact section's game unless one player, and only one,
+ *  halves their clock. The players needn't be waiting: the desk can start any game by hand. */
 function arenaPair(p) {
   const key = `${p.event}/${p.date}`;
   let games;
@@ -2261,24 +2271,28 @@ function arenaPair(p) {
     const added = [];
     for (const g of games) {
       const section = String(g.section || "");
+      const def = defs.find((s) => s.name === section);
       if (g.white === g.black || !ids.has(g.white) || !ids.has(g.black) || playing.has(g.white) || playing.has(g.black)) continue;
-      if (defs.length ? !defs.some((s) => s.name === section) : section) continue;
+      if (defs.length ? !def : section) continue;
+      const pact = Boolean(def && def.pact);
+      const whitePact = pact && Boolean(g.whitePact), blackPact = pact && Boolean(g.blackPact);
+      if (pact && whitePact === blackPact) continue;
       playing.add(g.white);
       playing.add(g.black);
-      added.push(arenaRow(key, number++, { ...g, section }, []));
+      added.push(arenaRow(key, number++, { white: g.white, black: g.black, section, whitePact, blackPact }));
     }
     addRows(t, added);
     clearTournamentCache(key);
     const count = added.length;
     return { ok: true, message: count === games.length ? `Started ${count} game(s).`
-      : `Started ${count} of ${games.length} game(s); the others' players are in a game already, or their section is gone.` };
+      : `Started ${count} of ${games.length} game(s); the others' players are in a game already, their section is gone, or nobody halves their clock in a Blood Pact game.` };
   } finally {
     lock.releaseLock();
   }
 }
 
 /** A player's challenge from the Pairings page: starts their game against a player available in the section,
- *  with the colors arena.js gives, and the Blood Pact p.pact says: me, opponent, both, or none. */
+ *  with the colors arena.js gives; in a Blood Pact section, p.pact says who halves their clock: me or opponent. */
 function arenaChallenge(p) {
   const key = `${p.event}/${p.date}`;
   const opponent = String(p.opponent || "").trim();
@@ -2288,12 +2302,11 @@ function arenaChallenge(p) {
     if (error) return { error };
     if (pastCutoff(info, p.date)) return { error: `No new games start after ${info.Cutoff}.` };
     const arena = arenaOf(key, info);
-    const game = arenaChallengeOf(arena, p.id, opponent, String(p.section || ""));
+    const game = arenaChallengeOf(arena, p.id, opponent, String(p.section || ""), p.pact);
     if (game.error) return { error: game.error };
-    const pact = { me: [p.id], opponent: [opponent], both: [p.id, opponent] }[p.pact] || [];
     const t = table("Arena");
     const number = nextGame(t, key);
-    addRows(t, [arenaRow(key, number, game, pact)]);
+    addRows(t, [arenaRow(key, number, game)]);
     clearTournamentCache(key);
     const name = (id) => arena.players.find((x) => x.id === id).name;
     return { ok: true, game: number, message: `Game ${number}${game.section ? `, ${game.section}` : ""}: ${name(game.white)} has white, ${name(game.black)} black.` };
@@ -2355,17 +2368,17 @@ function arenaResult(p) {
   }
 }
 
-/** Sets or clears one side's Blood Pact for a game. */
+/** Records who halved their clock in a game, p.who: white, black, or "" for neither. */
 function arenaPact(p) {
   const key = `${p.event}/${p.date}`;
-  const heading = { white: "White pact", black: "Black pact" }[p.side];
-  if (!heading) return { error: "Which side?" };
+  const who = String(p.who || "");
+  if (!["white", "black", ""].includes(who)) return { error: "Which side?" };
   const lock = lockTournaments();
   try {
     const arena = table("Arena");
     const line = arena.rows.find((r) => r.Key === key && Number(r.Game) === Number(p.game));
     if (!line) return { error: "No such game." };
-    setCell(arena, line.row, heading, p.on === "yes" ? "yes" : "");
+    setCells(arena, { [line.row]: { "White pact": who === "white" ? "yes" : "", "Black pact": who === "black" ? "yes" : "" } });
     clearTournamentCache(key);
     return { ok: true };
   } finally {
@@ -3044,7 +3057,7 @@ function ratedGames(key) {
   const info = table("Tournaments").rows.find((r) => r.Key === key);
   if (!info) return null;
   const played = (r) => r.Key === key && r.White && r.Black && ["1-0", "0-1", "1/2-1/2"].includes(r.Result);
-  const unrated = new Set(sectionsOf(info).filter((s) => s.rated === false).map((s) => s.name));
+  const unrated = new Set(sectionsOf(info).filter((s) => s.rated === false || s.pact).map((s) => s.name));
   const ratable = (r) => played(r) && !unrated.has(r.Section || "") && (r["White pact"] === "yes") === (r["Black pact"] === "yes");
   return table("Rounds").rows.filter(played).length + table("Arena").rows.filter(ratable).length;
 }

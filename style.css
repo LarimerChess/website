@@ -512,9 +512,11 @@ section.td-table td { white-space: nowrap; }
 .run-arena-section-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 8px; }
 .register-form .run-arena-section-row label { display: block; margin-top: 0; font-weight: 400; font-size: 14px; }
 .run-arena-section-row input[type="text"] { width: 100%; box-sizing: border-box; }
-.run-arena-section-rated { display: flex; align-items: center; gap: 6px; min-height: 40px; }
-.register-form .run-arena-section-rated label { display: inline; font-size: 15px; }
-.run-arena-section-rated input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.run-arena-sections-form { max-width: 40em; }
+.run-arena-section-checks { display: grid; gap: 4px; align-self: end; }
+.run-arena-section-check { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.register-form .run-arena-section-check label { display: inline; font-size: 15px; }
+.run-arena-section-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 @media (min-width: 600px) {
   .run-arena-section-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
 }

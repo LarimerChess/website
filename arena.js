@@ -5,13 +5,14 @@
 // rating_check.mjs run it in node, and tests/test_arena.mjs checks it.
 //
 // An arena is { sections, players, games, queue }:
-//   sections: [{ name, timeControl, rated }], rated false for one whose games US Chess won't rate;
-//             [] or missing for an arena played as one section, named ""
+//   sections: [{ name, timeControl, rated, pact }], rated false for one whose games US Chess won't rate, pact
+//             true for the Blood Pact section, where one player, and only one, halves their clock (15 + 15
+//             against 30 + 30); [] or missing for an arena played as one section, named ""
 //   players:  [{ id, name, rating }]
 //   games:    [{ game, section, white, black, whitePact, blackPact, result, reports }], game numbered in pairing order
 //     result:  "" until the TD enters one: "1-0", "0-1", "1/2-1/2", or a forfeit, "1F-0F", "0F-1F", "0F-0F"
 //     reports: { white, black }, what each player reported, "1-0", "0-1", or "1/2-1/2", until the TD confirms it
-//     whitePact, blackPact: true if that player took the Blood Pact (15 + 15 against 30 + 30)
+//     whitePact, blackPact: true for the player who halved their clock, in the Blood Pact section
 //   queue:    [{ id, since, sections }], the players available for a game: since "YYYY-MM-DD HH:mm:ss" when
 //             they became available, sections the names they play in, every section when missing or empty
 //
@@ -61,7 +62,7 @@
   /** Why US Chess won't rate a played game: its section isn't rated, or it has time odds; "" when it can. */
   function notRated(arena, g) {
     const def = sectionOf(arena, g.section);
-    if (def && def.rated === false) return "section not US Chess rated";
+    if (def && (def.rated === false || def.pact)) return "section not US Chess rated";
     return timeOdds(g) && !FORFEIT(resultOf(g)) ? "time odds" : "";
   }
 
@@ -161,13 +162,14 @@
 
   /**
    * Pairs whoever can play now, section by section: the longest-waiting player available in it with the
-   * next-longest-waiting one who may meet them, and so on down the queue, each player once. Returns
+   * next-longest-waiting one who may meet them, and so on down the queue, each player once. A Blood Pact
+   * section is left to challenges and the TD, since halving the clock is a player's choice. Returns
    * { games: [{ white, black, section }], waiting: [ids left over] }.
    */
   function pair(arena) {
     const games = [];
     const paired = new Set();
-    for (const def of sections(arena)) {
+    for (const def of sections(arena).filter((s) => !s.pact)) {
       const left = waiting(arena, def.name).filter((id) => !paired.has(id));
       for (let i = 0; i < left.length; i++) {
         const a = left[i];
@@ -184,10 +186,11 @@
   }
 
   /**
-   * A challenger's game against a player available in a section: { white, black, section }, the
-   * available player having waited, or { error } saying why not.
+   * A challenger's game against a player available in a section: { white, black, section, whitePact,
+   * blackPact }, the available player having waited, or { error } saying why not. In a Blood Pact
+   * section, who says who halves their clock: "me" or "opponent".
    */
-  function challenge(arena, challenger, opponent, section) {
+  function challenge(arena, challenger, opponent, section, who) {
     const def = sectionOf(arena, section);
     const name = (id) => arena.players.find((p) => p.id === id)?.name || id;
     if (!def) return { error: "No such section." };
@@ -200,8 +203,10 @@
     const entry = arena.queue.find((q) => q.id === opponent);
     if (!entry || !availableIn(entry, def.name)) return { error: `${name(opponent)} isn't available${def.name ? ` in ${def.name}` : ""} right now.` };
     if (!mayMeet(arena.games, challenger, opponent)) return { error: `You and ${name(opponent)} just played each other. Play someone else first.` };
+    if (def.pact && who !== "me" && who !== "opponent") return { error: "Who halves their clock?" };
     const [white, black] = assignColors(arena.games, opponent, challenger);
-    return { white, black, section: def.name };
+    const halves = def.pact ? (who === "me" ? challenger : opponent) : null;
+    return { white, black, section: def.name, whitePact: white === halves, blackPact: black === halves };
   }
 
   /** "YYYY-MM-DD HH:mm" in Fort Collins at the moment given. */

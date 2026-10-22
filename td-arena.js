@@ -21,7 +21,7 @@ const ARENA_RESULTS = [["1-0", "1–0", ""], ["0-1", "0–1", ""], ["1/2-1/2", "
 const SHOWN_RESULT = Object.fromEntries(ARENA_RESULTS.map(([value, text]) => [value, text]));
 // The sections a Knightmare arena starts with; the TD changes them before starting.
 const KNIGHTMARE = [{ name: "Classical", timeControl: "G/30;+30", rated: true },
-  { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false }, { name: "Rapid", timeControl: "G/15;+15", rated: true }];
+  { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false, pact: true }, { name: "Rapid", timeControl: "G/15;+15", rated: true }];
 
 const forArena = (t) => ({ sections: t.sections || [], players: t.players, games: t.games, queue: t.queue });
 
@@ -49,8 +49,8 @@ async function arenaCall(action, fields, button) {
   return result;
 }
 
-// The sections editor: rows of name, time control, and US Chess rated, in the start form and under
-// Sections while the arena runs.
+// The sections editor: rows of name, time control, US Chess rated, and Blood Pact, in the start form
+// and under Sections while the arena runs.
 let arenaSectionRow = 0;
 function addArenaSectionRow(rows, section = {}) {
   const n = ++arenaSectionRow;
@@ -63,16 +63,31 @@ function addArenaSectionRow(rows, section = {}) {
     box.append(Object.assign(document.createElement("label"), { htmlFor: id, textContent: label }), input);
     return box;
   };
-  const rated = document.createElement("div");
-  rated.className = "run-arena-section-rated";
-  const box = Object.assign(document.createElement("input"), { id: `run-arena-rated-${n}`, type: "checkbox", checked: section.rated !== false, className: "run-arena-section-rated-box" });
-  rated.append(box, Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: "US Chess rated" }));
+  const check = (className, id, text, checked) => {
+    const wrap = document.createElement("div");
+    wrap.className = "run-arena-section-check";
+    const box = Object.assign(document.createElement("input"), { id, type: "checkbox", checked, className });
+    wrap.append(box, Object.assign(document.createElement("label"), { htmlFor: id, textContent: text }));
+    return [wrap, box];
+  };
+  const [rated, ratedBox] = check("run-arena-section-rated-box", `run-arena-rated-${n}`, "US Chess rated", section.rated !== false && !section.pact);
+  const [pact, pactBox] = check("run-arena-section-pact-box", `run-arena-section-pact-${n}`, "Blood Pact", Boolean(section.pact));
+  // A Blood Pact section's games are time odds, which US Chess can't rate.
+  const timeOdds = () => {
+    ratedBox.disabled = pactBox.checked;
+    if (pactBox.checked) ratedBox.checked = false;
+  };
+  pactBox.addEventListener("change", timeOdds);
+  timeOdds();
+  const checks = document.createElement("div");
+  checks.className = "run-arena-section-checks";
+  checks.append(rated, pact);
   const remove = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: "Remove" });
   remove.append(hidden(` section ${rows.children.length + 1}`));
   remove.addEventListener("click", () => row.remove());
   row.append(field("Section", `run-arena-name-${n}`, section.name, { maxLength: 30, className: "run-arena-section-name" }),
     field("Time control", `run-arena-control-${n}`, section.timeControl, { maxLength: 40, spellcheck: false, className: "run-arena-section-control" }),
-    rated, remove);
+    checks, remove);
   rows.append(row);
 }
 
@@ -82,11 +97,11 @@ function fillArenaSections(fieldset, defs) {
   for (const s of defs) addArenaSectionRow(rows, s);
 }
 
-/** The sections typed in, [{ from, name, timeControl, rated }], or an error; none is an arena in one section. */
+/** The sections typed in, [{ from, name, timeControl, rated, pact }], or an error; none is an arena in one section. */
 function readArenaSections(fieldset) {
   const list = [...fieldset.querySelectorAll(".run-arena-section-row")].map((row) => ({ from: row.dataset.from,
     name: row.querySelector(".run-arena-section-name").value.trim(), timeControl: row.querySelector(".run-arena-section-control").value.trim(),
-    rated: row.querySelector(".run-arena-section-rated-box").checked }));
+    rated: row.querySelector(".run-arena-section-rated-box").checked, pact: row.querySelector(".run-arena-section-pact-box").checked }));
   if (list.some((s) => !s.name)) return { error: "Name every section, or remove it." };
   const twice = list.find((s, i) => list.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) !== i);
   if (twice) return { error: `Two sections are named ${twice.name}.` };
@@ -101,21 +116,25 @@ for (const fieldset of document.querySelectorAll(".run-arena-sections")) {
 }
 fillArenaSections(document.querySelector(".run-start .run-arena-sections"), KNIGHTMARE);
 
-/** A player's name with a Blood Pact checkbox, which saves as soon as it changes. */
-function pactCell(row, g, side) {
+/** A player's name; in a Blood Pact section, with a radio button saying whether they halved their clock,
+ *  which saves as soon as it changes. */
+function pactCell(row, g, side, inPact) {
   const cell = row.insertCell();
   cell.append(nameOf(g[side]));
+  if (!inPact) {
+    if (g[`${side}Pact`]) cell.append(" (Blood Pact)");
+    return;
+  }
   const label = document.createElement("label");
   label.className = "td-pact";
   const box = document.createElement("input");
-  box.type = "checkbox";
+  box.type = "radio";
+  box.name = `run-arena-halves-${g.game}`;
   box.checked = g[`${side}Pact`];
   box.disabled = current.status === "rated";
   box.addEventListener("change", async () => {
-    box.disabled = true;
-    const result = await arenaCall("arenaPact", { game: g.game, side, on: box.checked ? "yes" : "no" });
-    if (!result.ok) box.checked = !box.checked;
-    box.disabled = false;
+    const result = await arenaCall("arenaPact", { game: g.game, who: side }, box);
+    if (!result.ok) loadRun();
   });
   label.append(box, " Blood Pact", hidden(`, game ${g.game}, ${side}`));
   cell.append(label);
@@ -151,7 +170,7 @@ function renderArena() {
     + (several ? ` Sections: ${defs.map((d) => `${d.name} (${t.games.filter((g) => g.section === d.name).length})`).join(", ")}.` : "")
     + (t.status === "rated" ? " Rated by US Chess."
       : closed && !inProgress ? ` It's past ${t.cutoff} and every game is in. Enter the games in MUIR, US Chess's ratings portal, except those marked`
-        + " not rated: in a section that isn't US Chess rated, or where only one player took the Blood Pact, which is time odds (5C1)."
+        + " not rated: in a section that isn't US Chess rated, or at time odds (5C1), as a Blood Pact section's games are."
         + " The arena is complete once US Chess shows it rated with these results."
       : closed ? ` It's past ${t.cutoff}: no new games start. Games in progress finish and count.`
         : t.cutoff ? ` No new games after ${t.cutoff}.` : "");
@@ -205,6 +224,7 @@ function renderArena() {
   const chosenSection = sectionMenu.value;
   sectionMenu.replaceChildren(...defs.map((d) => option(d.name, d.name, d.name === chosenSection)));
   sectionMenu.hidden = sectionMenu.previousElementSibling.hidden = !several;
+  showHalvesMenu();
 
   // Games without the TD's result: in progress, or as the players reported them.
   const cells = (row, g) => {
@@ -212,8 +232,9 @@ function renderArena() {
     const section = row.insertCell();
     section.textContent = g.section || "";
     section.hidden = !several;
-    pactCell(row, g, "white");
-    pactCell(row, g, "black");
+    const inPact = Boolean(Arena.sectionOf(arena, g.section)?.pact);
+    pactCell(row, g, "white", inPact);
+    pactCell(row, g, "black", inPact);
   };
   for (const table of [arenaGames, arenaDone]) table.tHead.rows[0].cells[1].hidden = !several;
   arenaGames.tBodies[0].replaceChildren(...playing.map((g) => {
@@ -285,21 +306,36 @@ arenaPairButton.addEventListener("click", async () => {
     runStatus.textContent = `It's past ${current.cutoff}: no new games start.`;
     return;
   }
-  const { games, waiting } = Arena.pair(forArena(current));
+  const arena = forArena(current);
+  const { games, waiting } = Arena.pair(arena);
+  const pacts = Arena.sections(arena).filter((d) => d.pact && Arena.waiting(arena, d.name).length > 1).map((d) => d.name);
+  const byHand = pacts.length ? ` ${pacts.join(" and ")} games start by challenge or by hand, since one player chooses to halve their clock.` : "";
   if (!games.length) {
-    runStatus.textContent = waiting.length > 1 ? "Nobody to pair: the players waiting just played each other, or share no section."
-      : waiting.length ? "Only one player is waiting." : "Nobody is waiting.";
+    runStatus.textContent = (waiting.length > 1 ? "Nobody to pair: the players waiting just played each other, or share no section."
+      : waiting.length ? "Only one player is waiting." : "Nobody is waiting.") + byHand;
     return;
   }
-  arenaCall("arenaPair", { games: JSON.stringify(games) }, arenaPairButton);
+  const result = await arenaCall("arenaPair", { games: JSON.stringify(games) }, arenaPairButton);
+  if (result.ok) runStatus.textContent += byHand;
 });
+
+/** The by-hand form asks who halves their clock only for a Blood Pact section. */
+function showHalvesMenu() {
+  const menu = arenaStartForm.elements.halves;
+  const def = Arena.sectionOf(forArena(current), arenaStartForm.elements.section.value);
+  menu.hidden = menu.previousElementSibling.hidden = !def?.pact;
+}
+arenaStartForm.elements.section.addEventListener("change", showHalvesMenu);
 
 arenaStartForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const { white, black, section } = Object.fromEntries(new FormData(arenaStartForm));
+  const { white, black, section, halves } = Object.fromEntries(new FormData(arenaStartForm));
   if (!white || !black) return void (runStatus.textContent = "Choose both players.");
   if (white === black) return void (runStatus.textContent = "Choose two different players.");
-  arenaCall("arenaPair", { games: JSON.stringify([{ white, black, section: section || "" }]) }, arenaStartForm.querySelector("button"));
+  const pact = Boolean(Arena.sectionOf(forArena(current), section)?.pact);
+  if (pact && halves !== "white" && halves !== "black") return void (runStatus.textContent = "Who halves their clock?");
+  const game = { white, black, section: section || "", whitePact: pact && halves === "white", blackPact: pact && halves === "black" };
+  arenaCall("arenaPair", { games: JSON.stringify([game]) }, arenaStartForm.querySelector("button"));
 });
 
 arenaConfirm.addEventListener("click", async (event) => {
