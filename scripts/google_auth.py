@@ -15,7 +15,7 @@ then run the script here and open the URL it prints in that browser.
 Sync calendars Action; --calendar-read for one that can only read them, for Update
 calendar; --gmail-send for one that can only send mail, for the TD expirations check;
 --sheets for one that can only read and edit spreadsheets, for the Archive tournaments
-Action; --firebase for one that can only read and write the Firebase Realtime Database, for
+Action; --contacts for one that can only read and edit Google Contacts; --firebase for one that can only read and write the Firebase Realtime Database, for
 scripts/firebase_rules.py, migrate_tournaments.py, and the Archive tournaments Action. In
 Actions the token's JSON comes from the LCCC_GOOGLE_TOKEN environment variable instead of a
 file, or LCCC_GOOGLE_FIREBASE_TOKEN for --firebase, since the archive needs both.
@@ -61,6 +61,9 @@ PROFILES = {
     ]),
     "firebase": (CONFIG / "google-token-firebase.json", IDENTITY + [
         "https://www.googleapis.com/auth/firebase.database",
+    ]),
+    "contacts": (CONFIG / "google-token-contacts.json", IDENTITY + [
+        "https://www.googleapis.com/auth/contacts",
     ]),
 }
 ENV = {"firebase": "LCCC_GOOGLE_FIREBASE_TOKEN"}
@@ -127,6 +130,8 @@ def main():
                        help="sign in for the token that can only send mail")
     which.add_argument("--sheets", action="store_const", const="sheets", dest="profile",
                        help="sign in for the token that can only read and edit spreadsheets")
+    which.add_argument("--contacts", action="store_const", const="contacts", dest="profile",
+                       help="sign in for the token that can only read and edit Google Contacts")
     which.add_argument("--firebase", action="store_const", const="firebase", dest="profile",
                        help="sign in for the token that can only read and write the Firebase database")
     profile = parser.parse_args().profile or "full"
