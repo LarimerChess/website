@@ -15,7 +15,7 @@ then run the script here and open the URL it prints in that browser.
 Sync calendars Action; --calendar-read for one that can only read them, for Update
 calendar; --gmail-send for one that can only send mail, for the TD expirations check;
 --sheets for one that can only read and edit spreadsheets, for the Archive tournaments
-Action; --contacts for one that can only read and edit Google Contacts; --firebase for one that can only read and write the Firebase Realtime Database, for
+Action; --contacts for one that can only read and edit the Google Contacts of larimercountychessclub@gmail.com; --firebase for one that can only read and write the Firebase Realtime Database, for
 scripts/firebase_rules.py, migrate_tournaments.py, and the Archive tournaments Action. In
 Actions the token's JSON comes from the LCCC_GOOGLE_TOKEN environment variable instead of a
 file, or LCCC_GOOGLE_FIREBASE_TOKEN for --firebase, since the archive needs both.
@@ -36,6 +36,9 @@ from googleapiclient.discovery import build
 
 CONFIG = Path.home() / ".config" / "lccc"
 CLIENT = CONFIG / "google-client.json"
+# Contacts live in the club's gmail.com account, which the Internal client above refuses, so that
+# profile has a client of its own, in a project with an External consent screen.
+CLIENTS = {"contacts": CONFIG / "google-client-contacts.json"}
 DOMAIN = "larimerchess.org"
 PORT = 8085
 IDENTITY = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
@@ -88,14 +91,16 @@ def credentials(profile="full"):
     if not sys.stdin.isatty():
         sys.exit(f"No usable token at {token}. Sign in from a terminal: scripts/google_auth.py"
                  + ("" if profile == "full" else f" --{profile}"))
-    if not CLIENT.exists():
-        sys.exit(f"Missing {CLIENT}. Download the OAuth client JSON from the Cloud console first.")
+    client = CLIENTS.get(profile, CLIENT)
+    if not client.exists():
+        sys.exit(f"Missing {client}. Download the OAuth client JSON from the Cloud console first.")
     # hd only preselects the club domain in Google's account chooser; the
     # Internal consent screen is what actually refuses other accounts.
-    flow = InstalledAppFlow.from_client_secrets_file(CLIENT, scopes)
+    flow = InstalledAppFlow.from_client_secrets_file(client, scopes)
     # A fixed port lets the sign-in redirect come back through an SSH tunnel.
     creds = flow.run_local_server(
-        port=PORT, hd=DOMAIN, prompt="consent", open_browser=bool(os.environ.get("DISPLAY"))
+        port=PORT, prompt="consent", **({} if profile in CLIENTS else {"hd": DOMAIN}),
+         open_browser=bool(os.environ.get("DISPLAY"))
     )
     save(creds, token)
     return creds
@@ -139,7 +144,7 @@ def main():
     user = build("oauth2", "v2", credentials=creds).userinfo().get().execute()
     email = user.get("email", "")
     print(f"Signed in as {email}")
-    if not email.endswith("@" + DOMAIN):
+    if profile not in CLIENTS and not email.endswith("@" + DOMAIN):
         sys.exit(f"Not a {DOMAIN} account. Delete {PROFILES[profile][0]} and sign in again.")
 
 
