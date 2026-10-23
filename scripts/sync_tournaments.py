@@ -33,6 +33,11 @@ CSCA_PAGE = "https://coloradochess.com/tournaments/view-upcoming/"
 CSCA_POST = "https://coloradochess.com/wp-json/wp/v2/tournament/{}"
 DCC_SITE = "https://denverchess.com"
 DCC = "Denver Chess Club"
+# Notes for the club's own players, by event key, added to the description.
+NOTES = {
+    "csca-6373": "Larimer County Chess Club members: when you register, list the Larimer County Chess Club as your "
+                 "club or affiliation, so you are less likely to be paired with players you usually play.",
+}
 MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
 # "October 24 - 25, 2026", "October 31 - November 1, 2026", "January 5 - 26, 2027", "November 7, 2026";
 # the Denver Chess Club leaves out the year when its month heading gives it.
@@ -245,6 +250,7 @@ def event_body(t):
     time_control = f"\nTime control: {t['time_control']}" if t["time_control"] else ""
     description = (f"Cost: {cost}.{time_control}\n\n{t['title']}, a weekend chess tournament.\n\n"
                    f"Run by {t['organizer']}. Not organized by the Larimer County Chess Club.\n\n"
+                   f"{NOTES[t['key']] + chr(10) * 2 if t['key'] in NOTES else ''}"
                    f"Details and registration: {t['link']}\n\n{place}")
     return {
         "summary": t["title"],
