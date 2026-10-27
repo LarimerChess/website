@@ -223,7 +223,8 @@ function doPost(e) {
   }
 }
 
-/** Registers a player. From the TD desk (td), the ID was picked from a search, so no last
+/** Registers a player. Online, registration stays open through the event's last day, after play starts.
+ *  From the TD desk (td), the ID was picked from a search, so no last
  *  name is checked, email is optional, registration stays open through the event, and the
  *  TD may set the category instead of taking it from US Chess. signedIn is the TD, when known. */
 function register(p, td, signedIn) {
@@ -234,7 +235,8 @@ function register(p, td, signedIn) {
   const key = `${p.event}/${p.date}`;
   const event = clubEvents()[key];
   if (!event || (event.closed && !td)) return { error: "That event isn't open for registration." };
-  if (!td && new Date(event.closes) <= new Date()) return { error: "Online registration for this has closed." };
+  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  if (!td && Utilities.formatDate(new Date(event.closes), TZ, "yyyy-MM-dd") < today) return { error: "Online registration for this has closed." };
   const id = String(p.id || "").trim();
   if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
   const email = String(p.email || "").trim();

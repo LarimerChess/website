@@ -1134,6 +1134,24 @@ test("the registration form's phone is optional, kept as 970-555-0123, and goes 
   eq([gs.phoneNumber(""), gs.phoneNumber("9705550123"), gs.phoneNumber("=9705550123")], ["", "970-555-0123", null]);
 });
 
+test("online registration stays open all day on the event's last day, after play starts, and closes the next day", () => {
+  const { gs } = load({ Entries: [], Contacts: [["Name", "Email", "Phone", "Status", "US Chess ID", "ID"]] });
+  clubNights(gs);
+  gs.MailApp = { sendEmail: () => {} };
+  const events = gs.clubEvents();
+  for (const e of Object.values(events)) e.closes = `${e.last}T10:00:00-06:00`;
+  gs.clubEvents = () => events;
+  const plain = gs.Utilities.formatDate;
+  let today;
+  gs.Utilities.formatDate = (d, tz, f) => (f === "yyyy-MM-dd" && Math.abs(d - Date.now()) < 60000 ? today : plain(d, tz, f));
+  const register = (date, id) => gs.register({ event: "monday-club-night-at-peak", date, id, last: "Ash", category: "Adult", email: "ann@example.com" }, false);
+  today = "2026-10-12";
+  assert.equal(register("2026-10-12", "66666666").ok, true, "the night it is, though it has started");
+  today = "2026-10-13";
+  assert.equal(register("2026-10-12", "66666666").error, "Online registration for this has closed.");
+  assert.equal(register("2026-10", "66666666").error, undefined, "the month, through its last night");
+});
+
 // A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
 function reporting(cache, store) {
   const key = "classic/2026-11-07";
