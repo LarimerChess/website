@@ -48,6 +48,16 @@ const button = (text, className, onClick) => {
   return b;
 };
 const heading = (level, text) => Object.assign(document.createElement(`h${level}`), { textContent: text });
+// A tournament's name links to its event page, which outlives the event (scripts/build_pages.py
+// archives it). An event the TD added without a calendar event has none, so the link is checked.
+function eventHeading(t) {
+  if (!t.key) return heading(2, t.name);
+  const h = document.createElement("h2");
+  const link = Object.assign(document.createElement("a"), { href: `/events/${t.key.split("/")[0]}/`, textContent: t.name });
+  h.append(link);
+  fetch(link.href, { method: "HEAD" }).then((r) => { if (!r.ok) link.replaceWith(t.name); }).catch(() => {});
+  return h;
+}
 
 const link = (href, text) => Object.assign(document.createElement("a"), { href, textContent: text });
 
@@ -491,7 +501,7 @@ function arenaStandings(section, t) {
 
 function pairingsSection(t, ti) {
   const section = document.createElement("section");
-  section.append(heading(2, t.name));
+  section.append(eventHeading(t));
   const name = namer(t);
   if (t.format === "arena") return arenaPairings(section, t, ti, name);
   if (!t.rounds.length) {
@@ -586,7 +596,7 @@ function hideTip() {
 
 function standingsSection(t, ti) {
   const section = document.createElement("section");
-  section.append(heading(2, t.name));
+  section.append(eventHeading(t));
   if (t.format === "arena") return arenaStandings(section, t);
   const name = namer(t);
   const { parts, several } = partsOf(t);

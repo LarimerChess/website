@@ -6,8 +6,9 @@
 - events/index.html gets schema.org Event data for every club event.
 - Each club event gets its own page at its "page" path (events/<name>/), with its
   next date, its calendar description, a Register form and entry list (register.js) when it is
-  US Chess rated, and its Event data. A page whose event has left
-  events.json is deleted.
+  US Chess rated, and its Event data. A page whose event has left events.json is
+  archived, not deleted, so links to it keep working: it shows the last date's details and
+  links to the event's results pages, which a live page lists too.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
   the day what it shows last changed. Every other page's lastmod is the day of the last
   commit that changed its text, or today if the working copy changes it; the styles and
@@ -22,7 +23,6 @@ import hashlib
 import html
 import json
 import re
-import shutil
 import subprocess
 import sys
 from collections import defaultdict
@@ -37,6 +37,8 @@ EVENTS_PAGE = SITE + "/events/"
 CLUB = "Larimer County Chess Club"
 TZ = ZoneInfo("America/Denver")
 GENERATED = "<!-- Written by scripts/build_pages.py from events.json; don't edit by hand. -->"
+ARCHIVED = "<!-- Archived by scripts/build_pages.py: the event has no upcoming dates. Don't edit by hand. -->"
+LAST_EVENT = re.compile(r'<script type="application/json" id="last-event">(.*?)</script>', re.S)
 EVENT_DATA = re.compile(r'<script type="application/ld\+json" id="club-events">.*?</script>', re.S)
 # Which events each listing page shows, so its lastmod moves only when they change.
 LISTINGS = {
@@ -366,6 +368,15 @@ def series_page(events, prices):
     else:
         where = f"<p>{escaped(e['location'])}</p>"
     register = f"{register_html(events, prices)}\n\n    " if rated else ""
+    results = results_pages(e["page"].removeprefix("/"))
+    past = "".join(f'\n        <li><a href="/{path}">{escaped(day)}</a></li>' for path, day in results)
+    past = f"""<section id="results">
+      <h2>Past results</h2>
+      <ul>{past}
+      </ul>
+    </section>
+
+    """ if results else ""
     main = f"""<h1>{escaped(name)}</h1>
     <p>A {"US Chess rated" if rated else "free"} {kind} of the {CLUB} in {escaped(city)}, Colorado.
       Next: <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
@@ -375,7 +386,7 @@ def series_page(events, prices):
       {description_html(e["description"])}
     </section>
 
-    {register}<section id="where">
+    {register}{past}<section id="where">
       <h2>Where</h2>
       {where}
     </section>
@@ -384,6 +395,45 @@ def series_page(events, prices):
     stamp = hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]
     return page_html(title, description, url, main, head=data_script(events),
                      scripts=f'<script src="../../register.js?v={stamp}" defer></script>' if rated else "")
+
+
+def archived_page(e, results):
+    """The page for a club event with no upcoming dates, from its last date. It carries that
+    date as JSON, so later runs can add results pages without the event in events.json."""
+    name = e["title"].removeprefix(CLUB).strip()
+    city = e["place"].get("city") or e["city"] or "Fort Collins"
+    held = "".join(f'\n      <li><a href="/{path}">{escaped(day)}</a></li>' for path, day in results)
+    held = f"""<section id="results">
+      <h2>Results</h2>
+      <ul>{held}
+      </ul>
+    </section>
+
+    """ if results else ""
+    main = f"""<h1>{escaped(name)}</h1>
+    <p>An event of the {CLUB} in {escaped(city)}, Colorado, with no upcoming dates.
+      It was last scheduled for <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
+
+    {held}<section id="details">
+      <h2>Details from {escaped(day_text(e))}</h2>
+      {description_html(e["description"])}
+    </section>
+
+    <p><a href="/events/">Upcoming chess events in Fort Collins and Larimer County</a></p>"""
+    data = json.dumps(e, ensure_ascii=False).replace("</", "<\\/")
+    return page_html(name, f"{name}, a past event of the {CLUB} in {city}, Colorado.", SITE + e["page"], main,
+                     head=f'<script type="application/json" id="last-event">{data}</script>', generated=ARCHIVED)
+
+
+def results_pages(path):
+    """[(results/<name>-<date>/, 'Saturday, October 10, 2026')] for an event page's name, oldest first."""
+    name = path.removeprefix("events/").strip("/")
+    found = []
+    for d in sorted((ROOT / "results").glob(f"{name}-*/")):
+        date = d.name.removeprefix(f"{name}-")
+        if re.fullmatch(r"\d{4}-\d\d-\d\d", date) and (d / "index.html").exists():
+            found.append((f"results/{d.name}/", day_text({"start": f"{date}T12:00:00-06:00"})))
+    return found
 
 
 def page_html(title, description, url, main, head="", scripts="", depth=2, current=None, main_attributes="",
@@ -491,7 +541,7 @@ def sitemap(text, pages, changed, today, date_pages=True):
     """sitemap.xml with the series pages listed after events/, and lastmod moved for the pages that changed."""
     entries = re.findall(r"<url><loc>([^<]+)</loc>(?:<lastmod>([^<]+)</lastmod>)?</url>", text)
     old = dict(entries)
-    static = [loc for loc, _ in entries if not re.fullmatch(re.escape(SITE) + r"/events/[^/]+/", loc)]
+    static = list(dict.fromkeys(loc for loc, _ in entries if not re.fullmatch(re.escape(SITE) + r"/events/[^/]+/", loc)))
     locs = []
     for loc in static:
         locs.append(loc)
@@ -539,28 +589,44 @@ def main(check):
     for path, shows in LISTINGS.items():
         if before is None or [e for e in before if shows(e)] != [e for e in events if shows(e)]:
             changed[path] = True
+    archived = {}
+    for d in sorted((ROOT / "events").iterdir()):
+        path = f"events/{d.name}/"
+        if path in pages or not (d / "index.html").exists():
+            continue
+        text = (d / "index.html").read_text(encoding="utf-8")
+        if ARCHIVED in text:
+            last = json.loads(LAST_EVENT.search(text).group(1))
+        elif GENERATED in text:
+            dated = [e for e in before or [] if e.get("page") == "/" + path]
+            if not dated:
+                sys.exit(f"{path} has left events.json, and the committed events.json doesn't have it either, "
+                         "so it can't be archived. Run this before committing events.json.")
+            last = max(dated, key=lambda e: e["start"])
+        else:
+            continue
+        archived[path] = archived_page(last, results_pages(path))
+        writes[f"{path}index.html"] = archived[path]
+        if text != archived[path]:
+            changed[path] = True
     for page in ROOT.rglob("*.html"):
         if ("node_modules" in page.parts or any(part.startswith(".") for part in page.relative_to(ROOT).parts)
                 or GENERATED in page.read_text(encoding="utf-8")):
             continue
         for link in re.findall(r'href="/(events/[^/"#]+/)', page.read_text(encoding="utf-8")):
-            if link not in pages:
+            if link not in pages and link not in archived:
                 sys.exit(f"{page.relative_to(ROOT)} links to /{link}, but events.json has no club event there. "
                          "Fix the link, or the event's title in Google Calendar.")
-    gone = [d for d in (ROOT / "events").iterdir()
-            if d.is_dir() and f"events/{d.name}/" not in pages and (d / "index.html").exists()
-            and GENERATED in (d / "index.html").read_text(encoding="utf-8")]
 
     shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT, capture_output=True, text=True)
     if not check and shallow.stdout.strip() == "true":
         sys.exit("The git history is shallow, so pages can't be dated; check out with fetch-depth: 0.")
     sitemap_text = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
     today = datetime.now(TZ).date().isoformat()
-    writes["sitemap.xml"] = sitemap(sitemap_text, pages, changed if not check else {}, today, date_pages=not check)
+    writes["sitemap.xml"] = sitemap(sitemap_text, pages | archived, changed if not check else {}, today, date_pages=not check)
 
     stale = [path for path, text in writes.items()
              if not (ROOT / path).exists() or (ROOT / path).read_text(encoding="utf-8") != text]
-    stale += [f"events/{d.name}/" for d in gone]
     if check:
         for path in stale:
             print(f"FAIL {path}: out of date with events.json; run python scripts/build_pages.py")
@@ -569,9 +635,6 @@ def main(check):
         print(f"ok   pages match events.json ({len(club)} club events, {len(pages)} event pages)")
         return
     for path in stale:
-        if path.endswith("/"):
-            shutil.rmtree(ROOT / path)
-            continue
         (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
         (ROOT / path).write_text(writes[path], encoding="utf-8")
     print(f"updated {len(stale)} file(s): {', '.join(stale) or 'none'}")

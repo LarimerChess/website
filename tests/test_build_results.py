@@ -86,8 +86,9 @@ class Standings(unittest.TestCase):
         self.assertIn("Sam Spruce withdrew from round 3.", page)
         self.assertIn('<th scope="col">Round 3</th><th scope="col">Score</th><th scope="col">Median</th>', page)
         self.assertIn('<th scope="col">Opp. cumulative</th><th scope="col">Performance</th>', page)
-        # The withdrawal, what performance means, and the link to all results.
-        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 3)
+        # The withdrawal, what performance means, the event's page, and the link to all results.
+        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 4)
+        self.assertIn('<a href="/events/monday-club-night-at-peak/">About this event</a>', page)
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])

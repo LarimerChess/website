@@ -28,11 +28,13 @@ const entriesShown = () => entriesPage.evaluate(() => ({
   choices: [...document.querySelectorAll("#entries-event option")].map((o) => o.textContent),
   groups: [...document.querySelectorAll("#entries-event optgroup")].map((g) => g.label),
   title: document.querySelector(".entries-all h2")?.textContent, rows: document.querySelectorAll(".entries-all tbody tr").length,
-  register: document.querySelector(".entries-all a.button")?.getAttribute("href"), address: location.search }));
+  register: document.querySelector(".entries-all a.button")?.getAttribute("href"), address: location.search,
+  page: document.querySelector(".entries-all h2 a")?.getAttribute("href") }));
 const entriesOpened = await entriesShown();
 JSON.stringify(entriesOpened.groups) === JSON.stringify(["October 2026", "November 2026"]) && entriesOpened.choices.length === 2
   && entriesOpened.title === "Club Night" && entriesOpened.rows === 1 && entriesOpened.register === "/events/club-night/?date=2026-10-12#register"
-  ? pass("Entries page opens on the soonest event, with its players and a Register link")
+  && entriesOpened.page === "/events/club-night/"
+  ? pass("Entries page opens on the soonest event, with its players, a link to its page, and a Register link")
   : fail(`Entries page on open: ${JSON.stringify(entriesOpened)}`);
 await entriesPage.select("#entries-event", "classic/2026-11-07");
 const entriesChosen = await entriesShown();

@@ -10,7 +10,7 @@
   US Chess tiebreaks, from pairing.js run with node, or a round robin's, as each quad's are;
   an arena, its leaderboard and games. A tournament is rated
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
-  results, and the page links to US Chess's crosstable.
+  results, and the page links to US Chess's crosstable and to the event's page.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
   kept after the Archive tournaments Action clears it from there. Nothing here deletes a page.
   --archives rewrites a cleared tournament's page from the rows its archive.json kept, such as
@@ -322,11 +322,14 @@ def results_page(t):
     performance = ("" if form == "arena" else "\n\n    <p>Performance is the rating that Elo's formula expects to make each player's "
                    "score against rated opponents, not counting forfeits or byes. A perfect or zero score shows 800 above "
                    "or below those opponents' average.</p>")
+    page = t["key"].split("/")[0]
+    about = (f'<p><a href="/events/{page}/">About this event</a></p>\n    '
+             if (ROOT / "events" / page / "index.html").exists() else "")
     main = f"""<h1>{escaped(name)}</h1>
 
     {rated}{body}{performance}
 
-    <p><a href="/results/">All tournament results</a></p>"""
+    {about}<p><a href="/results/">All tournament results</a></p>"""
     return page_html(f"{name} results", description, f"{SITE}/results/{slug(t['key'])}/", main,
                      main_attributes=f' data-results="{fingerprint(t)}"', generated=GENERATED)
 

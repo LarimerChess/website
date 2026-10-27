@@ -135,7 +135,8 @@ function byesButton(cell, event, entry, player) {
 function eventSection(event) {
   const section = document.createElement("section");
   const heading = document.createElement("h2");
-  heading.textContent = event.name;
+  if (event.page) heading.append(Object.assign(document.createElement("a"), { href: event.page, textContent: event.name }));
+  else heading.textContent = event.name;
   const when = document.createElement("p");
   when.textContent = `${dateFormat.format(new Date(event.start))}. `
     + (event.entries.length === 1 ? "1 player registered." : `${event.entries.length || "No"} players registered.`);

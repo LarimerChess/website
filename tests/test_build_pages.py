@@ -192,5 +192,23 @@ class Sitemap(unittest.TestCase):
             self.assertEqual(bp.content_changed("index.html", "2026-10-08"), "2026-10-08")
 
 
+class Archive(unittest.TestCase):
+    def test_a_past_event_keeps_its_details_and_links_its_results(self):
+        page = bp.archived_page(CLASSIC, [("results/first-saturday-classic-2026-11-07/", "Saturday, November 7, 2026")])
+        self.assertIn(bp.ARCHIVED, page)
+        self.assertNotIn(bp.GENERATED, page)
+        self.assertIn('<a href="/results/first-saturday-classic-2026-11-07/">Saturday, November 7, 2026</a>', page)
+        self.assertIn("A monthly US Chess rated tournament", page)
+        self.assertNotIn("register.js", page)
+        self.assertEqual(bp.json.loads(bp.LAST_EVENT.search(page).group(1)), CLASSIC)
+
+    def test_the_sitemap_lists_each_page_once(self):
+        with mock.patch.object(bp, "content_changed", lambda path, today: None):
+            out = bp.sitemap(SITEMAP + "\n<url><loc>https://larimerchess.org/events/</loc></url>",
+                             {"events/first-saturday-classic/": "", "events/old-tournament/": ""}, {}, "2026-10-08")
+        self.assertEqual(out.count("/events/</loc>"), 1)
+        self.assertEqual(out.count("old-tournament/</loc>"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

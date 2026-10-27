@@ -136,6 +136,7 @@ const shownArena = await arenaPairings.evaluate(() => ({
   available: [...document.querySelectorAll(".arena-available-me input")].map((i) => i.checked),
   challenge: [...document.querySelectorAll('[id^="arena-challenge-"]')].map((b) => b.id),
   standings: Boolean(document.querySelector('.pairings-all a[href="/standings/"]')),
+  page: document.querySelector(".pairings-all h2 a")?.getAttribute("href"),
   tables: [...document.querySelectorAll(".pairings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))) }));
 JSON.stringify(shownArena.headings) === JSON.stringify(["Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)", "Games in progress", "Recent results"])
   && shownArena.text.includes("No new games start after 5:30 PM.")
@@ -144,7 +145,8 @@ JSON.stringify(shownArena.headings) === JSON.stringify(["Classical, G/30;+30", "
   && JSON.stringify(shownArena.challenge) === JSON.stringify(["arena-challenge-0-0-22222222", "arena-challenge-0-1-22222222"])
   && JSON.stringify(shownArena.tables[0]) === JSON.stringify([["2", "Blood Pact", "Cal (1500)", "Dee (unrated), Blood Pact"]])
   && JSON.stringify(shownArena.tables[1]) === JSON.stringify([["1", "Classical", "Ann (1900)", "Dee (unrated)", "1–0"]]) && shownArena.standings
-  ? pass("Pairings page shows an arena's sections, who is available in each, its games, and results, and links to its leaderboard")
+  && shownArena.page === "/events/knightmare-arena-classical/"
+  ? pass("Pairings page shows an arena's sections, who is available in each, its games, and results, and links to its page and leaderboard")
   : fail(`Pairings page arena: ${JSON.stringify(shownArena)}`);
 await axeBoth(arenaPairings, "Pairings page with an arena");
 // Ann challenges Ben in Classical, which asks nothing more, then in Blood Pact, which asks who halves their clock.
@@ -194,11 +196,13 @@ await arenaStandings.goto(base + "/standings/", { waitUntil: "networkidle0" });
 const leaderboards = await arenaStandings.evaluate(() => ({
   headings: [...document.querySelectorAll(".standings-all h3, .standings-all h4")].map((h) => h.textContent),
   tables: [...document.querySelectorAll(".standings-all table")].map((t) => [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.textContent))),
+  page: document.querySelector(".standings-all h2 a")?.getAttribute("href"),
   pending: document.querySelector(".standings-all").textContent.includes("1 result the players reported counts here until the TD confirms or corrects it.") }));
 JSON.stringify(leaderboards.headings) === JSON.stringify(["Leaderboard", "By section", "Classical, G/30;+30", "Blood Pact, G/15;+15 against G/30;+30 (not US Chess rated)"])
   && JSON.stringify(leaderboards.tables[0].slice(0, 2)) === JSON.stringify([["1", "Ann", "1900", "5", "2", "2 (Possessed)"], ["2 (tied)", "Ben", "1700", "0", "1", "0"]])
   && leaderboards.tables[0].length === 4 && leaderboards.tables[1][0][3] === "2" && leaderboards.tables[2][0][3] === "3" && leaderboards.pending
-  ? pass("Standings page shows an arena's leaderboard, each section's, and the reports that count") : fail(`Standings page arena: ${JSON.stringify(leaderboards)}`);
+  && leaderboards.page === "/events/knightmare-arena-classical/"
+  ? pass("Standings page shows an arena's leaderboard, each section's, the reports that count, and a link to its page") : fail(`Standings page arena: ${JSON.stringify(leaderboards)}`);
 await axeBoth(arenaStandings, "Standings page with an arena");
 await arenaStandings.close();
 
