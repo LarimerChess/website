@@ -27,9 +27,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-      # Adds each tournament US Chess has rated with the desk's results to ratings.json, and sends
-      # the morning reminders for the rest. A reminder that fails to send fails the run, after the
-      # steps below.
+      # Adds each tournament US Chess has rated with the desk's results to ratings.json, and its days
+      # to rated-dates.json, and sends the morning reminders for the rest. A reminder that fails to
+      # send fails the run, after the steps below.
       - run: node scripts/rating_check.mjs --email
         env:
           LCCC_GMAIL_TOKEN: ${{ secrets.LCCC_GOOGLE_GMAIL_SEND_TOKEN }}
@@ -44,7 +44,7 @@ jobs:
       - name: Commit if changed
         if: success() || failure()
         run: |
-          git add results events sitemap.xml ratings.json
+          git add results events sitemap.xml ratings.json rated-dates.json
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"

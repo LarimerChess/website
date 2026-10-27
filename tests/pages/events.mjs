@@ -1,4 +1,5 @@
 // The events page: its cards, filters, paging, details dialog, and structured data, and each club event's page.
+import { readFileSync } from "node:fs";
 import { axeSource, base, browser, clubEvents, done, events, fail, outside, pass, resultsPages, seriesPages } from "./common.mjs";
 
 const page = await browser.newPage();
@@ -293,6 +294,27 @@ for (const path of resultsPages.filter((p) => p !== "/results/")) {
   const back = await page.$$eval(`#results a[href="${path}"]`, (a) => a.length);
   response.ok() && back === 1 ? pass(`${path} and ${about[0]} link each other`)
     : fail(`${path}'s About this event, ${about[0]}, ${response.ok() ? "doesn't link back" : `answers ${response.status()}`}`);
+}
+
+// A rated tournament shows US Chess's days, as rated-dates.json has them, wherever its date shows: its
+// heading, its row on /results/, and its link on its event's page.
+const ratedDates = JSON.parse(readFileSync(new URL("../../rated-dates.json", import.meta.url), "utf8"));
+await page.goto(base + "/results/", { waitUntil: "domcontentloaded" });
+const listedRows = await page.$$eval(".results-table tbody tr", (rows) => rows.map((r) => ({ href: r.querySelector("a").getAttribute("href"),
+  name: r.querySelector("a").textContent, days: [...r.querySelectorAll("time")].map((t) => t.getAttribute("datetime")),
+  shown: r.cells[0].textContent })));
+for (const [key, { start, end }] of Object.entries(ratedDates)) {
+  const path = `/results/${key.replace("/", "-")}/`;
+  const row = listedRows.find((r) => r.href === path);
+  if (!row) continue;
+  await page.goto(base + path, { waitUntil: "domcontentloaded" });
+  const heading = await page.$eval("h1", (h) => h.textContent);
+  await page.goto(`${base}/events/${key.split("/")[0]}/`, { waitUntil: "domcontentloaded" });
+  const link = await page.$eval(`#results a[href="${path}"]`, (a) => a.textContent).catch(() => null);
+  const days = start === end ? [start] : [start, end];
+  JSON.stringify(row.days) === JSON.stringify(days) && heading === row.name && heading.endsWith(`, ${link}`.replace(/^, \w+day, /, ", "))
+    ? pass(`${path} shows US Chess's days, ${row.shown}, in its heading, on /results/, and on its event's page`)
+    : fail(`${path}: US Chess has ${start} to ${end}; /results/ shows ${JSON.stringify(row)}, the heading ${heading}, the event's page ${link}`);
 }
 
 await done();

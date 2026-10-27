@@ -12,6 +12,9 @@
   an arena, its leaderboard and games. A tournament is rated
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable and to the event's page.
+- A rated tournament's name, which ends in the desk's date, ends in US Chess's days instead,
+  from rated-dates.json, on its page and in the list: Alley Cat Quad #2, October 10–17, 2026.
+  Its slug keeps the desk's date.
 - A tournament set up with the TD desk's New tournament has no calendar event, so build_pages.py
   never gave it an event page. Its first results page makes one, archived as build_pages.py keeps
   a past event's, from what the tournament says: its name, date, format, sections, and time
@@ -37,7 +40,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_pages import CLUB, ROOT, SITE, TZ, archived_page, day_text, escaped, page_html, results_pages  # noqa: E402
+from build_pages import (CLUB, ROOT, SITE, TZ, archived_page, day_text, days_html, days_text, escaped, page_html,  # noqa: E402
+                         rated_dates, results_pages)
 
 GENERATED = "<!-- Written by scripts/build_results.py from the tournament results; don't edit by hand. -->"
 RESULTS = ROOT / "results"
@@ -98,6 +102,15 @@ def date_text(date):
     """'2026-11-07' as 'November 7, 2026', and a month, '2026-10', as 'October 2026'."""
     year, month, *day = date.split("-")
     return f"{MONTHS[int(month) - 1]} {int(day[0])}, {year}" if day else f"{MONTHS[int(month) - 1]} {year}"
+
+
+def dated_name(t, days):
+    """The tournament's name, its closing date as US Chess's days once it has rated it, as days_text."""
+    date = t["key"].split("/")[1]
+    suffix = ", " + (day_text({"start": f"{date}T12:00:00-06:00"}) if len(date) == 10 else date_text(date))
+    if not days or not t["name"].endswith(suffix):
+        return t["name"]
+    return t["name"].removesuffix(suffix) + ", " + days_text(days["start"], days["end"])
 
 
 def pact(value):
@@ -353,9 +366,10 @@ def last_event(t):
             "description": (f"Time control: {t['timeControl']}.\n\n" if one else "") + what}
 
 
-def results_page(t, seeded=()):
-    """seeded: the event pages this run is making, which aren't written yet."""
-    name = t["name"]
+def results_page(t, seeded=(), days=None):
+    """seeded: the event pages this run is making, which aren't written yet. days: the
+    tournament's entry in rated-dates.json."""
+    name = dated_name(t, days)
     form = t.get("format") or "swiss"
     shows = "leaderboard and games" if form == "arena" else "standings"
     kind = kind_text(t)
@@ -392,7 +406,12 @@ def listed():
 
 def index_page():
     pages = listed()
-    rows = "\n".join(f'          <tr><td><time datetime="{date}">{date_text(date)}</time></td><td><a href="/{path}">{name}</a></td></tr>'
+    dates = rated_dates(ROOT)
+
+    def when(path, date):
+        days = dates.get(path.removeprefix("results/").removesuffix(f"-{date}/") + f"/{date}")
+        return days_html(days["start"], days["end"], weekday=False) if days else f'<time datetime="{date}">{date_text(date)}</time>'
+    rows = "\n".join(f'          <tr><td>{when(path, date)}</td><td><a href="/{path}">{name}</a></td></tr>'
                      for path, name, date in pages)
     # results.js shows 20 rows a page; without it, every row shows.
     body = f"""<table class="entries results-table">
@@ -487,6 +506,7 @@ def main(args):
         else:
             tournaments = fetch(endpoint()) if endpoint() else []
         ratings = json.loads((ROOT / "ratings.json").read_text(encoding="utf-8"))
+        dates = rated_dates(ROOT)
         if "--archives" in args:
             live = {t["key"] for t in tournaments}
             tournaments += [t for t in (from_archive(json.loads(f.read_text(encoding="utf-8")))
@@ -508,13 +528,13 @@ def main(args):
             if not (ROOT / "events" / page / "index.html").exists() and last_event(t):
                 seeded[page] = last_event(t)
         for t in shown:
-            writes[f"results/{slug(t['key'])}/index.html"] = results_page(t, seeded)
+            writes[f"results/{slug(t['key'])}/index.html"] = results_page(t, seeded, dates.get(t["key"]))
         for path, text in writes.items():
             (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
             (ROOT / path).write_text(text, encoding="utf-8")
         for page, e in seeded.items():
             path = f"events/{page}/index.html"
-            writes[path] = archived_page(e, results_pages(f"events/{page}/", ROOT))
+            writes[path] = archived_page(e, results_pages(f"events/{page}/", ROOT), dates.get(f"{page}/{e['start'][:10]}"))
             (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
             (ROOT / path).write_text(writes[path], encoding="utf-8")
     today = datetime.now(TZ).date().isoformat()

@@ -95,6 +95,19 @@ class Standings(unittest.TestCase):
         self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
         self.assertNotIn("ratings.uschess.org", page)
 
+    def test_dated_by_us_chess(self):
+        days = {"start": "2026-11-01", "end": "2026-11-07"}
+        self.assertEqual(br.dated_name(SATURDAY, days), "First Saturday Classic, November 1–7, 2026")
+        self.assertEqual(br.dated_name(SATURDAY, None), SATURDAY["name"])
+        self.assertEqual(br.dated_name(SATURDAY, {"start": "2026-11-07", "end": "2026-11-07"}), SATURDAY["name"])
+        self.assertEqual(br.dated_name(CLUB_NIGHT, {"start": "2026-10-05", "end": "2026-10-26"}),
+                         "Monday Club Night at Peak, October 5–26, 2026")
+        page = br.results_page(SATURDAY, days=days)
+        self.assertIn("<title>First Saturday Classic, November 1–7, 2026 results</title>", page)
+        self.assertIn("<h1>First Saturday Classic, November 1–7, 2026</h1>", page)
+        self.assertIn('content="Final standings of the First Saturday Classic, November 1–7, 2026, a US Chess', page)
+        self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/first-saturday-classic-2026-11-07/">', page)
+
     def test_links_the_rated_event(self):
         self.assertIn('US Chess rated it as event <a href="https://ratings.uschess.org/event/202611070123"',
                       br.results_page(SATURDAY))
@@ -268,6 +281,24 @@ class Build(unittest.TestCase):
             br.main(["--check"])
         (self.root / "events/desk-quad/index.html").unlink()
         self.assertIn("results/desk-quad-2027-01-23/: events/desk-quad/ has no page", self.check_output())
+
+    def test_us_chess_days_on_the_page_the_list_and_the_event_page(self):
+        desk = dict(QUAD, key="desk-quad/2027-01-23", event="desk-quad", name="Desk Quad, Saturday, January 23, 2027")
+        (self.root / "rated-dates.json").write_text(
+            '{"desk-quad/2027-01-23": {"start": "2027-01-16", "end": "2027-01-23"}}\n', encoding="utf-8")
+        self.run_with([desk, SATURDAY])
+        page = (self.root / "results/desk-quad-2027-01-23/index.html").read_text(encoding="utf-8")
+        self.assertIn("<h1>Desk Quad, January 16–23, 2027</h1>", page)
+        index = (self.root / "results/index.html").read_text(encoding="utf-8")
+        self.assertIn('<tr><td><time datetime="2027-01-16">January 16</time>–&#8288;<time datetime="2027-01-23">23, 2027</time></td>'
+                      '<td><a href="/results/desk-quad-2027-01-23/">Desk Quad, January 16–23, 2027</a></td></tr>', index)
+        self.assertIn('<tr><td><time datetime="2026-11-07">November 7, 2026</time></td>'
+                      '<td><a href="/results/first-saturday-classic-2026-11-07/">First Saturday Classic, Saturday, November 7, 2026</a>',
+                      index)
+        event = (self.root / "events/desk-quad/index.html").read_text(encoding="utf-8")
+        self.assertIn('<a href="/results/desk-quad-2027-01-23/">January 16–23, 2027</a>', event)
+        self.assertIn("<h2>Details from January 16–23, 2027</h2>", event)
+        self.assertEqual(json.loads(LAST_EVENT.search(event).group(1))["start"], "2027-01-23T00:00:00-07:00")
 
     def test_a_club_nights_month_gets_no_page_made_up(self):
         self.run_with([CLUB_NIGHT])

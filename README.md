@@ -43,7 +43,7 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 | Docs repo is private | hourly | fails if the docs repo can be seen | |
 | Check site | each push, and weekly for external links | the checks below | |
 
-Update calendar fails, naming the event, when an event's calendar metadata is missing or invalid, and leaves events.json alone. A tournament goes from Results to Archive tournaments: once US Chess rates it, rating_check.mjs adds it to ratings.json, the record of what US Chess has rated; build_results.py writes its page; and the archive commits its rows beside the page, then clears them from the spreadsheet.
+Update calendar fails, naming the event, when an event's calendar metadata is missing or invalid, and leaves events.json alone. A tournament goes from Results to Archive tournaments: once US Chess rates it, rating_check.mjs adds it to ratings.json, the record of what US Chess has rated, and US Chess's first and last day for it to rated-dates.json, which its pages show; build_results.py writes its page; and the archive commits its rows beside the page, then clears them from the spreadsheet.
 
 The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, --firebase, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
 
@@ -110,7 +110,7 @@ These need your values too:
 | Each club event's fees by age, and US Chess's rating charge | prices.json, by event page name; the charge under fees.uschess |
 | The time zone, if not Colorado's | every America/Denver: grep -rn America/Denver --exclude-dir=node_modules . |
 
-Then set ratings.json to {}, and delete the club's minutes, results pages, and event pages; the Actions rewrite events.json and the event pages from your calendars.
+Then set ratings.json and rated-dates.json to {}, and delete the club's minutes, results pages, and event pages; the Actions rewrite events.json and the event pages from your calendars.
 
 ### 3. Google
 

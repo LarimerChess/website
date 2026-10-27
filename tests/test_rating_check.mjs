@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { check, ratedEvent, endedOn, USChess } from "../scripts/rating_check.mjs";
+import { check, ratedDates, ratedEvent, endedOn, USChess } from "../scripts/rating_check.mjs";
 
 const fixtures = JSON.parse(readFileSync(new URL("fixtures/tournaments.json", import.meta.url), "utf8")).tournaments;
 const US_CHESS = new USChess(new URL("fixtures/uschess.json", import.meta.url).pathname);
@@ -15,8 +15,19 @@ function saturday(changes = {}) {
   return { ...t, status: "running", td: "31847334", ...changes };
 }
 
-test("the same results make it rated", async () => {
-  assert.deepEqual(await check(saturday(), "2026-11-08 10:17", US_CHESS, EMAILS, quiet), { rated: "202611070123" });
+test("the same results make it rated, with US Chess's days", async () => {
+  assert.deepEqual(await check(saturday(), "2026-11-08 10:17", US_CHESS, EMAILS, quiet),
+    { rated: "202611070123", dates: { start: "2026-11-07", end: "2026-11-07" } });
+});
+
+test("an event US Chess has starting before the desk's date is found, and its days are US Chess's", async () => {
+  const uschess = new USChess(new URL("fixtures/uschess.json", import.meta.url).pathname);
+  const [event] = uschess.data.events;
+  uschess.data.events = [{ ...event, startDate: "2026-10-31", endDate: "2026-11-07" }, ...uschess.data.events.slice(1)];
+  assert.deepEqual(await check(saturday(), "2026-11-08 10:17", uschess, EMAILS, quiet),
+    { rated: "202611070123", dates: { start: "2026-10-31", end: "2026-11-07" } });
+  assert.deepEqual(await ratedDates("first-saturday-classic/2026-11-07", "202611070123", uschess), { start: "2026-10-31", end: "2026-11-07" });
+  assert.equal(await ratedDates("first-saturday-classic/2026-11-07", "202611079999", uschess), null);
 });
 
 test("a different result, a missing one, and a missing player are each named", async () => {

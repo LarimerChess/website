@@ -81,6 +81,18 @@ class Dates(unittest.TestCase):
         self.assertEqual(bp.when_text(morning), "Saturday, November 7, 2026, 10:00 – 11:30 AM")
         self.assertEqual(bp.when_text({**CLASSIC, "allDay": True}), "Saturday, November 7, 2026")
 
+    def test_us_chess_days(self):
+        self.assertEqual(bp.days_text("2026-10-17", "2026-10-17"), "Saturday, October 17, 2026")
+        self.assertEqual(bp.days_text("2026-10-17", "2026-10-17", weekday=False), "October 17, 2026")
+        self.assertEqual(bp.days_text("2026-10-10", "2026-10-17"), "October 10–17, 2026")
+        self.assertEqual(bp.days_text("2026-09-26", "2026-10-03"), "September 26 – October 3, 2026")
+        self.assertEqual(bp.days_text("2026-12-30", "2027-01-02"), "December 30, 2026 – January 2, 2027")
+        self.assertEqual(bp.days_html("2026-10-10", "2026-10-17"),
+                         '<time datetime="2026-10-10">October 10</time>–&#8288;<time datetime="2026-10-17">17, 2026</time>')
+        self.assertEqual(bp.days_html("2026-09-26", "2026-10-03"),
+                         '<time datetime="2026-09-26">September 26</time> – <time datetime="2026-10-03">October 3, 2026</time>')
+        self.assertEqual(bp.days_html("2026-10-10", "2026-10-10", weekday=False), '<time datetime="2026-10-10">October 10, 2026</time>')
+
 
 class Description(unittest.TestCase):
     def test_labels_lists_and_links(self):
@@ -203,6 +215,17 @@ class Archive(unittest.TestCase):
         self.assertNotIn("register.js", page)
         self.assertEqual(bp.json.loads(bp.LAST_EVENT.search(page).group(1)), CLASSIC)
 
+    def test_a_past_event_rated_over_other_days_shows_us_chess_days(self):
+        quad = {**CLASSIC, "start": "2026-10-17T00:00:00-06:00", "end": "2026-10-17T00:00:00-06:00", "allDay": True}
+        page = bp.archived_page(quad, [], {"start": "2026-10-10", "end": "2026-10-17"})
+        self.assertIn('It was last scheduled for <time datetime="2026-10-10">October 10</time>–&#8288;'
+                      '<time datetime="2026-10-17">17, 2026</time>.', page)
+        self.assertIn("<h2>Details from October 10–17, 2026</h2>", page)
+        self.assertEqual(bp.json.loads(bp.LAST_EVENT.search(page).group(1)), quad)
+        # Rated on its own day, it shows the calendar's date and times as before.
+        same = bp.archived_page(CLASSIC, [], {"start": "2026-11-07", "end": "2026-11-07"})
+        self.assertEqual(same, bp.archived_page(CLASSIC, []))
+
     def test_results_pages_by_date_and_month_but_not_a_longer_name(self):
         with tempfile.TemporaryDirectory() as root:
             for name in ("quad-2026-10-10", "quad-2-2026-10-17", "night-2026-10", "night-2026-11"):
@@ -212,6 +235,9 @@ class Archive(unittest.TestCase):
             self.assertEqual(bp.results_pages("events/quad/", Path(root)),
                              [("results/quad-2026-10-10/", "Saturday, October 10, 2026")])
             self.assertEqual(bp.results_pages("events/night/", Path(root)), [("results/night-2026-10/", "October 2026")])
+            (Path(root) / "rated-dates.json").write_text(
+                '{"quad-2/2026-10-17": {"start": "2026-10-10", "end": "2026-10-17"}}', encoding="utf-8")
+            self.assertEqual(bp.results_pages("events/quad-2/", Path(root)), [("results/quad-2-2026-10-17/", "October 10–17, 2026")])
 
     def test_the_sitemap_lists_each_page_once(self):
         with mock.patch.object(bp, "content_changed", lambda path, today: None):

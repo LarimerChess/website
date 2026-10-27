@@ -9,6 +9,10 @@
   US Chess rated, and its Event data. A page whose event has left events.json is
   archived, not deleted, so links to it keep working: it shows the last date's details and
   links to the event's results pages, which a live page lists too.
+- Once US Chess has rated a tournament, its days come from rated-dates.json, which
+  scripts/rating_check.mjs keeps: the results links show them, and so does an archived page
+  whose last date US Chess rated on other days, such as October 10–17, 2026 for a tournament
+  the desk keyed to its last day.
 - sitemap.xml lists those pages, and gives each page that events.json fills a lastmod:
   the day what it shows last changed. Every other page's lastmod is the day of the last
   commit that changed its text, or today if the working copy changes it; the styles and
@@ -61,6 +65,36 @@ def day_text(e):
     """'Saturday, November 7, 2026'"""
     start = datetime.fromisoformat(e["start"]).astimezone(TZ)
     return f"{start:%A}, {start:%B} {start.day}, {start.year}"
+
+
+def days_text(first, last, weekday=True):
+    """US Chess's days for a tournament, 'YYYY-MM-DD' each: one as day_text, or without its weekday,
+    'October 10, 2026'; more as 'October 10–17, 2026', 'September 26 – October 3, 2026', or
+    'December 30, 2026 – January 2, 2027'."""
+    a, b = (datetime.strptime(d, "%Y-%m-%d") for d in (first, last))
+    if a == b:
+        return f"{a:%A}, {a:%B} {a.day}, {a.year}" if weekday else f"{a:%B} {a.day}, {a.year}"
+    if a.year != b.year:
+        return f"{a:%B} {a.day}, {a.year} – {b:%B} {b.day}, {b.year}"
+    return f"{a:%B} {a.day}–{b.day}, {a.year}" if a.month == b.month else f"{a:%B} {a.day} – {b:%B} {b.day}, {a.year}"
+
+
+def days_html(first, last, weekday=True):
+    """days_text in a <time> for each day it names."""
+    text = escaped(days_text(first, last, weekday))
+    if first == last:
+        return f'<time datetime="{first}">{text}</time>'
+    dash = text.index("–")
+    # A word joiner keeps '10–17' on one line, as browsers break after a dash.
+    before, after = (" ", " ") if text[dash - 1] == " " else ("", "&#8288;")
+    return (f'<time datetime="{first}">{text[:dash].rstrip()}</time>{before}–{after}'
+            f'<time datetime="{last}">{text[dash + 1:].lstrip()}</time>')
+
+
+def rated_dates(root=None):
+    """{key: {"start", "end"}}, each rated tournament's first and last day as US Chess has them."""
+    file = (root or ROOT) / "rated-dates.json"
+    return json.loads(file.read_text(encoding="utf-8")) if file.exists() else {}
 
 
 def when_text(e):
@@ -397,10 +431,17 @@ def series_page(events, prices):
                      scripts=f'<script src="../../register.js?v={stamp}" defer></script>' if rated else "")
 
 
-def archived_page(e, results):
+def archived_page(e, results, days=None):
     """The page for a club event with no upcoming dates, from its last date. It carries that
-    date as JSON, so later runs can add results pages without the event in events.json."""
+    date as JSON, so later runs can add results pages without the event in events.json.
+    days: rated-dates.json's entry for the tournament on that date, shown in place of the date
+    when US Chess rated it on other days."""
     name = e["title"].removeprefix(CLUB).strip()
+    day = datetime.fromisoformat(e["start"]).astimezone(TZ).date().isoformat()
+    if days and (days["start"], days["end"]) != (day, day):
+        when, held_on = days_html(days["start"], days["end"]), days_text(days["start"], days["end"])
+    else:
+        when, held_on = f'<time datetime="{e["start"]}">{escaped(when_text(e))}</time>', day_text(e)
     city = e["place"].get("city") or e["city"] or "Fort Collins"
     held = "".join(f'\n      <li><a href="/{path}">{escaped(day)}</a></li>' for path, day in results)
     held = f"""<section id="results">
@@ -412,10 +453,10 @@ def archived_page(e, results):
     """ if results else ""
     main = f"""<h1>{escaped(name)}</h1>
     <p>An event of the {CLUB} in {escaped(city)}, Colorado, with no upcoming dates.
-      It was last scheduled for <time datetime="{e["start"]}">{escaped(when_text(e))}</time>.</p>
+      It was last scheduled for {when}.</p>
 
     {held}<section id="details">
-      <h2>Details from {escaped(day_text(e))}</h2>
+      <h2>Details from {escaped(held_on)}</h2>
       {description_html(e["description"])}
     </section>
 
@@ -427,14 +468,18 @@ def archived_page(e, results):
 
 def results_pages(path, root=None):
     """[(results/<name>-<date>/, 'Saturday, October 10, 2026')] for an event page's name, oldest first;
-    a club night's month is 'October 2026'."""
+    a club night's month is 'October 2026'. A rated tournament's are US Chess's days, as days_text."""
     name = path.removeprefix("events/").strip("/")
+    dates = rated_dates(root)
     found = []
     for d in sorted((root or ROOT).joinpath("results").glob(f"{name}-*/")):
         date = d.name.removeprefix(f"{name}-")
         if not (d / "index.html").exists():
             continue
-        if re.fullmatch(r"\d{4}-\d\d-\d\d", date):
+        if f"{name}/{date}" in dates:
+            days = dates[f"{name}/{date}"]
+            found.append((f"results/{d.name}/", days_text(days["start"], days["end"])))
+        elif re.fullmatch(r"\d{4}-\d\d-\d\d", date):
             found.append((f"results/{d.name}/", day_text({"start": f"{date}T12:00:00-06:00"})))
         elif re.fullmatch(r"\d{4}-\d\d", date):
             found.append((f"results/{d.name}/", f"{datetime.strptime(date, '%Y-%m'):%B %Y}"))
@@ -595,6 +640,7 @@ def main(check):
         if before is None or [e for e in before if shows(e)] != [e for e in events if shows(e)]:
             changed[path] = True
     archived = {}
+    dates = rated_dates()
     for d in sorted((ROOT / "events").iterdir()):
         path = f"events/{d.name}/"
         if path in pages or not (d / "index.html").exists():
@@ -610,7 +656,8 @@ def main(check):
             last = max(dated, key=lambda e: e["start"])
         else:
             continue
-        archived[path] = archived_page(last, results_pages(path))
+        day = datetime.fromisoformat(last["start"]).astimezone(TZ).date().isoformat()
+        archived[path] = archived_page(last, results_pages(path), dates.get(f"{d.name}/{day}"))
         writes[f"{path}index.html"] = archived[path]
         if text != archived[path]:
             changed[path] = True

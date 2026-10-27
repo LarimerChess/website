@@ -12,6 +12,9 @@
 //      round by round. When nothing differs, ratings.json gets { key: US Chess event ID }. The
 //      registration script reads it to refuse desk changes and show the tournament as rated; the
 //      Results Action then writes its page, and the Archive tournaments Action takes it from there.
+//      rated-dates.json gets { key: { start, end } }, the event's first and last day as US Chess
+//      has them, which the results and event pages show; a rated tournament missing from it, such
+//      as one rated before it was kept, gets its dates from its event in the affiliate's list.
 //   3. Otherwise, in the 9:00 AM run each day from 24 hours after the day play ended, it emails the
 //      tournament's chief TD (the TD the desk started it with, by US Chess ID in LCCC_TD_EMAILS, or
 //      locally ~/.config/lccc/td-emails.json) and the President with what US Chess is missing or
@@ -31,6 +34,7 @@ const Pairing = require("../pairing.js");
 const Arena = require("../arena.js");
 const ROOT = new URL("..", import.meta.url).pathname;
 const RATINGS = `${ROOT}ratings.json`;
+const DATES = `${ROOT}rated-dates.json`;
 const API = "https://ratings-api.uschess.org/api/v1";
 const AFFILIATE = JSON.parse(readFileSync(`${ROOT}scripts/tds.json`, "utf8")).affiliate;
 const PRESIDENT = "president@larimerchess.org";
@@ -207,8 +211,9 @@ export class USChess {
     this.data = fixture ? JSON.parse(readFileSync(fixture, "utf8")) : null;
   }
 
+  /** The affiliate's rated events with any day in first to last, as US Chess lists them. */
   async events(first, last) {
-    if (this.data) return this.data.events.filter((e) => first <= e.startDate && e.startDate <= last);
+    if (this.data) return this.data.events.filter((e) => e.startDate <= last && first <= (e.endDate || e.startDate));
     return paged(`/affiliates/${AFFILIATE}/events`, { FromDate: first, ToDate: last });
   }
 
@@ -232,6 +237,14 @@ export async function ratedEvent(t, uschess) {
     if (shared && (!best || shared > best.shared)) best = { shared, event, standings };
   }
   return best && { event: best.event, found: differences(t, best.standings) };
+}
+
+const datesOf = (event) => ({ start: event.startDate, end: event.endDate || event.startDate });
+
+/** US Chess's dates for the rated event the key's tournament was recorded as, or null if its list doesn't have it. */
+export async function ratedDates(key, id, uschess) {
+  const event = (await uschess.events(...daysOf(key))).find((e) => e.id === id);
+  return event ? datesOf(event) : null;
 }
 
 // The reminder
@@ -280,7 +293,8 @@ async function sendEmail(to, subject, body) {
   if (!sent.ok) throw new Error(`Gmail answered ${sent.status}`);
 }
 
-/** What to do about one tournament: { rated: event ID } once US Chess matches, or { remind: { to, subject, body } }, or {}. */
+/** What to do about one tournament: { rated: event ID, dates: { start, end } } once US Chess matches, or
+ *  { remind: { to, subject, body } }, or {}. */
 export async function check(t, now, uschess, tdEmails, log = console.log) {
   const ended = endedOn(t, now);
   if (!ended) {
@@ -290,7 +304,7 @@ export async function check(t, now, uschess, tdEmails, log = console.log) {
   const match = await ratedEvent(t, uschess);
   if (match && !match.found.length) {
     log(`${t.key}: rated by US Chess as event ${match.event.id}, with the same results`);
-    return { rated: match.event.id };
+    return { rated: match.event.id, dates: datesOf(match.event) };
   }
   log(`${t.key}: ${match ? `US Chess's event ${match.event.id} differs in ${match.found.length} place(s)` : "not rated by US Chess yet"}`);
   const due = now >= `${nextDay(nextDay(ended))} 00:00` && Number(now.slice(11, 13)) === REMINDER_HOUR;
@@ -311,6 +325,7 @@ async function main(args) {
     tournaments = (await (await fetch(`${endpoint}?tournaments=current`)).json()).tournaments;
   }
   const ratings = JSON.parse(readFileSync(RATINGS, "utf8"));
+  const dates = existsSync(DATES) ? JSON.parse(readFileSync(DATES, "utf8")) : {};
   const tdEmails = JSON.parse(setting("LCCC_TD_EMAILS", "td-emails.json") || "{}");
   const uschess = new USChess(value("--uschess"));
   const open = tournaments.filter((t) => !ratings[t.key] && t.status !== "rated");
@@ -318,7 +333,7 @@ async function main(args) {
   let failed = false;
   for (const t of open) {
     const done = await check(t, now, uschess, tdEmails);
-    if (done.rated) ratings[t.key] = done.rated;
+    if (done.rated) [ratings[t.key], dates[t.key]] = [done.rated, done.dates];
     if (!done.remind) continue;
     const who = done.remind.to.includes(PRESIDENT) && done.remind.to.length > 1 ? "the chief TD and the President" : "the President";
     if (!args.includes("--email")) {
@@ -333,8 +348,15 @@ async function main(args) {
       console.log(`::error::${t.key}: the reminder wasn't sent: ${error.message}`);
     }
   }
-  const sorted = Object.fromEntries(Object.entries(ratings).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(RATINGS, `${JSON.stringify(sorted, null, 2)}\n`);
+  for (const [key, id] of Object.entries(ratings)) {
+    if (dates[key]) continue;
+    const found = await ratedDates(key, id, uschess);
+    if (found) dates[key] = found;
+    console.log(`${key}: ${found ? `US Chess has event ${id} from ${found.start} to ${found.end}` : `US Chess doesn't list event ${id} in its dates`}`);
+  }
+  const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
+  writeFileSync(RATINGS, `${JSON.stringify(sorted(ratings), null, 2)}\n`);
+  writeFileSync(DATES, `${JSON.stringify(sorted(dates), null, 2)}\n`);
   if (failed) process.exit(1);
 }
 
