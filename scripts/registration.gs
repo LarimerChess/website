@@ -1583,8 +1583,8 @@ const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
 // each event's page announces, in the rounds that offer them (offersHalfBye), and in the last round only
 // when asked for before round 1 is posted (22C4), as the page also announces. Full-point byes (28L): one
 // in a section's round, never a second for a player (28L3), and none in a round robin or an extra games section
-// (28M4). Which player gets the full point is up to the scores (28L2, 28L4), which the desk checks with
-// pairing.js before saving.
+// (28M4). Which player gets the full point by the scores (28L2, 28L4) is the TD's choice (29E7), which the desk
+// notes from pairing.js before saving.
 const HALF_BYE_LIMIT = 1;
 const halfRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "half" : Number(r["Bye points"]) === BYE_KINDS.half);
 const fullRow = (r) => !r.Black && (r["Bye kind"] ? r["Bye kind"] === "bye" : Number(r["Bye points"]) === BYE_KINDS.bye);

@@ -319,8 +319,10 @@ async function moveTo(p, section) {
 
 // The draft editor. A draft is { number, posted, sections: [{ section, name, games, byes, waiting }] }:
 // posted when it re-pairs a posted round, and waiting the players not yet paired. Choosing a
-// player for a seat swaps them with whoever had it, so nobody is lost or doubled; removing a
-// board leaves its players not yet paired, and Save and Post wait until everyone is placed.
+// player for a seat swaps them with whoever had it, so nobody is lost or doubled, except that a
+// player displaced by one with a bye has the round unplayed: a bye is the player's own, asked for
+// or given by the rules (28L), not the seat's. Removing a board leaves its players not yet paired,
+// and Save and Post wait until everyone is placed.
 
 /** A saved or posted round as a draft, copied, so nothing changes until it is saved. */
 function draftFrom(number) {
@@ -354,7 +356,7 @@ function seat(s, id, g, side) {
   const bye = s.byes.find((b) => b.id === id);
   const at = s.waiting.indexOf(id);
   if (game) game[game.white === id ? "white" : "black"] = old;
-  else if (bye) bye.id = old;
+  else if (bye) Object.assign(bye, { id: old, kind: "unplayed", points: Pairing.BYE_KINDS.unplayed });
   else if (at >= 0) s.waiting[at] = old;
   else s.waiting.push(old);
   g[side] = id;
@@ -438,7 +440,8 @@ function renderDraft() {
   runEditButtons.hidden = false;
   runResultButtons.hidden = true;
   runCancel.hidden = !draft.posted;
-  runPairingsHint.textContent = "Change any seat with its menu: the player you choose swaps places with the one there. The director is "
+  runPairingsHint.textContent = "Change any seat with its menu: the player you choose swaps places with the one there, who has the round "
+    + "unplayed if the one chosen had a bye. The director is "
     + "responsible for the pairings (29E7). Save keeps them private; Post shows them on the Pairings page"
     + (draft.posted ? ", in place of the round posted, and clears any results players reported for it." : ".");
   const several = severalSections();
@@ -525,10 +528,14 @@ function editSection(s, n, several) {
   } else {
     out.push(Object.assign(document.createElement("p"), { textContent: "Everyone has a game." }));
   }
-  if (s.notes?.length) {
-    const notes = document.createElement("ul");
-    notes.append(...s.notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
-    out.push(notes);
+  const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
+  const byeNote = part && Pairing.fullByeNote(part, draft.number, s.games, s.byes);
+  const notes = [...(s.notes || []), ...(byeNote ? [`${byeNote} Posting gives it as chosen (29E7).`] : [])];
+  if (notes.length) {
+    const list = document.createElement("ul");
+    list.className = "run-notes";
+    list.append(...notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
+    out.push(list);
   }
 
   const tools = document.createElement("div");

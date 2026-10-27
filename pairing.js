@@ -408,8 +408,9 @@
    * number the tournament's round, games and byes the round's in s, last the section's last round, and halfByes the
    * tournament's { limit, everyRound }. Half-point byes (22C): in a Swiss section that isn't an extra games one, in
    * a round that offers them, up to the limit with those asked for, and in the last round only when asked for before
-   * round 1 (22C4). Full-point byes (28L): only the odd player's, none in a round robin or an extra games section (28M4),
-   * and to the player 28L2 to 28L4 choose. registration.gs refuses the same, except the choice, which needs the scores.
+   * round 1 (22C4). Full-point byes (28L): only the odd player's, one per player (28L3), and none in a round robin or
+   * an extra games section (28M4). registration.gs refuses the same. Who has it by the scores is the director's choice
+   * (29E7), which fullByeNote checks.
    */
   function byeProblems(s, number, games, byes, last, halfByes) {
     const own = number - s.first + 1;
@@ -438,13 +439,20 @@
       problems.push(`${s.extra ? "An extra games section gives no full-point bye (28M4)" : "A round robin gives no full-point bye"}; make ${name(full[0].id)}'s round unplayed.`);
     } else if (full.length > 1) {
       problems.push(`${full.length} full-point byes: only the odd player has one (28L1).`);
-      for (const b of full) if (info.get(b.id)?.hadFullBye) problems.push(`${name(b.id)} has had a full-point bye already, and 28L3 allows one.`);
-    } else if (full.length) {
-      const playing = [...games.flatMap((g) => [g.white, g.black]), full[0].id].map((id) => info.get(id)).filter(Boolean);
-      const problem = info.get(full[0].id) ? fullByeProblem(info.get(full[0].id), playing) : "";
-      if (problem) problems.push(problem);
     }
+    for (const b of full) if (info.get(b.id)?.hadFullBye) problems.push(`${name(b.id)} has had a full-point bye already, and 28L3 allows one.`);
     return problems;
+  }
+
+  /** Where a round's one full-point bye in a Swiss section goes against 28L2 to 28L4, as fullByeProblem says, or "";
+   *  a second for the player is byeProblems'. */
+  function fullByeNote(s, number, games, byes) {
+    const full = byes.filter((x) => byeKind(x) === "bye");
+    if (full.length !== 1 || roundRobin(s) || s.extra) return "";
+    const info = histories({ players: s.players, rounds: s.rounds.slice(0, number - s.first) });
+    const playing = [...games.flatMap((g) => [g.white, g.black]), full[0].id].map((id) => info.get(id)).filter(Boolean);
+    const p = info.get(full[0].id);
+    return p && !p.hadFullBye ? fullByeProblem(p, playing) : "";
   }
 
   /** 28J: round one. Upper half against lower half by rating, colors alternating down from the coin. */
@@ -943,7 +951,7 @@
   }
 
   const Pairing = { BYE_KINDS, byeKind, pairRound, standings, roundByRound, roundCells, ratingEstimates, specialRating, standardRating, pairQuadRound, quadStandings, roundRobin, roundRobinTable, roundRobinRounds, pairRoundRobin, roundRobinStandings, sections, playsIn, pairSections, placeIn, mayEnter,
-    offersHalfBye, byeProblems, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
+    offersHalfBye, byeProblems, fullByeNote, QUAD_TABLE, dueColor, assignColors, histories, POINTS };
   if (typeof module !== "undefined" && module.exports) module.exports = Pairing;
   else root.Pairing = Pairing;
 })(typeof window !== "undefined" ? window : globalThis);

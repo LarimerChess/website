@@ -79,8 +79,8 @@ await editPage.select('select[aria-label="Board 1 white"]', "22222222");
 const edited = await draftShown(editPage);
 JSON.stringify(added.games) === JSON.stringify([["1", "33333333", "11111111", ""], ["2", "44444444", "22222222", ""]]) && added.problems.length === 0
   && JSON.stringify(edited.games) === JSON.stringify([["1", "22222222", "11111111", ""]])
-  && JSON.stringify(edited.off) === JSON.stringify([["Cal (1500)", "half"], ["Dee (1300)", "bye"]]) && edited.problems.length === 0
-  ? pass("TD desk adds a board, moves a player out of a game to a bye, and seats a player from a bye in another's place")
+  && JSON.stringify(edited.off) === JSON.stringify([["Cal (1500)", "unplayed"], ["Dee (1300)", "bye"]]) && edited.problems.length === 0
+  ? pass("TD desk adds a board, moves a player out of a game to a bye, and seats a player from a bye, leaving the one displaced unplayed")
   : fail(`TD desk draft edits: ${JSON.stringify({ added, edited })}`);
 await axeBoth(editPage, "TD desk editing a draft");
 await fitsPhone(editPage, "TD desk editing a draft");
@@ -88,9 +88,34 @@ await press(editPage, ".run-post");
 await editPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
 const editedRound = editDesk.calls.find((c) => c.action === "round") || {};
 editedRound.games === JSON.stringify([{ board: 1, white: "22222222", black: "11111111", section: "", result: "" }])
-  && editedRound.byes === JSON.stringify([{ id: "44444444", points: 1, kind: "bye", section: "" }, { id: "33333333", points: 0.5, kind: "half", section: "" }])
+  && editedRound.byes === JSON.stringify([{ id: "44444444", points: 1, kind: "bye", section: "" }, { id: "33333333", points: 0, kind: "unplayed", section: "" }])
   ? pass("TD desk posts the edited pairings") : fail(`TD desk edited round: ${JSON.stringify(editedRound)}`);
 await editPage.close();
+
+// Changing a posted round: Eve, who had the full-point bye, plays Cal in Ann's place, leaving Ann's round unplayed;
+// the TD gives Ann the bye, which the rules would give Eve (28L2), and it posts with a note (29E7).
+const byeDesk = deskState([{ games: [{ board: 1, white: "11111111", black: "33333333", result: "", section: "" },
+  { board: 2, white: "22222222", black: "44444444", result: "", section: "" }],
+byes: [{ id: "55555555", points: 1, kind: "bye", section: "" }], out: [], posted: true }]);
+byeDesk.held.players = sixPlayers.slice(0, 5);
+const byeChoicePage = await mocked("/td/ choosing the full-point bye", byeDesk.answer);
+await signIn(byeChoicePage);
+await byeChoicePage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+await press(byeChoicePage, ".run-edit");
+await byeChoicePage.select('select[aria-label="Board 1 white"]', "55555555");
+const displaced = await draftShown(byeChoicePage);
+await byeChoicePage.select('select[aria-label="Ann (1900) this round"]', "bye");
+const chosen = { ...await draftShown(byeChoicePage),
+  notes: await byeChoicePage.$$eval(".run-notes li", (items) => items.map((li) => li.textContent)) };
+await press(byeChoicePage, ".run-post");
+await byeChoicePage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const chosenRound = byeDesk.calls.find((c) => c.action === "round") || {};
+JSON.stringify(displaced.off) === JSON.stringify([["Ann (1900)", "unplayed"]]) && displaced.problems.length === 0
+  && chosen.problems.length === 0 && chosen.notes.length === 1 && chosen.notes[0].startsWith("Ann is rated 1900; 28L2")
+  && chosenRound.byes === JSON.stringify([{ id: "11111111", points: 1, kind: "bye", section: "" }])
+  ? pass("TD desk leaves a player displaced by the bye player unplayed, and posts the full-point bye the TD chooses, noting 28L2")
+  : fail(`TD desk choosing the full-point bye: ${JSON.stringify({ displaced, chosen, chosenRound })}`);
+await byeChoicePage.close();
 
 // Pairing by hand, then changing the posted round once a player has reported.
 const handDesk = deskState();
