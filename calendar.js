@@ -6,14 +6,21 @@
 const CLUB = "Larimer County Chess Club";
 const tz = { timeZone: "America/Denver" };
 const fmt = (opts) => new Intl.DateTimeFormat("en-US", { ...tz, ...opts });
-const month = fmt({ month: "short" });
-const monthHeading = fmt({ month: "long", year: "numeric" });
-const day = fmt({ day: "numeric" });
-const year = fmt({ year: "numeric" });
-const weekday = fmt({ weekday: "long" });
-const timeRange = fmt({ hour: "numeric", minute: "2-digit" });
-const longDate = fmt({ weekday: "long", month: "long", day: "numeric", year: "numeric" });
-const monthDay = fmt({ month: "long", day: "numeric", year: "numeric" });
+// Making a formatter takes about a millisecond, so each waits for its first use, after the page's
+// first paint, instead of lengthening the task that paints it.
+const lazy = (opts) => {
+  let made;
+  const f = () => (made ??= fmt(opts));
+  return { format: (d) => f().format(d), formatRangeToParts: (a, b) => f().formatRangeToParts(a, b) };
+};
+const month = lazy({ month: "short" });
+const monthHeading = lazy({ month: "long", year: "numeric" });
+const day = lazy({ day: "numeric" });
+const year = lazy({ year: "numeric" });
+const weekday = lazy({ weekday: "long" });
+const timeRange = lazy({ hour: "numeric", minute: "2-digit" });
+const longDate = lazy({ weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const monthDay = lazy({ month: "long", day: "numeric", year: "numeric" });
 const EVENTS_PAGE = "https://larimerchess.org/events/";
 
 function el(tag, className, text) {
@@ -532,9 +539,11 @@ const list = document.querySelector("[data-events]");
 // down, which the browser's own scroll anchoring doesn't prevent here. So whatever below the
 // list is on screen is held where it is, by scrolling as far as the cards moved it.
 function holdInView() {
+  // At the top, nothing has been scrolled past, and measuring would force a layout of the whole page.
+  if (scrollY === 0) return () => {};
   const after = [...document.querySelectorAll("main > *, footer")].find((node) =>
     node.id !== "events-fallback" && (list.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
-    && node.getBoundingClientRect().bottom > 0 && node.getBoundingClientRect().top < innerHeight);
+    && ((box) => box.bottom > 0 && box.top < innerHeight)(node.getBoundingClientRect()));
   if (!after) return () => {};
   const top = after.getBoundingClientRect().top;
   return () => scrollBy(0, after.getBoundingClientRect().top - top);
