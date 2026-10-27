@@ -425,14 +425,19 @@ def archived_page(e, results):
                      head=f'<script type="application/json" id="last-event">{data}</script>', generated=ARCHIVED)
 
 
-def results_pages(path):
-    """[(results/<name>-<date>/, 'Saturday, October 10, 2026')] for an event page's name, oldest first."""
+def results_pages(path, root=None):
+    """[(results/<name>-<date>/, 'Saturday, October 10, 2026')] for an event page's name, oldest first;
+    a club night's month is 'October 2026'."""
     name = path.removeprefix("events/").strip("/")
     found = []
-    for d in sorted((ROOT / "results").glob(f"{name}-*/")):
+    for d in sorted((root or ROOT).joinpath("results").glob(f"{name}-*/")):
         date = d.name.removeprefix(f"{name}-")
-        if re.fullmatch(r"\d{4}-\d\d-\d\d", date) and (d / "index.html").exists():
+        if not (d / "index.html").exists():
+            continue
+        if re.fullmatch(r"\d{4}-\d\d-\d\d", date):
             found.append((f"results/{d.name}/", day_text({"start": f"{date}T12:00:00-06:00"})))
+        elif re.fullmatch(r"\d{4}-\d\d", date):
+            found.append((f"results/{d.name}/", f"{datetime.strptime(date, '%Y-%m'):%B %Y}"))
     return found
 
 
