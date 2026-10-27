@@ -692,6 +692,9 @@ test("a discount lowers what's due, up to the whole fee, and a refund after one 
   assert.equal(gs.markPaid("token1", "", "").ok, true);
   eq(ledger().slice(-2).map((x) => [x[1], x[3], x[6]]), [["correction", "-12", "1"], ["correction", "11.21", "2"]],
     "marking unpaid cancels the payment and the refund");
+  assert.equal(gs.discount("token1", "0.5", "", null).message, "Ann Ash has a $0.50 discount.");
+  assert.equal(gs.discount("token1", ".5", "", null).message, "Ann Ash has a $0.50 discount.");
+  assert.match(gs.discount("token1", "0.505", "", null).error, /in dollars/);
   assert.equal(gs.discount("token1", "", "", null).message, "Ann Ash's discount is removed.");
   eq(rowsOf(sheets.Entries).map((r) => [r.Discount, r["Discount note"]]), [["", ""]]);
 });

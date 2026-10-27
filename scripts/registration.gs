@@ -97,6 +97,8 @@ const SITE = "https://larimerchess.org";
 const MEMBERS = "https://ratings-api.uschess.org/api/v1/members";
 const MEMBERS_KEYED = "https://ratings-api.uschess.org/api/v2/members";
 const TZ = "America/Denver";
+// Dollars as a TD types them: 5, 5.5, 5.50, or .50.
+const DOLLARS = /^(\d+(\.\d\d?)?|\.\d\d?)$/;
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee",
   "Discount", "Discount note", "Byes"];
@@ -443,7 +445,7 @@ function createEvent(p) {
   const format = ["quad", "swiss", "arena"].includes(p.format) ? p.format : null;
   if (!format) return { error: "Choose quad, Swiss, or arena." };
   const fee = String(p.fee || "").trim().replace(/^\$/, "");
-  if (fee && !/^\d+(\.\d\d)?$/.test(fee)) return { error: "Enter the fee in dollars, such as 15, or leave it blank." };
+  if (fee && !DOLLARS.test(fee)) return { error: "Enter the fee in dollars, such as 15, or leave it blank." };
   const now = new Date();
   const start = Utilities.formatDate(now, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
   const key = `${slug}/${start.slice(0, 10)}`;
@@ -2566,7 +2568,7 @@ function refreshCaches() {
  *  corrections that cancel their payments. Paid is the total of their payments, and Paid by each way they paid. */
 function markPaid(token, amount, by, donate) {
   amount = String(amount || "").trim().replace(/^\$/, "");
-  if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the amount paid, such as 15." };
+  if (amount && !DOLLARS.test(amount)) return { error: "Enter the amount paid, such as 15." };
   // The desk before payment methods sent nothing for a payment that wasn't by card.
   const method = by || "cash";
   if (!METHODS.includes(method)) return { error: "Choose how they paid." };
@@ -2890,7 +2892,7 @@ function entriesLink(key, event) {
  *  corrects a mistake. By card, the card fee comes out of what was given. */
 function giveDonation(p, td) {
   const amount = String(p.amount || "").trim().replace(/^\$/, "");
-  if (!/^-?\d+(\.\d\d)?$/.test(amount) || !cents(amount)) return { error: "Enter the amount given, such as 20." };
+  if (!DOLLARS.test(amount.replace(/^-/, "")) || !cents(amount)) return { error: "Enter the amount given, such as 20." };
   const method = p.by || "cash";
   if (!METHODS.includes(method)) return { error: "Choose how it was given." };
   const lock = LockService.getScriptLock();
@@ -2922,7 +2924,7 @@ function giveDonation(p, td) {
  *  longer needs first, then the entry fee; never the card fee, which the processor keeps. */
 function refund(token, amount, by, td) {
   amount = String(amount || "").trim().replace(/^\$/, "");
-  if (!/^\d+(\.\d\d)?$/.test(amount) || !cents(amount)) return { error: "Enter the amount refunded, such as 9.50." };
+  if (!DOLLARS.test(amount) || !cents(amount)) return { error: "Enter the amount refunded, such as 9.50." };
   const method = by || "cash";
   if (!METHODS.includes(method)) return { error: "Choose how it was refunded." };
   const lock = LockService.getScriptLock();
@@ -2957,7 +2959,7 @@ function refund(token, amount, by, td) {
 /** Sets what's taken off an entry's fee, up to all of it; an empty amount or 0 removes it. */
 function discount(token, amount, note, td) {
   amount = String(amount || "").trim().replace(/^\$/, "");
-  if (amount && !/^\d+(\.\d\d)?$/.test(amount)) return { error: "Enter the discount in dollars, such as 5." };
+  if (amount && !DOLLARS.test(amount)) return { error: "Enter the discount in dollars, such as 5." };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
