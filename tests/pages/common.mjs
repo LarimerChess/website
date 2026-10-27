@@ -56,6 +56,15 @@ export async function press(tab, selector) {
   await tab.click(selector);
 }
 
+// The TD desk pops up why something wasn't done; returns its message once it shows, and closes it.
+export async function dismissRefusal(tab) {
+  await tab.waitForSelector(".td-refused[open]");
+  const message = await tab.$eval(".td-refused-message", (p) => p.textContent);
+  await tab.click(".td-refused button");
+  await tab.waitForSelector(".td-refused:not([open])", { visible: false });
+  return message;
+}
+
 export const clubEvents = events.filter((e) => e.organizer === CLUB);
 
 // A page whose register.js points at a stand-in for the Apps Script; answer(fields) gives each call's JSON,

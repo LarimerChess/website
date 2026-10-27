@@ -330,10 +330,10 @@ arenaStartForm.elements.section.addEventListener("change", showHalvesMenu);
 arenaStartForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const { white, black, section, halves } = Object.fromEntries(new FormData(arenaStartForm));
-  if (!white || !black) return void (runStatus.textContent = "Choose both players.");
-  if (white === black) return void (runStatus.textContent = "Choose two different players.");
+  if (!white || !black) return void refuse("Choose both players.", runStatus);
+  if (white === black) return void refuse("Choose two different players.", runStatus);
   const pact = Boolean(Arena.sectionOf(forArena(current), section)?.pact);
-  if (pact && halves !== "white" && halves !== "black") return void (runStatus.textContent = "Who halves their clock?");
+  if (pact && halves !== "white" && halves !== "black") return void refuse("Who halves their clock?", runStatus);
   const game = { white, black, section: section || "", whitePact: pact && halves === "white", blackPact: pact && halves === "black" };
   arenaCall("arenaPair", { games: JSON.stringify([game]) }, arenaStartForm.querySelector("button"));
 });
@@ -356,7 +356,7 @@ arenaConfirm.addEventListener("click", async (event) => {
 arenaSectionsForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const defined = readArenaSections(arenaSectionsForm.querySelector(".run-arena-sections"));
-  if (defined.error) return void (runStatus.textContent = defined.error);
+  if (defined.error) return void refuse(defined.error, runStatus);
   arenaCall("arenaSections", { sections: JSON.stringify(defined.sections) }, arenaSectionsForm.querySelector("button[type=submit]"))
     .then((result) => { if (result.ok) arenaSectionsWrap.open = false; });
 });

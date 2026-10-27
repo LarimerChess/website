@@ -551,7 +551,7 @@ function editSection(s, n, several) {
     const black = menu(`run-add-black-${n}`, off, "add-black");
     black.selectedIndex = 1;
     const add = editButton("Add the board", several ? ` in ${s.name}` : "", key("add"), () => {
-      if (white.value === black.value) return void (runStatus.textContent = "Choose two different players for the board.");
+      if (white.value === black.value) return void refuse("Choose two different players for the board.", runStatus);
       for (const id of [white.value, black.value]) {
         s.byes = s.byes.filter((b) => b.id !== id);
         s.waiting = s.waiting.filter((x) => x !== id);
@@ -889,7 +889,7 @@ async function downloadReport(name) {
   await loadRun();
   if (!current || !reportReady(current)) return;
   const problems = reportProblems(current);
-  if (problems.length) return void (runStatus.textContent = `Not yet: ${problems[0]}`);
+  if (problems.length) return void refuse(`Not yet: ${problems[0]}`, runStatus);
   const files = await reportFiles(current);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([files[name]], { type: "application/octet-stream" }));
@@ -940,7 +940,7 @@ function renderByesAll() {
       const problem = postedByeProblem(s, i, b.id, select.value);
       if (problem) {
         select.value = kind;
-        return void (runStatus.textContent = problem);
+        return void refuse(problem, runStatus);
       }
       const [event, date] = keyParts();
       select.disabled = true;
@@ -1060,7 +1060,7 @@ giveBye.addEventListener("submit", async (event) => {
   const where = `${nameOf(p.id)}, ${slotName(slot).toLowerCase()}`;
   if (kind.value === slot.kind) return void (runStatus.textContent = `${where} is already that.`);
   const problem = slotProblem(slot, p.id, kind.value);
-  if (problem) return void (runStatus.textContent = problem);
+  if (problem) return void refuse(problem, runStatus);
   const [eventName, date] = keyParts();
   const button = giveBye.querySelector("button");
   button.disabled = true;
@@ -1076,7 +1076,7 @@ giveBye.addEventListener("submit", async (event) => {
     } else {
       // The entry keeps the byes asked for, and the script copies them to the player.
       const entry = deskEntries.key === current.key && deskEntries.entries.find((e) => e.id === p.id && e.date === date && e.token);
-      if (!entry) return void (runStatus.textContent = `${p.name} has no entry in the entries list below, so the bye can't be saved. Reload the page and try again.`);
+      if (!entry) return void refuse(`${p.name} has no entry in the entries list below, so the bye can't be saved. Reload the page and try again.`, runStatus);
       const value = current.roundDates?.[slot.n - 1] || String(slot.n);
       const asked = entry.byes || [];
       const byes = (kind.value === "half" ? [...asked, value] : asked.filter((b) => b !== value))
@@ -1182,16 +1182,16 @@ runStart.addEventListener("submit", async (event) => {
   const fields = Object.fromEntries(new FormData(runStart));
   if (fields.format === "swiss") {
     const defined = readSections(runStart.querySelector(".run-sections"));
-    if (defined.error) return void (runStatus.textContent = defined.error);
+    if (defined.error) return void refuse(defined.error, runStatus);
     // A round robin's players set its rounds, so only a Swiss section needs them.
-    if (defined.sections.some((d) => !d.format) && !/^\d+$/.test(fields.rounds)) return void (runStatus.textContent = "How many rounds?");
+    if (defined.sections.some((d) => !d.format) && !/^\d+$/.test(fields.rounds)) return void refuse("How many rounds?", runStatus);
     fields.sections = JSON.stringify(defined.sections);
   }
   if (fields.format === "quad" && !confirm("Start the quads? Players are grouped by rating and numbered by lot now, so register everyone first.")) return;
   if (fields.format === "arena") {
-    if (!/^\d\d:\d\d$/.test(fields.cutoff)) return void (runStatus.textContent = "No new games after what time?");
+    if (!/^\d\d:\d\d$/.test(fields.cutoff)) return void refuse("No new games after what time?", runStatus);
     const defined = readArenaSections(runStart.querySelector(".run-arena-sections"));
-    if (defined.error) return void (runStatus.textContent = defined.error);
+    if (defined.error) return void refuse(defined.error, runStatus);
     fields.sections = JSON.stringify(defined.sections.map(({ from, ...s }) => s));
   }
   runStatus.textContent = "Starting…";
@@ -1207,7 +1207,7 @@ runStart.addEventListener("submit", async (event) => {
 document.querySelector(".run-sections-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const defined = readSections(event.target.querySelector(".run-sections"));
-  if (defined.error) return void (runStatus.textContent = defined.error);
+  if (defined.error) return void refuse(defined.error, runStatus);
   if (!confirm("Save the sections? Everyone is placed by rating again, undoing any moves.")) return;
   const [eventName, date] = keyParts();
   const result = await call("sections", { event: eventName, date, sections: JSON.stringify(defined.sections) });
@@ -1237,7 +1237,7 @@ async function checkIn(number) {
 document.querySelector(".run-pair").addEventListener("click", async () => {
   const number = current.rounds.length + 1;
   if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play")) {
-    return void (runStatus.textContent = "Nobody is present to pair.");
+    return void refuse("Nobody is present to pair.", runStatus);
   }
   const { choicesMade, withdrawn } = await checkIn(number);
   const chose = (s, value) => choicesMade.filter(([, v, key]) => v === value && key === s.key).map(([id]) => id);
@@ -1323,7 +1323,7 @@ document.querySelector(".run-confirm-agreed").addEventListener("click", async (e
 async function saveDraft(post) {
   const problems = draftProblems();
   if (problems.length) {
-    runStatus.textContent = `Not saved yet. ${problems[0]}${problems.length > 1 ? ` The other ${problems.length - 1} are listed above the buttons.` : ""}`;
+    refuse(`Not saved yet. ${problems[0]}${problems.length > 1 ? ` The other ${problems.length - 1} are listed above the buttons.` : ""}`, runStatus);
     return;
   }
   if (draft.posted && !post && !confirm(`Saving without posting takes round ${draft.number} off the Pairings page until you post it. Save?`)) return;
@@ -1530,7 +1530,7 @@ document.querySelector(".run-restart").addEventListener("click", async () => {
     + "Entries stay registered. Type the tournament's name to restart it.", "");
   if (typed === null) return;
   if (typed.trim().toLowerCase() !== current.name.trim().toLowerCase()) {
-    runStatus.textContent = `That isn't ${current.name}, so nothing was restarted.`;
+    refuse(`That isn't ${current.name}, so nothing was restarted.`, runStatus);
     return;
   }
   const [event, date] = keyParts();

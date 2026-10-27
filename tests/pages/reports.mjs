@@ -1,5 +1,5 @@
 // The rating report files, restarts, extra games sections, time controls, byes by the rules, and the Results page.
-import { PHONE, Pairing, axeBoth, axeSource, base, browser, deskState, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers, twoSections } from "./common.mjs";
+import { PHONE, Pairing, axeBoth, axeSource, base, browser, deskState, dismissRefusal, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers, twoSections } from "./common.mjs";
 
 // With every round in, the desk has no Finish button: it offers the rating report files for MUIR and keeps
 // them in a folder the TD picks (a stand-in here for the browser's folder picker), rewritten when a result
@@ -66,8 +66,8 @@ const goneWhenMissing = (await kept()) === "" && await donePage.$eval(".run-repo
 doneDesk.held.rounds = JSON.parse(JSON.stringify(keptRounds));
 typedName = "Slow";
 await press(donePage, ".run-restart");
-const wrongName = { status: await donePage.$eval(".run-status", (p) => p.textContent), held: Boolean(doneDesk.held) };
-wrongName.held && wrongName.status === "That isn't Classic, so nothing was restarted."
+const wrongName = { popup: await dismissRefusal(donePage), status: await donePage.$eval(".run-status", (p) => p.textContent), held: Boolean(doneDesk.held) };
+wrongName.held && wrongName.status === "That isn't Classic, so nothing was restarted." && wrongName.popup === wrongName.status
   ? pass("TD desk won't restart a tournament unless its name is typed") : fail(`TD desk restart with the wrong name: ${JSON.stringify(wrongName)}`);
 typedName = " classic ";
 await press(donePage, ".run-restart");

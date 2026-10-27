@@ -2778,7 +2778,7 @@ function checkByes(asked, old, key, event, run, online, id) {
     .sort((a, b) => byeRound(a, dates) - byeRound(b, dates))[0];
   if (locked) {
     const what = month ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
-    return { error: `${what} is already paired, so only the TD can change it.` };
+    return { error: `${what} is already paired, so ${online ? "only the TD can change it" : "change it under Standings and byes, in Give a bye"}.` };
   }
   // A tournament date's rounds are its own; a month's are only known once it starts.
   const unoffered = !month && list.find((x) => !old.includes(x) && !offersHalfBye(event, Number(x), rounds));

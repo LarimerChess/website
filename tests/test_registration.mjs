@@ -1599,7 +1599,7 @@ for (const store of STORES) {
     pair(1, true);
     assert.equal(desk({ token: "t3", byes: "4, 3, 3" }).error, "One half-point bye per player, as the event's page announces.");
     assert.equal(desk({ token: "t3", byes: "3" }).message, "Cal's byes: round 3.");
-    assert.equal(desk({ token: "t3", byes: "1, 3" }).error, "Round 1 is already paired, so only the TD can change it.");
+    assert.equal(desk({ token: "t3", byes: "1, 3" }).error, "Round 1 is already paired, so change it under Standings and byes, in Give a bye.");
     assert.equal(desk({ token: "t2", byes: "4" }).error, "A last-round bye is asked for before round 1, so it can't be added now (22C4).");
     assert.match(post({ byes: "" }).error, /\(22C4\); tell the TD/, "which the player can't drop online");
     assert.equal(desk({ token: "t1", byes: "" }).message, "Ann Ash's byes: none.", "the TD can cancel it (22C5)");

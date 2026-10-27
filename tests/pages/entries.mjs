@@ -1,5 +1,5 @@
 // The Entries page, byes asked for on it, and running a tournament and an arena on the TD desk.
-import { axeBoth, axeSource, base, browser, done, events, fail, fitsPhone, offline, pass, press } from "./common.mjs";
+import { axeBoth, axeSource, base, browser, dismissRefusal, done, events, fail, fitsPhone, offline, pass, press } from "./common.mjs";
 
 // The Entries page, against a stand-in for the Apps Script's ?entries=all.
 const entriesPage = await browser.newPage();
@@ -557,16 +557,16 @@ await arenaPage.select("#run-arena-black", "44444444");
 await arenaPage.select("#run-arena-section", "Blood Pact");
 await arenaPage.waitForFunction(() => !document.querySelector("#run-arena-halves").hidden);
 await press(arenaPage, ".run-arena-start button[type=submit]");
-await arenaPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("Who halves their clock?"));
+const halvesAsked = await dismissRefusal(arenaPage);
 await arenaPage.select("#run-arena-halves", "white");
 await press(arenaPage, ".run-arena-start button[type=submit]");
 await arenaPage.waitForFunction(() => document.querySelectorAll(".run-arena-games tbody tr").length === 1);
 const byHand = JSON.parse(arenaCalls.filter((c) => c.action === "arenaPair").at(-1)?.games || "[]");
 const halved = await arenaPage.$$eval(".run-arena-games tbody tr:first-child input[type=radio]", (rs) => rs.map((r) => r.checked));
-halvesHidden && JSON.stringify(byHand) === JSON.stringify([{ white: "33333333", black: "44444444", section: "Blood Pact", whitePact: true, blackPact: false }])
+halvesHidden && halvesAsked === "Who halves their clock?" && JSON.stringify(byHand) === JSON.stringify([{ white: "33333333", black: "44444444", section: "Blood Pact", whitePact: true, blackPact: false }])
   && JSON.stringify(halved) === JSON.stringify([true, false])
   ? pass("TD desk starts a Blood Pact game by hand once told who halves their clock, and shows who did")
-  : fail(`TD desk arena by hand: ${JSON.stringify({ halvesHidden, byHand, halved })}`);
+  : fail(`TD desk arena by hand: ${JSON.stringify({ halvesHidden, halvesAsked, byHand, halved })}`);
 // The desk moves the Blood Pact to Dee, and the players report her win: 2 points and the bonus.
 await press(arenaPage, ".run-arena-games tbody tr:first-child td:nth-child(4) input[type=radio]");
 await arenaPage.waitForFunction(() => document.querySelector(".run-arena-games tbody tr:first-child td:nth-child(4) input[type=radio]:checked:not(:disabled)"));

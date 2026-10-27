@@ -116,14 +116,32 @@ async function ask(action, fields = {}) {
   return response.json();
 }
 
+// Sign-in shows its own errors beside its form, and the background check for changes stays quiet.
+const QUIET = new Set(["login", "changes"]);
+const refusedDialog = document.querySelector(".td-refused");
+
+/** Pops up why something wasn't done: a status line is often out of sight, as from the entries list at the
+ *  bottom of the page. The status line keeps it too, when given, and a dialog already open shows its own. */
+function refuse(message, status) {
+  if (status) status.textContent = message;
+  if (document.querySelector("dialog[open]")) return;
+  refusedDialog.querySelector(".td-refused-message").textContent = message;
+  refusedDialog.showModal();
+}
+
 async function call(action, fields = {}) {
-  const result = await ask(action, fields);
+  const result = await ask(action, fields).catch((error) => {
+    if (!QUIET.has(action)) refuse("Couldn't reach the registration service, so nothing was saved. Try again.");
+    throw error;
+  });
   const user = firebase?.auth.currentUser;
   if (result.verify && user) {
     await firebase.sendEmailVerification(user, { url: deskAddress() }).catch(() => {});
     signOut("Check your email for a link to confirm your address, then sign in again.");
   } else if (result.login) {
     signOut(result.error);
+  } else if (result.error && !QUIET.has(action)) {
+    refuse(result.error);
   }
   return result;
 }
@@ -398,18 +416,20 @@ function showRegisterByes(keep = false) {
 }
 
 /** An entry's Byes: a box for each round or night it can ask to miss, saved as soon as it changes,
- *  then in words any asked for that no box shows, as when the rounds aren't known. */
+ *  then in words any asked for that no box shows, as when the rounds aren't known. A paired round's box is shown but fixed. */
 function showEntryByes(cell, e) {
   const [eventName] = choice.value.split("/");
   const month = e.date?.length === 7;
   const rounds = month ? byeRounds(`${eventName}/${e.date}`)
     : choices.find((c) => c.key === choice.value)?.kind === "entry" ? byeRounds(choice.value) : [];
   const asked = e.byes || [];
-  const boxes = rounds.map(({ value, label }) => {
-    const box = Object.assign(document.createElement("input"), { type: "checkbox", value, checked: asked.includes(value) });
+  const boxes = rounds.map(({ value, label, paired }) => {
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", value, checked: asked.includes(value), disabled: paired });
     box.setAttribute("aria-label", `${label} bye for ${e.name}`);
     box.addEventListener("change", () => saveEntryByes(cell, e, box));
     const wrap = document.createElement("label");
+    // The script refuses a paired round's change from here, even the TD's.
+    if (paired) wrap.title = "Already paired: change it under Standings and byes, in Give a bye.";
     // A round shows its number alone, to keep the table narrow.
     wrap.append(box, ` ${month ? label : value}`);
     return wrap;
@@ -422,7 +442,7 @@ function showEntryByes(cell, e) {
 /** Saves an entry's byes with box changed, or puts the box back if the script refuses. The list
  *  sent keeps what no box shows. */
 async function saveEntryByes(cell, e, box) {
-  const boxes = cell.querySelectorAll("input");
+  const boxes = cell.querySelectorAll("input:enabled");
   const asked = e.byes || [];
   const byes = (box.checked ? [...asked, box.value] : asked.filter((b) => b !== box.value))
     .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
@@ -494,8 +514,8 @@ function retry(job, item) {
 registerForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!player) {
-    deskStatus.textContent = "Pick a player from the list first.";
-    return playerInput.focus();
+    playerInput.focus();
+    return refuse("Pick a player from the list first.", deskStatus);
   }
   const [eventName, date] = choice.value.split("/");
   const byes = [...tdByes.querySelectorAll(":checked")].map((box) => box.value).join(", ");

@@ -174,6 +174,9 @@ await deskByeSaved("Ann Example's byes are saved.");
 deskByeAnswer = { error: "Round 1 is paired already." };
 await deskByePage.click('.td-entries input[aria-label="Round 1 bye for Ann Example"]');
 await deskByeSaved("Round 1 is paired already.");
+const deskByeRefusal = await deskByePage.$eval(".td-refused", (d) => d.open && d.querySelector(".td-refused-message").textContent);
+await deskByePage.click(".td-refused button");
+const deskByeRefusalClosed = await deskByePage.$eval(".td-refused", (d) => !d.open);
 const deskByesRefused = await deskByeBoxes();
 const deskByeSaves = deskByeCalls.filter((c) => c.action === "byes").map(({ token, byes }) => ({ token, byes }));
 deskByesShown.head === "Byes" && JSON.stringify(deskByesShown.boxes) === JSON.stringify(["Round 1 bye for Ann Example", "Round 2 bye for Ann Example",
@@ -183,6 +186,9 @@ deskByesShown.head === "Byes" && JSON.stringify(deskByesShown.boxes) === JSON.st
     "Round 4 bye for Ann Example (checked)"])
   ? pass("TD desk shows an entry's byes, saves a change at once with the entry's token, and puts the box back when the script refuses")
   : fail(`TD desk entry byes: ${JSON.stringify({ deskByesShown, deskByeSaves, deskByesRefused })}`);
+deskByeRefusal === "Round 1 is paired already." && deskByeRefusalClosed
+  ? pass("TD desk pops up why the script refused a change, and OK closes it")
+  : fail(`TD desk refusal popup: ${JSON.stringify({ deskByeRefusal, deskByeRefusalClosed })}`);
 await deskByePage.type("#td-player", "ann");
 await deskByePage.waitForSelector("#td-players:not([hidden]) [role=option]");
 await deskByePage.keyboard.press("ArrowDown");

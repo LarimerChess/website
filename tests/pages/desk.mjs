@@ -1,5 +1,5 @@
 // The TD desk's results view, editing and pairing drafts, and byes at check-in.
-import { PHONE, axeBoth, deskState, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers } from "./common.mjs";
+import { PHONE, axeBoth, deskState, dismissRefusal, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers } from "./common.mjs";
 
 const draftShown = (tab) => tab.evaluate(() => ({
   games: [...document.querySelectorAll(".run-games tbody tr")].map((r) => [r.cells[0].textContent, ...[...r.querySelectorAll("select")].map((s) => s.value)]),
@@ -59,12 +59,13 @@ const swapped = await draftShown(editPage);
 await press(editPage, ".run-games tbody tr:nth-child(2) .td-buttons button:nth-child(2)");
 const removed = await draftShown(editPage);
 await press(editPage, ".run-post");
+const refusedPopup = await dismissRefusal(editPage);
 const refused = await draftShown(editPage);
 JSON.stringify(swapped.games) === JSON.stringify([["1", "33333333", "11111111", ""], ["2", "44444444", "22222222", ""]])
   && JSON.stringify(removed.games) === JSON.stringify([["1", "33333333", "11111111", ""]])
   && JSON.stringify(removed.off) === JSON.stringify([["Ben (1700)", "waiting"], ["Dee (1300)", "waiting"]])
   && removed.problems.length === 2 && removed.problems[0].startsWith("Ben (1700) isn't paired yet")
-  && refused.status.startsWith("Not saved yet. Ben (1700) isn't paired yet") && !editDesk.calls.some((c) => c.action === "round")
+  && refused.status.startsWith("Not saved yet. Ben (1700) isn't paired yet") && refusedPopup === refused.status && !editDesk.calls.some((c) => c.action === "round")
   ? pass("TD desk swaps a board's colors, removes a board, and won't save with players not yet paired")
   : fail(`TD desk draft edits: ${JSON.stringify({ swapped, removed, refused })}`);
 await editPage.select("#run-add-white-0", "44444444");
@@ -237,6 +238,7 @@ releaseMonthBye();
 const monthByesRedrawn = await monthByePage.waitForFunction(() => document.querySelectorAll(".td-entries tbody td:nth-child(5) input").length === 3,
   { timeout: 5000 }).then(() => true, () => false);
 const monthByesLoaded = await monthByeCell();
+const monthByesFixed = await monthByePage.$$eval(".td-entries tbody td:nth-child(5) input:disabled", (b) => b.map((x) => x.value));
 await monthByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
 await monthByePage.click('.td-entries input[value="2026-10-19"]');
 const monthByeCheckin = await monthByePage.waitForFunction(() => [...document.querySelectorAll(".run-attendance tbody tr")]
@@ -248,9 +250,9 @@ JSON.stringify(nightsCheckin) === JSON.stringify([["Cal", "play"], ["Dee (entere
   : fail(`TD desk check-in by nights: ${JSON.stringify(nightsCheckin)}`);
 JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26"]) && monthByesRedrawn
   && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12", "2026-10-19", "2026-10-26"])
-  && monthByeCheckin?.replaceAll(" ", " ") === "2 (October 19)"
-  ? pass("TD desk shows a started month's nights, past ones too, once its tournament loads, and check-in follows a bye saved from the entries")
-  : fail(`TD desk month byes: ${JSON.stringify({ monthByesEarly, monthByesRedrawn, monthByesLoaded, monthByeCheckin })}`);
+  && monthByeCheckin?.replaceAll(" ", " ") === "2 (October 19)" && JSON.stringify(monthByesFixed) === JSON.stringify(["2026-10-12"])
+  ? pass("TD desk shows a started month's nights, past ones too and a paired one fixed, once its tournament loads, and check-in follows a bye saved from the entries")
+  : fail(`TD desk month byes: ${JSON.stringify({ monthByesEarly, monthByesRedrawn, monthByesLoaded, monthByesFixed, monthByeCheckin })}`);
 await monthByePage.close();
 
 await done();
