@@ -3,7 +3,8 @@
     python scripts/build_results.py              # from the registration script's ?tournaments=current
     python scripts/build_results.py --from FILE  # from a saved copy of that JSON
     python scripts/build_results.py --archives   # also rewrite each page from its archive.json
-    python scripts/build_results.py --check      # fail if results/index.html or sitemap.xml is out of date
+    python scripts/build_results.py --check      # fail if results/index.html or sitemap.xml is out of date,
+                                                 # or a results page and its event's page don't link each other
 
 - Each rated tournament gets results/<slug>/, the slug being its key with "/" as "-"
   (first-saturday-classic-2026-11-07). A Swiss shows each section's final standings with the
@@ -11,6 +12,10 @@
   an arena, its leaderboard and games. A tournament is rated
   once ratings.json lists it, which scripts/rating_check.mjs does when US Chess has the same
   results, and the page links to US Chess's crosstable and to the event's page.
+- A tournament set up with the TD desk's New tournament has no calendar event, so build_pages.py
+  never gave it an event page. Its first results page makes one, archived as build_pages.py keeps
+  a past event's, from what the tournament says: its name, date, format, sections, and time
+  controls. The desk doesn't know the venue, fee, or times, so the page leaves them out.
 - The pages are written while the tournament is in the Tournaments in progress spreadsheet, and
   kept after the Archive tournaments Action clears it from there. Nothing here deletes a page.
   --archives rewrites a cleared tournament's page from the rows its archive.json kept, such as
@@ -32,12 +37,13 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_pages import CLUB, ROOT, SITE, TZ, escaped, page_html  # noqa: E402
+from build_pages import CLUB, ROOT, SITE, TZ, archived_page, day_text, escaped, page_html, results_pages  # noqa: E402
 
 GENERATED = "<!-- Written by scripts/build_results.py from the tournament results; don't edit by hand. -->"
 RESULTS = ROOT / "results"
 SHOWN = {"1-0": "1–0", "0-1": "0–1", "1/2-1/2": "½–½", "1F-0F": "1F–0F", "0F-1F": "0F–1F", "0F-0F": "0F–0F"}
 POINTS = {"1-0": (1, 0), "0-1": (0, 1), "1/2-1/2": (0.5, 0.5), "1F-0F": (1, 0), "0F-1F": (0, 1), "0F-0F": (0, 0)}
+NUMBERS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December"]
 
@@ -308,11 +314,51 @@ def arena_main(t):
     </section>"""
 
 
-def results_page(t):
+def kind_text(t):
+    rounds = len(t["rounds"]) or t.get("plannedRounds")
+    return {"arena": "arena tournament", "quad": "quad tournament"}.get(t.get("format") or "swiss", f"{rounds}-round Swiss")
+
+
+def joined(items):
+    """'A', 'A and B', or 'A, B, and C'."""
+    return " and ".join(items) if len(items) < 3 else f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def last_event(t):
+    """A tournament as the event build_pages.archived_page takes, in events.json's shape, for an event
+    with no page; None for a club night's month, which only the calendar makes. All day, since the desk
+    keeps no start time."""
+    event, date = t["key"].split("/")
+    if not re.fullmatch(r"\d{4}-\d\d-\d\d", date):
+        return None
+    start = datetime(*map(int, date.split("-")), tzinfo=TZ).isoformat()
+    defined = [d for d in t.get("sections") or [] if d.get("name")]
+    # A section's own time control, else the tournament's, as the desk's rating report has it.
+    controls = [(d["name"], d.get("timeControl") or t.get("timeControl") or "") for d in defined]
+    what = f"A US Chess rated {kind_text(t)}"
+    size = len(defined)
+    if not defined:
+        what += "."
+    else:
+        what += f" in {NUMBERS[size] if size < len(NUMBERS) else size} section{'s' if size > 1 else ''}"
+        if all(c for _, c in controls) and len({c for _, c in controls}) > 1:
+            what += ":\n" + "\n".join(f"• {name}, {c}" for name, c in controls)
+        else:
+            what += f": {joined([name for name, _ in controls])}."
+    one = t.get("timeControl") and all(c == t["timeControl"] for _, c in controls)
+    return {"title": t["name"].removesuffix(", " + day_text({"start": start})), "calendar": "", "organizer": CLUB,
+            "tags": ["tournament", "club", "rated"], "url": "", "price": "", "pairing": t.get("format") or "swiss",
+            "rounds": str(t.get("plannedRounds") or ""), "page": f"/events/{event}/", "start": start, "end": start,
+            "allDay": True, "location": "", "place": {}, "city": "",
+            "description": (f"Time control: {t['timeControl']}.\n\n" if one else "") + what}
+
+
+def results_page(t, seeded=()):
+    """seeded: the event pages this run is making, which aren't written yet."""
     name = t["name"]
     form = t.get("format") or "swiss"
     shows = "leaderboard and games" if form == "arena" else "standings"
-    kind = {"arena": "arena tournament", "quad": "quad tournament"}.get(form, f"{len(t['rounds'])}-round Swiss")
+    kind = kind_text(t)
     description = f"Final {shows} of the {name}, a US Chess rated {kind} of the {CLUB} in Fort Collins, Colorado."
     body = arena_main(t) if form == "arena" else sections_main(t)
     event = t.get("usChessEvent")
@@ -324,7 +370,7 @@ def results_page(t):
                    "or below those opponents' average.</p>")
     page = t["key"].split("/")[0]
     about = (f'<p><a href="/events/{page}/">About this event</a></p>\n    '
-             if (ROOT / "events" / page / "index.html").exists() else "")
+             if (ROOT / "events" / page / "index.html").exists() or page in seeded else "")
     main = f"""<h1>{escaped(name)}</h1>
 
     {rated}{body}{performance}
@@ -404,12 +450,31 @@ def from_archive(record):
     except ValueError:
         defined = []
     t = {"key": record["key"], "event": info["Event"], "name": info["Name"], "format": info["Format"], "rounds": rounds,
-         "status": info["Status"], "sections": defined, "players": players}
+         "status": info["Status"], "sections": defined, "players": players, "timeControl": info.get("Time control") or "",
+         "plannedRounds": number(info.get("Rounds"))}
     if info["Format"] == "arena":
         t["games"] = [{"game": int(r["Game"]), "white": r["White"], "black": r["Black"], "whitePact": r.get("White pact") == "yes",
                        "blackPact": r.get("Black pact") == "yes", "result": r["Result"], "section": r.get("Section") or ""}
                       for r in sorted(record["arena"], key=lambda r: int(r["Game"]))]
     return t
+
+
+def unlinked():
+    """Each results page that doesn't link its event's page and back, as what to do about it."""
+    problems = []
+    for path, _, _ in listed():
+        match = re.fullmatch(r"results/(.+)-\d{4}-\d\d(?:-\d\d)?/", path)
+        if not match:
+            continue
+        event = ROOT / "events" / match[1] / "index.html"
+        if not event.exists():
+            problems.append(f"{path}: events/{match[1]}/ has no page. Run python scripts/build_results.py --archives, "
+                            "which makes one for a tournament set up at the TD desk; a club night's needs its calendar event.")
+        elif f'href="/events/{match[1]}/"' not in (ROOT / path / "index.html").read_text(encoding="utf-8"):
+            problems.append(f"{path}: doesn't link events/{match[1]}/; run python scripts/build_results.py --archives")
+        elif f'href="/{path}"' not in event.read_text(encoding="utf-8"):
+            problems.append(f"events/{match[1]}/ doesn't list {path}; run python scripts/build_pages.py")
+    return problems
 
 
 def main(args):
@@ -426,6 +491,7 @@ def main(args):
             live = {t["key"] for t in tournaments}
             tournaments += [t for t in (from_archive(json.loads(f.read_text(encoding="utf-8")))
                                         for f in sorted(RESULTS.glob("*/archive.json"))) if t["key"] not in live]
+        shown = []
         for t in tournaments:
             if t["key"] in ratings:
                 t = {**t, "status": "rated", "usChessEvent": t.get("usChessEvent") or ratings[t["key"]]}
@@ -434,10 +500,23 @@ def main(args):
             if not t["rounds"] and not arena_games(t):
                 print(f"skipped {t['key']}: rated with nothing posted")
                 continue
-            writes[f"results/{slug(t['key'])}/index.html"] = results_page(t)
+            shown.append(t)
+        seeded = {}
+        # By key, so an event's latest date wins, the one build_pages.py archives.
+        for t in sorted(shown, key=lambda t: t["key"]):
+            page = t["key"].split("/")[0]
+            if not (ROOT / "events" / page / "index.html").exists() and last_event(t):
+                seeded[page] = last_event(t)
+        for t in shown:
+            writes[f"results/{slug(t['key'])}/index.html"] = results_page(t, seeded)
         for path, text in writes.items():
             (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
             (ROOT / path).write_text(text, encoding="utf-8")
+        for page, e in seeded.items():
+            path = f"events/{page}/index.html"
+            writes[path] = archived_page(e, results_pages(f"events/{page}/", ROOT))
+            (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
+            (ROOT / path).write_text(writes[path], encoding="utf-8")
     today = datetime.now(TZ).date().isoformat()
     paths = [path for path, _, _ in listed()]
     expected = {"results/index.html": index_page(),
@@ -447,13 +526,16 @@ def main(args):
     if check:
         for path in stale:
             print(f"FAIL {path}: out of date with the results pages; run python scripts/build_results.py")
-        if stale:
+        problems = unlinked()
+        for problem in problems:
+            print(f"FAIL {problem}")
+        if stale or problems:
             sys.exit(1)
-        print(f"ok   results/index.html and sitemap.xml list all {len(paths)} results pages")
+        print(f"ok   results/index.html and sitemap.xml list all {len(paths)} results pages, each linked with its event's page")
         return
     for path in stale:
         (ROOT / path).write_text(expected[path], encoding="utf-8")
-    print(f"wrote {len(writes)} results page(s){': ' + ', '.join(writes) if writes else ''};"
+    print(f"wrote {len(writes)} page(s){': ' + ', '.join(writes) if writes else ''};"
           f" updated {', '.join(stale) or 'nothing else'}")
 
 

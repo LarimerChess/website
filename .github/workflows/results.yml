@@ -44,7 +44,7 @@ jobs:
       - name: Commit if changed
         if: success() || failure()
         run: |
-          git add results sitemap.xml ratings.json
+          git add results events sitemap.xml ratings.json
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"

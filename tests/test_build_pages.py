@@ -5,6 +5,7 @@
 
 import importlib.util
 import re
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -201,6 +202,16 @@ class Archive(unittest.TestCase):
         self.assertIn("A monthly US Chess rated tournament", page)
         self.assertNotIn("register.js", page)
         self.assertEqual(bp.json.loads(bp.LAST_EVENT.search(page).group(1)), CLASSIC)
+
+    def test_results_pages_by_date_and_month_but_not_a_longer_name(self):
+        with tempfile.TemporaryDirectory() as root:
+            for name in ("quad-2026-10-10", "quad-2-2026-10-17", "night-2026-10", "night-2026-11"):
+                (Path(root) / "results" / name).mkdir(parents=True)
+                if name != "night-2026-11":
+                    (Path(root) / "results" / name / "index.html").write_text("", encoding="utf-8")
+            self.assertEqual(bp.results_pages("events/quad/", Path(root)),
+                             [("results/quad-2026-10-10/", "Saturday, October 10, 2026")])
+            self.assertEqual(bp.results_pages("events/night/", Path(root)), [("results/night-2026-10/", "October 2026")])
 
     def test_the_sitemap_lists_each_page_once(self):
         with mock.patch.object(bp, "content_changed", lambda path, today: None):

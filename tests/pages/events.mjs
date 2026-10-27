@@ -1,5 +1,5 @@
 // The events page: its cards, filters, paging, details dialog, and structured data, and each club event's page.
-import { axeSource, base, browser, clubEvents, done, events, fail, outside, pass, seriesPages } from "./common.mjs";
+import { axeSource, base, browser, clubEvents, done, events, fail, outside, pass, resultsPages, seriesPages } from "./common.mjs";
 
 const page = await browser.newPage();
 await page.setRequestInterception(true);
@@ -280,5 +280,19 @@ const cardDates = await page.$$eval(".event-club .event-card-register", (a) => a
 const wrongDates = cardDates.filter((c) => !(c.tournament ? /^\d{4}-\d\d-\d\d$/ : /^\d{4}-\d\d$/).test(c.date));
 cardDates.some((c) => !c.tournament) && !wrongDates.length ? pass("club night cards' Register opens on the whole month, and tournaments' on their date")
   : fail(`Register dates on club cards: ${JSON.stringify(wrongDates.length ? wrongDates : cardDates)}`);
+
+// Each results page's About this event opens its event's page, live or archived, which links back.
+for (const path of resultsPages.filter((p) => p !== "/results/")) {
+  await page.goto(base + path, { waitUntil: "domcontentloaded" });
+  const about = await page.$$eval("main a", (a) => a.filter((x) => x.textContent === "About this event").map((x) => x.getAttribute("href")));
+  if (about.length !== 1) {
+    fail(`${path} has ${about.length} About this event links`);
+    continue;
+  }
+  const response = await page.goto(base + about[0], { waitUntil: "domcontentloaded" });
+  const back = await page.$$eval(`#results a[href="${path}"]`, (a) => a.length);
+  response.ok() && back === 1 ? pass(`${path} and ${about[0]} link each other`)
+    : fail(`${path}'s About this event, ${about[0]}, ${response.ok() ? "doesn't link back" : `answers ${response.status()}`}`);
+}
 
 await done();

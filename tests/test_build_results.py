@@ -23,6 +23,7 @@ sys.path.insert(0, str(HERE.parent / "scripts"))
 spec = importlib.util.spec_from_file_location("build_results", HERE.parent / "scripts" / "build_results.py")
 br = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(br)
+from build_pages import ARCHIVED, LAST_EVENT  # noqa: E402
 
 FIXTURES = HERE / "fixtures" / "tournaments.json"
 TOURNAMENTS = {t["key"]: t for t in json.loads(FIXTURES.read_text(encoding="utf-8"))["tournaments"]}
@@ -221,6 +222,10 @@ class Build(unittest.TestCase):
         self.assertIn("https://ratings.uschess.org/event/202701230042", page)
 
     def test_rated_only_and_never_deleted(self):
+        # The club night's page comes from the calendar, as build_pages.py writes it.
+        (self.root / "events/monday-club-night-at-peak").mkdir(parents=True)
+        (self.root / "events/monday-club-night-at-peak/index.html").write_text(
+            '<a href="/results/monday-club-night-at-peak-2026-10/">October 2026</a>', encoding="utf-8")
         running = TOURNAMENTS["third-saturday-slow/2026-11-21"]
         self.run_with([SATURDAY, running])
         self.assertTrue((self.root / "results/first-saturday-classic-2026-11-07/index.html").exists())
@@ -236,6 +241,61 @@ class Build(unittest.TestCase):
         self.assertEqual(sitemap.count("/results/first-saturday-classic-2026-11-07/"), 1)
         with redirect_stdout(StringIO()):
             br.main(["--check"])
+
+    def check_output(self):
+        out = StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit):
+            br.main(["--check"])
+        return out.getvalue()
+
+    def test_a_tournament_set_up_at_the_desk_gets_an_event_page(self):
+        desk = dict(QUAD, key="desk-quad/2027-01-23", event="desk-quad", name="Desk Quad, Saturday, January 23, 2027",
+                    timeControl="G/30;+10")
+        self.run_with([desk])
+        event = (self.root / "events/desk-quad/index.html").read_text(encoding="utf-8")
+        self.assertIn(ARCHIVED, event)
+        self.assertIn("<h1>Desk Quad</h1>", event)
+        self.assertIn('<a href="/results/desk-quad-2027-01-23/">Saturday, January 23, 2027</a>', event)
+        self.assertIn("<strong>Time control:</strong> G/30;+10.", event)
+        last = json.loads(LAST_EVENT.search(event).group(1))
+        self.assertEqual((last["start"], last["allDay"], last["place"], last["price"]), ("2027-01-23T00:00:00-07:00", True, {}, ""))
+        self.assertIn('<a href="/events/desk-quad/">About this event</a>',
+                      (self.root / "results/desk-quad-2027-01-23/index.html").read_text(encoding="utf-8"))
+        # Once made, the page is build_pages.py's to keep, so a later run leaves it as it is.
+        self.run_with([dict(desk, timeControl="G/45;d5")])
+        self.assertEqual((self.root / "events/desk-quad/index.html").read_text(encoding="utf-8"), event)
+        with redirect_stdout(StringIO()):
+            br.main(["--check"])
+        (self.root / "events/desk-quad/index.html").unlink()
+        self.assertIn("results/desk-quad-2027-01-23/: events/desk-quad/ has no page", self.check_output())
+
+    def test_a_club_nights_month_gets_no_page_made_up(self):
+        self.run_with([CLUB_NIGHT])
+        self.assertFalse((self.root / "events/monday-club-night-at-peak").exists())
+        self.assertIn("events/monday-club-night-at-peak/ has no page", self.check_output())
+
+    def test_an_event_page_written_after_its_results_fails_the_check_until_rebuilt(self):
+        self.run_with([SATURDAY])
+        (self.root / "results/first-saturday-classic-2026-11-07/index.html").write_text("<h1>First</h1>", encoding="utf-8")
+        self.assertIn("doesn't link events/first-saturday-classic/", self.check_output())
+
+
+class LastEvent(unittest.TestCase):
+    def test_sections_with_their_own_time_controls(self):
+        t = {"key": "alley-cat-quad-2/2026-10-17", "name": "Alley Cat Quad #2, Saturday, October 17, 2026",
+             "format": "quad", "rounds": [{}] * 6, "plannedRounds": 6, "timeControl": "G/15;+30",
+             "sections": [{"name": "First Weekend Closed", "timeControl": "G/30;+10"}, {"name": "Second Weekend Closed"}]}
+        e = br.last_event(t)
+        self.assertEqual(e["title"], "Alley Cat Quad #2")
+        self.assertEqual(e["page"], "/events/alley-cat-quad-2/")
+        self.assertEqual(e["description"], "A US Chess rated quad tournament in two sections:\n"
+                                           "• First Weekend Closed, G/30;+10\n• Second Weekend Closed, G/15;+30")
+
+    def test_one_time_control_for_every_section(self):
+        t = {"key": "x/2026-12-12", "name": "X, Saturday, December 12, 2026", "format": "swiss", "rounds": [{}, {}],
+             "timeControl": "G/60;d5", "sections": [{"name": "Open"}, {"name": "Under 1400"}, {"name": "Under 1000"}]}
+        self.assertEqual(br.last_event(t)["description"],
+                         "Time control: G/60;d5.\n\nA US Chess rated 2-round Swiss in three sections: Open, Under 1400, and Under 1000.")
 
 
 if __name__ == "__main__":

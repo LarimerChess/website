@@ -13,10 +13,13 @@ export const events = JSON.parse(readFileSync(new URL("../../events.json", impor
 export const CLUB = "Larimer County Chess Club";
 export const seriesPages = [...new Set(events.map((e) => e.page).filter(Boolean))];
 // The results pages outlive the events, so they come from the sitemap, not events.json.
-export const resultsPages = [...readFileSync(new URL("../../sitemap.xml", import.meta.url), "utf8")
-  .matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+const sitemap = readFileSync(new URL("../../sitemap.xml", import.meta.url), "utf8");
+export const resultsPages = [...sitemap.matchAll(/<loc>https:\/\/larimerchess\.org(\/results\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+// So are the archived event pages, which have left events.json.
+export const archivedPages = [...sitemap.matchAll(/<loc>https:\/\/larimerchess\.org(\/events\/[^<]+\/)<\/loc>/g)]
+  .map((m) => m[1]).filter((path) => !seriesPages.includes(path));
 export const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/minutes/2026-10-19.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/",
-  ...seriesPages, ...resultsPages];
+  ...seriesPages, ...archivedPages, ...resultsPages];
 export const failures = [];
 export const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };
 export const pass = (message) => console.log(`ok   ${message}`);
