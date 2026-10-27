@@ -301,14 +301,15 @@ def byes_html(events):
                         for n in map(str, range(1, int(e["rounds"]) + 1)))
         return fieldset("", "Rounds you'll miss (half-point bye)", boxes,
                         f"One per player, half a point. You can change it on the {entries} until the round is paired; "
-                        "a last-round bye is fixed once round 1 is posted.")
+                        "a last-round bye is fixed once round 1 is posted. To miss other rounds, ask for zero-point byes there.")
     months = defaultdict(str)
     for x in events:
         start = datetime.fromisoformat(x["start"]).astimezone(TZ)
         months[x["start"][:7]] += box(x["start"][:10], f"{start:%A}, {start:%B} {start.day}")
     return "".join(fieldset(month, "Nights you'll miss (half-point bye)", boxes,
                             f"One per player, half a point. Change it on the {entries} until the night is paired; "
-                            "a bye for the month's last night is fixed once its first night is posted.")
+                            "a bye for the month's last night is fixed once its first night is posted. "
+                            "To miss other nights, ask for zero-point byes there.")
                    for month, boxes in months.items())
 
 

@@ -1,7 +1,7 @@
 // The Register form and entry list on each club event's page, which scripts/build_pages.py
 // writes. Entries are kept by the Apps Script in scripts/registration.gs; see README.md.
 // The TD desk (td/) loads this too, for ENDPOINT, LIVE_DB, and FIREBASE, and the Entries and Pairings
-// pages, for the first two, the saved players and their list, and byesText.
+// pages, for the first two, the saved players and their list, byesText, and entryByesText.
 
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxEtmbXBQdxAKf5iKpCuHquO3CRadC44VvlEZyUlfGno6E5mEBlLrh1G3dH-MoxrJ6Z/exec";
 // The club's Realtime Database (https://….firebaseio.com), which live.js follows; while it is
@@ -71,6 +71,13 @@ function byesText(byes) {
   if (!sorted[0].includes("-")) return `${sorted.length > 1 ? "Rounds" : "Round"} ${and.format(sorted)}`;
   const month = new Intl.DateTimeFormat("en-US", { timeZone: "America/Denver", month: "long" }).format(new Date(`${sorted[0]}T12:00:00Z`));
   return `${month} ${and.format(sorted.map((date) => String(Number(date.slice(8)))))}`;
+}
+
+/** An entry's byes in an entry list: its half-point byes as byesText has them, and once it has zero-point
+ *  byes too, each kind named, "Round 2 (half-point); Rounds 3 and 4 (zero-point)". */
+function entryByesText(e) {
+  const half = byesText(e.byes), zero = byesText(e.zeroByes);
+  return zero ? [half && `${half} (half-point)`, `${zero} (zero-point)`].filter(Boolean).join("; ") : half;
 }
 
 // The Register form, the Pairings page, and the Entries page show the same list of the players saved
@@ -168,7 +175,7 @@ async function showEntries() {
       ? `${players} registered for ${day}.` : `No one has registered for ${day} yet.`;
     const head = table.tHead.rows[0];
     const forColumn = [...head.cells].some((c) => c.textContent === "For");
-    const byesColumn = entries.some((e) => e.byes?.length);
+    const byesColumn = entries.some((e) => e.byes?.length || e.zeroByes?.length);
     // Players get sections when the tournament starts.
     const sectioned = entries.some((e) => e.section);
     head.querySelector(".entries-byes")?.remove();
@@ -190,7 +197,7 @@ async function showEntries() {
       row.insertCell().append(link);
       row.insertCell().textContent = e.rating || "Unrated";
       if (forColumn) row.insertCell().textContent = e.for || "";
-      if (byesColumn) row.insertCell().textContent = byesText(e.byes);
+      if (byesColumn) row.insertCell().textContent = entryByesText(e);
       if (sectioned) row.insertCell().textContent = e.section || "";
       return row;
     }));

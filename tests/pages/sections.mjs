@@ -136,9 +136,9 @@ JSON.stringify(partCalls) === JSON.stringify([{ amount: "10", by: "cash", donate
   : fail(`TD desk part payment: ${JSON.stringify({ partCalls, partShort, partOwed, partAsked, partDone })}`);
 await partDesk.close();
 
-// Byes asked for in advance: the register form and each entry have a box for every round of a one-day
-// Swiss, or every night of a month to come. An entry's box saves as soon as it changes, with the entry's
-// token, and goes back if the script refuses.
+// Byes asked for in advance: the register form has a box, and each entry a menu (plays, ½, or 0), for every round
+// of a one-day Swiss, or every night of a month to come. An entry's menu saves as soon as it changes, with the
+// entry's token, and goes back if the script refuses.
 const deskByeCalls = [];
 let deskByeAnswer = { ok: true, message: "Ann Example's byes are saved." };
 const deskByeEntries = {
@@ -162,28 +162,28 @@ const deskByePage = await mocked("/td/ with byes asked for", (p) => {
     register: { ok: true, message: "Ann Example is registered." } }[p.action] || { ok: true };
 });
 await signIn(deskByePage);
-await deskByePage.waitForSelector('.td-entries input[aria-label="Round 3 bye for Ann Example"]');
+await deskByePage.waitForSelector('.td-entries select[aria-label="Round 3 bye for Ann Example"]');
 const deskByeBoxes = () => deskByePage.evaluate(() => ({ head: document.querySelector(".td-entries th:nth-child(5)").textContent,
-  boxes: [...document.querySelectorAll(".td-entries tbody td:nth-child(5) input")].map((b) => `${b.getAttribute("aria-label")}${b.checked ? " (checked)" : ""}`),
+  boxes: [...document.querySelectorAll(".td-entries tbody td:nth-child(5) select")].map((b) => `${b.getAttribute("aria-label")}: ${b.selectedOptions[0].textContent}`),
   offered: [...document.querySelectorAll(".td-byes:not([hidden]) label")].map((l) => l.textContent.trim()) }));
 const deskByesShown = await deskByeBoxes();
 const deskByeSaved = (text) => deskByePage.waitForFunction((t) => document.querySelector(".td-register-status").textContent.startsWith(t)
-  && !document.querySelector(".td-entries input:disabled"), {}, text);
-await deskByePage.click('.td-entries input[aria-label="Round 4 bye for Ann Example"]');
+  && !document.querySelector(".td-entries select:disabled"), {}, text);
+await deskByePage.select('.td-entries select[aria-label="Round 4 bye for Ann Example"]', "zero");
 await deskByeSaved("Ann Example's byes are saved.");
 deskByeAnswer = { error: "Round 1 is paired already." };
-await deskByePage.click('.td-entries input[aria-label="Round 1 bye for Ann Example"]');
+await deskByePage.select('.td-entries select[aria-label="Round 1 bye for Ann Example"]', "half");
 await deskByeSaved("Round 1 is paired already.");
 const deskByeRefusal = await deskByePage.$eval(".td-refused", (d) => d.open && d.querySelector(".td-refused-message").textContent);
 await deskByePage.click(".td-refused button");
 const deskByeRefusalClosed = await deskByePage.$eval(".td-refused", (d) => !d.open);
 const deskByesRefused = await deskByeBoxes();
-const deskByeSaves = deskByeCalls.filter((c) => c.action === "byes").map(({ token, byes }) => ({ token, byes }));
-deskByesShown.head === "Byes" && JSON.stringify(deskByesShown.boxes) === JSON.stringify(["Round 1 bye for Ann Example", "Round 2 bye for Ann Example",
-  "Round 3 bye for Ann Example (checked)", "Round 4 bye for Ann Example"])
-  && JSON.stringify(deskByeSaves) === JSON.stringify([{ token: "ann1", byes: "3, 4" }, { token: "ann1", byes: "1, 3, 4" }])
-  && JSON.stringify(deskByesRefused.boxes.filter((b) => b.endsWith("(checked)"))) === JSON.stringify(["Round 3 bye for Ann Example (checked)",
-    "Round 4 bye for Ann Example (checked)"])
+const deskByeSaves = deskByeCalls.filter((c) => c.action === "byes").map(({ token, byes, zeroByes }) => ({ token, byes, zeroByes }));
+deskByesShown.head === "Byes" && JSON.stringify(deskByesShown.boxes) === JSON.stringify(["Round 1 bye for Ann Example: –", "Round 2 bye for Ann Example: –",
+  "Round 3 bye for Ann Example: ½", "Round 4 bye for Ann Example: –"])
+  && JSON.stringify(deskByeSaves) === JSON.stringify([{ token: "ann1", byes: "3", zeroByes: "4" }, { token: "ann1", byes: "1, 3", zeroByes: "4" }])
+  && JSON.stringify(deskByesRefused.boxes) === JSON.stringify(["Round 1 bye for Ann Example: –", "Round 2 bye for Ann Example: –",
+    "Round 3 bye for Ann Example: ½", "Round 4 bye for Ann Example: 0"])
   ? pass("TD desk shows an entry's byes, saves a change at once with the entry's token, and puts the box back when the script refuses")
   : fail(`TD desk entry byes: ${JSON.stringify({ deskByesShown, deskByeSaves, deskByesRefused })}`);
 deskByeRefusal === "Round 1 is paired already." && deskByeRefusalClosed
@@ -204,10 +204,10 @@ JSON.stringify(deskByesShown.offered) === JSON.stringify(["Round 1", "Round 2", 
   ? pass("TD desk's register form offers each round of a one-day Swiss, sends the byes checked, and clears them for the next player")
   : fail(`TD desk register byes: ${JSON.stringify({ offered: deskByesShown.offered, deskByeRegistered, deskByesCleared })}`);
 await deskByePage.select("#td-event", "club-night/2026-10");
-await deskByePage.waitForSelector('.td-entries input[aria-label="October 19 bye for Month Player"]');
+await deskByePage.waitForSelector('.td-entries select[aria-label="October 19 bye for Month Player"]');
 const deskByesMonth = await deskByeBoxes();
 JSON.stringify(deskByesMonth.offered) === JSON.stringify(["October 19", "October 26"])
-  && JSON.stringify(deskByesMonth.boxes) === JSON.stringify(["October 19 bye for Month Player (checked)", "October 26 bye for Month Player"])
+  && JSON.stringify(deskByesMonth.boxes) === JSON.stringify(["October 19 bye for Month Player: ½", "October 26 bye for Month Player: –"])
   ? pass("TD desk offers a month's nights to come by date, on the register form and on a whole-month entry")
   : fail(`TD desk month byes: ${JSON.stringify(deskByesMonth)}`);
 await axeBoth(deskByePage, "TD desk with byes asked for");
@@ -325,9 +325,10 @@ await fitsPhone(standingsPage, "Standings page with two sections");
 await standingsPage.close();
 
 // Byes asked for in rounds not yet posted are posted with each section (22C4), above the round menu on Pairings and
-// below the table on Standings: by round, or in a month by night. A round already posted has them under Without a game.
+// below the table on Standings: by round, or in a month by night, zero-point byes named. A round already posted has them
+// under Without a game.
 const withByesAsked = (extra) => twoSections().map((t) => ({ ...t, plannedRounds: 4, ...extra,
-  players: t.players.map((p) => ({ ...p, ...{ a: { byes: [3, 4] }, f: { byes: [2, 3] } }[p.id] })) }));
+  players: t.players.map((p) => ({ ...p, ...{ a: { byes: [3, 4] }, f: { byes: [2, 3], zeroByes: [4] } }[p.id] })) }));
 let askedTournaments = withByesAsked({});
 const askedLines = (tab) => tab.$$eval("main p", (ps) => ps.filter((p) => p.textContent.startsWith("Byes asked for")).map((p) => ({
   text: p.textContent, before: p.previousElementSibling.className || p.previousElementSibling.tagName, after: p.nextElementSibling?.className || "" })));
@@ -346,10 +347,11 @@ await askedStandings.reload({ waitUntil: "networkidle0" });
 const onceRated = await askedLines(askedStandings);
 await askedStandings.close();
 JSON.stringify(byRound) === JSON.stringify([{ text: "Byes asked for: Ann (2000), rounds 3 and 4.", before: "H3", after: "round-menu" },
-  { text: "Byes asked for: Fay (1200), round 3.", before: "H3", after: "round-menu" }])
-  && JSON.stringify(byNight.map((l) => l.text)) === JSON.stringify(["Byes asked for: Ann (2000), October 19 and 26.", "Byes asked for: Fay (1200), October 19."])
+  { text: "Byes asked for: Fay (1200), round 3 and round 4 (zero-point).", before: "H3", after: "round-menu" }])
+  && JSON.stringify(byNight.map((l) => l.text)) === JSON.stringify(["Byes asked for: Ann (2000), October 19 and 26.",
+    "Byes asked for: Fay (1200), October 19 and October 26 (zero-point)."])
   && JSON.stringify(belowTable.map((l) => [l.text, l.before])) === JSON.stringify([["Byes asked for: Ann (2000), October 19 and 26.", "round-shown"],
-    ["Byes asked for: Fay (1200), October 19.", "round-shown"]]) && !onceRated.length
+    ["Byes asked for: Fay (1200), October 19 and October 26 (zero-point).", "round-shown"]]) && !onceRated.length
   ? pass("Pairings and Standings pages post the byes asked for in rounds not yet posted, by round or by night, until the tournament is rated")
   : fail(`Byes asked for: ${JSON.stringify({ byRound, byNight, belowTable, onceRated })}`);
 

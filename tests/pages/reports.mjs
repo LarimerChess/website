@@ -350,18 +350,22 @@ await byePage.close();
 
 // Give a bye, under the standings, offers only the byes the rules allow: Fay's missed round 1 can't be a second
 // full-point bye (28L1), a round to come is saved as the half-point bye she asks for through her entry, and then
-// she has her one (22C), which check-in starts her on; Ann can't add a last-round bye once round 1 is posted (22C4).
+// she has her one (22C), which check-in starts her on; Ann can't add a last-round half-point bye once round 1 is posted
+// (22C4), but can have a zero-point bye in any round to come, which check-in starts her on too.
 const giveRules = deskState(JSON.parse(JSON.stringify(byeRules.held.rounds.slice(0, 1))));
 giveRules.held.players = sixPlayers;
 const giveAnswer = giveRules.answer;
 giveRules.answer = (p) => {
+  const asked = giveRules.asked ??= {};
+  const list = (text) => (text ? text.split(", ") : []);
   if (p.action === "entries") return { entries: sixPlayers.map((x) => ({ name: x.name, id: x.id, rating: x.rating, for: "Saturday, November 7",
-    date: "2026-11-07", token: `t-${x.id}`, ...(x.id === "66666666" && giveRules.fayByes ? { byes: giveRules.fayByes } : {}) })) };
+    date: "2026-11-07", token: `t-${x.id}`, ...asked[x.id] })) };
   if (p.action === "byes") {
     giveRules.calls.push(p);
-    giveRules.fayByes = p.byes.split(", ");
-    giveRules.held.players = sixPlayers.map((x) => (x.id === "66666666" ? { ...x, byes: [2] } : x));
-    return { ok: true, message: `Fay's byes: round ${p.byes}.` };
+    const id = p.token.slice(2);
+    asked[id] = { byes: list(p.byes), zeroByes: list(p.zeroByes) };
+    giveRules.held.players = sixPlayers.map((x) => (asked[x.id] ? { ...x, byes: asked[x.id].byes.map(Number), zeroByes: asked[x.id].zeroByes.map(Number) } : x));
+    return { ok: true, message: `${sixPlayers.find((x) => x.id === id).name}'s byes are saved.` };
   }
   return giveAnswer(p);
 };
@@ -384,13 +388,21 @@ const checkinStart = await givePage.waitForFunction(() => document.querySelector
 await givePage.select("#run-bye-player", "11111111");
 await givePage.select("#run-bye-round", "Round 3");
 const annRound3 = await offered();
+await givePage.select("#run-bye-round", "Round 2");
+await givePage.select("#run-bye-kind", "zero");
+await press(givePage, ".run-give-bye button");
+await givePage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("zero-point bye asked for"));
+const annAsked = giveRules.calls.filter((c) => c.action === "byes").at(-1);
+const annCheckin = await givePage.waitForFunction(() => document.querySelector('.run-this-round[data-id="11111111"]')?.value === "zero")
+  .then(() => "zero", () => "");
 JSON.stringify(fayRound1.rounds) === JSON.stringify(["Round 1, unplayed (0)", "Round 2, to come", "Round 3, to come"])
   && fayRound1.kinds.join() === "half,zero,unplayed" && fayRound1.why.includes("28L1")
-  && asked.token === "t-66666666" && asked.byes === "2"
-  && fayRound3.rounds[1] === "Round 2, half-point bye asked for" && fayRound3.kinds.join() === "play" && fayRound3.why.includes("allows one per player")
-  && annRound3.kinds.join() === "play" && annRound3.why.includes("22C4") && checkinStart === "half"
-  ? pass("TD desk's Give a bye offers only the byes the rules allow, in rounds played and to come, and saves one to come with the entry")
-  : fail(`TD desk Give a bye: ${JSON.stringify({ fayRound1, asked, fayRound3, annRound3, checkinStart })}`);
+  && asked.token === "t-66666666" && asked.byes === "2" && asked.zeroByes === ""
+  && fayRound3.rounds[1] === "Round 2, half-point bye asked for" && fayRound3.kinds.join() === "play,zero" && fayRound3.why.includes("allows one per player")
+  && annRound3.kinds.join() === "play,zero" && annRound3.why.includes("22C4") && checkinStart === "half"
+  && annAsked?.token === "t-11111111" && annAsked.byes === "" && annAsked.zeroByes === "2" && annCheckin === "zero"
+  ? pass("TD desk's Give a bye offers only the byes the rules allow, in rounds played and to come, saves one to come with the entry, half-point or zero-point, and check-in starts the player on it")
+  : fail(`TD desk Give a bye: ${JSON.stringify({ fayRound1, asked, fayRound3, annRound3, checkinStart, annAsked, annCheckin })}`);
 await givePage.setViewport(PHONE);
 await fitsPhone(givePage, "TD desk giving a bye");
 await axeBoth(givePage, "TD desk giving a bye");

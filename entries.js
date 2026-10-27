@@ -1,11 +1,11 @@
 // The Entries page (entries/): the entry list of the upcoming club event the reader picks, from the
 // registration script's ?entries=all. It opens on ?event=<key> if given, else the soonest event,
-// and the address keeps the choice, so a link can open on one event. ENDPOINT and byesText come
+// and the address keeps the choice, so a link can open on one event. ENDPOINT, byesText, and entryByesText come
 // from register.js, and so do the players saved on this device and their list: a saved player
 // registered for one club night can switch to its whole month here, which the script treats as
 // registering for the month, and one registered for the whole month can switch to just one night,
-// until they have paid. A saved player can also change the byes they asked for, in a Swiss or a
-// whole month; a player registered on another device is saved here by the US Chess ID, last name,
+// until they have paid. A saved player can also change the byes they asked for, half-point or zero-point, in a
+// Swiss or a whole month; a player registered on another device is saved here by the US Chess ID, last name,
 // and email they registered with. Those two prove who is changing the entry, so a player saved
 // with an ID alone, as the Pairings page saves one, is asked for them on the first change.
 
@@ -73,7 +73,8 @@ function byeChoices(event, entry) {
     .filter(([night, day]) => night === name && day.startsWith(date.slice(0, 7)) && day >= today).map(([, day]) => day).sort();
 }
 
-/** A button that puts checkboxes for what the saved player will miss in the cell, with Save, which
+/** A button that opens a row under the cell's, as wide as the table so a phone has room, with a menu for each
+ *  round or night the saved player can miss, to play or ask for a half-point or zero-point bye, and Save, which
  *  replaces their byes, and Cancel. */
 function byesButton(cell, event, entry, player) {
   const button = document.createElement("button");
@@ -86,39 +87,52 @@ function byesButton(cell, event, entry, player) {
     const month = entry.for === "Whole month";
     const choices = byeChoices(event, entry);
     const had = (entry.byes || []).map(String);
-    const shown = [...cell.childNodes];
-    const boxes = Object.assign(document.createElement("div"), { className: "register-remember" });
+    const hadZero = (entry.zeroByes || []).map(String);
+    const boxes = Object.assign(document.createElement("div"), { className: "entries-bye-choices" });
     boxes.setAttribute("role", "group");
     boxes.setAttribute("aria-label", `${month ? "Nights" : "Rounds"} ${player.name} will miss`);
     for (const value of choices) {
-      const box = Object.assign(document.createElement("input"), { type: "checkbox", id: `entries-bye-${player.id}-${value}`, value,
-        checked: had.includes(value) });
-      boxes.append(box, Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: byesText([value]) }));
+      const menu = Object.assign(document.createElement("select"), { id: `entries-bye-${player.id}-${value}`, name: value });
+      menu.append(new Option("Plays", ""), new Option("½-point bye", "half"), new Option("0-point bye", "zero"));
+      menu.value = had.includes(value) ? "half" : hadZero.includes(value) ? "zero" : "";
+      const label = Object.assign(document.createElement("label"), { htmlFor: menu.id, textContent: byesText([value]) });
+      boxes.append(Object.assign(document.createElement("p"), { className: "entries-bye-choice" }));
+      boxes.lastChild.append(label, menu);
     }
     const save = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: "Save" });
     const cancel = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: "Cancel" });
     const actions = Object.assign(document.createElement("p"), { className: "td-buttons" });
     actions.append(save, cancel);
-    cell.replaceChildren(boxes, actions);
-    (boxes.querySelector("input") || save).focus();
+    const row = cell.closest("tr");
+    const editor = Object.assign(document.createElement("tr"), { className: "entries-bye-editor" });
+    Object.assign(editor.insertCell(), { colSpan: row.cells.length }).append(boxes, actions);
+    row.after(editor);
+    button.hidden = true;
+    (boxes.querySelector("select") || save).focus();
+    const close = () => {
+      editor.remove();
+      button.hidden = false;
+    };
     cancel.addEventListener("click", () => {
-      cell.replaceChildren(...shown);
+      close();
       button.focus();
     });
     save.addEventListener("click", async () => {
-      const controls = cell.querySelectorAll("input, button");
+      const controls = editor.querySelectorAll("select, button");
       for (const control of controls) control.disabled = true;
       const [name, date] = event.key.split("/");
       // A month's nights already played aren't offered, and keep their byes.
-      const byes = [...had.filter((b) => !choices.includes(b)), ...[...boxes.querySelectorAll(":checked")].map((b) => b.value)];
+      const chosen = (kind) => [...boxes.querySelectorAll("select")].filter((m) => m.value === kind).map((m) => m.name);
+      const byes = [...had.filter((b) => !choices.includes(b)), ...chosen("half")];
+      const zeroByes = [...hadZero.filter((b) => !choices.includes(b)), ...chosen("zero")];
       let said;
       try {
         const body = new URLSearchParams({ action: "byes", event: name, date: month ? date.slice(0, 7) : date, id: player.id,
-          last: player.last, email: player.email, byes: byes.join(", ") });
+          last: player.last, email: player.email, byes: byes.join(", "), zeroByes: zeroByes.join(", ") });
         const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
         said = result.message || result.error;
         if (result.ok) {
-          cell.replaceChildren(...shown);
+          close();
           await load();
         }
       } catch {
@@ -126,7 +140,7 @@ function byesButton(cell, event, entry, player) {
       }
       for (const control of controls) control.disabled = false;
       allStatus.textContent = said;
-      (cell.contains(save) ? save : all.querySelector(`tr[data-id="${CSS.escape(player.id)}"] .entries-change-byes`))?.focus();
+      (editor.isConnected ? save : all.querySelector(`tr[data-id="${CSS.escape(player.id)}"] .entries-change-byes`))?.focus();
     });
   });
   return button;
@@ -167,8 +181,9 @@ function eventSection(event) {
     const head = table.createTHead().insertRow();
     const month = event.entries.some((e) => e.for === "Whole month") || switchers.length;
     // A whole month's byes are its nights, each shown on its own night's list.
-    const byesHere = (e) => (night ? (e.byes || []).filter((b) => b === event.key.split("/")[1]) : e.byes || []);
-    const byesColumn = event.entries.some((e) => byesHere(e).length) || changers.length;
+    const tonight = (e, kind) => (e[kind] || []).includes(event.key.split("/")[1]);
+    const byesColumn = event.entries.some((e) => (night ? tonight(e, "byes") || tonight(e, "zeroByes") : e.byes?.length || e.zeroByes?.length))
+      || changers.length;
     // Players get sections when the tournament starts.
     const sectioned = event.entries.some((e) => e.section);
     for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(byesColumn ? ["Byes"] : []),
@@ -195,7 +210,9 @@ function eventSection(event) {
       if (month || player) cell(row, e.for === "Whole month" ? "Whole month" : "This night");
       if (player) row.lastChild.append(" ", switchButton(event, { ...player, name: e.name }, e.for === "Whole month"));
       const changer = changers.find((p) => p.id === e.id);
-      if (byesColumn) cell(row, night ? (byesHere(e).length ? "Half-point bye" : "") : byesText(e.byes));
+      if (byesColumn) {
+        cell(row, !night ? entryByesText(e) : tonight(e, "byes") ? "Half-point bye" : tonight(e, "zeroByes") ? "Zero-point bye" : "");
+      }
       if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
       if (sectioned) cell(row, e.section || "");
     }

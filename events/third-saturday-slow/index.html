@@ -569,7 +569,10 @@ section.td-table td { white-space: nowrap; }
 .register-form .run-extra-players label { display: flex; align-items: center; gap: 6px; margin-top: 0; font-weight: 400; }
 .run-extra-players input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .run-extra-add { max-width: 100%; margin: 4px 0; font: inherit; padding: 4px 8px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
-.entries .register-remember label { white-space: nowrap; }
+.entries-bye-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 4px 0; }
+.entries-bye-choice select { max-width: 100%; }
+.entries-bye-choice select, .td-entries label select { font: inherit; padding: 4px 8px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.entries-bye-choice select:focus-visible, .td-entries label select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .round-menu { margin: 12px 0 8px; }
 .round-menu label { font-weight: 600; }
 .round-menu select { font: inherit; padding: 6px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
@@ -706,7 +709,7 @@ section.td-table td { white-space: nowrap; }
             <label for="register-bye-2">Round 2, 1:30 PM</label>
             <input id="register-bye-3" name="byes" type="checkbox" value="3">
             <label for="register-bye-3">Round 3, 4:30 PM</label>
-            <p id="register-byes-hint" class="register-hint">One per player, half a point. You can change it on the <a href="/entries/">Entries page</a> until the round is paired; a last-round bye is fixed once round 1 is posted.</p>
+            <p id="register-byes-hint" class="register-hint">One per player, half a point. You can change it on the <a href="/entries/">Entries page</a> until the round is paired; a last-round bye is fixed once round 1 is posted. To miss other rounds, ask for zero-point byes there.</p>
           </div>
         </fieldset>
         <div class="register-remember" hidden>
@@ -748,6 +751,6 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../../register.js?v=d4f1af7701" defer></script>
+  <script src="../../register.js?v=556a90e95c" defer></script>
 </body>
 </html>

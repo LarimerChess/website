@@ -106,15 +106,17 @@ function namer(t) {
   };
 }
 
-/** "Byes asked for: Ann (1500), round 3; …", posted with the pairings (22C4): the half-point byes asked
- *  for in rounds not yet posted, since a posted round's are under "Without a game". */
+/** "Byes asked for: Ann (1500), round 3; Ben (1400), round 2 and round 4 (zero-point); …", posted with the pairings (22C4):
+ *  the byes asked for in rounds not yet posted, since a posted round's are under "Without a game". */
 function byesAsked(t, s, name) {
   if (t.format !== "swiss" || t.status !== "running") return [];
-  const asked = s.players.map((p) => [p, (p.byes || []).filter((n) => n > s.rounds.length && !(p.out && n >= p.out))])
-    .filter(([, later]) => later.length).map(([p, later]) => {
-      const nights = later.map((n) => t.roundDates?.[n - 1]);
-      return `${name(p.id)}, ${nights.every(Boolean) ? byesText(nights) : byesText(later).replace(/^Round/, "round")}`;
-    });
+  const later = (p, list) => (list || []).filter((n) => n > s.rounds.length && !(p.out && n >= p.out));
+  const words = (rounds) => {
+    const nights = rounds.map((n) => t.roundDates?.[n - 1]);
+    return nights.every(Boolean) ? byesText(nights) : byesText(rounds).replace(/^Round/, "round");
+  };
+  const asked = s.players.map((p) => [p, later(p, p.byes), later(p, p.zeroByes)]).filter(([, half, zero]) => half.length || zero.length)
+    .map(([p, half, zero]) => `${name(p.id)}, ${[half.length && words(half), zero.length && `${words(zero)} (zero-point)`].filter(Boolean).join(" and ")}`);
   return asked.length ? [paragraph(`Byes asked for: ${asked.join("; ")}.`)] : [];
 }
 

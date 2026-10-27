@@ -166,6 +166,7 @@ const checkinByeDesk = deskState([{ games: [{ board: 1, white: "11111111", black
   { board: 2, white: "44444444", black: "22222222", result: "0-1", section: "" }], byes: [], out: [], posted: true }]);
 checkinByeDesk.held.players[1].byes = [2];
 checkinByeDesk.held.players[2].byes = [2];
+checkinByeDesk.held.players[3].zeroByes = [3];
 const checkinByePage = await mocked("/td/ checking in byes asked for", checkinByeDesk.answer);
 await signIn(checkinByePage);
 await checkinByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
@@ -181,12 +182,12 @@ await checkinByePage.select('select[aria-label="Ann this round"]', "absent");
 const checkinByesBusy = await checkinByePage.evaluate(() => { document.activeElement?.blur(); return runBusy(); });
 await checkinByePage.select('select[aria-label="Ann this round"]', "play");
 JSON.stringify(checkinByes.head) === JSON.stringify(["No.", "Name", "Rating", "Score", "Byes asked for", "This round"])
-  && JSON.stringify(checkinByes.rows) === JSON.stringify([["Ann", "", "play"], ["Ben", "2", "half"], ["Cal", "2", "half"], ["Dee", "", "play"]])
-  && checkinByes.hint.startsWith("Everyone starts as Present, or as a half-point bye if they asked for one this round;")
+  && JSON.stringify(checkinByes.rows) === JSON.stringify([["Ann", "", "play"], ["Ben", "2", "half"], ["Cal", "2", "half"], ["Dee", "3 (zero-point)", "play"]])
+  && checkinByes.hint.startsWith("Everyone starts as Present, or as the half-point or zero-point bye they asked for this round;")
   && !checkinByes.busy && checkinByesBusy
   ? pass("TD desk starts a player who asked for a bye this round as a half-point bye, shows the byes asked for, and counts only a changed choice as unsaved")
   : fail(`TD desk check-in with byes: ${JSON.stringify({ checkinByes, checkinByesBusy })}`);
-checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), round 2. Change them under Give a bye or in the entries list."
+checkinByes.asked === "Asked for: Ben (1700), round 2; Cal (1500), round 2; Dee (1300), round 3 (zero-point). Change them under Give a bye or in the entries list."
   && JSON.stringify(checkinByes.offered) === JSON.stringify(["Round 2", "Round 3"])
   ? pass("TD desk lists the byes asked for rounds not yet paired, and the register form offers only those rounds")
   : fail(`TD desk byes asked for: ${JSON.stringify({ asked: checkinByes.asked, offered: checkinByes.offered })}`);
@@ -231,16 +232,17 @@ const monthByePage = await mocked("/td/ with a month's byes", async (p) => {
 });
 await signIn(monthByePage);
 const monthByeCell = () => monthByePage.$eval(".td-entries tbody td:nth-child(5)", (c) => [...c.childNodes]
-  .map((n) => (n.querySelector ? `${n.querySelector("input").value}${n.querySelector("input").checked ? " (checked)" : ""}` : n.textContent.trim())).filter(Boolean));
-await monthByePage.waitForSelector(".td-entries tbody td:nth-child(5) input");
+  .map((n) => (n.querySelector ? `${n.querySelector("select").dataset.round}${n.querySelector("select").value ? ` (${n.querySelector("select").value})` : ""}`
+    : n.textContent.trim())).filter(Boolean));
+await monthByePage.waitForSelector(".td-entries tbody td:nth-child(5) select");
 const monthByesEarly = await monthByeCell();
 releaseMonthBye();
-const monthByesRedrawn = await monthByePage.waitForFunction(() => document.querySelectorAll(".td-entries tbody td:nth-child(5) input").length === 3,
+const monthByesRedrawn = await monthByePage.waitForFunction(() => document.querySelectorAll(".td-entries tbody td:nth-child(5) select").length === 3,
   { timeout: 5000 }).then(() => true, () => false);
 const monthByesLoaded = await monthByeCell();
-const monthByesFixed = await monthByePage.$$eval(".td-entries tbody td:nth-child(5) input:disabled", (b) => b.map((x) => x.value));
+const monthByesFixed = await monthByePage.$$eval(".td-entries tbody td:nth-child(5) select:disabled", (b) => b.map((x) => x.dataset.round));
 await monthByePage.waitForFunction(() => document.querySelector(".run-round-title").textContent === "Round 2: check in");
-await monthByePage.click('.td-entries input[value="2026-10-19"]');
+await monthByePage.select('.td-entries select[data-round="2026-10-19"]', "half");
 const monthByeCheckin = await monthByePage.waitForFunction(() => [...document.querySelectorAll(".run-attendance tbody tr")]
   .find((r) => r.cells[1].textContent === "Ann" && r.querySelector("select").value === "half")?.cells[4].textContent, { timeout: 5000 })
   .then((cell) => cell.jsonValue(), () => null);

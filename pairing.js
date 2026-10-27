@@ -903,7 +903,7 @@
       const ids = new Set(d.players || []);
       // The byes a player asked for are the rounds of their own section.
       groups.push({ name: d.name, key: d.name, under: null, extra: true,
-        members: t.players.filter((p) => ids.has(p.id)).map(({ byes, ...p }) => p) });
+        members: t.players.filter((p) => ids.has(p.id)).map(({ byes, zeroByes, ...p }) => p) });
     }
     // In the order the TD gave them, sections a player names without a definition last.
     const at = (g) => (all.some((s) => s.name === g.name) ? all.findIndex((s) => s.name === g.name) : Infinity);

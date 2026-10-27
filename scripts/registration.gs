@@ -70,7 +70,9 @@
  * and arenas take none, and a round already paired changes only under the desk's Byes and unplayed rounds.
  * A player has one, as each event's page announces, online or from the TD; once round 1 is posted, a bye in its
  * last round can't be asked for, and only the TD can drop one (22C4, 22C5). All the rules the script holds
- * byes to are in the comment above HALF_BYE_LIMIT.
+ * byes to are in the comment above HALF_BYE_LIMIT. A player who won't come, or would rather not have the half
+ * point, can instead ask for zero-point byes, in the Zero-point byes columns: any round not yet paired, as many
+ * as they like.
  *
  * The club turns no one away: a TD can give a discount, which lowers what an entry owes (the
  * Discount column, with its reason and TD in Discount note), and refund what was paid, less any
@@ -101,7 +103,7 @@ const TZ = "America/Denver";
 const DOLLARS = /^(\d+(\.\d\d?)?|\.\d\d?)$/;
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee",
-  "Discount", "Discount note", "Byes"];
+  "Discount", "Discount note", "Byes", "Zero-point byes"];
 const MOVED = "moved to month";
 const TO_NIGHT = "moved to night";
 const PAYMENT_HEADER = ["No.", "Recorded", "Token", "Event", "Date", "US Chess ID", "Name", "Type", "Method", "Received",
@@ -118,7 +120,7 @@ const TOURNAMENT_HEADERS = {
   Tournaments: ["Key", "Event", "Name", "Format", "Rounds", "Status", "Started", "Coin", "Finished", "Cutoff", "Sections", "TD",
     "Round dates", "Time control"],
   Players: ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep", "State",
-    "Byes"],
+    "Byes", "Zero-point byes"],
   Rounds: ["Key", "Round", "Board", "White", "Black", "Result", "Bye points", "Posted", "Section", "Bye kind", "White report",
     "Black report"],
   Arena: ["Key", "Game", "White", "Black", "White pact", "Black pact", "Result", "Started", "Ended", "Section", "White report",
@@ -267,17 +269,21 @@ function register(p, td, signedIn) {
   let token;
   let credited = 0;
   let byes = [];
+  let zeros = [];
   try {
     const { sheet, col, rows } = readEntries();
     const mine = rows.filter((r) => r[col.Event] === p.event && r[col["US Chess ID"]] === id && active(r[col.Status]));
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
     if (month) return { error: `${name} is already registered for the whole month.` };
-    const asked = byeList(p.byes);
-    const run = asked.length ? runOf(key) : null;
+    const asked = byeList(p.byes), zeroAsked = byeList(p.zeroByes);
+    const run = asked.length || zeroAsked.length ? runOf(key) : null;
     const checked = run ? checkByes(asked, [], key, event, run, !td, id) : { list: [] };
     if (checked.error) return checked;
     byes = checked.list;
+    const zero = run ? checkZeroByes(zeroAsked, [], byes, key, event, run, !td) : { list: [] };
+    if (zero.error) return zero;
+    zeros = zero.list;
     token = Utilities.getUuid();
     const ratingDue = ratingFee(event, prices().fees);
     const row = {
@@ -287,6 +293,7 @@ function register(p, td, signedIn) {
       "Membership expires": member.expirationDate || "", Email: email, Status: "registered",
       "Added by": !td ? "online" : signedIn ? `TD (${signedIn.name})` : "TD", Token: token, Phone: phone,
       "Rating fee": ratingDue === null ? "" : money(ratingDue), Byes: byes.join(", "),
+      "Zero-point byes": zeros.join(", "),
     };
     appendText(sheet, col, row);
     if (event.kind === "month") {
@@ -294,7 +301,7 @@ function register(p, td, signedIn) {
       credited = moveToMonth(sheet, col, rows, nights, row, amount);
     }
     // Sync never changes a player it has added, so one already in the tournament, as from a night of the month, gets them here.
-    if (run && run.info && setPlayerByes(key, id, byes, run.info)) clearTournamentCache(key);
+    if (run && run.info && setPlayerByes(key, id, byes, zeros, run.info)) clearTournamentCache(key);
     clearEntriesCache();
   } finally {
     lock.releaseLock();
@@ -370,6 +377,8 @@ function entries(key, td, read) {
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       const byes = byeList(r[col.Byes]);
       if (byes.length) entry.byes = byes;
+      const zeros = byeList(r[col["Zero-point byes"]]);
+      if (zeros.length) entry.zeroByes = zeros;
       if (td) {
         const held = ledger[r[col.Token]] || { entry: 0, rating: 0, donation: 0, credit: 0, refunded: 0 };
         const credit = held.credit / 100;
@@ -1100,6 +1109,8 @@ function tournament(key, td) {
         state: r.State || "" };
       const byes = byeRounds(byeList(r.Byes), info);
       if (byes.length) player.byes = byes;
+      const zeros = byeRounds(byeList(r["Zero-point byes"]), info);
+      if (zeros.length) player.zeroByes = zeros;
       if (entered[player.id]) player.nights = entered[player.id];
       return player;
     });
@@ -1412,7 +1423,7 @@ function addEntrants(key, entrants, section) {
   let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
   const records = priorRecords(entrants.map((e) => e.id));
   addRows(t, entrants.map((e) => ({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name, Rating: e.rating || "",
-    "Out from round": "", Section: section, Byes: "", ...records[e.id] })));
+    "Out from round": "", Section: section, Byes: "", "Zero-point byes": "", ...records[e.id] })));
 }
 
 /** Sets the time control the rating report gives, p.value: the tournament's, or with p.section that
@@ -1537,7 +1548,8 @@ function syncPlayers(key) {
       have.add(e.id);
       added.push({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
         Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "",
-        Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "", ...records[e.id] });
+        Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "",
+        "Zero-point byes": swiss ? byeRounds(e.zeroByes || [], info).join(", ") : "", ...records[e.id] });
     }
     addRows(t, added);
     // A player who entered single nights of a month didn't enter the rounds before them, so has no late bye.
@@ -2675,8 +2687,8 @@ function toNight(p, td) {
     // The month's tournament keeps the player for this night, without the month's byes, which would give them half
     // points for the others.
     const monthKey = `${p.event}/${p.date.slice(0, 7)}`;
-    const run = byeList(month[col.Byes]).length ? runOf(monthKey) : null;
-    if (run && run.info && setPlayerByes(monthKey, month[col["US Chess ID"]], [], run.info)) clearTournamentCache(monthKey);
+    const run = byeList(month[col.Byes]).length || byeList(month[col["Zero-point byes"]]).length ? runOf(monthKey) : null;
+    if (run && run.info && setPlayerByes(monthKey, month[col["US Chess ID"]], [], [], run.info)) clearTournamentCache(monthKey);
     if (held.entry || held.rating) {
       addPayment(book, month[col.Token], partyOf(month, col), { Type: "credit", "Entry fee": -held.entry, "Rating fee": -held.rating,
         Note: `To ${nightLabel(p.date)}, ${row.Token}` });
@@ -2709,7 +2721,7 @@ function toNight(p, td) {
   return { ok: true, message: `${name} is registered for ${night.label} only. ${owed}` };
 }
 
-/** Replaces the byes an entry asks for with p.byes, in the entry and in its running tournament's Players row.
+/** Replaces the byes an entry asks for with p.byes and p.zeroByes, in the entry and in its running tournament's Players row.
  *  From the Entries page (td null), the entry is p.event/p.date's for p.id, with p.last and the entry's
  *  p.email; from the TD desk, p.token. */
 function setByes(p, td) {
@@ -2740,11 +2752,16 @@ function setByes(p, td) {
     if (run.info && rated(key)) return { error: "US Chess has rated this tournament, so its byes can't change." };
     const checked = checkByes(byeList(p.byes), byeList(r[col.Byes]), key, event, run, !td, r[col["US Chess ID"]]);
     if (checked.error) return checked;
+    // A page from before zero-point byes sends none, and leaves them as they are.
+    const hadZeros = byeList(r[col["Zero-point byes"]]);
+    const zero = checkZeroByes(p.zeroByes === undefined ? hadZeros : byeList(p.zeroByes), hadZeros, checked.list, key, event, run, !td);
+    if (zero.error) return zero;
     sheet.getRange(index + 2, col.Byes + 1).setNumberFormat("@").setValue(checked.list.join(", "));
-    if (run.info) setPlayerByes(key, r[col["US Chess ID"]], checked.list, run.info);
+    sheet.getRange(index + 2, col["Zero-point byes"] + 1).setNumberFormat("@").setValue(zero.list.join(", "));
+    if (run.info) setPlayerByes(key, r[col["US Chess ID"]], checked.list, zero.list, run.info);
     clearEntriesCache();
     if (run.info) clearTournamentCache(key);
-    return { ok: true, message: `${r[col.Name]}'s byes: ${byesText(checked.list)}.` };
+    return { ok: true, message: `${r[col.Name]}'s byes: ${byesText(checked.list, zero.list)}.` };
   } finally {
     lock.releaseLock();
   }
@@ -2774,14 +2791,8 @@ function checkByes(asked, old, key, event, run, online, id) {
     if (asked.some((n) => !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > rounds)) return { error: "Not a round of this tournament." };
     list = [...new Set(asked.map(Number))].sort((a, b) => a - b).map(String);
   }
-  const paired = lines.reduce((m, r) => Math.max(m, Number(r.Round) || 0), 0);
-  const locked = [...list.filter((x) => !old.includes(x)), ...old.filter((x) => !list.includes(x))]
-    .filter((x) => byeRound(x, dates) && byeRound(x, dates) <= paired)
-    .sort((a, b) => byeRound(a, dates) - byeRound(b, dates))[0];
-  if (locked) {
-    const what = month ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
-    return { error: `${what} is already paired, so ${online ? "only the TD can change it" : "change it under Standings and byes, in Give a bye"}.` };
-  }
+  const locked = pairedChange(list, old, run, online);
+  if (locked) return { error: locked };
   // A tournament date's rounds are its own; a month's are only known once it starts.
   const unoffered = !month && list.find((x) => !old.includes(x) && !offersHalfBye(event, Number(x), rounds));
   if (unoffered) return { error: `The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round ${unoffered} isn't one.` };
@@ -2804,12 +2815,48 @@ function checkByes(asked, old, key, event, run, online, id) {
   return { list };
 }
 
-/** Sets the byes, as rounds, of the player with the US Chess ID in the tournament with the key, when they are
- *  one of its players; whether they are. */
-function setPlayerByes(key, id, list, info) {
+/** Why a change between old and list, byes as the Byes columns keep them, touches a round already paired, or "". */
+function pairedChange(list, old, run, online) {
+  const dates = roundDates(run.info);
+  const paired = run.lines.reduce((m, r) => Math.max(m, Number(r.Round) || 0), 0);
+  const locked = [...list.filter((x) => !old.includes(x)), ...old.filter((x) => !list.includes(x))]
+    .filter((x) => byeRound(x, dates) && byeRound(x, dates) <= paired)
+    .sort((a, b) => byeRound(a, dates) - byeRound(b, dates))[0];
+  if (!locked) return "";
+  const what = /-/.test(locked) ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
+  return `${what} is already paired, so ${online ? "only the TD can change it" : "change it under Standings and byes, in Give a bye"}.`;
+}
+
+/** Checks the zero-point byes asked for, as checkByes does the half-point byes, half: any round or night not yet
+ *  paired, and not one of the half-point byes. Returns { list } or { error }. */
+function checkZeroByes(asked, old, half, key, event, run, online) {
+  if (!asked.length && !old.length) return { list: [] };
+  if (event.kind === "night") return { error: "A single night has no byes; register for the whole month to miss a night." };
+  const format = run.info ? run.info.Format : event.format || "";
+  if (asked.length && format === "quad") return { error: "This tournament has no byes; a game a player misses is forfeited." };
+  if (asked.length && format === "arena") return { error: "An arena has no byes." };
+  let list;
+  if (event.kind === "month") {
+    const nights = [...monthNights(key), ...roundDates(run.info)];
+    if (asked.some((d) => !nights.includes(d))) return { error: "Not a night of this month." };
+    list = [...new Set(asked)].sort();
+  } else {
+    const rounds = Number(run.info && run.info.Rounds) || Number(event.rounds) || 0;
+    if (asked.length && !rounds) return { error: "The number of rounds isn't set yet; tell the TD." };
+    if (asked.some((n) => !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > rounds)) return { error: "Not a round of this tournament." };
+    list = [...new Set(asked.map(Number))].sort((a, b) => a - b).map(String);
+  }
+  if (list.some((x) => half.includes(x))) return { error: "A round can be a half-point bye or a zero-point bye, not both." };
+  const locked = pairedChange(list, old, run, online);
+  return locked ? { error: locked } : { list };
+}
+
+/** Sets the half-point and zero-point byes, as rounds, of the player with the US Chess ID in the tournament with
+ *  the key, when they are one of its players; whether they are. */
+function setPlayerByes(key, id, list, zeros, info) {
   const players = table("Players");
   const line = players.rows.find((x) => x.Key === key && x["US Chess ID"] === id);
-  if (line) setCell(players, line.row, "Byes", byeRounds(list, info).join(", "));
+  if (line) setCells(players, { [line.row]: { Byes: byeRounds(list, info).join(", "), "Zero-point byes": byeRounds(zeros, info).join(", ") } });
   return Boolean(line);
 }
 
@@ -2870,8 +2917,10 @@ function monthNights(key) {
   return Object.keys(events).filter((k) => k.startsWith(key + "-") && events[k].kind === "night").map((k) => k.split("/")[1]).sort();
 }
 
-/** Byes as messages name them: "round 3", "rounds 2 and 4", a month's nights as "October 19 and 26", or "none". */
-function byesText(list) {
+/** Byes as messages name them: "round 3", "rounds 2 and 4", a month's nights as "October 19 and 26", or "none"; with
+ *  zeros, the zero-point byes, "half-point, round 2; zero-point, round 4". */
+function byesText(list, zeros = []) {
+  if (zeros.length) return [list.length && `half-point, ${byesText(list)}`, `zero-point, ${byesText(zeros)}`].filter(Boolean).join("; ");
   if (!list.length) return "none";
   if (!/^\d{4}-/.test(list[0])) return `${list.length > 1 ? "rounds" : "round"} ${andList(list)}`;
   return `${Utilities.formatDate(new Date(list[0] + "T12:00:00Z"), TZ, "MMMM")} ${andList(list.map((d) => String(Number(d.slice(8)))))}`;

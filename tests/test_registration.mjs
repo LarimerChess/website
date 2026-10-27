@@ -737,7 +737,7 @@ for (const store of STORES) {
     eq(r2.map((r) => [r.Board, r.Result, r.Section]), [["1", "", ""], ["2", "", ""], ["3", "0-1", ""], ["4", "1-0", ""]]);
     if (store === "sheet") {
       eq(heading(sheets.Players), ["Key", "No.", "US Chess ID", "Name", "Rating", "Out from round", "Section", "Floor", "Prior games", "Prior sweep",
-        "State", "Byes"]);
+        "State", "Byes", "Zero-point byes"]);
       eq(heading(sheets.Tournaments).slice(-5), ["Cutoff", "Sections", "TD", "Round dates", "Time control"]);
     }
     // Its rows are where they were; only headings were added.
@@ -1582,6 +1582,34 @@ function classicRunning(store) {
 }
 
 for (const store of STORES) {
+  test(`zero-point byes: any rounds not yet paired, the last too, never one that's also a half-point bye, kept apart and shown with them (${store})`, () => {
+    const { gs, post, desk, pair, rows } = classicRunning(store);
+    assert.equal(post({ byes: "2", zeroByes: "3, 4" }).message, "Ann Ash's byes: half-point, round 2; zero-point, rounds 3 and 4.");
+    eq(rows("Players").map((r) => [r.Byes, r["Zero-point byes"]])[0], ["2", "3, 4"]);
+    eq(gs.entries("classic/2026-11-07", false).find((e) => e.id === "66666666").zeroByes, ["3", "4"]);
+    eq(gs.tournament("classic/2026-11-07", true).players[0].zeroByes, [3, 4]);
+    assert.equal(post({ byes: "2", zeroByes: "2" }).error, "A round can be a half-point bye or a zero-point bye, not both.");
+    assert.equal(post({ zeroByes: "5" }).error, "Not a round of this tournament.");
+    assert.equal(post({ byes: "" }).message, "Ann Ash's byes: zero-point, rounds 3 and 4.", "a page that sends no zero-point byes leaves them");
+    assert.equal(desk({ token: "t3", zeroByes: "1, 2, 3, 4" }).message, "Cal's byes: zero-point, rounds 1, 2, 3, and 4.", "as many as they like");
+    pair(1, true);
+    assert.equal(post({ zeroByes: "1" }).error, "Round 1 is already paired, so only the TD can change it.");
+    assert.equal(desk({ token: "t3", zeroByes: "2, 3, 4" }).error, "Round 1 is already paired, so change it under Standings and byes, in Give a bye.");
+    assert.equal(post({ zeroByes: "4" }).message, "Ann Ash's byes: zero-point, round 4.", "the last round, after round 1 (22C4 is for half-point byes)");
+  });
+}
+
+test("zero-point byes asked for when registering, by night for a month, and none for a single night", () => {
+  const { gs, sheets, register } = byes();
+  assert.equal(register({ byes: "2", zeroByes: "4" }).ok, true);
+  eq(rowsOf(sheets.Entries).map((r) => [r.Byes, r["Zero-point byes"]]), [["2", "4"]]);
+  assert.equal(register({ event: "monday-club-night-at-peak", date: "2099-10", zeroByes: "2099-10-19, 2099-10-26" }).ok, true);
+  assert.equal(register({ event: "monday-club-night-at-peak", date: "2099-10-12", id: "77777777", last: "Birch", zeroByes: "2099-10-12" }).error,
+    "A single night has no byes; register for the whole month to miss a night.");
+  eq(gs.entries("monday-club-night-at-peak/2099-10", false).map((e) => e.zeroByes), [["2099-10-19", "2099-10-26"]]);
+});
+
+for (const store of STORES) {
   test(`a player changes their byes on the Entries page by last name and email, in the entry and the running tournament, until the round is paired (${store})`, () => {
     const { gs, post, pair, entryByes, playerByes } = classicRunning(store);
     const ben = (fields) => post({ id: "77777777", last: "Birch", email: "ben@example.com", ...fields });
@@ -1741,7 +1769,7 @@ test("an Entries tab and a month's tournament from before byes get their columns
       [month, "1", "66666666", "Ann Ash", "1900", "", "", "", "", "", "CO"]],
   });
   eq(t.gs.entries("monday-club-night-at-peak/2099-10-05", false).map((e) => [e.name, "byes" in e]), [["Ann Ash", false]]);
-  eq(heading(t.sheets.Entries).slice(-2), ["Discount note", "Byes"]);
+  eq(heading(t.sheets.Entries).slice(-3), ["Discount note", "Byes", "Zero-point byes"]);
   assert.equal(t.register({}).ok, true);
   assert.equal(t.register({ event: "open", date: "2026-11-21" }).ok, true);
   eq(rowsOf(t.sheets.Entries).map((r) => [r.Date, r.Email, r.Byes]), [["2099-10", "ann@example.com", ""], ["2026-11-07", "ann@example.com", ""],

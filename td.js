@@ -415,44 +415,58 @@ function showRegisterByes(keep = false) {
   tdByes.hidden = !rounds.length;
 }
 
-/** An entry's Byes: a box for each round or night it can ask to miss, saved as soon as it changes,
- *  then in words any asked for that no box shows, as when the rounds aren't known. A paired round's box is shown but fixed. */
+/** An entry's Byes: a menu for each round or night it can ask to miss, to play or ask for a half-point or zero-point
+ *  bye, saved as soon as it changes, then in words any asked for that no menu shows, as when the rounds aren't known.
+ *  A paired round's menu is shown but fixed. */
 function showEntryByes(cell, e) {
   const [eventName] = choice.value.split("/");
   const month = e.date?.length === 7;
   const rounds = month ? byeRounds(`${eventName}/${e.date}`)
     : choices.find((c) => c.key === choice.value)?.kind === "entry" ? byeRounds(choice.value) : [];
-  const asked = e.byes || [];
-  const boxes = rounds.map(({ value, label, paired }) => {
-    const box = Object.assign(document.createElement("input"), { type: "checkbox", value, checked: asked.includes(value), disabled: paired });
-    box.setAttribute("aria-label", `${label} bye for ${e.name}`);
-    box.addEventListener("change", () => saveEntryByes(cell, e, box));
+  const asked = e.byes || [], zeros = e.zeroByes || [];
+  const menus = rounds.map(({ value, label, paired }) => {
+    const menu = Object.assign(document.createElement("select"), { disabled: paired });
+    menu.append(option("", "–", false), option("half", "½", false), option("zero", "0", false));
+    menu.value = asked.includes(value) ? "half" : zeros.includes(value) ? "zero" : "";
+    menu.dataset.round = value;
+    menu.dataset.was = menu.value;
+    menu.setAttribute("aria-label", `${label} bye for ${e.name}`);
+    menu.addEventListener("change", () => saveEntryByes(cell, e, menu));
     const wrap = document.createElement("label");
     // The script refuses a paired round's change from here, even the TD's.
     if (paired) wrap.title = "Already paired: change it under Standings and byes, in Give a bye.";
     // A round shows its number alone, to keep the table narrow.
-    wrap.append(box, ` ${month ? label : value}`);
+    wrap.append(`${month ? label : value} `, menu);
     return wrap;
   });
-  const unshown = asked.filter((b) => !rounds.some((r) => r.value === b));
-  const words = !unshown.length ? "" : month ? nightsInWords(unshown) : `${unshown.length > 1 ? "Rounds" : "Round"} ${andList.format(unshown)}`;
-  cell.replaceChildren(...boxes.flatMap((wrap) => [wrap, " "]), words);
+  const inWords = (list, kind) => {
+    const unshown = list.filter((b) => !rounds.some((r) => r.value === b));
+    if (!unshown.length) return "";
+    return `${month ? nightsInWords(unshown) : `${unshown.length > 1 ? "Rounds" : "Round"} ${andList.format(unshown)}`}${zeros.length ? ` (${kind})` : ""}`;
+  };
+  const words = [inWords(asked, "half-point"), inWords(zeros, "zero-point")].filter(Boolean).join("; ");
+  cell.replaceChildren(...menus.flatMap((wrap) => [wrap, " "]), words);
 }
 
-/** Saves an entry's byes with box changed, or puts the box back if the script refuses. The list
- *  sent keeps what no box shows. */
-async function saveEntryByes(cell, e, box) {
-  const boxes = cell.querySelectorAll("input:enabled");
-  const asked = e.byes || [];
-  const byes = (box.checked ? [...asked, box.value] : asked.filter((b) => b !== box.value))
-    .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-  for (const b of boxes) b.disabled = true;
-  const result = await call("byes", { token: e.token, byes: byes.join(", ") })
+/** Saves an entry's byes with menu changed, or puts the menu back if the script refuses. The lists
+ *  sent keep what no menu shows. */
+async function saveEntryByes(cell, e, menu) {
+  const menus = cell.querySelectorAll("select:enabled");
+  const round = menu.dataset.round;
+  const sorted = (list) => list.sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  const byes = sorted([...(e.byes || []).filter((b) => b !== round), ...(menu.value === "half" ? [round] : [])]);
+  const zeroByes = sorted([...(e.zeroByes || []).filter((b) => b !== round), ...(menu.value === "zero" ? [round] : [])]);
+  for (const m of menus) m.disabled = true;
+  const result = await call("byes", { token: e.token, byes: byes.join(", "), zeroByes: zeroByes.join(", ") })
     .catch(() => ({ error: "Couldn't reach the registration service. Try again." }));
   deskStatus.textContent = result.message || result.error;
-  if (result.ok) e.byes = byes;
-  else box.checked = !box.checked;
-  for (const b of boxes) b.disabled = false;
+  if (result.ok) {
+    Object.assign(e, { byes, zeroByes });
+    menu.dataset.was = menu.value;
+  } else {
+    menu.value = menu.dataset.was;
+  }
+  for (const m of menus) m.disabled = false;
   // The tournament has a copy, which check-in starts from.
   if (result.ok) {
     pending.add("run");

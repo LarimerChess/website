@@ -559,7 +559,10 @@ section.td-table td { white-space: nowrap; }
 .register-form .run-extra-players label { display: flex; align-items: center; gap: 6px; margin-top: 0; font-weight: 400; }
 .run-extra-players input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .run-extra-add { max-width: 100%; margin: 4px 0; font: inherit; padding: 4px 8px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
-.entries .register-remember label { white-space: nowrap; }
+.entries-bye-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 4px 0; }
+.entries-bye-choice select { max-width: 100%; }
+.entries-bye-choice select, .td-entries label select { font: inherit; padding: 4px 8px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
+.entries-bye-choice select:focus-visible, .td-entries label select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .round-menu { margin: 12px 0 8px; }
 .round-menu label { font-weight: 600; }
 .round-menu select { font: inherit; padding: 6px 10px; color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 6px; }
@@ -728,7 +731,7 @@ section.td-table td { white-space: nowrap; }
         <div class="run-round" hidden>
           <h3 class="run-round-title">This round</h3>
           <div class="run-checkin">
-            <p class="run-checkin-hint">Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.</p>
+            <p class="run-checkin-hint">Everyone starts as Present, or as the half-point or zero-point bye they asked for this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings.</p>
             <div class="run-attendance-all"></div>
             <details class="run-sections-edit" hidden>
               <summary>Change the sections</summary>
@@ -917,7 +920,7 @@ section.td-table td { white-space: nowrap; }
         <div class="run-standings-all"></div>
         <form class="register-form run-give-bye" hidden>
           <h3>Give a bye</h3>
-          <p class="register-hint">For any round a player has no game in. A round already posted can be any kind. A round still to come can be a half-point bye the player asks for (22C), which check-in then starts them on. Only the byes the rules allow for the player and round are offered.</p>
+          <p class="register-hint">For any round a player has no game in. A round already posted can be any kind. A round still to come can be a half-point bye the player asks for (22C), or a zero-point bye, which check-in then starts them on. Only the byes the rules allow for the player and round are offered.</p>
           <label for="run-bye-player">Player</label>
           <select id="run-bye-player" name="player"></select>
           <label for="run-bye-round">Round</label>
@@ -1067,13 +1070,13 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=d4f1af7701" defer></script>
+  <script src="../register.js?v=556a90e95c" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=67dd66b866" defer></script>
+  <script src="../td.js?v=db9dd3e184" defer></script>
   <script src="../td-contacts.js?v=767ef2a766" defer></script>
-  <script src="../pairing.js?v=753374d3fc" defer></script>
+  <script src="../pairing.js?v=0df32b3ca4" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>
-  <script src="../td-run.js?v=0af1518903" defer></script>
+  <script src="../td-run.js?v=f60afd0281" defer></script>
   <script src="../arena.js?v=86644ed875" defer></script>
   <script src="../td-arena.js?v=5c904880d5" defer></script>
 </body>

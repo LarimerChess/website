@@ -48,7 +48,7 @@ function forEngine(t) {
     format: t.format, sections: t.sections || [],
     players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "",
       games: p.games, floor: p.floor, sweep: p.sweep, ...(p.byes ? { byes: p.byes } : {}),
-      ...(p.nights ? { nights: p.nights } : {}) })),
+      ...(p.zeroByes ? { zeroByes: p.zeroByes } : {}), ...(p.nights ? { nights: p.nights } : {}) })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
   };
 }
@@ -237,7 +237,7 @@ function renderCheckin(t, parts, next) {
   runCheckinHint.textContent = active.some(Pairing.roundRobin)
     ? "Everyone starts as Present; change anyone who isn't here. A round robin's table fixes its pairings, so a player not here loses that round's game by forfeit."
       + (active.some((s) => s.extra) ? " In an extra games section, a player not here has the round unplayed." : "")
-    : "Everyone starts as Present, or as a half-point bye if they asked for one this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings."
+    : "Everyone starts as Present, or as the half-point or zero-point bye they asked for this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings."
       + (t.players.some((p) => p.nights) ? " A player who entered other nights of the month only starts as not here." : "");
   // Quads are numbered once, at the start, so later entrants can't be added.
   document.querySelector(".run-sync").hidden = quad;
@@ -258,7 +258,7 @@ function renderCheckin(t, parts, next) {
     const forfeited = new Set((s.rounds[own - 2]?.games || []).flatMap((g) => [g.result === "0F-1F" || g.result === "0F-0F" ? g.white : null,
       g.result === "1F-0F" || g.result === "0F-0F" ? g.black : null]).filter(Boolean));
     const rows = s.players.filter((p) => !p.out).map((p) => {
-      const byes = p.byes || [];
+      const byes = p.byes || [], zeros = p.zeroByes || [];
       const noShow = forfeited.has(p.id);
       // A player who entered single nights of a month plays only those.
       const elsewhere = p.nights && !p.nights.includes(next);
@@ -270,8 +270,11 @@ function renderCheckin(t, parts, next) {
       row.insertCell().textContent = p.rating ?? "Unrated";
       row.insertCell().textContent = scores.get(p.id) ?? 0;
       // Each round stays on one line, as "2 (October 19)", in the narrow table on a phone.
-      if (!table) row.insertCell().textContent = byes.map((n) => (t.roundDates?.[n - 1] ? `${n} (${byeDate(t.roundDates[n - 1])})` : `${n}`)
-        .replaceAll(" ", " ")).join(", ");
+      const inWords = (n, kind) => [t.roundDates?.[n - 1] && byeDate(t.roundDates[n - 1]), kind].filter(Boolean).join(", ");
+      if (!table) {
+        row.insertCell().textContent = [...byes.map((n) => [n, ""]), ...zeros.map((n) => [n, "zero-point"])].sort((a, b) => a[0] - b[0])
+          .map(([n, kind]) => (inWords(n, kind) ? `${n} (${inWords(n, kind)})` : `${n}`).replaceAll(" ", " ")).join(", ");
+      }
       if (choosing && !movable(p)) row.insertCell();
       else if (choosing) {
         const move = document.createElement("select");
@@ -282,7 +285,7 @@ function renderCheckin(t, parts, next) {
       }
       const asked = !table && byes.includes(own);
       const half = !table && !byeProblemsIn(s, next, [], [{ id: p.id, kind: "half" }]).length;
-      const start = noShow || elsewhere ? "absent" : asked && half ? "half" : "play";
+      const start = noShow || elsewhere ? "absent" : asked && half ? "half" : !table && zeros.includes(own) ? "zero" : "play";
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
@@ -291,7 +294,7 @@ function renderCheckin(t, parts, next) {
       select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
       select.append(option("play", "Present", start === "play"),
         option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", start === "absent"),
-        ...(table ? [] : [...(half ? [option("half", "Half-point bye (asked for)", start === "half")] : []), option("zero", "Zero-point bye (asked for)", false)]),
+        ...(table ? [] : [...(half ? [option("half", "Half-point bye (asked for)", start === "half")] : []), option("zero", "Zero-point bye (asked for)", start === "zero")]),
         option("withdraw", "Withdraw from the tournament", false));
       const lastRound = s.last ? s.last - s.first + 1 : t.plannedRounds;
       if (asked && own === lastRound) {
@@ -966,11 +969,13 @@ function renderByesAll() {
   box.replaceChildren(...(rows.length
     ? sectionTable("run-byes-table", [...(extra ? ["Section"] : []), "Round", "Player", "Kind"], rows, "Byes and unplayed rounds", false)
     : [Object.assign(document.createElement("p"), { textContent: "None yet." })]));
-  const asked = current.players.map((p) => [p, (p.byes || []).filter((n) => n > current.rounds.length && !(p.out && n >= p.out))])
-    .filter(([, later]) => later.length);
+  const later = (p, list) => (list || []).filter((n) => n > current.rounds.length && !(p.out && n >= p.out));
+  const asked = current.players.map((p) => [p, later(p, p.byes), later(p, p.zeroByes)]).filter(([, half, zero]) => half.length || zero.length)
+    .map(([p, half, zero]) => `${nameOf(p.id)}, ${[half.length && roundsInWords(half), zero.length && `${roundsInWords(zero)} (zero-point)`]
+      .filter(Boolean).join(" and ")}`);
   if (asked.length) {
     box.append(Object.assign(document.createElement("p"), {
-      textContent: `Asked for: ${asked.map(([p, later]) => `${nameOf(p.id)}, ${roundsInWords(later)}`).join("; ")}. Change them under Give a bye or in the entries list.` }));
+      textContent: `Asked for: ${asked.join("; ")}. Change them under Give a bye or in the entries list.` }));
   }
 }
 
@@ -984,7 +989,7 @@ function postedByeProblem(s, i, id, kind) {
 }
 
 const giveBye = document.querySelector(".run-give-bye");
-const FUTURE_LABELS = { play: "Plays", half: "Half-point bye (½), asked for" };
+const FUTURE_LABELS = { play: "Plays", half: "Half-point bye (½), asked for", zero: "Zero-point bye (0), asked for" };
 
 /** The rounds the player has no game in, which Give a bye can change: each posted one, as byeKind saves it, and,
  *  in a Swiss section, each still to be paired, as the half-point byes they ask for. A round paired but not posted
@@ -998,7 +1003,10 @@ function byeSlots(p) {
     return Array.from({ length: Math.max(0, last - s.first + 1) }, (_, i) => s.first + i).flatMap((n) => {
       if (p.out && n >= p.out) return [];
       const r = s.rounds[n - s.first];
-      if (!r) return swiss ? [{ s, n, posted: false, kind: (p.byes || []).map(Number).includes(n) ? "half" : "play" }] : [];
+      if (!r) {
+        const kind = (p.byes || []).map(Number).includes(n) ? "half" : (p.zeroByes || []).map(Number).includes(n) ? "zero" : "play";
+        return swiss ? [{ s, n, posted: false, kind }] : [];
+      }
       if (!current.rounds[n - 1].posted || r.games.some((g) => g.white === p.id || g.black === p.id)) return [];
       const bye = r.byes.find((b) => b.id === p.id);
       return [{ s, n, posted: true, bye, kind: bye ? Pairing.byeKind(bye) : "unplayed" }];
@@ -1037,7 +1045,7 @@ function renderGiveBye() {
   const slots = byeSlots(p);
   const was = round.value;
   round.replaceChildren(...slots.map((slot) => option(slotName(slot), `${slotName(slot)}, ${slot.posted
-    ? BYE_LABELS[slot.kind].toLowerCase() : slot.kind === "half" ? "half-point bye asked for" : "to come"}`, slotName(slot) === was)));
+    ? BYE_LABELS[slot.kind].toLowerCase() : { half: "half-point bye asked for", zero: "zero-point bye asked for" }[slot.kind] || "to come"}`, slotName(slot) === was)));
   const slot = slots.find((x) => slotName(x) === round.value);
   const labels = slot.posted ? BYE_LABELS : FUTURE_LABELS;
   const refused = [];
@@ -1078,16 +1086,17 @@ giveBye.addEventListener("submit", async (event) => {
       const entry = deskEntries.key === current.key && deskEntries.entries.find((e) => e.id === p.id && e.date === date && e.token);
       if (!entry) return void refuse(`${p.name} has no entry in the entries list below, so the bye can't be saved. Reload the page and try again.`, runStatus);
       const value = current.roundDates?.[slot.n - 1] || String(slot.n);
-      const asked = entry.byes || [];
-      const byes = (kind.value === "half" ? [...asked, value] : asked.filter((b) => b !== value))
+      const listed = (list, as) => [...(list || []).filter((b) => b !== value), ...(kind.value === as ? [value] : [])]
         .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-      const result = await call("byes", { token: entry.token, byes: byes.join(", ") });
+      const byes = listed(entry.byes, "half"), zeroByes = listed(entry.zeroByes, "zero");
+      const result = await call("byes", { token: entry.token, byes: byes.join(", "), zeroByes: zeroByes.join(", ") });
       if (!result.ok) return void (runStatus.textContent = result.error);
-      entry.byes = byes;
-      p.byes = kind.value === "half" ? [...(p.byes || []), slot.n].sort((a, b) => a - b) : (p.byes || []).filter((n) => Number(n) !== slot.n);
+      Object.assign(entry, { byes, zeroByes });
+      const rounds = (list, as) => [...(list || []).filter((n) => Number(n) !== slot.n), ...(kind.value === as ? [slot.n] : [])].sort((a, b) => a - b);
+      Object.assign(p, { byes: rounds(p.byes, "half"), zeroByes: rounds(p.zeroByes, "zero") });
       const lastRound = slot.s.last ?? current.plannedRounds;
-      runStatus.textContent = `${where}: ${kind.value === "half" ? "half-point bye asked for" : "plays"}.`
-        + (kind.value === "play" && slot.n === lastRound && current.rounds[0]?.posted
+      runStatus.textContent = `${where}: ${{ half: "half-point bye asked for", zero: "zero-point bye asked for" }[kind.value] || "plays"}.`
+        + (kind.value === "play" && slot.kind === "half" && slot.n === lastRound && current.rounds[0]?.posted
           ? " They asked for this last-round bye before round 1, so a win counts as a draw for prizes (22C5)." : "");
       pending.add("entries");
       applyChanges();

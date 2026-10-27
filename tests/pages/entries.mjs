@@ -184,6 +184,7 @@ await byesPage.evaluateOnNewDocument(() => {
 const byesCalls = [];
 // Ann's byes by event; events.json no longer lists October 5, which has been played.
 const annByes = { "club-night": ["2099-10-05", "2099-10-12"], classic: ["3"] };
+const annZero = {};
 await byesPage.setRequestInterception(true);
 byesPage.on("request", async (request) => {
   const url = new URL(request.url());
@@ -204,10 +205,12 @@ byesPage.on("request", async (request) => {
         body = { error: "Online, a player can ask for one bye in a one-day tournament." };
       } else {
         annByes[p.event] = byes;
+        annZero[p.event] = p.zeroByes ? p.zeroByes.split(", ") : [];
         body = { ok: true, message: "Ann Example's byes are saved." };
       }
     } else {
-      const ann = (event, rest) => ({ name: "Ann Example", id: "12345678", rating: "1500", ...rest, ...(annByes[event]?.length ? { byes: annByes[event] } : {}) });
+      const ann = (event, rest) => ({ name: "Ann Example", id: "12345678", rating: "1500", ...rest, ...(annByes[event]?.length ? { byes: annByes[event] } : {}),
+        ...(annZero[event]?.length ? { zeroByes: annZero[event] } : {}) });
       body = { events: [
         { key: "club-night/2099-10-12", name: "Club Night", label: "Monday, October 12, 2099", page: "/events/club-night/", start: "2099-10-12T18:30:00-06:00",
           entries: [ann("club-night", { for: "Whole month" }), { name: "Ben Example", id: "22345678", rating: "1200", for: "Monday, October 12" }] },
@@ -234,7 +237,7 @@ const byesShown = () => byesPage.evaluate(() => {
 const byesEditor = () => byesPage.evaluate(() => {
   const group = document.querySelector(".entries-all [role=group]");
   return group && { label: group.getAttribute("aria-label"), focused: document.activeElement?.id || document.activeElement?.textContent,
-    boxes: [...group.querySelectorAll("input")].map((b) => `${b.labels[0].textContent}${b.checked ? " (checked)" : ""}`) };
+    boxes: [...group.querySelectorAll("select")].map((b) => `${b.labels[0].textContent}: ${b.selectedOptions[0].textContent}`) };
 });
 const saveByes = async (said) => {
   await press(byesPage, ".entries-all [role=group] + p button");
@@ -248,8 +251,8 @@ await axeBoth(byesPage, "Entries page changing byes");
 await byesPage.setViewport({ width: 390, height: 844 });
 await fitsPhone(byesPage, "Entries page changing byes");
 await byesPage.setViewport({ width: 1100, height: 800 });
-await press(byesPage, "#entries-bye-12345678-2099-10-12");
-await press(byesPage, "#entries-bye-12345678-2099-10-26");
+await byesPage.select("#entries-bye-12345678-2099-10-12", "");
+await byesPage.select("#entries-bye-12345678-2099-10-26", "zero");
 await saveByes("Ann Example's byes");
 const monthSaved = await byesShown();
 await byesPage.select("#entries-event", "club-night/2099-10-26");
@@ -258,11 +261,11 @@ await byesPage.select("#entries-event", "club-night/2099-10-12");
 JSON.stringify(monthByes.head) === JSON.stringify(["Name", "US Chess ID", "Rating", "For", "Byes"])
   && JSON.stringify(monthByes.byes) === JSON.stringify(["Half-point bye", ""]) && JSON.stringify(monthByes.changers) === '["Ann Example"]'
   && JSON.stringify(monthEditor) === JSON.stringify({ label: "Nights Ann Example will miss", focused: "entries-bye-12345678-2099-10-12",
-    boxes: ["October 12 (checked)", "October 19", "October 26"] })
+    boxes: ["October 12: ½-point bye", "October 19: Plays", "October 26: Plays"] })
   && JSON.stringify(byesCalls[0]) === JSON.stringify({ action: "byes", event: "club-night", date: "2099-10", id: "12345678", last: "Example",
-    email: "ann@example.com", byes: "2099-10-05, 2099-10-26" })
-  && monthSaved.byes[0] === "" && JSON.stringify(otherNight.byes) === '["Half-point bye"]' && monthSaved.status === "Ann Example's byes are saved." && monthSaved.focused === "Change byes for Ann Example"
-  ? pass("Entries page shows each of a month's byes on its own night's list, and a saved player changes them, keeping the nights already played")
+    email: "ann@example.com", byes: "2099-10-05", zeroByes: "2099-10-26" })
+  && monthSaved.byes[0] === "" && JSON.stringify(otherNight.byes) === '["Zero-point bye"]' && monthSaved.status === "Ann Example's byes are saved." && monthSaved.focused === "Change byes for Ann Example"
+  ? pass("Entries page shows each of a month's byes on its own night's list, and a saved player changes them, half-point or zero-point, keeping the nights already played")
   : fail(`Entries page month's byes: ${JSON.stringify({ monthByes, monthEditor, call: byesCalls[0], monthSaved, otherNight })}`);
 await press(byesPage, ".entries-change-byes");
 await press(byesPage, ".entries-all [role=group] + p button:last-child");
@@ -273,20 +276,23 @@ await byesPage.select("#entries-event", "classic/2099-11-07");
 const swissByes = await byesShown();
 await press(byesPage, ".entries-change-byes");
 const swissEditor = await byesEditor();
-await press(byesPage, "#entries-bye-12345678-4");
+await byesPage.select("#entries-bye-12345678-4", "half");
 await saveByes("Online");
 const byesRefused = await byesEditor();
-await press(byesPage, "#entries-bye-12345678-3");
+await byesPage.select("#entries-bye-12345678-3", "");
+await byesPage.select("#entries-bye-12345678-1", "zero");
 await saveByes("Ann Example's byes");
 const swissSaved = await byesShown();
 await byesPage.select("#entries-event", "quads/2099-11-14");
 const quadByes = await byesShown();
 JSON.stringify(swissByes.byes) === JSON.stringify(["Round 3", ""]) && JSON.stringify(swissByes.changers) === '["Ann Example"]'
-  && JSON.stringify(swissEditor.boxes) === JSON.stringify(["Round 1", "Round 2", "Round 3 (checked)", "Round 4"])
+  && JSON.stringify(swissEditor.boxes) === JSON.stringify(["Round 1: Plays", "Round 2: Plays", "Round 3: ½-point bye", "Round 4: Plays"])
   && swissEditor.label === "Rounds Ann Example will miss"
-  && JSON.stringify(byesRefused) === JSON.stringify({ ...swissEditor, focused: "Save", boxes: ["Round 1", "Round 2", "Round 3 (checked)", "Round 4 (checked)"] })
-  && JSON.stringify(byesCalls.slice(1).map((c) => [c.event, c.date, c.byes])) === JSON.stringify([["classic", "2099-11-07", "3, 4"], ["classic", "2099-11-07", "4"]])
-  && swissSaved.byes[0] === "Round 4" && !quadByes.head.includes("Byes") && !quadByes.changers.length
+  && JSON.stringify(byesRefused) === JSON.stringify({ ...swissEditor, focused: "Save",
+    boxes: ["Round 1: Plays", "Round 2: Plays", "Round 3: ½-point bye", "Round 4: ½-point bye"] })
+  && JSON.stringify(byesCalls.slice(1).map((c) => [c.event, c.date, c.byes, c.zeroByes])) === JSON.stringify([["classic", "2099-11-07", "3, 4", ""],
+    ["classic", "2099-11-07", "4", "1"]])
+  && swissSaved.byes[0] === "Round 4 (half-point); Round 1 (zero-point)" && !quadByes.head.includes("Byes") && !quadByes.changers.length
   ? pass("Entries page changes a Swiss's byes by round, keeps them open after a refusal, and offers none for a quad")
   : fail(`Entries page Swiss's byes: ${JSON.stringify({ swissByes, swissEditor, byesRefused, calls: byesCalls.slice(1), swissSaved, quadByes })}`);
 // Saved on another device: the form saves the player here, and their row gets its buttons.
