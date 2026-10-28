@@ -1,6 +1,6 @@
 # Running your own club: checklist
 
-Each section is a step in [the deployment guide](deploying.md), and its heading links to the step, which says how to do each item. Tick items off as you go; an item left unticked is the place to pick up again. To track your progress, paste this list into an issue in your fork.
+Each section is a step in [the deployment guide](deploying.md), which starts with [what your club will have](deploying.md#what-your-club-will-have), and its heading links to the step, which says how to do each item. Tick items off as you go; an item left unticked is the place to pick up again. To track your progress, paste this list into an issue in your fork.
 
 For a site that shows only your calendar, do What you need through step 5, then LCCC_GOOGLE_CALENDAR_READ_TOKEN in step 8 and step 9's first four items. For the whole site, do everything; in step 7, pick Firebase or a spreadsheet.
 

@@ -80,7 +80,7 @@ tests/check_pages.mjs runs the files in tests/pages, each in its own Chrome and 
 
 ## Running your own club
 
-A fork can run another club's site. [docs/deploying.md](docs/deploying.md) takes it from fork to live site, and [docs/deploying-checklist.md](docs/deploying-checklist.md) is its checklist.
+A fork can run another club's site. [docs/deploying.md](docs/deploying.md) says what it gives a club and takes it from fork to live site, and [docs/deploying-checklist.md](docs/deploying-checklist.md) is its checklist.
 
 ## License
 

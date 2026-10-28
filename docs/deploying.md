@@ -1,13 +1,39 @@
 # Running your own club
 
-This site can run another chess club's website: the calendar and event pages, online registration, entry lists, the TD desk, live pairings and standings, results pages once US Chess rates a tournament, and weekly checks on your TDs' certifications. This guide takes a fork from nothing to a working site. [The checklist](deploying-checklist.md) has the same steps as a list to tick off.
+This site can run another chess club's website. This guide takes a fork from nothing to a working site; [larimerchess.org](https://larimerchess.org) is the site it makes, running.
 
-Do the steps in order; later ones need what earlier ones make. A static site with the calendar is done after step 5. Registration and the TD desk need steps 6 and 7, and the hourly and weekly Actions need step 8.
+## What your club will have
+
+**For anyone looking for chess:**
+- A home page with the club's next events, and an Events page with everything in your area, the club's and other groups', filtered by kind, age, cost, schedule, city, and speed, each event one tap from the visitor's own calendar.
+- A page for each club event, with its next date, details, fees, and entry list, written so search engines find and list it as an event.
+- A Scholastic page of the events for kids, and pages for your board minutes and privacy policy.
+
+**For players:**
+- Online registration for rated events, with the fee worked out from the player's age by US Chess's records, and a confirmation email with a link to withdraw.
+- Entry lists for every upcoming event, where players can also ask for byes.
+- Pairings and standings during a tournament, updating within seconds with Firebase (step 7), where players can report their own game results for the TD to confirm.
+- A results page for each tournament once US Chess has rated it.
+
+**For tournament directors, on the TD desk (/td/):**
+- Registering players at the door, taking payments in cash, check, card, or other, giving discounts, refunds, and byes, and a ledger that is only ever added to.
+- Running Swiss, round robin, quad, and arena tournaments: pairing by US Chess rules, entering results, and posting rounds to the public pages.
+- The rating report files to upload to US Chess for a Swiss or quad.
+- The club's contacts, an incident log for Safe Play, and, with Google Voice, the club phone's texts and voicemail.
+
+**For the board, without anyone doing anything:**
+- The site updates from your Google Calendar every hour; you never edit a page to add an event.
+- TDs get reminders to send in a finished tournament's results, and results pages appear once US Chess rates it.
+- A weekly email warns before a TD's US Chess membership, TD certification, or SafeSport training, or the affiliate, expires.
+- Every push is checked for broken pages, links, and accessibility.
+
+**What it doesn't do:** players can't pay online; they pay at the event, and the desk records it. It runs on Google (Calendar, Sheets, Apps Script, and optionally Firebase) and GitHub Pages, and someone on the board needs to be comfortable following this guide and running a few commands. [The checklist](deploying-checklist.md) has the same steps as a list to tick off.
 
 ## Contents
 
-Do every step for the whole site. For less, stop where the list says.
+Do the steps in order; later ones need what earlier ones make. For less, stop where the list says: a static site with the calendar is done after step 5. Registration and the TD desk need steps 6 and 7, and the hourly and weekly Actions need step 8.
 
+- [What your club will have](#what-your-club-will-have): what the site does, and for whom
 - [What you need](#what-you-need): accounts and tools, before you start
 - [1. Fork and publish](#1-fork-and-publish): the site on GitHub Pages, on your domain
 - [2. Make it your club](#2-make-it-your-club): your name, address, fees, and pages
