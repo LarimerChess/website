@@ -4,23 +4,39 @@ This site can run another chess club's website: the calendar and event pages, on
 
 Do the steps in order; later ones need what earlier ones make. A static site with the calendar is done after step 5. Registration and the TD desk need steps 6 and 7, and the hourly and weekly Actions need step 8.
 
+## Contents
+
+Do every step for the whole site. For less, stop where the list says.
+
+- [What you need](#what-you-need): accounts and tools, before you start
+- [1. Fork and publish](#1-fork-and-publish): the site on GitHub Pages, on your domain
+- [2. Make it your club](#2-make-it-your-club): your name, address, fees, and pages
+- [3. Google](#3-google): the Cloud project and sign-in the scripts use
+- [4. US Chess](#4-us-chess): the API key and your affiliate and TDs
+- [5. Calendars](#5-calendars): your events on the site; a calendar-only site stops here, after the secret LCCC_GOOGLE_CALENDAR_READ_TOKEN from step 8
+- [6. Registration and the TD desk](#6-registration-and-the-td-desk): online entries, fees, and the desk
+- [7. Running tournaments: Firebase or a spreadsheet](#7-running-tournaments-firebase-or-a-spreadsheet): pairings and standings, live or not
+- [8. Tokens and secrets](#8-tokens-and-secrets): what the hourly and weekly Actions need
+- [9. Check it and go live](#9-check-it-and-go-live): the checks, and a test registration and tournament
+- [Keeping it running](#keeping-it-running): redeploying the script, expired tokens, and updates from this repo
+
 ## What you need
 
-- A GitHub account or organization to own the fork.
-- A domain, if you want one. Without it the site is at <owner>.github.io/<repo>.
-- One Google account for everything: it owns the calendars, the Sheets, the registration script, and the Firebase project, and it sends the club's mail. A Google Workspace account on your own domain is simplest.
-- A US Chess affiliate, its affiliate ID, and your TDs' US Chess IDs.
+- A GitHub account ([sign up](https://github.com/signup)), or an [organization](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/creating-a-new-organization-from-scratch) to own the fork, so it doesn't depend on one person.
+- A domain, if you want one, from any registrar; [Cloudflare Registrar](https://www.cloudflare.com/products/registrar/) sells them at cost. Without one the site is at <owner>.github.io/<repo>.
+- One Google account for everything: it owns the calendars, the Sheets, the registration script, and the Firebase project, and it sends the club's mail. A [Google Workspace](https://workspace.google.com/) account on your own domain is simplest, and a nonprofit can get it free through [Google for Nonprofits](https://www.google.com/nonprofits/). A [personal Google account](https://accounts.google.com/signup) works too.
+- A US Chess affiliate, its affiliate ID, and your TDs' US Chess IDs. Players and TDs [join US Chess](https://new.uschess.org/join-us-chess); a club [applies to affiliate](https://new.uschess.org/form/affiliate-new-membership) (log in first) and finds its ID in the [affiliate directory](https://new.uschess.org/club-search-and-affiliate-directory). The [TD and affiliate FAQ](https://new.uschess.org/tournament-director-and-affiliate-frequently-asked-questions) explains both, and [Tournament directors](https://new.uschess.org/tournament-directors) how a TD is certified.
 - A US Chess API key, which a US Chess member creates.
-- On your computer: git, Python 3.15, Node 24, and Google Chrome for the page checks.
+- On your computer: [git](https://git-scm.com/downloads), [Python 3.15](https://www.python.org/downloads/), [Node 24](https://nodejs.org/en/download), [Google Chrome](https://www.google.com/chrome/) for the page checks, and optionally the [GitHub CLI](https://cli.github.com/) for setting secrets.
 
 ## 1. Fork and publish
 
-1. Fork the repo. In its Settings → Pages, deploy from a branch: main, folder / (root).
+1. [Fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo). In its Settings → Pages, [deploy from a branch](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site): main, folder / (root).
 2. Pick the address:
-   - With a domain, put it alone in CNAME, and in Settings → Pages → Custom domain. Point the domain at GitHub Pages: A records for the bare domain to 185.199.108.153, 185.199.109.153, 185.199.110.153, and 185.199.111.153, and a CNAME record for www to <owner>.github.io. On Cloudflare, keep the records DNS only (grey cloud), or GitHub can't issue the certificate. Set DOMAIN in verify.sh and run it to check the records. Once the certificate is issued, turn on Enforce HTTPS.
+   - With a domain, put it alone in CNAME, and in Settings → Pages → Custom domain. Point the domain at GitHub Pages, as [GitHub's guide to custom domains](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site) shows: A records for the bare domain to 185.199.108.153, 185.199.109.153, 185.199.110.153, and 185.199.111.153, and a CNAME record for www to <owner>.github.io. On Cloudflare, keep the records [DNS only](https://developers.cloudflare.com/dns/proxy-status/) (grey cloud), or GitHub can't issue the certificate. Set DOMAIN in verify.sh and run it to check the records. Once the certificate is issued, turn on [Enforce HTTPS](https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https).
    - Without one, delete CNAME. The site is at https://<owner>.github.io/<repo>/, which is SITE in step 2.
-3. GitHub turns off a fork's Actions. Turn them on in the Actions tab, and on each scheduled workflow GitHub lists as disabled.
-4. In Settings → Actions → General → Workflow permissions, the Actions need to push to main. If a branch rule protects main, let github-actions[bot] push past it, or the Actions that commit fail.
+3. GitHub turns off a fork's Actions. Turn them on in the Actions tab, and [enable each scheduled workflow](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/disabling-and-enabling-a-workflow) GitHub lists as disabled.
+4. In Settings → Actions → General → [Workflow permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository), the Actions need to push to main. If a branch rule protects main, let github-actions[bot] push past it, or the Actions that commit fail.
 5. Delete what only this club uses:
    - .github/workflows/docs-private.yml, which checks this club's private repo.
    - The four calendar syncs, scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py, and .github/workflows/sync-calendars.yml. Keep them only to adapt to your area's events; they copy other groups' events in Colorado onto the community calendar.
@@ -59,15 +75,15 @@ Then:
 4. Update the tests that name this club or its events (tests/pages, tests/fixtures, and the tests that read them) as the checks in step 9 report them.
 5. Run python scripts/sync_assets.py after changing style.css or any page's script, and the checks in the README before each push.
 
-The site is licensed CC BY 4.0, so credit the Larimer County Chess Club's site somewhere on yours, such as the footer or your README. The license doesn't cover the club's name or logo.
+The site is licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), so credit the Larimer County Chess Club's site somewhere on yours, such as the footer or your README. The license doesn't cover the club's name or logo.
 
 ## 3. Google
 
 Everything in this step and the next ones is done signed in as the club's Google account.
 
-1. In the [Google Cloud console](https://console.cloud.google.com/), create a project, and enable the Google Calendar API, Google Sheets API, and Gmail API.
-2. Set up the OAuth consent screen. With Workspace, choose Internal. With a personal Gmail account, choose External, then publish the app (In production): while it is in Testing, Google expires its sign-ins after seven days and every Action stops. With a personal account, also set DOMAIN in scripts/google_auth.py to gmail.com.
-3. Under Credentials, create an OAuth client ID of type Desktop app, download its JSON, and save it as ~/.config/lccc/google-client.json.
+1. In the [Google Cloud console](https://console.cloud.google.com/), [create a project](https://developers.google.com/workspace/guides/create-project), and [enable](https://developers.google.com/workspace/guides/enable-apis) the [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com), [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com), and [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com).
+2. [Set up the OAuth consent screen](https://developers.google.com/workspace/guides/configure-oauth-consent). With Workspace, choose Internal. With a personal Gmail account, choose External, then publish the app (In production): while it is in Testing, Google expires its sign-ins after seven days and every Action stops. With a personal account, also set DOMAIN in scripts/google_auth.py to gmail.com.
+3. Under Credentials, [create an OAuth client ID](https://developers.google.com/workspace/guides/create-credentials#desktop-app) of type Desktop app, download its JSON, and save it as ~/.config/lccc/google-client.json.
 4. Make the Python environment the scripts use:
 
 ```
@@ -90,11 +106,11 @@ Over SSH, forward the sign-in port from the machine with the browser first: ssh 
 
 ## 5. Calendars
 
-1. Create two Google Calendars: the club's own events, and the community's, which holds other groups' events for the Events page. Make both public (Settings → Access permissions → Make available to public), so visitors can add them.
+1. [Create two Google Calendars](https://support.google.com/calendar/answer/37095): the club's own events, and the community's, which holds other groups' events for the Events page. [Make both public](https://support.google.com/calendar/answer/37083) (Settings → Access permissions → Make available to public), so visitors can add them.
 2. Put each calendar's ID, from Settings → Integrate calendar, in CALENDARS in scripts/update_calendar.py.
 3. Add events. A club event is one whose organizer is exactly CLUB. Its title, less the club's name at the front, makes its page name: "Larimer County Chess Club First Saturday Classic" is events/first-saturday-classic/, and the key for its fees in prices.json is first-saturday-classic. A US Chess rated club event gets a Register form on its page.
 4. Give each event a location in the form Venue, Street, City, ST 12345, so its page and search engines get the address.
-5. Give each event its metadata. The hourly import reads private extended properties on each event, and fails, naming the event, when one is missing or wrong. FIELDS in scripts/update_calendar.py lists them and what each allows; organizer, format, ages, rated, and cost are required. Google Calendar's own screens can't set them, so set them through the Calendar API, for example with the token from step 3:
+5. Give each event its metadata. The hourly import reads private [extended properties](https://developers.google.com/calendar/api/guides/extended-properties) on each event, and fails, naming the event, when one is missing or wrong. FIELDS in scripts/update_calendar.py lists them and what each allows; organizer, format, ages, rated, and cost are required. Google Calendar's own screens can't set them, so set them through the Calendar API, for example with the token from step 3:
 
 ```python
 import sys
@@ -119,11 +135,11 @@ python scripts/build_pages.py
 
 ## 6. Registration and the TD desk
 
-scripts/registration.gs is the site's only server: an Apps Script in a Google Sheet, which keeps registrations, serves the entry lists and pairings, and runs the TD desk. The site must already be published at SITE, because the script reads the site's events.json and prices.json.
+scripts/registration.gs is the site's only server: an [Apps Script](https://developers.google.com/apps-script) in a Google Sheet, which keeps registrations, serves the entry lists and pairings, and runs the TD desk. The site must already be published at SITE, because the script reads the site's events.json and prices.json.
 
 1. Create a Google Sheet for registrations with one tab, Entries. The script adds its columns and the other tabs (Payments, Contacts, Incidents, TDs, Closed events, and more) as it needs them.
-2. In the Sheet, Extensions → Apps Script. Replace everything in Code.gs with scripts/registration.gs and save. In Project Settings, check Show "appsscript.json" manifest file in editor, and replace appsscript.json with scripts/appsscript.json. It lists the permissions the script needs; Google doesn't guess the database's.
-3. In Project Settings → Script properties, add:
+2. In the Sheet, Extensions → Apps Script. Replace everything in Code.gs with scripts/registration.gs and save. In Project Settings, check Show "appsscript.json" manifest file in editor, and replace appsscript.json with scripts/appsscript.json, the script's [manifest](https://developers.google.com/apps-script/concepts/manifests). It lists the permissions the script needs; Google doesn't guess the database's.
+3. In Project Settings → [Script properties](https://developers.google.com/apps-script/guides/properties), add:
 
 | Property | Value |
 |---|---|
@@ -133,7 +149,7 @@ scripts/registration.gs is the site's only server: an Apps Script in a Google Sh
 | FIREBASE_API_KEY | The Firebase web app's apiKey, for TD sign-in (step 7) |
 
 4. In the editor, choose any function, such as checkPassword, and Run. Allow what it asks: the spreadsheets, outside requests (your site and US Chess), sending mail, reading mail, and the Firebase database. Google warns that the app isn't verified; it is your own, so go ahead (Advanced → Go to …). If the editor's Services list lacks Gmail, add it (Services + → Gmail API).
-5. Deploy → New deployment → Web app. Execute as: Me. Who has access: Anyone, not Anyone with Google account. Copy the URL, which ends in /exec.
+5. Deploy → New deployment → [Web app](https://developers.google.com/apps-script/guides/web). Execute as: Me. Who has access: Anyone, not Anyone with Google account. Copy the URL, which ends in /exec.
 6. Open the URL in a private window: it should show the plain greeting. A Google sign-in page means access isn't Anyone; fix it in Deploy → Manage deployments → Edit.
 7. Put the URL in ENDPOINT in register.js, run python scripts/sync_assets.py, and push.
 8. Share the Sheet with your TDs as editors. Never share it publicly; it holds players' emails, phones, and payments.
@@ -148,8 +164,8 @@ Players, pairings, and results of running tournaments live in one of two places 
 
 **A Firebase Realtime Database** (recommended) streams pairings, standings, and changes to the Pairings page and every TD desk within seconds, and lets each TD sign in to the desk with their own Google account or an emailed link instead of a shared password.
 
-1. In the [Firebase console](https://console.firebase.google.com/), create a project, adding it to the Google Cloud project from step 3.
-2. Build → Realtime Database → Create database, in locked mode. Its URL is https://<project>-default-rtdb.firebaseio.com, or the one the console shows. Put it in LIVE_DB in register.js and in the script property FIREBASE_URL.
+1. In the [Firebase console](https://console.firebase.google.com/), create a project, [adding Firebase to the Google Cloud project](https://firebase.google.com/docs/projects/use-firebase-with-existing-cloud-project) from step 3.
+2. Build → Realtime Database → [Create database](https://firebase.google.com/docs/database/web/start), in locked mode. Its URL is https://<project>-default-rtdb.firebaseio.com, or the one the console shows. Put it in LIVE_DB in register.js and in the script property FIREBASE_URL.
 3. Apply the site's rules, which let anyone read the public copies and nobody write but the club account:
 
 ```
@@ -157,8 +173,8 @@ Players, pairings, and results of running tournaments live in one of two places 
 ~/.local/share/lccc/venv/bin/python scripts/firebase_rules.py
 ```
 
-4. Project settings → General → Your apps → add a Web app. Put its config's apiKey, authDomain, projectId, and appId in FIREBASE in register.js (they are public), and its apiKey in the script property FIREBASE_API_KEY.
-5. Build → Authentication → Sign-in method: turn on Google, and Email/Password with Email link (passwordless sign-in). Under Settings → Authorized domains, add your site's domain.
+4. Project settings → General → Your apps → [add a Web app](https://firebase.google.com/docs/web/setup). Put its config's apiKey, authDomain, projectId, and appId in FIREBASE in register.js (they are public), and its apiKey in the script property FIREBASE_API_KEY.
+5. Build → Authentication → Sign-in method: turn on [Google](https://firebase.google.com/docs/auth/web/google-signin), and Email/Password with [Email link (passwordless sign-in)](https://firebase.google.com/docs/auth/web/email-link-auth). Under Settings → Authorized domains, add your site's domain.
 6. In the registration Sheet's TDs tab (Email, Name, US Chess ID, Role), add a row for each TD. Only those addresses, verified, may use the desk; a blank Role is td. The script makes the tab the first time a TD signs in, or add it with those headings.
 7. Run python scripts/sync_assets.py, push, and redeploy the script (step 6) if you changed its properties after deploying.
 
@@ -172,7 +188,7 @@ You can start with the spreadsheet and move to Firebase later: the script uses t
 
 ## 8. Tokens and secrets
 
-Each Action gets a Google token that can do only its one job. Make each with scripts/google_auth.py, signed in as the club account; each lands in ~/.config/lccc/. Put each file's whole contents in the repo's Settings → Secrets and variables → Actions, or:
+Each Action gets a Google token that can do only its one job. Make each with scripts/google_auth.py, signed in as the club account; each lands in ~/.config/lccc/. Put each file's whole contents in the repo's Settings → Secrets and variables → [Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions), or:
 
 ```
 gh secret set NAME -R <owner>/<repo> < FILE
@@ -207,7 +223,7 @@ The secrets keep their LCCC names unless you rename them in the workflows too. A
 ## Keeping it running
 
 - **The script** changes only when you paste and deploy it (step 6). Pushing registration.gs changes nothing live.
-- **Tokens** from an External consent screen left in Testing expire in seven days; publish the app. A token also stops when its account's password changes or its access is removed under Google Account → Security → Third-party apps. Make it again and replace the secret.
-- **Scheduled Actions** stop after 60 days without a commit to the repo. The Actions' own commits count, but a quiet summer may not have any; GitHub emails before it turns them off.
-- **This repo's changes** can be merged into yours with Sync fork on GitHub, or git pull from it as a second remote. After merging, redo the settings in step 2 that the merge changed back, run the checks, and redeploy the script if registration.gs changed.
+- **Tokens** from an External consent screen left in Testing expire in seven days; publish the app. A token also stops when its account's password changes or its access is removed under Google Account → [Third-party apps & services](https://myaccount.google.com/connections). Make it again and replace the secret.
+- **Scheduled Actions** [stop after 60 days](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule) without a commit to the repo. The Actions' own commits count, but a quiet summer may not have any; GitHub emails before it turns them off.
+- **This repo's changes** can be merged into yours with [Sync fork](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork) on GitHub, or git pull from it as a second remote. After merging, redo the settings in step 2 that the merge changed back, run the checks, and redeploy the script if registration.gs changed.
 - **Backups.** scripts/backup_firebase.py copies the whole database to a local folder; run it from cron on a machine you trust.

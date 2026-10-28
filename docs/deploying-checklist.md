@@ -1,16 +1,17 @@
 # Running your own club: checklist
 
-Each item is a step in [the deployment guide](deploying.md), under the same number; the guide says how. To track your progress, paste this list into an issue in your fork.
+Each section is a step in [the deployment guide](deploying.md), and its heading links to the step, which says how to do each item. Tick items off as you go; an item left unticked is the place to pick up again. To track your progress, paste this list into an issue in your fork.
 
-## What you need
+## [What you need](deploying.md#what-you-need)
 
-- [ ] A GitHub account or organization for the fork
-- [ ] A domain (optional)
-- [ ] One Google account for the club, ideally Google Workspace on your domain
-- [ ] A US Chess affiliate ID and your TDs' US Chess IDs
-- [ ] git, Python 3.15, Node 24, and Google Chrome on your computer
+- [ ] A GitHub account ([sign up](https://github.com/signup)) or [organization](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/creating-a-new-organization-from-scratch) for the fork
+- [ ] A domain (optional), from any registrar
+- [ ] One Google account for the club, ideally [Google Workspace](https://workspace.google.com/) on your domain ([free for nonprofits](https://www.google.com/nonprofits/))
+- [ ] US Chess memberships for your TDs ([join](https://new.uschess.org/join-us-chess))
+- [ ] A US Chess affiliate ([apply](https://new.uschess.org/form/affiliate-new-membership), logged in; [FAQ](https://new.uschess.org/tournament-director-and-affiliate-frequently-asked-questions)), its ID, and your TDs' US Chess IDs
+- [ ] [git](https://git-scm.com/downloads), [Python 3.15](https://www.python.org/downloads/), [Node 24](https://nodejs.org/en/download), and [Google Chrome](https://www.google.com/chrome/) on your computer
 
-## 1. Fork and publish
+## [1. Fork and publish](deploying.md#1-fork-and-publish)
 
 - [ ] Fork the repo, and set Pages to deploy from main, / (root)
 - [ ] Domain: CNAME file, Pages custom domain, A and www CNAME records (DNS only on Cloudflare), verify.sh passes, Enforce HTTPS on
@@ -21,7 +22,7 @@ Each item is a step in [the deployment guide](deploying.md), under the same numb
 - [ ] Calendar syncs deleted, or adapted to your area
 - [ ] This club's minutes, results pages, and event pages deleted
 
-## 2. Make it your club
+## [2. Make it your club](deploying.md#2-make-it-your-club)
 
 - [ ] CLUB set to your club's exact name in all four places
 - [ ] SITE, EVENTS_PAGE, robots.txt, and sitemap.xml point at your site
@@ -35,20 +36,20 @@ Each item is a step in [the deployment guide](deploying.md), under the same numb
 - [ ] Credit to the Larimer County Chess Club's site added (CC BY 4.0)
 - [ ] The grep finds no mention of this club you didn't mean to keep
 
-## 3. Google
+## [3. Google](deploying.md#3-google)
 
-- [ ] Cloud project with the Calendar, Sheets, and Gmail APIs enabled
+- [ ] [Cloud project](https://console.cloud.google.com/) with the Calendar, Sheets, and Gmail APIs enabled
 - [ ] OAuth consent screen Internal, or External and In production
 - [ ] Desktop OAuth client saved as ~/.config/lccc/google-client.json
 - [ ] Python venv made, requirements installed
 - [ ] google_auth.py run once, google-token.json made
 
-## 4. US Chess
+## [4. US Chess](deploying.md#4-us-chess)
 
-- [ ] API key created and saved in ~/.config/lccc/uschess-api-key
+- [ ] [API key](https://ratings.uschess.org/portal/api-access) created and saved in ~/.config/lccc/uschess-api-key
 - [ ] Affiliate ID and adult TDs in scripts/tds.json
 
-## 5. Calendars
+## [5. Calendars](deploying.md#5-calendars)
 
 - [ ] Club calendar and community calendar created and public
 - [ ] Their IDs in CALENDARS
@@ -58,7 +59,7 @@ Each item is a step in [the deployment guide](deploying.md), under the same numb
 - [ ] Fees in prices.json under each club event's page name
 - [ ] update_calendar.py and build_pages.py run without errors
 
-## 6. Registration and the TD desk
+## [6. Registration and the TD desk](deploying.md#6-registration-and-the-td-desk)
 
 - [ ] Registration Sheet with an Entries tab
 - [ ] registration.gs and appsscript.json pasted into its Apps Script
@@ -69,11 +70,11 @@ Each item is a step in [the deployment guide](deploying.md), under the same numb
 - [ ] URL in ENDPOINT, sync_assets.py run, pushed
 - [ ] Sheet shared with TDs only
 
-## 7. Running tournaments
+## [7. Running tournaments](deploying.md#7-running-tournaments-firebase-or-a-spreadsheet)
 
 Firebase:
 
-- [ ] Firebase project in the same Cloud project
+- [ ] [Firebase project](https://console.firebase.google.com/) in the same Cloud project
 - [ ] Realtime Database in locked mode; URL in LIVE_DB and FIREBASE_URL
 - [ ] google_auth.py --firebase run, firebase_rules.py applied
 - [ ] Web app config in FIREBASE; apiKey in FIREBASE_API_KEY
@@ -90,7 +91,7 @@ Either way:
 
 - [ ] sync_assets.py run, pushed, script redeployed as a new version
 
-## 8. Tokens and secrets
+## [8. Tokens and secrets](deploying.md#8-tokens-and-secrets)
 
 - [ ] LCCC_GOOGLE_CALENDAR_READ_TOKEN
 - [ ] LCCC_GOOGLE_SHEETS_TOKEN
@@ -101,7 +102,7 @@ Either way:
 - [ ] LCCC_TD_EMAILS
 - [ ] LCCC_JUNIOR_TD_IDS (if you have junior TDs)
 
-## 9. Check it and go live
+## [9. Check it and go live](deploying.md#9-check-it-and-go-live)
 
 - [ ] The README's checks pass locally
 - [ ] Check site passes on GitHub
@@ -112,3 +113,7 @@ Either way:
 - [ ] A TD signs in at /td/
 - [ ] A test tournament shows on the Pairings page
 - [ ] Test registration and tournament deleted
+
+## Afterward
+
+- [ ] [Keeping it running](deploying.md#keeping-it-running) read: redeploying the script, expired tokens, and updates from this repo
