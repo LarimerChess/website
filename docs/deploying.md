@@ -44,6 +44,8 @@ Do every step for the whole site. For less, stop where the list says.
 
 ## 2. Make it your club
 
+First, in register.js, set ENDPOINT and LIVE_DB to "" and FIREBASE to null. Until then your pages send registrations to this club's script and read its tournaments; while ENDPOINT is empty, event pages hide the Register form and the Entries and Pairings pages say registration hasn't opened. Steps 6 and 7 fill them.
+
 Find every mention of the club's name, site, and address:
 
 ```
@@ -61,15 +63,15 @@ These settings take your values:
 | Your US Chess affiliate ID and your TDs' names and US Chess IDs | scripts/tds.json. Junior TDs (minors) go only in a secret (step 8), never here. |
 | Each club event's fees, and US Chess's rating charge | prices.json, keyed by each event's page name (step 5); the rating charge under fees.uschess, and the card processor's under fees.card |
 | The calendars' IDs | CALENDARS in scripts/update_calendar.py (step 5) |
-| The registration script's URL | ENDPOINT in register.js (step 6) |
-| The tournament database, and the TD desk's sign-in | LIVE_DB and FIREBASE in register.js (step 7) |
+| The registration script's URL, empty until then | ENDPOINT in register.js (step 6) |
+| The tournament database, and the TD desk's sign-in, empty until then | LIVE_DB and FIREBASE in register.js (step 7) |
 | The Tournaments in progress spreadsheet's ID, if you don't use Firebase | TOURNAMENT_SHEET in scripts/archive_tournaments.py (step 7) |
 | The time zone, if not Colorado's | every America/Denver, scripts/appsscript.json's timeZone among them: grep -rn America/Denver --exclude-dir=node_modules --exclude-dir=.claude . |
 | The state, if not Colorado | the CO\|Colorado fallback in city() in scripts/update_calendar.py, and the city, state, and ZIP code that the rating report falls back to in reportFiles() in td-run.js |
 
 Then:
 
-1. Rewrite the pages' words for your club: index.html (home), scholastic/, privacy/, events/index.html's introduction, and minutes/index.html. Change the Add to Google Calendar link in index.html to your club calendar's (Google gives it under the calendar's Settings → Integrate calendar, once the calendar is public).
+1. Rewrite the pages' words for your club: index.html (home), scholastic/, privacy/, events/index.html's introduction, and minutes/index.html.
 2. Replace share.png, the picture link previews show. The knight icons (favicon.svg, favicon.ico, apple-touch-icon.png, icon-512.png) may stay, with ICON-LICENSE.txt; the fonts may stay, with their OFL files.
 3. Set ratings.json and rated-dates.json to {}, and events.json to [] until the first calendar import.
 4. Update the tests that name this club or its events (tests/pages, tests/fixtures, and the tests that read them) as the checks in step 9 report them.
@@ -107,7 +109,7 @@ Over SSH, forward the sign-in port from the machine with the browser first: ssh 
 ## 5. Calendars
 
 1. [Create two Google Calendars](https://support.google.com/calendar/answer/37095): the club's own events, and the community's, which holds other groups' events for the Events page. [Make both public](https://support.google.com/calendar/answer/37083) (Settings → Access permissions → Make available to public), so visitors can add them.
-2. Put each calendar's ID, from Settings → Integrate calendar, in CALENDARS in scripts/update_calendar.py.
+2. Put each calendar's ID, from Settings → Integrate calendar, in CALENDARS in scripts/update_calendar.py. In index.html, change the Add to Google Calendar link to the club calendar's public link, from the same page.
 3. Add events. A club event is one whose organizer is exactly CLUB. Its title, less the club's name at the front, makes its page name: "Larimer County Chess Club First Saturday Classic" is events/first-saturday-classic/, and the key for its fees in prices.json is first-saturday-classic. A US Chess rated club event gets a Register form on its page.
 4. Give each event a location in the form Venue, Street, City, ST 12345, so its page and search engines get the address.
 5. Give each event its metadata. The hourly import reads private [extended properties](https://developers.google.com/calendar/api/guides/extended-properties) on each event, and fails, naming the event, when one is missing or wrong. FIELDS in scripts/update_calendar.py lists them and what each allows; organizer, format, ages, rated, and cost are required. Google Calendar's own screens can't set them, so set them through the Calendar API, for example with the token from step 3:
@@ -176,13 +178,13 @@ Players, pairings, and results of running tournaments live in one of two places 
 4. Project settings → General → Your apps → [add a Web app](https://firebase.google.com/docs/web/setup). Put its config's apiKey, authDomain, projectId, and appId in FIREBASE in register.js (they are public), and its apiKey in the script property FIREBASE_API_KEY.
 5. Build → Authentication → Sign-in method: turn on [Google](https://firebase.google.com/docs/auth/web/google-signin), and Email/Password with [Email link (passwordless sign-in)](https://firebase.google.com/docs/auth/web/email-link-auth). Under Settings → Authorized domains, add your site's domain.
 6. In the registration Sheet's TDs tab (Email, Name, US Chess ID, Role), add a row for each TD. Only those addresses, verified, may use the desk; a blank Role is td. The script makes the tab the first time a TD signs in, or add it with those headings.
-7. Run python scripts/sync_assets.py, push, and redeploy the script (step 6) if you changed its properties after deploying.
+7. Run python scripts/sync_assets.py and push. The script reads its properties as it runs, so changing them needs no new deployment.
 
 **A Google Sheet**, with no Firebase: the pages and desks poll instead, and TDs sign in with TD_PASSWORD.
 
 1. Create an empty Google Sheet named Tournaments in progress; the script adds its tabs. Share it with your TDs, never publicly.
 2. Put its ID, from its URL, in the script property TOURNAMENT_SHEET_ID and in TOURNAMENT_SHEET in scripts/archive_tournaments.py.
-3. Set LIVE_DB in register.js to "" and FIREBASE to null, then run python scripts/sync_assets.py and push.
+3. Leave LIVE_DB in register.js "" and FIREBASE null, as step 2 set them.
 
 You can start with the spreadsheet and move to Firebase later: the script uses the database once FIREBASE_URL is set, and scripts/migrate_tournaments.py copies the spreadsheet's rows over. Switch on a day with no tournament running.
 

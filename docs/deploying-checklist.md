@@ -2,6 +2,8 @@
 
 Each section is a step in [the deployment guide](deploying.md), and its heading links to the step, which says how to do each item. Tick items off as you go; an item left unticked is the place to pick up again. To track your progress, paste this list into an issue in your fork.
 
+For a site that shows only your calendar, do What you need through step 5, then LCCC_GOOGLE_CALENDAR_READ_TOKEN in step 8 and step 9's first four items. For the whole site, do everything; in step 7, pick Firebase or a spreadsheet.
+
 ## [What you need](deploying.md#what-you-need)
 
 - [ ] A GitHub account ([sign up](https://github.com/signup)) or [organization](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/creating-a-new-organization-from-scratch) for the fork
@@ -24,15 +26,16 @@ Each section is a step in [the deployment guide](deploying.md), and its heading 
 
 ## [2. Make it your club](deploying.md#2-make-it-your-club)
 
+- [ ] In register.js, ENDPOINT and LIVE_DB are "" and FIREBASE is null, until steps 6 and 7
 - [ ] CLUB set to your club's exact name in all four places
 - [ ] SITE, EVENTS_PAGE, robots.txt, and sitemap.xml point at your site
 - [ ] PRESIDENT and every president@larimerchess.org changed
-- [ ] DOMAIN in scripts/google_auth.py
+- [ ] DOMAIN in scripts/google_auth.py (gmail.com for a personal Google account)
 - [ ] Time zone and state changed, if not Colorado
 - [ ] Home, scholastic, privacy, events, and minutes pages rewritten
-- [ ] Add to Google Calendar link points at your calendar
 - [ ] share.png replaced
 - [ ] ratings.json and rated-dates.json are {}, events.json is []
+- [ ] Tests that name this club or its events updated
 - [ ] Credit to the Larimer County Chess Club's site added (CC BY 4.0)
 - [ ] The grep finds no mention of this club you didn't mean to keep
 
@@ -53,6 +56,7 @@ Each section is a step in [the deployment guide](deploying.md), and its heading 
 
 - [ ] Club calendar and community calendar created and public
 - [ ] Their IDs in CALENDARS
+- [ ] Add to Google Calendar link in index.html points at your club calendar
 - [ ] Club events' organizer is exactly CLUB
 - [ ] Each event's location is Venue, Street, City, ST 12345
 - [ ] Every event has its metadata (organizer, format, ages, rated, cost, and any others it needs)
@@ -61,6 +65,7 @@ Each section is a step in [the deployment guide](deploying.md), and its heading 
 
 ## [6. Registration and the TD desk](deploying.md#6-registration-and-the-td-desk)
 
+- [ ] The site is published at SITE
 - [ ] Registration Sheet with an Entries tab
 - [ ] registration.gs and appsscript.json pasted into its Apps Script
 - [ ] Script properties: TD_PASSWORD, USCHESS_API_KEY
@@ -85,11 +90,11 @@ Or a spreadsheet:
 
 - [ ] Tournaments in progress Sheet created and shared with TDs only
 - [ ] Its ID in TOURNAMENT_SHEET_ID and TOURNAMENT_SHEET
-- [ ] LIVE_DB is "" and FIREBASE is null
+- [ ] LIVE_DB is still "" and FIREBASE still null
 
 Either way:
 
-- [ ] sync_assets.py run, pushed, script redeployed as a new version
+- [ ] sync_assets.py run, pushed
 
 ## [8. Tokens and secrets](deploying.md#8-tokens-and-secrets)
 
