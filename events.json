@@ -1,146 +1,5 @@
 [
  {
-  "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
-  "calendar": "community",
-  "organizer": "Chilson Senior Center",
-  "tags": [
-   "casual",
-   "senior",
-   "cost-unknown",
-   "weekly"
-  ],
-  "url": "https://www.lovgov.org/services/parks-recreation/chilson-senior-center",
-  "price": "",
-  "pairing": "",
-  "rounds": "",
-  "page": "",
-  "start": "2026-10-28T13:00:00-06:00",
-  "end": "2026-10-28T16:30:00-06:00",
-  "allDay": false,
-  "location": "Chilson Senior Center, 700 E 4th St, Loveland, CO 80537",
-  "place": {
-   "name": "Chilson Senior Center",
-   "street": "700 E 4th St",
-   "city": "Loveland",
-   "region": "CO",
-   "zip": "80537"
-  },
-  "city": "Loveland",
-  "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
- },
- {
-  "title": "Chessmates Chess Club at Bamford Elementary (grades 1–5)",
-  "calendar": "community",
-  "organizer": "Chessmates",
-  "tags": [
-   "youth",
-   "weekly"
-  ],
-  "url": "https://chessmatesfc.com/school/bamford/",
-  "price": "",
-  "pairing": "",
-  "rounds": "",
-  "page": "",
-  "start": "2026-10-28T14:25:00-06:00",
-  "end": "2026-10-28T15:25:00-06:00",
-  "allDay": false,
-  "location": "Bamford Elementary School, 6055 Traverse Stakes Way, Loveland, CO 80538",
-  "place": {
-   "name": "Bamford Elementary School",
-   "street": "6055 Traverse Stakes Way",
-   "city": "Loveland",
-   "region": "CO",
-   "zip": "80538"
-  },
-  "city": "Loveland",
-  "description": "Cost: $156 per semester (fall or spring), registered through Chessmates.\n\nChessmates after-school chess club for Bamford Elementary students in grades 1–5, Wednesdays 2:25 – 3:25 PM in the Upper Floor Media Center. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels. Fall registration is closed; spring runs January 13 to April 28, 2027.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/bamford/\n\nBamford Elementary School\n6055 Traverse Stakes Way, Loveland, CO 80538"
- },
- {
-  "title": "Chessmates Academy Chess Club (youth)",
-  "calendar": "community",
-  "organizer": "Chessmates",
-  "tags": [
-   "youth",
-   "weekly"
-  ],
-  "url": "https://chessmatesfc.com/chessmates-academy/",
-  "price": "",
-  "pairing": "",
-  "rounds": "",
-  "page": "",
-  "start": "2026-10-28T16:00:00-06:00",
-  "end": "2026-10-28T17:00:00-06:00",
-  "allDay": false,
-  "location": "Council Tree Covenant Church, 4825 S Lemay Ave, Fort Collins, CO 80525",
-  "place": {
-   "name": "Council Tree Covenant Church",
-   "street": "4825 S Lemay Ave",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80525"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: by the month, the semester, or a single drop-in class; prices are on Chessmates' registration form.\n\nChessmates Academy, a year-round club for kids who have finished a Chessmates school club and want to improve. Wednesdays 4:00 – 5:00 PM: strategy lessons and famous games, then activities like five-minute tournaments, four-player chess, and team matches.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/chessmates-academy/\n\nCouncil Tree Covenant Church\n4825 S Lemay Ave, Fort Collins, CO 80525"
- },
- {
-  "title": "Chessmates Chess Club at Mountain Sage Community School",
-  "calendar": "community",
-  "organizer": "Chessmates",
-  "tags": [
-   "youth",
-   "weekly"
-  ],
-  "url": "https://chessmatesfc.com/school/mountain-sage/",
-  "price": "",
-  "pairing": "",
-  "rounds": "",
-  "page": "",
-  "start": "2026-10-28T16:00:00-06:00",
-  "end": "2026-10-28T17:00:00-06:00",
-  "allDay": false,
-  "location": "Mountain Sage Community School, 2310 E Prospect Rd, Fort Collins, CO 80525",
-  "place": {
-   "name": "Mountain Sage Community School",
-   "street": "2310 E Prospect Rd",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80525"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: $144 for the fall semester, $168 for spring, 15% off for both, registered through Chessmates.\n\nChessmates after-school chess club for Mountain Sage Community School students, Wednesdays 4:00 – 5:00 PM. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/mountain-sage/\n\nMountain Sage Community School\n2310 E Prospect Rd, Fort Collins, CO 80525"
- },
- {
-  "title": "Wednesday Night Chess at Purpose Brewing",
-  "calendar": "club",
-  "organizer": "Fort Collins Chess Meetup",
-  "tags": [
-   "casual",
-   "all-ages",
-   "free",
-   "blitz",
-   "quick",
-   "weekly"
-  ],
-  "url": "https://www.meetup.com/fort-collins-chess-meetup-group/",
-  "price": "",
-  "pairing": "",
-  "rounds": "",
-  "page": "",
-  "start": "2026-10-28T18:00:00-06:00",
-  "end": "2026-10-28T21:00:00-06:00",
-  "allDay": false,
-  "location": "Purpose Brewing and Cellars, 4025 S Mason St, Unit C, Fort Collins, CO 80525",
-  "place": {
-   "name": "Purpose Brewing and Cellars",
-   "street": "4025 S Mason St, Unit C",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80525"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: free.\n\nWeekly casual chess night, Wednesdays from 6:00 PM. All skill levels; usually 10 to 20 players. Games are mostly blitz and quick, and unrated. The brewery has beer, soda, and pretzels.\n\nRun by the Fort Collins Chess Meetup Group. Not organized by the Larimer County Chess Club, but it's the same community.\n\nDetails and RSVP: https://www.meetup.com/fort-collins-chess-meetup-group/\n\nPurpose Brewing and Cellars\n4025 S Mason St, Unit C, Fort Collins, CO 80525"
- },
- {
   "title": "Adult Chess at Estes Valley Community Center",
   "calendar": "club",
   "organizer": "Estes Park players",
@@ -4618,5 +4477,32 @@
   },
   "city": "Fort Collins",
   "description": "Cost for October 2026:\n• Adults: $16.50 for the whole month, or $7.50 a night\n• Seniors (65+): $11.50 for the whole month, or $5.50 a night\n• Under 18: the reduced rate, $1.50 for the whole month, or $0.50 a night\nEach includes $0.50 a night for US Chess rating. November prices will be announced. Paying by card adds 2.5% + $0.50.\nTime control: G/70;d10 (70 minutes per player, with a 10-second delay on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+ },
+ {
+  "title": "Chessmates Chess Club at Werner Elementary (grades 1–5)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "youth",
+   "weekly"
+  ],
+  "url": "https://chessmatesfc.com/school/werner/",
+  "price": "",
+  "pairing": "",
+  "rounds": "",
+  "page": "",
+  "start": "2027-01-26T15:45:00-07:00",
+  "end": "2027-01-26T16:45:00-07:00",
+  "allDay": false,
+  "location": "Werner Elementary School, 5400 Mail Creek Ln, Fort Collins, CO 80525",
+  "place": {
+   "name": "Werner Elementary School",
+   "street": "5400 Mail Creek Ln",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: $156 a semester, 15% off for fall and spring together, registered through Chessmates.\n\nChessmates after-school chess club for Werner Elementary students in grades 1–5, Tuesdays 3:45 – 4:45 PM. Lessons on openings, middlegames, and endgames, with games and prizes; all skill levels.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/school/werner/\n\nWerner Elementary School\n5400 Mail Creek Ln, Fort Collins, CO 80525"
  }
 ]
