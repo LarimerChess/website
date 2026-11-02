@@ -246,6 +246,21 @@ test("fees: the round fee for each round an entry covers, an arena's flat fee, a
   eq(rowsOf(sheets.Entries).map((r) => [r.Paid, r["Paid by"]]), [["18.95", "card"], ["", ""]]);
 });
 
+test("Monday prices from November raise entry fees and leave the rating fee and under-18 entry fee unchanged", () => {
+  const { gs } = load({});
+  const night = (first) => ({ event: "monday-club-night-at-peak", kind: "night", first });
+  for (const date of ["2026-11-02", "2026-12-07", "2027-01-04"]) {
+    eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(night(date), category)), [8.5, 6.5, 0.5]);
+  }
+  gs.clubEvents = () => Object.fromEntries([2, 9, 16, 23, 30].map((day) => {
+    const date = `2026-11-${String(day).padStart(2, "0")}`;
+    return [date, night(date)];
+  }));
+  const month = { event: "monday-club-night-at-peak", kind: "month", first: "2026-11-02" };
+  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(month, category)), [18.5, 13.5, 2.5]);
+  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(night("2026-10-26"), category)), [7.5, 5.5, 0.5]);
+});
+
 test("the script avoids syntax Apps Script can't parse, though node can", () => {
   const source = readFileSync(`${ROOT}scripts/registration.gs`, "utf8");
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");

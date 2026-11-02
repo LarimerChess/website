@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - event-descriptions.json
+      - prices.json
+      - scripts/build_pages.py
       - scripts/sync_event_descriptions.py
       - .github/workflows/calendar.yml
   schedule:

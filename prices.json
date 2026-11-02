@@ -2,7 +2,9 @@
   "fees": {"round": 0.5, "arena": 3, "card": {"percent": 2.5, "fixed": 0.5}, "uschess": {"game": 0.35, "minimum": 3}},
   "monday-club-night-at-peak": [
     {"applies": "2026-10", "kind": "month", "adult": 15, "senior": 10, "youth": 0},
-    {"applies": "2026-10", "kind": "night", "adult": 7, "senior": 5, "youth": 0}
+    {"applies": "2026-10", "kind": "night", "adult": 7, "senior": 5, "youth": 0},
+    {"applies": "all", "kind": "month", "adult": 16, "senior": 11, "youth": 0},
+    {"applies": "all", "kind": "night", "adult": 8, "senior": 6, "youth": 0}
   ],
   "knightmare-arena-classical": [
     {"applies": "all", "kind": "entry", "adult": 15, "senior": 15, "youth": 0}
