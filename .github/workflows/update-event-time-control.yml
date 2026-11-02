@@ -1,0 +1,59 @@
+name: Update event time control
+
+on:
+  workflow_dispatch:
+    inputs:
+      calendar:
+        description: Calendar containing the event
+        type: choice
+        options: [club, community]
+        default: club
+        required: true
+      event_id:
+        description: Event or recurring series ID from the docs page
+        type: string
+        required: true
+      expected_line:
+        description: Complete existing Time control line
+        type: string
+        required: true
+      replacement_line:
+        description: Complete replacement Time control line
+        type: string
+        required: true
+      mode:
+        description: Preview checks the live description without writing
+        type: choice
+        options: [preview, apply]
+        default: preview
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calendar-edit-${{ inputs.calendar }}-${{ inputs.event_id }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - run: pip install -r scripts/requirements.txt
+      - name: Check or update the time control through the Calendar API
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
+          CALENDAR: ${{ inputs.calendar }}
+          EVENT_ID: ${{ inputs.event_id }}
+          EXPECTED_LINE: ${{ inputs.expected_line }}
+          REPLACEMENT_LINE: ${{ inputs.replacement_line }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          args=(--calendar "$CALENDAR" --event-id "$EVENT_ID"
+                --expected-line "$EXPECTED_LINE" --replacement-line "$REPLACEMENT_LINE")
+          if [ "$MODE" = preview ]; then args+=(--dry-run); fi
+          python scripts/update_event_time_control.py "${args[@]}"
