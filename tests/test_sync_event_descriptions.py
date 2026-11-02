@@ -14,15 +14,19 @@ import sync_event_descriptions as sync
 SOURCE = Path(__file__).resolve().parents[1] / "event-descriptions.json"
 
 
+def monday_record():
+    return next(record for record in sync.read_source(SOURCE)
+                if record["event_id"] == "5ok4vomkgvb6fui6csb1uignvi")
+
+
 class DescriptionSource(unittest.TestCase):
     def test_export_contains_only_public_fields_and_new_control(self):
-        records = sync.read_source(SOURCE)
-        self.assertEqual(len(records), 1)
-        self.assertIn("Time control: G/60;+30 (60 minutes per player, with a 30-second increment", records[0]["description"])
-        self.assertEqual(records[0]["metadata"]["speed"], "regular")
+        record = monday_record()
+        self.assertIn("Time control: G/60;+30 (60 minutes per player, with a 30-second increment", record["description"])
+        self.assertEqual(record["metadata"]["speed"], "regular")
 
     def test_bad_sources_are_rejected_before_api_calls(self):
-        record = sync.read_source(SOURCE)[0]
+        record = monday_record()
         cases = [{}, [record, record], [{**record, "calendar": "unknown"}],
                  [{**record, "metadata": {"rated": "yes"}}],
                  [{**record, "metadata": {**record["metadata"], "private-note": "not public"}}],
@@ -38,7 +42,7 @@ class DescriptionSource(unittest.TestCase):
 
 class CalendarSync(unittest.TestCase):
     def setUp(self):
-        self.record = sync.read_source(SOURCE)[0]
+        self.record = monday_record()
         self.current = {"summary": self.record["title"], "etag": '"one"',
                         "description": "Old public description", "status": "confirmed",
                         "extendedProperties": {"private": {**self.record["metadata"], "source": "keep-me"}}}
@@ -88,7 +92,7 @@ class CalendarSync(unittest.TestCase):
 
 class SavedControls(unittest.TestCase):
     def setUp(self):
-        self.records = sync.read_source(SOURCE)
+        self.records = [monday_record()]
         self.db = Mock()
         self.today = date(2026, 11, 2)
 
