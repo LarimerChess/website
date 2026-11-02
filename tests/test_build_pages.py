@@ -94,6 +94,28 @@ class Dates(unittest.TestCase):
         self.assertEqual(bp.days_html("2026-10-10", "2026-10-10", weekday=False), '<time datetime="2026-10-10">October 10, 2026</time>')
 
 
+class HomeTimeControl(unittest.TestCase):
+    def test_follows_the_next_event_and_keeps_other_home_content(self):
+        template = '<p>Club night: <span data-event-time-control="/events/first-saturday-classic/">Old control</span></p><p>Saturday Slow: G/70;d10</p>'
+        changed = {**CLASSIC, "description": "Time control: G/60;+30 (60 minutes, 30-second increment). Regular rated."}
+        later = {**CLASSIC, "start": "2026-12-05T10:00:00-07:00"}
+        out = bp.home_time_controls(template, [later, changed])
+        self.assertIn('>G/60;+30 (60 minutes, 30-second increment). Regular rated.</span>', out)
+        self.assertIn('<p>Saturday Slow: G/70;d10</p>', out)
+        self.assertNotIn("Old control", out)
+
+    def test_missing_event_or_control_fails_instead_of_keeping_stale_text(self):
+        template = '<span data-event-time-control="/events/first-saturday-classic/">Old control</span>'
+        for events in ([], [{**CLASSIC, "description": "Welcome."}]):
+            with self.subTest(events=events), self.assertRaises(ValueError):
+                bp.home_time_controls(template, events)
+
+    def test_event_text_is_escaped_for_html(self):
+        template = '<span data-event-time-control="/events/first-saturday-classic/">Old</span>'
+        out = bp.home_time_controls(template, [{**CLASSIC, "description": "Time control: G/60;+30 <regular & rated>"}])
+        self.assertIn("G/60;+30 &lt;regular &amp; rated&gt;", out)
+
+
 class Description(unittest.TestCase):
     def test_labels_lists_and_links(self):
         out = bp.description_html(DESCRIPTION)

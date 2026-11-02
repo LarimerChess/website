@@ -20,7 +20,7 @@ How each part works is in the opening comment of its file. This README says wher
 - **Styles.** style.css is copied into every page's <style>, so the first paint doesn't wait on another request. After changing style.css or any page's script, run python scripts/sync_assets.py, which copies it and updates each script link's ?v= stamp so browsers don't pair a new page with a cached old script. Never edit a page's <style> by hand.
 - **Menu.** It is written by hand in each hand-written page and from NAV in scripts/build_pages.py in the pages it writes. It fits on one line at 1100px with little room left, so a new item likely means moving another to the footer.
 - **New pages.** Add a hand-written page's URL to sitemap.xml. The Date pages Action keeps every page's lastmod.
-- **Written pages.** Never edit events.json, events/<name>/, results/, or the Event data in events/index.html by hand; the Actions below rewrite them.
+- **Written pages.** Never edit events.json, events/<name>/, results/, the Event data in events/index.html, or the home page's marked data-event-time-control text by hand; the Actions below rewrite them. build_pages.py fills the home page's marked time control from the next event's description and checks it with --check.
 
 ## The registration script
 

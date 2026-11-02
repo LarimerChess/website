@@ -4,6 +4,7 @@
     python scripts/build_pages.py --check  # fail if any is out of date with events.json
 
 - events/index.html gets schema.org Event data for every club event.
+- The home page's marked time-control text follows the next occurrence of its event.
 - Each club event gets its own page at its "page" path (events/<name>/), with its
   next date, its calendar description, a Register form and entry list (register.js) when it is
   US Chess rated, and its Event data. A page whose event has left events.json is
@@ -44,6 +45,7 @@ GENERATED = "<!-- Written by scripts/build_pages.py from events.json; don't edit
 ARCHIVED = "<!-- Archived by scripts/build_pages.py: the event has no upcoming dates. Don't edit by hand. -->"
 LAST_EVENT = re.compile(r'<script type="application/json" id="last-event">(.*?)</script>', re.S)
 EVENT_DATA = re.compile(r'<script type="application/ld\+json" id="club-events">.*?</script>', re.S)
+HOME_CONTROL = re.compile(r'(<span data-event-time-control="([^"]+)">).*?(</span>)', re.S)
 # Which events each listing page shows, so its lastmod moves only when they change.
 LISTINGS = {
     "events/": lambda e: "youth" not in e["tags"],
@@ -614,6 +616,19 @@ def sitemap(text, pages, changed, today, date_pages=True):
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(lines) + "\n</urlset>\n")
 
 
+def home_time_controls(text, events):
+    def fill(match):
+        dated = [event for event in events if event.get("page") == match[2]]
+        if not dated:
+            raise ValueError(f"Home page time control has no event at {match[2]}")
+        event = min(dated, key=lambda item: item["start"])
+        control = re.search(r"^Time control: (.+)$", event.get("description", ""), re.M)
+        if not control:
+            raise ValueError(f"Home page event at {match[2]} has no Time control line")
+        return match[1] + html.escape(control[1].strip()) + match[3]
+    return HOME_CONTROL.sub(fill, text)
+
+
 def main(check):
     events = json.loads((ROOT / "events.json").read_text(encoding="utf-8"))
     club = [e for e in events if e["organizer"] == CLUB]
@@ -631,6 +646,10 @@ def main(check):
     prices = json.loads((ROOT / "prices.json").read_text(encoding="utf-8"))
     pages = {path: series_page(dated, prices) for path, dated in series.items()}
     changed = {}
+    home = (ROOT / "index.html").read_text(encoding="utf-8")
+    writes["index.html"] = home_time_controls(home, club)
+    if writes["index.html"] != home:
+        changed[""] = True
     for path, text in pages.items():
         file = ROOT / path / "index.html"
         writes[f"{path}index.html"] = text
