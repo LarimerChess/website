@@ -34,17 +34,18 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 
 | Action | When | What it runs | Secrets |
 |---|---|---|---|
-| Update calendar | hourly | scripts/update_calendar.py, then build_pages.py | LCCC_GOOGLE_CALENDAR_READ_TOKEN |
+| Update calendar | hourly, and when the managed description source changes | scripts/sync_event_descriptions.py, update_calendar.py, then build_pages.py | LCCC_GOOGLE_CALENDAR_TOKEN, LCCC_GOOGLE_CALENDAR_READ_TOKEN |
 | Results | hourly | scripts/rating_check.mjs, build_results.py, and build_pages.py | LCCC_GOOGLE_GMAIL_SEND_TOKEN, LCCC_TD_EMAILS |
 | Archive tournaments | daily, 10:30, 11:30, and 12:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN, LCCC_GOOGLE_FIREBASE_TOKEN |
 | Sync calendars | daily, 13:15 UTC | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
-| Update event time control | manual, preview or apply | scripts/update_event_time_control.py; replaces one exact Time control line and verifies the live event | LCCC_GOOGLE_CALENDAR_TOKEN |
 | TD expirations | Mondays | scripts/td_expirations.py | USCHESS_API_KEY, LCCC_JUNIOR_TD_IDS, LCCC_GOOGLE_GMAIL_SEND_TOKEN |
 | Date pages | each push that changes a page | build_pages.py, for the sitemap's lastmod dates | |
 | Docs repo is private | hourly | fails if the docs repo can be seen | |
 | Check site | each push, and weekly for external links | the checks below | |
 
 Update calendar fails, naming the event, when an event's calendar metadata is missing or invalid, and leaves events.json alone. A tournament goes from Results to Archive tournaments: once US Chess rates it, rating_check.mjs adds it to ratings.json, the record of what US Chess has rated, and US Chess's first and last day for it to rated-dates.json, which its pages show; build_results.py writes its page; and the archive commits its rows beside the page, then clears them from the spreadsheet.
+
+event-descriptions.json is the reviewed source for managed club event descriptions and website metadata. The private docs repo's scripts/export_event_descriptions.py exports selected event pages' public text and metadata into it, excluding internal notes. Update calendar first syncs those records to Google Calendar, checking each event's title and revision and reading the result back, then imports the live calendars and rebuilds the pages. The same Action runs on a source change and hourly, so a manual Calendar edit to a managed description is replaced by its reviewed source. Events absent from the source are imported without changing their descriptions.
 
 The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, --firebase, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
 

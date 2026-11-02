@@ -1,6 +1,12 @@
 name: Update calendar
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - event-descriptions.json
+      - scripts/sync_event_descriptions.py
+      - .github/workflows/calendar.yml
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -25,6 +31,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
+      - run: pip install -r scripts/requirements.txt
+      - name: Sync managed event descriptions to Google Calendar
+        run: python scripts/sync_event_descriptions.py
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
       # Reads the calendars through the Google Calendar API with a read-only token, because
       # the public feeds leave out the event metadata. The secret is the token's whole JSON.
       - run: python scripts/update_calendar.py events.json
