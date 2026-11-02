@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -83,6 +84,35 @@ class CalendarSync(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "read-back differs"):
             sync.sync(self.service, [self.record])
         self.events.patch.return_value.execute.assert_called_once_with()
+
+
+class SavedControls(unittest.TestCase):
+    def setUp(self):
+        self.records = sync.read_source(SOURCE)
+        self.db = Mock()
+        self.today = date(2026, 11, 2)
+
+    def test_prior_months_prior_nights_and_other_events_are_left_alone(self):
+        self.db.get.return_value = {"old-month": {"Key": "monday-club-night-at-peak/2026-10", "Time control": "G/70;d10"},
+                                    "old-night": {"Key": "monday-club-night-at-peak/2026-10-26", "Time control": "G/70;d10"},
+                                    "other": {"Key": "third-saturday-slow/2026-11-21", "Time control": "G/70;d10"}}
+        self.assertEqual(sync.check_saved_controls(self.db, self.records, self.today), [])
+        self.db.patch.assert_not_called()
+
+    def test_current_month_and_future_nights_are_checked_without_changing_sections(self):
+        self.db.get.return_value = {"month": {"Key": "monday-club-night-at-peak/2026-11", "Time control": "G/60;+30",
+                                             "Sections": '[{"name":"Extra games","timeControl":"G/30;+30"}]'},
+                                    "night": {"Key": "monday-club-night-at-peak/2026-12-07", "Time control": "G/60;+30"}}
+        self.assertEqual(len(sync.check_saved_controls(self.db, self.records, self.today)), 2)
+        self.db.patch.assert_not_called()
+
+    def test_an_old_or_missing_saved_control_is_reported_without_relabeling_games(self):
+        for control in ("G/70;d10", ""):
+            with self.subTest(control=control):
+                self.db.get.return_value = {"month": {"Key": "monday-club-night-at-peak/2026-11", "Time control": control}}
+                with self.assertRaisesRegex(ValueError, "Saved time controls differ"):
+                    sync.check_saved_controls(self.db, self.records, self.today)
+                self.db.patch.assert_not_called()
 
 
 if __name__ == "__main__":

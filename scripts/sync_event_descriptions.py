@@ -6,9 +6,11 @@ Use --dry-run to check the source and report differences without writing.
 """
 import argparse
 import json
+import re
+from datetime import datetime
 from pathlib import Path
 
-from update_calendar import CALENDARS, FIELDS, problems
+from update_calendar import CALENDARS, FIELDS, TZ, problems, series_page
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -82,11 +84,51 @@ def sync(service, records, dry_run=False):
     return changed
 
 
+def check_saved_controls(db, records, today):
+    from firebase_db import decode_row
+
+    controls = {}
+    for record in records:
+        match = re.search(r"^Time control: (G/\d+;(?:\+|d)\d+)\b", record["description"], re.M)
+        if match and record["metadata"].get("rated") == "yes":
+            event = series_page(record["title"]).strip("/").split("/")[-1]
+            controls[event] = match[1]
+    selected, pending = [], []
+    for stored in (db.get("tables/Tournaments") or {}).values():
+        row = decode_row(stored)
+        event, separator, when = row.get("Key", "").partition("/")
+        if event not in controls or not separator:
+            continue
+        if len(when) == 7:
+            applies = when >= today.strftime("%Y-%m")
+        else:
+            applies = when >= today.isoformat()
+        if not applies:
+            continue
+        selected.append(row["Key"])
+        if row.get("Time control", "") != controls[event]:
+            pending.append(row["Key"])
+    if pending:
+        raise ValueError("Saved time controls differ from the listing; inspect played games before changing: "
+                         + ", ".join(pending))
+    print(f"verified: {len(selected)} current or future saved tournament(s); no different time control")
+    return selected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", type=Path, default=ROOT / "event-descriptions.json")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--check-tournaments", action="store_true")
     args = parser.parse_args()
+
+    if args.check_tournaments:
+        from firebase_db import connect
+        try:
+            check_saved_controls(connect(), read_source(args.source), datetime.now(TZ).date())
+        except (ValueError, OSError) as error:
+            parser.exit(1, f"{error}\n")
+        return
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     from google_auth import credentials

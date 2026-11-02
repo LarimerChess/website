@@ -127,7 +127,14 @@ const arenaAnswer = (fields) => {
   return { ok: true, message: "Done." };
 };
 const arenaPairings = await mocked("/pairings/ with an arena", arenaAnswer);
-await arenaPairings.evaluateOnNewDocument(() => localStorage.setItem("lccc-register-players", JSON.stringify([{ id: "11111111", name: "Ann", last: "", email: "" }])));
+await arenaPairings.evaluateOnNewDocument((fixed) => {
+  const RealDate = Date;
+  window.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixed])); }
+    static now() { return fixed; }
+  };
+  localStorage.setItem("lccc-register-players", JSON.stringify([{ id: "11111111", name: "Ann", last: "", email: "" }]));
+}, new Date("2026-10-31T11:00:00-06:00").getTime());
 await arenaPairings.goto(base + "/pairings/", { waitUntil: "networkidle0" });
 const shownArena = await arenaPairings.evaluate(() => ({
   headings: [...document.querySelectorAll(".pairings-all h3")].map((h) => h.textContent),

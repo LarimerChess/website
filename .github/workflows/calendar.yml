@@ -54,3 +54,7 @@ jobs:
           gh api -X POST repos/${{ github.repository }}/pages/builds
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Check saved time controls against managed descriptions
+        run: python scripts/sync_event_descriptions.py --check-tournaments
+        env:
+          LCCC_GOOGLE_FIREBASE_TOKEN: ${{ secrets.LCCC_GOOGLE_FIREBASE_TOKEN }}
