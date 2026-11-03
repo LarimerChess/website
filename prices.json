@@ -44,8 +44,8 @@
       "applies": "2026-11",
       "kind": "month",
       "youth": 0,
-      "adult": 15.0,
-      "senior": 10.0
+      "adult": 15.5,
+      "senior": 10.5
     },
     {
       "applies": "2026-12",
