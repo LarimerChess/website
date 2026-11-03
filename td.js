@@ -728,7 +728,7 @@ async function showLedger(eventName, date) {
   const r = ledger.received;
   const lines = [
     `Received: cash $${r.cash}, check $${r.check}, card $${r.card}, other $${r.other}.`,
-    `Entry fees, Peak's facility donation: $${ledger.entry}.`,
+    `Entry fees collected: $${ledger.entry}.`,
     `Rating fees: $${ledger.rating}.`
       + (ledger.games === null ? "" : ` US Chess charges $${ledger.uschess} for the ${ledger.games} rated ${ledger.games === 1 ? "game" : "games"} played so far.`),
     `Card fees, for the processor: $${ledger.card}.`,

@@ -420,7 +420,8 @@ JSON.stringify(monthButtons) === '["Night Player"]' && toMonth.date === "2026-10
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("registered"));
 await desk.waitForSelector(".td-month:enabled");
 const money = await desk.$$eval(".td-ledger li", (items) => items.map((i) => i.textContent));
-money.length === 4 && money[0].includes("cash $15") && money[2].includes("$3 for the 6 rated games")
+money.length === 4 && money[0].includes("cash $15") && money[1].startsWith("Entry fees collected:")
+  && money[2].includes("$3 for the 6 rated games")
   ? pass("TD desk shows the money received by method and how it splits") : fail(`TD desk Money: ${JSON.stringify(money)}`);
 await desk.click(".td-entries tbody tr td:nth-last-child(2) button");
 await desk.waitForSelector("dialog.td-incident[open]");

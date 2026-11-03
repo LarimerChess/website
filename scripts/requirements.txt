@@ -1,3 +1,4 @@
 brotli
 google-api-python-client
 google-auth-oauthlib
+tzdata; sys_platform == "win32"
