@@ -102,11 +102,19 @@ class Standings(unittest.TestCase):
         self.assertEqual(br.dated_name(SATURDAY, {"start": "2026-11-07", "end": "2026-11-07"}), SATURDAY["name"])
         self.assertEqual(br.dated_name(CLUB_NIGHT, {"start": "2026-10-05", "end": "2026-10-26"}),
                          "Monday Club Night at Peak, October 5–26, 2026")
+
         page = br.results_page(SATURDAY, days=days)
         self.assertIn("<title>First Saturday Classic, November 1–7, 2026 results</title>", page)
         self.assertIn("<h1>First Saturday Classic, November 1–7, 2026</h1>", page)
         self.assertIn('content="Final standings of the First Saturday Classic, November 1–7, 2026, a US Chess', page)
         self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/first-saturday-classic-2026-11-07/">', page)
+
+    def test_monthly_desk_label_is_replaced_with_the_rated_dates(self):
+        tournament = {**CLUB_NIGHT, "name": "Monday Club Night at Peak, all Mondays in October 2026"}
+        days = {"start": "2026-10-12", "end": "2026-10-27"}
+        self.assertEqual(br.dated_name(tournament, days), "Monday Club Night at Peak, October 12–27, 2026")
+        self.assertEqual(br.dated_name(tournament, None), tournament["name"])
+        self.assertIn("<h1>Monday Club Night at Peak, October 12–27, 2026</h1>", br.results_page(tournament, days=days))
 
     def test_links_the_rated_event(self):
         self.assertIn('US Chess rated it as event <a href="https://ratings.uschess.org/event/202611070123"',

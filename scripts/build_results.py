@@ -108,6 +108,11 @@ def dated_name(t, days):
     """The tournament's name, its closing date as US Chess's days once it has rated it, as days_text."""
     date = t["key"].split("/")[1]
     suffix = ", " + (day_text({"start": f"{date}T12:00:00-06:00"}) if len(date) == 10 else date_text(date))
+    if len(date) == 7:
+        monthly = re.search(r", all (?:Mondays|Tuesdays|Wednesdays|Thursdays|Fridays|Saturdays|Sundays) in "
+                            + re.escape(date_text(date)) + r"$", t["name"])
+        if monthly:
+            suffix = monthly[0]
     if not days or not t["name"].endswith(suffix):
         return t["name"]
     return t["name"].removesuffix(suffix) + ", " + days_text(days["start"], days["end"])
