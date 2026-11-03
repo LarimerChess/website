@@ -94,6 +94,28 @@ class Dates(unittest.TestCase):
         self.assertEqual(bp.days_html("2026-10-10", "2026-10-10", weekday=False), '<time datetime="2026-10-10">October 10, 2026</time>')
 
 
+class MonthlyTotals(unittest.TestCase):
+    def test_total_stays_fixed_for_four_or_five_nights_without_changing_rating_or_youth(self):
+        event = "monday-club-night-at-peak"
+        prices = {"fees": {"round": 0.5}, "monthly_totals": {event: {"from": "2026-11", "adult": 17.5, "senior": 12.5}},
+                  event: [{"applies": "2026-10", "kind": "month", "adult": 15, "senior": 10, "youth": 0},
+                          {"applies": "all", "kind": "month", "adult": 16, "senior": 11, "youth": 0},
+                          {"applies": "all", "kind": "night", "adult": 8, "senior": 6, "youth": 0}]}
+        events = [{"page": f"/events/{event}/", "start": day + "T18:30:00-07:00"}
+                  for day in ["2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23", "2026-11-30",
+                              "2026-12-07", "2026-12-14", "2026-12-21", "2026-12-28"]]
+        for dated in [events, events[1:]]:
+            result = bp.monthly_prices(prices, dated)
+            for month in ["2026-11", "2026-12"]:
+                count = sum(e["start"].startswith(month) for e in dated)
+                row = bp.fee(result, event, "month", month)
+                self.assertEqual([row[c] + 0.5 * count for c in ["adult", "senior", "youth"]], [17.5, 12.5, 0.5 * count])
+            self.assertEqual(bp.fee(result, event, "month", "2026-10")["adult"], 15)
+            self.assertEqual(bp.fee(result, event, "night", "2026-11-02")["adult"], 8)
+            self.assertEqual(result["fees"]["round"], 0.5)
+            self.assertEqual(bp.monthly_prices(result, dated), result)
+
+
 class HomeTimeControl(unittest.TestCase):
     def test_follows_the_next_event_and_keeps_other_home_content(self):
         template = '<p>Club night: <span data-event-time-control="/events/first-saturday-classic/">Old control</span></p><p>Saturday Slow: G/70;d10</p>'

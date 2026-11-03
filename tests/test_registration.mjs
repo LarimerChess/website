@@ -257,7 +257,12 @@ test("Monday prices from November raise entry fees and leave the rating fee and 
     return [date, night(date)];
   }));
   const month = { event: "monday-club-night-at-peak", kind: "month", first: "2026-11-02" };
-  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(month, category)), [18.5, 13.5, 2.5]);
+  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(month, category)), [17.5, 12.5, 2.5]);
+  gs.clubEvents = () => Object.fromEntries([7, 14, 21, 28].map((day) => {
+    const date = `2026-12-${String(day).padStart(2, "0")}`;
+    return [date, night(date)];
+  }));
+  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price({ ...month, first: "2026-12-07" }, category)), [17.5, 12.5, 2]);
   eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(night("2026-10-26"), category)), [7.5, 5.5, 0.5]);
 });
 

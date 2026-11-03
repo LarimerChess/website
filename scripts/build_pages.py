@@ -227,6 +227,30 @@ def money(n):
     return f"${n:.0f}" if n == int(n) else f"${n:.2f}"
 
 
+def monthly_prices(prices, events):
+    """Keep advertised monthly totals fixed while the existing API adds each night's rating fee."""
+    result = dict(prices)
+    for event, policy in prices.get("monthly_totals", {}).items():
+        months = defaultdict(set)
+        for dated in events:
+            month = dated["start"][:7]
+            if dated.get("page") == f"/events/{event}/" and month >= policy["from"]:
+                months[month].add(dated["start"][:10])
+        rows = [row for row in prices.get(event, [])
+                if row["kind"] != "month" or (row["applies"] != "all" and row["applies"] not in months)]
+        for month, nights in sorted(months.items()):
+            rating = prices["fees"]["round"] * len(nights)
+            previous = fee(prices, event, "month", month) or {"youth": 0}
+            row = {"applies": month, "kind": "month", "youth": previous["youth"]}
+            for category in ("adult", "senior"):
+                row[category] = round(policy[category] - rating, 2)
+                if row[category] < 0:
+                    raise ValueError("Monthly total is less than its rating fee")
+            rows.append(row)
+        result[event] = rows
+    return result
+
+
 def fee_text(row, rating):
     """The fee with what the entry adds for US Chess rating: '$17, reduced rate $2 under 18', or
     '$16.50 adults, $11.50 seniors (65+), reduced rate $1.50 under 18'."""
@@ -643,7 +667,11 @@ def main(check):
     for e in club:
         if e.get("page"):
             series[e["page"].removeprefix("/")].append(e)
-    prices = json.loads((ROOT / "prices.json").read_text(encoding="utf-8"))
+    price_text = (ROOT / "prices.json").read_text(encoding="utf-8")
+    original_prices = json.loads(price_text)
+    prices = monthly_prices(original_prices, club)
+    writes["prices.json"] = (json.dumps(prices, indent=2, ensure_ascii=False) + "\n"
+                              if prices != original_prices else price_text)
     pages = {path: series_page(dated, prices) for path, dated in series.items()}
     changed = {}
     home = (ROOT / "index.html").read_text(encoding="utf-8")

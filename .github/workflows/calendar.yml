@@ -47,7 +47,7 @@ jobs:
       - run: python scripts/build_pages.py
       - name: Commit if changed
         run: |
-          git add -A events.json events index.html sitemap.xml
+          git add -A events.json events index.html prices.json sitemap.xml
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"

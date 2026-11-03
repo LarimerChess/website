@@ -29,7 +29,7 @@ jobs:
       - run: python scripts/build_pages.py
       - name: Commit if changed
         run: |
-          git add index.html sitemap.xml
+          git add index.html prices.json sitemap.xml
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
