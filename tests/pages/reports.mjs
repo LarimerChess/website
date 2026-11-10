@@ -408,6 +408,47 @@ await fitsPhone(givePage, "TD desk giving a bye");
 await axeBoth(givePage, "TD desk giving a bye");
 await givePage.close();
 
+// Past missed rounds remain eligible after another half-point bye, including the last round and withdrawal.
+const missedRules = deskState(["1-0", "0-1", "1/2-1/2"].map((result, i) => ({
+  games: [{ board: 1, white: "11111111", black: "22222222", result, section: "" },
+    { board: 2, white: "33333333", black: "44444444", result, section: "" }],
+  byes: i < 2 ? [{ id: "66666666", kind: i === 0 ? "half" : "unplayed", points: i === 0 ? 0.5 : 0, section: "" }] : [],
+  out: [], posted: true })));
+missedRules.held.halfByes = { limit: 1, everyRound: false };
+missedRules.held.players = sixPlayers.map((p) => p.id === "66666666" ? { ...p, out: 2 } : p);
+const missedAnswer = missedRules.answer;
+missedRules.answer = (p) => {
+  if (p.action === "byeKind") {
+    missedRules.calls.push(p);
+    const r = missedRules.held.rounds[Number(p.number) - 1];
+    const b = r.byes.find((x) => x.id === p.id);
+    if (b) Object.assign(b, { kind: p.kind, points: Pairing.BYE_KINDS[p.kind] });
+    else r.byes.push({ id: p.id, kind: p.kind, points: Pairing.BYE_KINDS[p.kind], section: p.section });
+    return { ok: true };
+  }
+  return missedAnswer(p);
+};
+const missedPage = await mocked("/td/ excusing missed rounds", (p) => missedRules.answer(p));
+await signIn(missedPage);
+await missedPage.waitForSelector('.run-byes-all select[aria-label="Fay (1100), round 3"]');
+const protectedPlayers = await missedPage.$$eval("#run-bye-player option", (os) => os.map((o) => o.value));
+await missedPage.select('.run-byes-all select[aria-label="Fay (1100), round 2"]', "half");
+await missedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("round 2: Half-point bye"));
+await missedPage.select("#run-bye-player", "66666666");
+await missedPage.select("#run-bye-round", "Round 3");
+const missedKinds = await missedPage.$$eval("#run-bye-kind option", (os) => os.map((o) => o.value));
+await missedPage.select("#run-bye-kind", "half");
+await press(missedPage, ".run-give-bye button");
+await missedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("round 3: Half-point bye"));
+const excused = missedRules.calls.filter((c) => c.action === "byeKind");
+const fayScore = Pairing.standings(missedRules.held).find((p) => p.id === "66666666").score;
+protectedPlayers.join() === "55555555,66666666" && missedKinds.includes("half") && fayScore === 1.5
+  && excused.map((p) => `${p.id}/${p.number}/${p.kind}`).join() === "66666666/2/half,66666666/3/half"
+  ? pass("TD can excuse multiple missed past rounds, including the last and withdrawn rounds, while wins, losses, and draws stay protected")
+  : fail(`TD missed rounds: ${JSON.stringify({ protectedPlayers, missedKinds, fayScore, excused })}`);
+await axeBoth(missedPage, "TD desk excusing missed rounds");
+await missedPage.close();
+
 // The Results page pages its table 20 rows at a time; it is served here with 45 made-up rows
 // in place of the real ones.
 const resultsPage = await browser.newPage();

@@ -925,8 +925,8 @@ function renderByesAll() {
   const box = document.querySelector(".run-byes-all");
   const extra = (current.sections || []).some((d) => d.extra);
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
-  const missing = (s, r, i) => (current.rounds[s.first + i - 1].posted ? s.players.filter((p) => !(p.out && p.out <= s.first + i)
-    && !r.games.some((g) => g.white === p.id || g.black === p.id) && !r.byes.some((b) => b.id === p.id))
+  const missing = (s, r, i) => (current.rounds[s.first + i - 1].posted ? s.players.filter((p) =>
+    !r.games.some((g) => g.white === p.id || g.black === p.id) && !r.byes.some((b) => b.id === p.id))
     .map((p) => ({ id: p.id, points: 0, kind: "unplayed", missing: r }))
     : []);
   const rows = parts.flatMap((s) => s.rounds.flatMap((r, i) => [...r.byes, ...missing(s, r, i)].map((b) => {
@@ -980,8 +980,9 @@ function renderByesAll() {
 }
 
 /** Why a player's posted round i of section s, which has no game for them, can't be the kind, or "".
- *  Only the change is checked, so a round posted before the rules were held to doesn't block it. */
+ *  A half-point bye is at the TD's discretion; full-point byes keep their restrictions. */
 function postedByeProblem(s, i, id, kind) {
+  if (kind === "half" && current.rounds[s.first + i - 1].posted) return "";
   if (!["bye", "half"].includes(kind)) return "";
   const r = s.rounds[i];
   const others = kind === "bye" ? r.byes.filter((x) => x.id !== id && Pairing.byeKind(x) === "bye") : [];
@@ -993,7 +994,7 @@ const FUTURE_LABELS = { play: "Plays", half: "Half-point bye (½), asked for", z
 
 /** The rounds the player has no game in, which Give a bye can change: each posted one, as byeKind saves it, and,
  *  in a Swiss section, each still to be paired, as the half-point byes they ask for. A round paired but not posted
- *  changes in the draft, and a withdrawn player's rounds from then on stay unplayed. A player who entered single
+ *  changes in the draft, and a withdrawn player has no future requests. A player who entered single
  *  nights of a month has a night's entry, which takes no byes. */
 function byeSlots(p) {
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.some((x) => x.id === p.id));
@@ -1001,9 +1002,9 @@ function byeSlots(p) {
     const last = s.last ?? current.plannedRounds ?? current.rounds.length;
     const swiss = !Pairing.roundRobin(s) && !s.extra && !p.nights;
     return Array.from({ length: Math.max(0, last - s.first + 1) }, (_, i) => s.first + i).flatMap((n) => {
-      if (p.out && n >= p.out) return [];
       const r = s.rounds[n - s.first];
       if (!r) {
+        if (p.out && n >= p.out) return [];
         const kind = (p.byes || []).map(Number).includes(n) ? "half" : (p.zeroByes || []).map(Number).includes(n) ? "zero" : "play";
         return swiss ? [{ s, n, posted: false, kind }] : [];
       }

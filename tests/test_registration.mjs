@@ -847,11 +847,10 @@ for (const store of STORES) {
     eq(byesOf("55555555"), [["1", "Under 1400", "half", "0.5"]]);
     const eve = gs.tournament(key, true);
     eq(Pairing.standings(Pairing.sections(eve).find((s) => s.name === "Under 1400")).find((r) => r.id === "55555555").score, 0.5);
-    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "55555555", kind: "half", section: "Under 1400" }).error,
-      "Eve already has or asked for a half-point bye, in round 1, and the event allows one per player.");
-    // Without a page announcing byes, only the first half's rounds have them (22C1).
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "55555555", kind: "half", section: "Under 1400" }).ok, true);
+    // The TD can excuse any missed posted round, including one that normally offers no bye.
     assert.equal(gs.saveByeKind({ ...p, number: "1", id: "55555555", kind: "unplayed", section: "Under 1400" }).ok, true);
-    assert.match(gs.saveByeKind({ ...p, number: "3", id: "55555555", kind: "half", section: "Under 1400" }).error, /\(22C1\), and round 3 isn't one\.$/);
+    assert.equal(gs.saveByeKind({ ...p, number: "3", id: "55555555", kind: "half", section: "Under 1400" }).ok, true);
     assert.equal(gs.saveByeKind({ ...p, number: "2", id: "55555555", kind: "half", section: "Under 1400" }).ok, true);
     // A late entrant who asked for a bye to come has had their one.
     registered = [...registered, { id: "77777777", name: "Gus", rating: "1000", out: "", byes: ["4"] }];
@@ -986,8 +985,8 @@ for (const store of STORES) {
       byes: JSON.stringify([{ id: "33333333", points: 0, kind: "unplayed", section: "Open" }, { id: "44444444", points: 0, kind: "unplayed", section: "Open" }]) });
     assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Extra games" }).error, "That round isn't paired yet.");
     assert.equal(gs.saveByeKind({ ...p, number: "2", id: "22222222", kind: "half", section: "Open" }).error, "That player has a game that round, not a bye.");
-    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Open" }).error,
-      "Cal didn't ask for a last-round bye before round 1, so they can't have one (22C4).", "Open's last round is its own");
+    assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "half", section: "Open" }).ok, true,
+      "the TD can excuse a missed posted last round");
     assert.equal(gs.saveByeKind({ ...p, number: "2", id: "33333333", kind: "zero", section: "Open" }).ok, true);
     // One added by mistake comes off; one with posted pairings stays.
     assert.match(gs.dropExtraSection({ ...p, section: "Extra games" }).error, /posted pairings/);
@@ -1686,6 +1685,32 @@ function classicRunning(store) {
 }
 
 for (const store of STORES) {
+  test(`TD half-point byes excuse missed posted rounds but preserve games and future restrictions (${store})`, () => {
+    const { gs, rows, desk } = classicRunning(store);
+    const key = "classic/2026-11-07";
+    const p = { event: "classic", date: "2026-11-07", section: "" };
+    const round = (n, post, byes = []) => gs.saveRound({ ...p, number: String(n), post,
+      games: JSON.stringify([{ board: 1, white: "66666666", black: "33333333" }]), byes: JSON.stringify(byes) });
+    assert.equal(desk({ token: "t2", byes: "2" }).ok, true);
+    assert.equal(round(1, "yes", [{ id: "77777777", kind: "unplayed" }]).ok, true);
+    assert.equal(round(3, "yes").ok, true);
+    assert.equal(round(4, "yes").ok, true);
+    const give = (number, id = "77777777") => gs.saveByeKind({ ...p, number: String(number), id, kind: "half" });
+    for (const n of [1, 3, 4]) assert.equal(give(n).ok, true, `missed round ${n}`);
+    eq(rows("Rounds").filter((r) => r.White === "77777777").map((r) => [r.Round, r["Bye kind"], r["Bye points"]]),
+      [["1", "half", "0.5"], ["3", "half", "0.5"], ["4", "half", "0.5"]]);
+    assert.equal(Pairing.standings(gs.tournament(key, true)).find((r) => r.id === "77777777").score, 1.5);
+    for (const result of ["1-0", "0-1", "1/2-1/2"]) {
+      assert.equal(gs.saveResult({ ...p, number: "1", board: "1", result }).ok, true);
+      const before = rows("Rounds");
+      for (const id of ["66666666", "33333333"]) assert.match(give(1, id).error, /has a game that round/);
+      eq(rows("Rounds"), before, `${result} is preserved for both players`);
+    }
+    assert.equal(give(5).error, "That round isn't paired yet.");
+    assert.equal(round(2, "no", [{ id: "77777777", kind: "unplayed" }]).ok, true);
+    assert.match(give(2).error, /already has or asked for a half-point bye/, "an unposted round keeps the normal rules");
+  });
+
   test(`zero-point byes: any rounds not yet paired, the last too, never one that's also a half-point bye, kept apart and shown with them (${store})`, () => {
     const { gs, post, desk, pair, rows } = classicRunning(store);
     assert.equal(post({ byes: "2", zeroByes: "3, 4" }).message, "Ann Ash's byes: half-point, round 2; zero-point, rounds 3 and 4.");

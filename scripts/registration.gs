@@ -1620,7 +1620,8 @@ const FORFEITS = ["1F-0F", "0F-1F", "0F-0F"];
 // advance, or unplayed (such as a no-show), with the points each scores. pairing.js has the same.
 const BYE_KINDS = { bye: 1, half: 0.5, zero: 0, unplayed: 0 };
 
-// Byes by the rule book, refused whoever asks. Half-point byes (22C): in a Swiss only, one per player as
+// Advance byes by the rule book. The TD can excuse any missed posted round in saveByeKind.
+// Half-point byes (22C): in a Swiss only, one per player as
 // each event's page announces, in the rounds that offer them (offersHalfBye), and in the last round only
 // when asked for before round 1 is posted (22C4), as the page also announces. Full-point byes (28L): one
 // in a section's round, never a second for a player (28L3), and none in a round robin or an extra games section
@@ -1707,8 +1708,11 @@ function saveByeKind(p) {
     const line = here.find((r) => r.White === p.id && !r.Black);
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
     const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (here.some((r) => r.Black && (r.White === p.id || r.Black === p.id))) return { error: "That player has a game that round, not a bye." };
+    // The TD can excuse any missed posted round; advance requests still follow the event's rules.
+    const excuse = p.kind === "half" && here.some((r) => r.Posted);
     if (line && player && info) {
-      const problem = byeProblem(key, info, player, Number(p.number), line.Section, p.kind, t.rows);
+      const problem = excuse ? "" : byeProblem(key, info, player, Number(p.number), line.Section, p.kind, t.rows);
       if (problem) return { error: problem };
     }
     if (!line) {
@@ -1716,7 +1720,7 @@ function saveByeKind(p) {
       if (!here.length) return { error: "That round isn't paired yet." };
       if (here.some((r) => r.White === p.id || r.Black === p.id)) return { error: "That player has a game that round, not a bye." };
       if (!player) return { error: "Not a player in this tournament." };
-      const problem = byeProblem(key, info, player, Number(p.number), String(p.section || ""), p.kind, t.rows);
+      const problem = excuse ? "" : byeProblem(key, info, player, Number(p.number), String(p.section || ""), p.kind, t.rows);
       if (problem) return { error: problem };
       addRows(t, [{ Key: key, Round: String(p.number), Board: "", White: p.id, Black: "", Result: "", "Bye points": String(BYE_KINDS[p.kind]),
         Posted: (here.find((r) => r.Posted) || { Posted: "" }).Posted, Section: String(p.section || ""), "Bye kind": p.kind }]);
