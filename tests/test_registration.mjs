@@ -7,8 +7,9 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const Pairing = createRequire(import.meta.url)("../pairing.js");
 // Objects from the script are of another realm, so they are compared as JSON.
 const eq = (a, b, message) => assert.deepEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b)), message);
@@ -252,17 +253,16 @@ test("Monday prices from November raise entry fees and leave the rating fee and 
   for (const date of ["2026-11-02", "2026-12-07", "2027-01-04"]) {
     eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(night(date), category)), [8.5, 6.5, 0.5]);
   }
-  gs.clubEvents = () => Object.fromEntries([2, 9, 16, 23, 30].map((day) => {
-    const date = `2026-11-${String(day).padStart(2, "0")}`;
-    return [date, night(date)];
-  }));
-  const month = { event: "monday-club-night-at-peak", kind: "month", first: "2026-11-02" };
-  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(month, category)), [17.5, 12.5, 2.5]);
-  gs.clubEvents = () => Object.fromEntries([7, 14, 21, 28].map((day) => {
-    const date = `2026-12-${String(day).padStart(2, "0")}`;
-    return [date, night(date)];
-  }));
-  eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price({ ...month, first: "2026-12-07" }, category)), [17.5, 12.5, 2]);
+  const events = JSON.parse(readFileSync(`${ROOT}events.json`, "utf8"));
+  for (const month of ["2026-11", "2026-12", "2027-01"]) {
+    const dates = [...new Set(events.filter((e) => e.page === "/events/monday-club-night-at-peak/"
+      && e.start.startsWith(month)).map((e) => e.start.slice(0, 10)))].sort();
+    assert.ok(dates.length, `the published calendar has club nights in ${month}`);
+    gs.clubEvents = () => Object.fromEntries(dates.map((date) => [date, night(date)]));
+    const wholeMonth = { event: "monday-club-night-at-peak", kind: "month", first: dates[0] };
+    eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(wholeMonth, category)),
+      [17.5, 12.5, 0.5 * dates.length]);
+  }
   eq(["Adult", "Senior (65+)", "Under 18"].map((category) => gs.price(night("2026-10-26"), category)), [7.5, 5.5, 0.5]);
 });
 
@@ -1851,6 +1851,62 @@ test("the desk lists a past tournament, though the calendar has dropped it, unti
   ratings["first-saturday-classic/2026-10-03"] = "202610030001";
   delete cache.rated;
   eq(listed().map(([key]) => key), ["monday-club-night-at-peak/2026-09", "alley-cat-quad-2/2026-10-17"]);
+});
+
+for (const store of STORES) {
+  test(`the desk keeps October Mondays for payment follow-up after rating and archiving (${store})`, () => {
+    const key = "monday-club-night-at-peak/2026-10";
+    const { gs, ratings, cache, handEdit } = load({
+      Entries: [["Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Rating fee", "Token"],
+        ["monday-club-night-at-peak", "2026-10", "11111111", "Ann", "registered", "17", "2", "t1"],
+        ["monday-club-night-at-peak", "2026-10-26", "22222222", "Ben", "registered", "7.5", "0.5", "t2"]],
+      Tournaments: [["Key", "Event", "Name", "Format", "Rounds", "Status", "Round dates"],
+        [key, "monday-club-night-at-peak", "Monday Club Night at Peak", "swiss", "4", "running",
+          '["2026-10-05","2026-10-12","2026-10-19","2026-10-26"]']],
+    }, {}, store);
+    const formatDate = gs.Utilities.formatDate;
+    gs.Utilities.formatDate = (d, tz, f) => f === "yyyy-MM-dd" ? "2026-11-02"
+      : f === "MMMM yyyy" ? d.toLocaleDateString("en-US", { timeZone: tz, month: "long", year: "numeric" })
+      : f === "EEEE, MMMM d, yyyy" ? d.toLocaleDateString("en-US", { timeZone: tz, dateStyle: "full" })
+      : formatDate(d, tz, f);
+    const fetch = gs.UrlFetchApp.fetch;
+    gs.UrlFetchApp.fetch = (url, options) => url.endsWith("/events.json")
+      ? { getContentText: () => "[]" } : fetch(url, options);
+    ratings[key] = "202610260001";
+    const listed = () => gs.doPost({ parameter: { action: "choices", password: "sheet" } }).choices;
+    assert.ok(listed().some((c) => c.key === key), "a rated month with unpaid registrations stays on the desk");
+    assert.equal(gs.entries(key, true).find((e) => e.token === "t1").balance, "17");
+    handEdit("Tournaments", 0, null);
+    delete cache.clubEvents;
+    assert.ok(listed().some((c) => c.key === key), "archiving the tournament keeps its registrations accessible");
+    assert.ok(listed().some((c) => c.key === `${key}-26`), "a single-night registration is accessible too");
+    assert.equal(gs.doPost({ parameter: { action: "paid", password: "sheet", token: "t1", amount: "5", by: "cash" } }).ok, true);
+    assert.equal(gs.entries(key, true).find((e) => e.token === "t1").balance, "12");
+    assert.ok(listed().some((c) => c.key === key), "a partial payment leaves the month accessible");
+    assert.equal(gs.markPaid("t1", "12", "cash").ok, true);
+    assert.equal(gs.entries(key, true).find((e) => e.token === "t1").balance, "0");
+    assert.ok(listed().some((c) => c.key === key), "the TD can still review or correct a completed payment");
+    eq(gs.allEntries(), [], "historical registrations don't return to the public upcoming list");
+    assert.match(gs.doPost({ parameter: { action: "rounds", password: "sheet", event: "monday-club-night-at-peak",
+      date: "2026-10", rounds: "5" } }).error, /US Chess has rated/);
+  });
+}
+
+test("historical desk choices use the event's name and exclude withdrawn or moved registrations", () => {
+  const { gs } = load({ Entries: [["Event", "Date", "Status"],
+    ["monday-club-night-at-peak", "2026-10", "registered"],
+    ["old-swiss", "2026-10-03", "registered"],
+    ["withdrawn-event", "2026-10-04", "withdrawn"],
+    ["moved-month", "2026-10", "moved to night"],
+    ["moved-night", "2026-10-05", "moved to month"]] });
+  gs.Utilities.formatDate = (d, tz, f) => f === "yyyy-MM-dd" ? "2026-11-02"
+    : d.toLocaleDateString("en-US", { timeZone: tz, ...(f === "MMMM yyyy" ? { month: "long", year: "numeric" } : { dateStyle: "full" }) });
+  gs.clubEvents = () => ({ "monday-club-night-at-peak/2026-11": { event: "monday-club-night-at-peak", name: "Monday Club Night at Peak",
+    kind: "month", label: "all Mondays in November 2026", first: "2026-11-02", last: "2026-11-30" } });
+  eq(gs.choices().map((c) => [c.key, c.name, c.label, c.kind]), [
+    ["monday-club-night-at-peak/2026-10", "Monday Club Night at Peak", "October 2026 (whole month)", "month"],
+    ["old-swiss/2026-10-03", "Old Swiss", "Saturday, October 3, 2026", "entry"],
+    ["monday-club-night-at-peak/2026-11", "Monday Club Night at Peak", "all Mondays in November 2026", "month"]]);
 });
 
 test("New tournament makes the Closed events tab when it's missing", () => {

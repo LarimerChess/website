@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { availableParallelism } from "node:os";
+import { fileURLToPath } from "node:url";
 
 const dir = new URL("pages/", import.meta.url);
 const base = process.argv.slice(2).find((a) => /^https?:/.test(a)) || "http://127.0.0.1:8765";
@@ -23,7 +24,7 @@ const failed = [];
 let failedChecks = 0;
 const run = (file) => new Promise((resolve) => {
   const started = Date.now();
-  const child = spawn(process.execPath, [new URL(file, dir).pathname, base]);
+  const child = spawn(process.execPath, [fileURLToPath(new URL(file, dir)), base]);
   let output = "";
   child.stdout.on("data", (d) => (output += d));
   child.stderr.on("data", (d) => (output += d));

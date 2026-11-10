@@ -3,10 +3,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { check, ratedDates, ratedEvent, endedOn, USChess } from "../scripts/rating_check.mjs";
 
 const fixtures = JSON.parse(readFileSync(new URL("fixtures/tournaments.json", import.meta.url), "utf8")).tournaments;
-const US_CHESS = new USChess(new URL("fixtures/uschess.json", import.meta.url).pathname);
+const US_CHESS = new USChess(fileURLToPath(new URL("fixtures/uschess.json", import.meta.url)));
 const EMAILS = { 31847334: "td@example.org" };
 const quiet = () => {};
 
@@ -21,7 +22,7 @@ test("the same results make it rated, with US Chess's days", async () => {
 });
 
 test("an event US Chess has starting before the desk's date is found, and its days are US Chess's", async () => {
-  const uschess = new USChess(new URL("fixtures/uschess.json", import.meta.url).pathname);
+  const uschess = new USChess(fileURLToPath(new URL("fixtures/uschess.json", import.meta.url)));
   const [event] = uschess.data.events;
   uschess.data.events = [{ ...event, startDate: "2026-10-31", endDate: "2026-11-07" }, ...uschess.data.events.slice(1)];
   assert.deepEqual(await check(saturday(), "2026-11-08 10:17", uschess, EMAILS, quiet),

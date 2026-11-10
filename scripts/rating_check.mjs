@@ -28,11 +28,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const Pairing = require("../pairing.js");
 const Arena = require("../arena.js");
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const RATINGS = `${ROOT}ratings.json`;
 const DATES = `${ROOT}rated-dates.json`;
 const API = "https://ratings-api.uschess.org/api/v1";
@@ -360,4 +361,4 @@ async function main(args) {
   if (failed) process.exit(1);
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) await main(process.argv.slice(2));
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main(process.argv.slice(2));
