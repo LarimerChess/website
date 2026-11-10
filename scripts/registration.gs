@@ -141,7 +141,7 @@ const DESK_ROLES = ["td"];
 function doGet(e) {
   if (e.parameter.tournaments === "current") return json({ tournaments: currentTournaments() });
   if (e.parameter.entries === "all") return json({ events: allEntries() });
-  if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false) });
+  if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false), capacity: registrationLimit(e.parameter.entries) });
   if (e.parameter.withdraw) return withdrawPage(e.parameter.withdraw);
   return ContentService.createTextOutput("Larimer County Chess Club registration. See " + SITE + "/events/");
 }
@@ -183,7 +183,8 @@ function doPost(e) {
       case "messages": return json(voiceMessages());
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true, td));
-      case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
+      case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true), capacity: registrationLimit(`${p.event}/${p.date}`) });
+      case "registrationLimit": return json(setRegistrationLimit(p));
       case "remove": return json({ message: withdraw(p.token) });
       case "paid": return json(markPaid(p.token, p.amount, p.by, p.donate === "1"));
       case "refund": return json(refund(p.token, p.amount, p.by, td));
@@ -276,6 +277,12 @@ function register(p, td, signedIn) {
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
     if (month) return { error: `${name} is already registered for the whole month.` };
+    const capacity = registrationLimit(key, event);
+    if (!td && capacity !== null) {
+      const count = new Set(rows.filter((r) => r[col.Event] === p.event && r[col.Date] === p.date
+        && active(r[col.Status])).map((r) => r[col["US Chess ID"]])).size;
+      if (count >= capacity) return { error: `Registration is limited to ${capacity} players and is full. Questions: president@larimerchess.org` };
+    }
     const asked = byeList(p.byes), zeroAsked = byeList(p.zeroByes);
     const run = asked.length || zeroAsked.length ? runOf(key) : null;
     const checked = run ? checkByes(asked, [], key, event, run, !td, id) : { list: [] };
@@ -3173,6 +3180,35 @@ function findToken(token) {
   return { index, name: r[col.Name], event: r[col.Event], date: r[col.Date], status: r[col.Status] };
 }
 
+/** The calendar default or the TD's saved public limit; null means no limit. */
+function registrationLimit(key, event) {
+  const saved = PropertiesService.getScriptProperties().getProperty(`publicLimit:${key}`);
+  return saved !== null ? Number(saved) : (event || clubEvents()[key])?.capacity ?? null;
+}
+
+/** A TD's per-date override. Blank restores the calendar default; zero closes public registration. */
+function setRegistrationLimit(p) {
+  const key = `${p.event}/${p.date}`;
+  const event = clubEvents()[key];
+  if (!event || event.closed || event.kind !== "entry") return { error: "Choose a tournament date with public registration." };
+  const value = String(p.limit ?? "").trim();
+  if (value && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))) {
+    return { error: "Enter a whole number of players, zero to close, or leave blank for the calendar default." };
+  }
+  const lock = lockTournaments();
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    if (value) properties.setProperty(`publicLimit:${key}`, String(Number(value)));
+    else properties.deleteProperty(`publicLimit:${key}`);
+    touch("entries");
+    const capacity = registrationLimit(key, event);
+    return { ok: true, capacity, message: capacity === null ? "Public registration has no player limit for this date."
+      : `Public registration is limited to ${capacity} players for this date. TDs may add more.` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /**
  * Everything players can register for, by key, from the website's events.json, cached ten
  * minutes. A tournament date is kind "entry"; a club night is "night", and its month "month".
@@ -3190,6 +3226,7 @@ function clubEvents() {
       event: key.split("/")[0], name: e.title.replace(/^Larimer County Chess Club\s*/, ""), page: e.page, kind,
       label, closes: e.start, first: out[key] ? out[key].first : e.start.slice(0, 10), last: e.start.slice(0, 10),
       closed: e.tags.includes("invitational"), format: e.pairing || "", rounds: e.rounds || "",
+      ...(e.capacity ? { capacity: e.capacity } : {}),
     };
   };
   for (const e of events.sort((a, b) => a.start.localeCompare(b.start))) {

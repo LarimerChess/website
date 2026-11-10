@@ -96,6 +96,15 @@
       "youth": 0
     }
   ],
+  "larimer-county-open-classic-90-30": [
+    {
+      "applies": "all",
+      "kind": "entry",
+      "adult": 15,
+      "senior": 15,
+      "youth": 0
+    }
+  ],
   "fourth-saturday-classic": [
     {
       "applies": "all",

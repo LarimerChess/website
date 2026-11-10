@@ -19,6 +19,7 @@ const tdByes = document.querySelector(".td-byes");
 const deskStatus = document.querySelector(".td-register-status");
 const tdEntriesStatus = document.querySelector(".td-entries-status");
 const tdTable = document.querySelector(".td-entries");
+const limitForm = document.querySelector(".td-registration-limit");
 const incidentDialog = document.querySelector(".td-incident");
 const incidentForm = incidentDialog.querySelector("form");
 const incidentList = document.querySelector(".td-incidents");
@@ -232,6 +233,25 @@ login.addEventListener("submit", async (event) => {
 
 document.querySelector(".td-sign-out").addEventListener("click", () => signOut("Signed out."));
 const refreshButton = document.querySelector(".td-refresh");
+limitForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const key = choice.value;
+  const [eventName, date] = key.split("/");
+  const button = limitForm.querySelector("button[type=submit]");
+  button.disabled = true;
+  const status = limitForm.querySelector(".td-limit-status");
+  status.textContent = "Saving limit…";
+  try {
+    const result = await call("registrationLimit", { event: eventName, date, limit: limitForm.elements.limit.value });
+    if (choice.value !== key) return;
+    status.textContent = result.message || result.error;
+    if (result.ok) limitForm.elements.limit.value = result.capacity ?? "";
+  } catch {
+    if (choice.value === key) status.textContent = "Couldn't save the limit. Try again.";
+  } finally {
+    button.disabled = false;
+  }
+});
 refreshButton.addEventListener("click", async () => {
   refreshButton.disabled = true;
   deskStatus.textContent = "Refreshing…";
@@ -565,8 +585,18 @@ async function showDeskEntries(quiet = false) {
   showLedger(eventName, date);
   showIncidents(eventName, date);
   if (!quiet) document.dispatchEvent(new Event("td-choice"));
-  const { entries = [] } = await call("entries", { event: eventName, date });
+  const result = await call("entries", { event: eventName, date });
+  const { entries = [] } = result;
   if (key !== choice.value) return;
+  if (limitForm) {
+    const current = choices.find((c) => c.key === key);
+    limitForm.hidden = !("capacity" in result) || current?.closed || current?.kind !== "entry";
+    if (limitForm.dataset.key !== key || !limitForm.contains(document.activeElement)) {
+      limitForm.elements.limit.value = result.capacity ?? "";
+    }
+    if (limitForm.dataset.key !== key) limitForm.querySelector(".td-limit-status").textContent = "";
+    limitForm.dataset.key = key;
+  }
   document.dispatchEvent(new CustomEvent("td-entries", { detail: { key, entries } }));
   const total = (field) => entries.reduce((sum, e) => sum + (Number(e[field]) || 0), 0);
   // A script from before part payments sends no balance.

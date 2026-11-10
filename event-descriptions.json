@@ -14,5 +14,26 @@
       "speed": "regular",
       "pairing": "swiss"
     }
+  },
+  {
+    "calendar": "club",
+    "event_id": "20ioosbdu3gj7qtudlan91rirj",
+    "title": "Larimer County Open Classic 90+30",
+    "description": "Cost: $16.50, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $1.50. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/90;+30 (90 minutes per player, with a 30-second increment on each move). Regular rated.\n\nA monthly US Chess rated tournament with a long time control, for players who want time to think. In Old Town Fort Collins.\n\nFormat: 3-round Swiss.\n\nPublic registration is limited to 50 players by default. The tournament director may adjust this limit or add players beyond it.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 2:30 PM\n• Round 3: 7:00 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Clocks must support increment. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
+    "metadata": {
+      "organizer": "Larimer County Chess Club",
+      "format": "tournament",
+      "ages": "all",
+      "rated": "yes",
+      "cost": "paid",
+      "reduced": "youth",
+      "price": "16.50",
+      "speed": "regular",
+      "pairing": "swiss",
+      "rounds": "3",
+      "capacity": "50"
+    },
+    "previous_title": "Third Saturday Slow",
+    "end_time": "23:00"
   }
 ]

@@ -161,6 +161,8 @@ function selected() {
   return dateField.tagName === "SELECT" ? dateField.selectedOptions[0] : dateField;
 }
 
+let atCapacity = false;
+
 async function showEntries() {
   const key = `${form.elements.event.value}/${dateField.value}`;
   const day = selected().dataset.day;
@@ -168,11 +170,19 @@ async function showEntries() {
   table.hidden = true;
   try {
     const response = await fetch(`${ENDPOINT}?entries=${encodeURIComponent(key)}`);
-    const { entries } = await response.json();
+    const result = await response.json();
+    const { entries } = result;
     if (key !== `${form.elements.event.value}/${dateField.value}`) return;
     const players = entries.length === 1 ? "1 player" : `${entries.length} players`;
+    const capacity = "capacity" in result ? result.capacity : Number(selected().dataset.capacity) || null;
+    atCapacity = capacity !== null && entries.length >= capacity;
+    const button = form.querySelector("button[type=submit]");
+    if (button) button.disabled = atCapacity;
     entriesStatus.textContent = entries.length
       ? `${players} registered for ${day}.` : `No one has registered for ${day} yet.`;
+    if (capacity !== null) entriesStatus.textContent += atCapacity
+      ? ` Registration is full (${capacity}-player limit). Questions: president@larimerchess.org`
+      : ` Registration is limited to ${capacity} players.`;
     const head = table.tHead.rows[0];
     const forColumn = [...head.cells].some((c) => c.textContent === "For");
     const byesColumn = entries.some((e) => e.byes?.length || e.zeroByes?.length);
@@ -236,6 +246,7 @@ if (!dateField) {
   }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (atCapacity) return;
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
     status.textContent = "Registering…";
@@ -263,12 +274,12 @@ if (!dateField) {
         idField.value = "";
         form.elements.last.value = "";
         for (const bye of form.querySelectorAll("[name=byes]")) bye.checked = false;
-        showEntries();
+        await showEntries();
       }
     } catch {
       status.textContent = "Registration didn't go through. Try again, or email president@larimerchess.org.";
     }
-    button.disabled = false;
+    button.disabled = atCapacity;
   });
   showEntries();
 } else {

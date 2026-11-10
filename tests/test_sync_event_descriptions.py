@@ -30,7 +30,8 @@ class DescriptionSource(unittest.TestCase):
         cases = [{}, [record, record], [{**record, "calendar": "unknown"}],
                  [{**record, "metadata": {"rated": "yes"}}],
                  [{**record, "metadata": {**record["metadata"], "private-note": "not public"}}],
-                 [{**record, "description": ""}]]
+                 [{**record, "description": ""}], [{**record, "end_time": "25:00"}],
+                 [{**record, "end_time": 2300}], [{**record, "previous_title": ""}]]
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "source.json"
             for value in cases:
@@ -59,6 +60,28 @@ class CalendarSync(unittest.TestCase):
                                                   body={"description": self.record["description"]})
         self.assertEqual(self.events.patch.return_value.headers, {"If-Match": '"one"'})
         self.assertEqual(self.events.get.call_count, 2)
+
+    def test_explicit_rename_and_end_time_preserve_the_series(self):
+        self.record.update(previous_title=self.record["title"], title="Larimer County Open Classic 90+30",
+                           end_time="23:00")
+        self.current.update(start={"dateTime": "2026-11-21T10:00:00-07:00", "timeZone": "America/Denver"},
+                            end={"dateTime": "2026-11-21T19:00:00-07:00", "timeZone": "America/Denver"},
+                            recurrence=["RRULE:FREQ=MONTHLY;BYDAY=3SA"])
+        self.verified.update(summary=self.record["title"], start=self.current["start"],
+                             end={"dateTime": "2026-11-21T23:00:00-07:00", "timeZone": "America/Denver"})
+        self.assertEqual(sync.sync(self.service, [self.record]), 1)
+        body = self.events.patch.call_args.kwargs["body"]
+        self.assertEqual(body["summary"], self.record["title"])
+        self.assertEqual(body["end"], self.verified["end"])
+        self.assertNotIn("start", body)
+        self.assertNotIn("recurrence", body)
+        self.events.get.return_value.execute.side_effect = [self.verified, self.verified]
+        self.assertEqual(sync.sync(self.service, [self.record]), 0)
+
+    def test_rename_readback_must_match(self):
+        self.record.update(previous_title=self.record["title"], title="Renamed event")
+        with self.assertRaisesRegex(ValueError, "read-back differs"):
+            sync.sync(self.service, [self.record])
 
     def test_preview_does_not_write(self):
         self.assertEqual(sync.sync(self.service, [self.record], dry_run=True), 1)

@@ -7,7 +7,7 @@ Use --dry-run to check the source and report differences without writing.
 import argparse
 import json
 import re
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 from update_calendar import CALENDARS, FIELDS, TZ, problems, series_page
@@ -22,13 +22,18 @@ def read_source(path):
     seen = set()
     for record in records:
         fields = {"calendar", "event_id", "title", "description", "metadata"}
-        if not isinstance(record, dict) or set(record) != fields:
+        if not isinstance(record, dict) or not fields <= set(record) or set(record) - fields - {"previous_title", "end_time"}:
             raise ValueError("Each source event needs its calendar, ID, title, description, and metadata.")
         if any(not isinstance(record[key], str) or not record[key].strip()
                for key in fields - {"metadata"}):
             raise ValueError("Event descriptions and identifiers must be nonempty strings.")
         if record["calendar"] not in CALENDARS:
             raise ValueError("Unknown calendar in the description source.")
+        if "previous_title" in record and (not isinstance(record["previous_title"], str) or not record["previous_title"].strip()):
+            raise ValueError("The previous title must be a nonempty string.")
+        if "end_time" in record and (not isinstance(record["end_time"], str)
+                                     or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", record["end_time"])):
+            raise ValueError("The end time must be HH:MM in America/Denver.")
         metadata = record["metadata"]
         if not isinstance(metadata, dict) or any(not isinstance(value, str) for value in metadata.values()):
             raise ValueError("Calendar metadata must be an object of strings.")
@@ -41,14 +46,30 @@ def read_source(path):
     return records
 
 
+def desired_end(record, event):
+    """An optional same-day end time, keeping the series' start and recurrence intact."""
+    if "end_time" not in record:
+        return None
+    start = datetime.fromisoformat(event["start"]["dateTime"]).astimezone(TZ)
+    end = datetime.combine(start.date(), time.fromisoformat(record["end_time"]), TZ)
+    if end <= start:
+        raise ValueError("The managed end time must follow its start on the same day.")
+    return {"dateTime": end.isoformat(), "timeZone": str(TZ)}
+
+
 def plan(service, records):
     plans = []
     for record in records:
         calendar_id = CALENDARS[record["calendar"]]
         event = service.events().get(calendarId=calendar_id, eventId=record["event_id"]).execute()
-        if event.get("summary") != record["title"] or event.get("status") == "cancelled":
+        if event.get("summary") not in {record["title"], record.get("previous_title", record["title"])} or event.get("status") == "cancelled":
             raise ValueError("A managed event's title or status differs; inspect it before syncing.")
         body = {}
+        if event.get("summary") != record["title"]:
+            body["summary"] = record["title"]
+        end = desired_end(record, event)
+        if end and event.get("end") != end:
+            body["end"] = end
         if event.get("description", "") != record["description"]:
             body["description"] = record["description"]
         current = event.get("extendedProperties", {}).get("private", {})
@@ -77,7 +98,9 @@ def sync(service, records, dry_run=False):
             verified = service.events().get(calendarId=CALENDARS[record["calendar"]],
                                              eventId=record["event_id"]).execute()
             current = verified.get("extendedProperties", {}).get("private", {})
-            if (verified.get("description", "") != record["description"]
+            if (verified.get("summary") != record["title"]
+                    or (desired_end(record, event) and verified.get("end") != desired_end(record, event))
+                    or verified.get("description", "") != record["description"]
                     or any(current.get(key) != record["metadata"].get(key) for key in FIELDS)):
                 raise ValueError("Calendar read-back differs from the source; inspect before retrying.")
         print(f"{'preview' if dry_run else 'verified'}: {record['title']}")

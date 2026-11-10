@@ -121,3 +121,9 @@ test("a section with its own time control has its own rating system and control 
   assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => [s.S_SEC_NAME, s.S_R_SYSTEM, s.S_TIMECTL]),
     [["Open", "R", "Game/70;d10"], ["Under 1400", "D", "Game/30;+30"]]);
 });
+
+test("90+30 exports as regular rated and preserves a section's separate control", () => {
+  const files = RatingReport.files(SECTIONS, { ...REPORT, timeControl: "G/90;+30", timeControls: { "Under 1400": "30+30" } });
+  assert.deepEqual(read(files["TSEXPORT.DBF"]).map((s) => [s.S_SEC_NAME, s.S_R_SYSTEM, s.S_TIMECTL]),
+    [["Open", "R", "Game/90;+30"], ["Under 1400", "D", "Game/30;+30"]]);
+});

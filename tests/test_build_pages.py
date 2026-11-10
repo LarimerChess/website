@@ -157,6 +157,14 @@ class Description(unittest.TestCase):
 
 
 class Invitational(unittest.TestCase):
+    def test_capacity_follows_the_selected_date(self):
+        page = bp.register_html([{**CLASSIC, "capacity": 50},
+                                 {**CLASSIC, "start": "2026-12-05T10:00:00-07:00", "capacity": 40}], {"fees": Fees.FEES})
+        self.assertRegex(page, r'<option[^>]*value="2026-11-07"[^>]*data-capacity="50"')
+        self.assertRegex(page, r'<option[^>]*value="2026-12-05"[^>]*data-capacity="40"')
+        one = bp.register_html([{**CLASSIC, "capacity": 50}], {"fees": Fees.FEES})
+        self.assertRegex(one, r'<input[^>]*name="date"[^>]*data-capacity="50"')
+
     def test_registration_is_closed_but_entries_show(self):
         page = bp.register_html([{**CLASSIC, "tags": [*CLASSIC["tags"], "invitational"]}], {"fees": Fees.FEES})
         self.assertIn('data-invitational="yes"', page)

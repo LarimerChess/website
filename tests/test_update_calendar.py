@@ -25,6 +25,14 @@ def item(title, meta, start="2026-11-07T10:00:00-07:00", end="2026-11-07T19:00:0
 
 
 class Tags(unittest.TestCase):
+    def test_capacity_is_a_positive_player_count(self):
+        meta = {**CLUB_TOURNAMENT, "capacity": "50"}
+        self.assertEqual(uc.problems(meta), [])
+        self.assertEqual(uc.build({"club": [item("Open", meta)]})[0]["capacity"], 50)
+        self.assertNotIn("capacity", uc.describe(CLUB_TOURNAMENT, "club"))
+        for value in ("0", "-1", "50.5", "many"):
+            self.assertTrue(uc.problems({**meta, "capacity": value}))
+
     def test_baseline_series(self):
         # The tags each kind of event had when they were inferred from titles and descriptions.
         cases = [

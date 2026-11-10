@@ -937,6 +937,13 @@ section.td-table td { white-space: nowrap; }
 
       <section class="td-panel td-span">
         <h2>Entries</h2>
+        <form class="register-form td-registration-limit" hidden>
+          <label for="td-registration-limit">Public registration limit</label>
+          <input id="td-registration-limit" name="limit" type="number" min="0" step="1" aria-describedby="td-registration-limit-hint">
+          <p id="td-registration-limit-hint" class="register-hint">For this date only. Leave blank to restore the calendar limit; zero closes public registration. TDs can always add more players.</p>
+          <button class="button button-secondary" type="submit">Save limit</button>
+          <p class="td-limit-status" role="status"></p>
+        </form>
         <p class="td-entries-status" role="status"></p>
         <div class="td-table">
           <table class="entries td-entries" hidden>
@@ -1070,9 +1077,9 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=556a90e95c" defer></script>
+  <script src="../register.js?v=6a66cd14b0" defer></script>
   <script src="../live.js?v=d1a40ee2c6" defer></script>
-  <script src="../td.js?v=e76794edf3" defer></script>
+  <script src="../td.js?v=08107900c1" defer></script>
   <script src="../td-contacts.js?v=767ef2a766" defer></script>
   <script src="../pairing.js?v=0df32b3ca4" defer></script>
   <script src="../ratingreport.js?v=40a64c2901" defer></script>

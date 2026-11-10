@@ -1172,6 +1172,90 @@ test("online registration stays open all day on the event's last day, after play
   assert.equal(register("2026-10", "66666666").error, undefined, "the month, through its last night");
 });
 
+test("the public 50-player cap counts active entrants per date under the write lock; TDs can exceed it", () => {
+  const event = "larimer-county-open-classic-90-30", date = "2099-11-21";
+  const header = ["Event", "Date", "US Chess ID", "Name", "Status", "Token"];
+  const entrants = Array.from({ length: 49 }, (_, i) => [event, date, String(90000000 + i), `Player ${i}`, "registered", `p${i}`]);
+  const { gs, sheets } = load({ Entries: [header, ...entrants,
+    [event, date, "80000000", "Withdrawn", "withdrawn", "w"],
+    [event, "2099-12-19", "80000001", "Other date", "registered", "d"],
+    ["other", date, "80000002", "Other event", "registered", "e"]] });
+  gs.clubEvents = () => ({ [`${event}/${date}`]: { event, name: "Open", kind: "entry", label: date,
+    first: date, closes: `${date}T10:00:00-07:00`, capacity: 50, rounds: "3", format: "swiss" } });
+  let locked = false, mails = 0;
+  gs.lockTournaments = () => { locked = true; return { releaseLock() { locked = false; } }; };
+  const read = gs.readEntries;
+  gs.readEntries = () => { assert.equal(locked, true, "capacity reads the current sheet under the lock"); return read(); };
+  gs.noteContact = () => {};
+  gs.ageCategory = () => "Adult";
+  gs.MailApp = { sendEmail: () => { mails++; } };
+  const register = (id, last, td = false) => gs.register({ event, date, id, last,
+    email: "player@example.com", category: "Adult", capacity: "999", td: "true" }, td);
+  assert.equal(register("66666666", "Ash").ok, true, "the 50th entrant is accepted");
+  const before = sheets.Entries.data.length;
+  assert.match(register("77777777", "Birch").error, /50 players.*full/i);
+  assert.equal(sheets.Entries.data.length, before);
+  assert.equal(mails, 1, "a refused entry sends no confirmation");
+  assert.equal(locked, false, "the refusal releases the lock");
+  assert.equal(register("77777777", "Birch", true).ok, true, "the authenticated TD may add entrant 51");
+  assert.equal(mails, 2);
+  sheets.Entries.data[1][4] = "withdrawn";
+  assert.match(register("55555555", "").error, /50 players.*full/i, "TD additions count toward capacity");
+  sheets.Entries.data[2][4] = "withdrawn";
+  assert.equal(register("55555555", "").ok, true, "a withdrawal reopens a place");
+});
+
+test("the calendar's capacity reaches registration choices", () => {
+  const { gs } = load({});
+  const event = { title: "Open", page: "/events/open/", start: "2099-11-21T10:00:00-07:00",
+    tags: ["rated", "tournament"], capacity: 50, pairing: "swiss", rounds: "3" };
+  const fetch = gs.UrlFetchApp.fetch;
+  gs.UrlFetchApp.fetch = (url, options) => url.endsWith("/events.json")
+    ? { getContentText: () => JSON.stringify([event, { ...event, page: "/events/unlimited/", capacity: undefined }]) }
+    : fetch(url, options);
+  const choices = gs.clubEvents();
+  assert.equal(choices["open/2099-11-21"].capacity, 50);
+  assert.equal(choices["unlimited/2099-11-21"].capacity, undefined);
+});
+
+test("only an authenticated TD can persist a per-date public limit, close it, or restore the calendar default", () => {
+  const { gs, post } = signIn({ TDs: TDS });
+  const event = "open", date = "2099-11-21", key = `${event}/${date}`;
+  gs.clubEvents = () => ({ [key]: { capacity: 50, kind: "entry" }, "open/2099-12-19": { capacity: 50, kind: "entry" } });
+  gs.entries = () => [];
+  const set = (limit, credentials = { idToken: idToken("ann") }) => post({ action: "registrationLimit", event, date, limit, ...credentials });
+  assert.equal(set("60", {}).login, true);
+  assert.equal(set("60", { idToken: idToken("player") }).login, true);
+  assert.equal(gs.doGet({ parameter: { entries: key } }).capacity, 50);
+  assert.equal(set("60").ok, true);
+  assert.equal(gs.doGet({ parameter: { entries: key } }).capacity, 60);
+  assert.equal(gs.registrationLimit("open/2099-12-19"), 50, "other dates retain their limit");
+  for (const invalid of ["-1", "1.5", "lots", "9007199254740992"]) assert.match(set(invalid).error, /whole number/);
+  assert.equal(gs.registrationLimit(key), 60, "invalid input changes nothing");
+  assert.equal(set("0").capacity, 0, "zero closes public registration");
+  assert.equal(set("").capacity, 50, "blank restores the calendar limit");
+  assert.equal(post({ action: "registrationLimit", idToken: idToken("ann"), event: "missing", date, limit: "60" }).ok, undefined);
+});
+
+test("registration enforces a TD's new limit immediately, including zero", () => {
+  const { gs } = load({ Entries: [] });
+  const event = "open", date = "2099-11-21", key = `${event}/${date}`;
+  gs.clubEvents = () => ({ [key]: { event, name: "Open", kind: "entry", label: date,
+    first: date, closes: `${date}T10:00:00-07:00`, capacity: 50, rounds: "3" } });
+  gs.ageCategory = () => "Adult";
+  gs.noteContact = () => {};
+  gs.MailApp = { sendEmail() {} };
+  const fields = { event, date, id: "66666666", last: "Ash", email: "ann@example.com" };
+  gs.setRegistrationLimit({ event, date, limit: "0" });
+  assert.match(gs.register(fields, false).error, /0 players.*full/i);
+  gs.setRegistrationLimit({ event, date, limit: "1" });
+  assert.equal(gs.register(fields, false).ok, true);
+  const second = { ...fields, id: "77777777", last: "Birch" };
+  assert.match(gs.register(second, false).error, /1 players.*full/i);
+  gs.setRegistrationLimit({ event, date, limit: "2" });
+  assert.equal(gs.register(second, false).ok, true);
+});
+
 // A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
 function reporting(cache, store) {
   const key = "classic/2026-11-07";

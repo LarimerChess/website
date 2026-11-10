@@ -344,11 +344,13 @@ def register_html(events, prices):
     name = events[0]["page"].strip("/").split("/")[-1]
     groups = register_choices(events, prices)
     tournament = "tournament" in events[0]["tags"]
-    option = lambda value, shown, phrase: (f'<option value="{value}" data-day="{html.escape(phrase)}">'
+    capacities = {e["start"][:10]: e.get("capacity") for e in events}
+    capacity = lambda value: f' data-capacity="{capacities[value]}"' if capacities.get(value) else ""
+    option = lambda value, shown, phrase: (f'<option value="{value}" data-day="{html.escape(phrase)}"{capacity(value)}>'
                                            f"{escaped(shown)}</option>")
     if tournament and len(groups[0][1]) == 1:
         value, shown, phrase = groups[0][1][0]
-        date = (f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(phrase)}">'
+        date = (f'<input type="hidden" name="date" value="{value}" data-day="{html.escape(phrase)}"{capacity(value)}>'
                 f'\n        <p class="register-for"><strong>{escaped(shown)}</strong></p>')
     else:
         options = "".join(f'<optgroup label="{html.escape(group)}">{"".join(option(*c) for c in choices)}</optgroup>'
