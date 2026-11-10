@@ -887,6 +887,64 @@ for (const store of STORES) {
 }
 
 for (const store of STORES) {
+  test(`a late entrant only misses rounds posted in their own section (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    const key = "classic/2026-11-07", p = { event: "classic", date: "2026-11-07" };
+    gs.clubEvents = () => ({ [key]: { event: "classic", name: "Classic", label: "Saturday", kind: "entry" } });
+    let entrants = [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1300"], ["44444444", "Dee", "1200"]]
+      .map(([id, name, rating]) => ({ id, name, rating, out: "" }));
+    gs.entries = () => entrants;
+    gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Reserve","under":1400}]' });
+    gs.saveRound({ ...p, number: "1", post: "yes", sections: '["Open"]', byes: "[]",
+      games: '[{"board":1,"white":"11111111","black":"22222222","section":"Open"}]' });
+    entrants = [...entrants, { id: "55555555", name: "Eve", rating: "1100", out: "" }, { id: "66666666", name: "Fay", rating: "1800", out: "" }];
+    gs.syncPlayers(key);
+    eq(rows("Rounds").filter((r) => r.White === "55555555"), [], "Reserve has not paired round one; Eve has missed nothing");
+    assert.equal(rows("Rounds").filter((r) => r.White === "66666666" && r["Bye kind"] === "half").length, 1,
+      "Fay joined the already posted Open and receives its missed-round bye");
+  });
+
+  test(`sections pair, save and post independently while other sections have results or private drafts (${store})`, () => {
+    const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    const key = "classic/2026-11-07", p = { event: "classic", date: "2026-11-07" };
+    gs.clubEvents = () => ({ [key]: { event: "classic", name: "Classic", label: "Saturday", kind: "entry" } });
+    gs.entries = () => [["11111111", "Ann", "1900"], ["22222222", "Ben", "1700"], ["33333333", "Cal", "1300"], ["44444444", "Dee", "1200"]]
+      .map(([id, name, rating]) => ({ id, name, rating, out: "" }));
+    gs.startTournament({ ...p, format: "swiss", rounds: "3", coin: "white", sections: '[{"name":"Open"},{"name":"Reserve","under":1400}]' });
+    const pair = (section, number, post = "yes") => gs.doPost({ parameter: { action: "sectionRound", password: "sheet", ...p, number: String(number), post,
+      sections: JSON.stringify([section]), byes: "[]", games: JSON.stringify([{ section, board: 1,
+        white: section === "Reserve" ? "33333333" : "11111111", black: section === "Extra games" ? "33333333" : section === "Reserve" ? "44444444" : "22222222" }]) } });
+    assert.equal(pair("Open", 1).ok, true);
+    gs.saveResult({ ...p, number: "1", board: "1", section: "Open", result: "1-0" });
+    const open = rows("Rounds").filter((r) => r.Section === "Open");
+    assert.equal(pair("Reserve", 1, "no").ok, true, "Open's result does not block saving Reserve");
+    eq(rows("Rounds").filter((r) => r.Section === "Open"), open);
+    const privateDraft = rows("Rounds").filter((r) => r.Section === "Reserve");
+    eq(gs.tournament(key, true).rounds[0].postedSections, ["Open"]);
+    assert.equal(gs.tournament(key, false).rounds[0].games.length, 1, "Reserve remains private");
+    assert.equal(pair("Open", 2).ok, true, "Open can advance past Reserve's private round one");
+    eq(rows("Rounds").filter((r) => r.Section === "Reserve"), privateDraft);
+    assert.match(pair("Open", 3).error, /enter its results/, "a section waits for its own results");
+    assert.equal(gs.addExtraSection({ ...p, name: "Extra games", rounds: "2", players: '["11111111","33333333"]' }).ok, true);
+    const before = rows("Rounds");
+    assert.equal(pair("Extra games", 3, "no").ok, true, "extra games start independently while Open still plays round two");
+    eq(rows("Rounds").filter((r) => r.Section !== "Extra games"), before);
+    assert.equal(pair("Extra games", 3).ok, true);
+    eq(gs.tournament(key, true).rounds[2].postedSections, ["Extra games"]);
+    assert.equal(pair("Reserve", 1).ok, true, "an earlier section draft can still be posted");
+    gs.saveResult({ ...p, number: "3", board: "1", section: "Extra games", result: "1/2-1/2" });
+    assert.equal(pair("Extra games", 4).ok, true);
+    assert.match(pair("Extra games", 3).error, /has results/);
+    const unchanged = rows("Rounds");
+    assert.match(pair("Missing", 1).error, /No such section/);
+    assert.match(pair("Reserve", 4).error, /Not a round/);
+    assert.match(gs.saveRound({ ...p, number: "2", sections: '["Reserve"]', games: '[{"section":"Open"}]' }).error, /another section/);
+    eq(rows("Rounds"), unchanged, "invalid saves change nothing");
+    gs.rated = () => true;
+    assert.match(pair("Reserve", 2).error, /US Chess has rated/);
+    eq(rows("Rounds"), unchanged, "rated sections cannot change");
+  });
+
   test(`sections are renamed and reordered at any time, with each player's and pairing's section following its name (${store})`, () => {
     const { gs, rows } = load({ Tournaments: [], Players: [], Rounds: [] }, {}, store);
     const key = "classic/2026-11-07";

@@ -310,6 +310,7 @@ test("sections are paired independently (28A, 29), with boards numbered within e
   // The odd player out in the Under 1400 gets the bye, not a game against the Open.
   assert.deepEqual(under.games.map((g) => [g.board, g.white, g.black]), [[1, "e", "f"]]);
   assert.deepEqual(under.byes, [{ id: "g", points: 1, kind: "bye" }]);
+  assert.deepEqual(Pairing.pairSections(t, { coin: "white" }, ["Under 1400"]), [under], "only the selected section is paired");
   const split = Pairing.sections(t);
   assert.deepEqual(split.map((s) => s.players.map((p) => [p.id, p.number])),
     [[["a", 1], ["b", 2], ["c", 3], ["d", 4]], [["e", 1], ["f", 2], ["g", 3]]]);
@@ -325,6 +326,18 @@ test("a player who plays up is paired and ranked in the higher section only", ()
   t.rounds.push({ games: [...open.games, ...under.games].map((g) => ({ ...g, result: "1-0" })), byes: [...open.byes, ...under.byes], out: [] });
   const tables = Pairing.sections(t).map((s) => Pairing.standings(s).map((r) => r.id).sort());
   assert.deepEqual(tables, [["a", "b", "c"], ["d", "e", "f", "g"]]);
+});
+
+test("a section's latest round excludes rounds paired only in other sections", () => {
+  const players = field([["a", 2000, "Open"], ["b", 1800, "Open"], ["c", 1300, "Under 1400"], ["d", 1200, "Under 1400"]]);
+  const t = { format: "swiss", sections: OPEN_U1400, players, rounds: [
+    { games: [{ board: 1, white: "a", black: "b", section: "Open", result: "" },
+      { board: 1, white: "c", black: "d", section: "Under 1400", result: "1-0" }], byes: [] },
+    { games: [{ board: 1, white: "d", black: "c", section: "Under 1400", result: "" }], byes: [] },
+  ] };
+  assert.deepEqual(Pairing.sections(t).map((s) => s.rounds.length), [1, 2]);
+  t.rounds[0].games.shift();
+  assert.deepEqual(Pairing.sections(t).map((s) => s.rounds.length), [0, 2], "Open has no posted pairings yet");
 });
 
 test("a player with no section yet goes where their rating puts them", () => {

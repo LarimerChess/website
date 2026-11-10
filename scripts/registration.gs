@@ -127,7 +127,7 @@ const TOURNAMENT_HEADERS = {
     "Black report"],
 };
 // TD desk actions that change a tournament, refused once US Chess has rated it.
-const TOURNAMENT_WRITES = ["sync", "sections", "sectionNames", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
+const TOURNAMENT_WRITES = ["sync", "sections", "sectionNames", "section", "extraSection", "extraPlayer", "dropSection", "timeControl", "round", "sectionRound", "result", "results", "byeKind", "out", "rounds", "restart", "byes",
   "arenaJoin", "arenaLeave", "arenaPair", "arenaResult", "arenaPact", "arenaCancel", "arenaSections"];
 const POSTS_PER_MINUTE = 20;
 // Wrong TD passwords allowed in an hour, counted from the first, from all devices that haven't
@@ -205,6 +205,7 @@ function doPost(e) {
       case "sectionNames": return json(setSectionNames(p));
       case "timeControl": return json(setTimeControl(p));
       case "round": return json(saveRound(p));
+      case "sectionRound": return json(p.sections === undefined ? { error: "Which sections?" } : saveRound(p));
       case "result": return json(saveResult(p));
       case "results": return json(saveResults(p));
       case "byeKind": return json(saveByeKind(p));
@@ -1155,12 +1156,14 @@ function tournament(key, td) {
         kind: r["Bye kind"] || "" })),
       out: players.filter((p) => p.out && p.out <= n).map((p) => p.id),
       posted: here.some((r) => r.Posted),
+      ...(td ? { postedSections: [...new Set(here.filter((r) => r.Posted).map((r) => r.Section || ""))] } : {}),
       postedAt: (here.find((r) => r.Posted) || { Posted: "" }).Posted,
     };
   });
   const result = { key, event: info.Event, name: info.Name, format: info.Format, rounds: rounds,
     plannedRounds: Number(info.Rounds) || null, status: info.Status, coin: info.Coin, sections: sectionsOf(info), players,
     td: info.TD || "", timeControl: info["Time control"] || "" };
+  if (td) result.sectionPairing = true;
   // The half-point byes it offers, for the desk to check a round against before saving it; saving checks them again.
   if (td && info.Format === "swiss") {
     try {
@@ -1606,7 +1609,7 @@ function lateByes(key, info, player) {
   const last = lastRoundOf(info, section);
   const event = clubEvents()[key];
   const posted = {};
-  for (const r of table("Rounds").rows) if (r.Key === key && r.Posted) posted[r.Round] = r.Posted;
+  for (const r of table("Rounds").rows) if (r.Key === key && r.Posted && (r.Section || "") === section) posted[r.Round] = r.Posted;
   const room = HALF_BYE_LIMIT - byeList(player.Byes).length;
   return Object.keys(posted).map(Number).filter((n) => n <= last && offersHalfBye(event, n, last))
     .sort((a, b) => a - b).slice(0, Math.max(0, room))
@@ -1740,16 +1743,42 @@ function saveRound(p) {
   const round = Number(p.number);
   const games = JSON.parse(p.games || "[]");
   const byes = JSON.parse(p.byes || "[]");
+  let sections = null;
+  if (p.sections !== undefined) {
+    try { sections = JSON.parse(p.sections); } catch (err) { return { error: "Which sections?" }; }
+    if (!Array.isArray(sections) || !sections.length || sections.some((s) => typeof s !== "string")) return { error: "Which sections?" };
+    if ([...games, ...byes].some((x) => !sections.includes(String(x.section || "")))) return { error: "A pairing belongs to another section." };
+  }
   if (!round) return { error: "Which round?" };
   const lock = lockTournaments();
   try {
     const t = table("Rounds");
-    const old = t.rows.filter((r) => r.Key === key && Number(r.Round) === round);
+    const replaces = (r) => Number(r.Round) === round && (!sections || sections.includes(r.Section || ""));
+    const old = t.rows.filter((r) => r.Key === key && replaces(r));
     // A saved round can hold forfeits for quad players not here; only a posted round's results block re-pairing.
     if (old.some((r) => r.Result && r.Posted)) return { error: "This round has results; clear them before re-pairing (29G)." };
     const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (sections) {
+      const defs = info ? sectionsOf(info) : [];
+      for (const name of sections) {
+        const def = defs.find((s) => s.name === name);
+        if (defs.length ? !def : name !== "") return { error: "No such section. Refresh and try again." };
+        const first = Number(def && def.first) || 1;
+        const last = Number(def && def.last) || Number(info && info.Rounds);
+        if (round < first || (last && round > last)) return { error: "Not a round of this section." };
+        for (let n = first; n < round; n++) {
+          const previous = t.rows.filter((r) => r.Key === key && Number(r.Round) === n && (r.Section || "") === name);
+          if (!previous.length || previous.some((r) => !r.Posted || (r.Black && !r.Result))) {
+            return { error: `${name || "This section"}: post round ${n} and enter its results before pairing another.` };
+          }
+        }
+        if (t.rows.some((r) => r.Key === key && (r.Section || "") === name && Number(r.Round) > round)) {
+          return { error: "A later round of this section is paired already." };
+        }
+      }
+    }
     const players = table("Players").rows.filter((r) => r.Key === key);
-    const others = t.rows.filter((r) => r.Key === key && Number(r.Round) !== round);
+    const others = t.rows.filter((r) => r.Key === key && !replaces(r));
     for (const b of byes) {
       const player = players.find((r) => r["US Chess ID"] === b.id);
       if (!info || !player || BYE_KINDS[b.kind] === undefined) continue;

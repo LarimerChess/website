@@ -3,8 +3,7 @@
 // again until it has results), enter results or confirm the ones players report, and follow the
 // standings. The script keeps everything in the tournament database. An arena is run by td-arena.js. call, choice, choices, andList, byeDate, and nightsInWords come from td.js.
 //
-// A tournament's sections play each round together: one check-in, one Pair button that pairs
-// every section on its own, one review, and one Post, with each section in its own tables. An
+// Sections can be paired together or selected to check in, pair, post, and enter results independently. An
 // extra rated games section (28M4) plays only its own rounds, and its players are also in another
 // section, so the desk tells their check-ins, games, and byes apart by section. Each section is a
 // Swiss, a round robin, or a double round robin, which the TD can change until it has a posted round.
@@ -36,6 +35,40 @@ const RESULTS = [["", "No result"], ["1-0", "1–0"], ["0-1", "0–1"], ["1/2-1/
 let current = null;
 let draft = null;
 let startEdited = false;
+const runSection = document.getElementById("run-section");
+let sectionChoiceKey = "";
+let workNumber = 1;
+let workParts = [];
+let previousSection = "";
+
+const hasRound = (r) => Boolean(r && (r.games.length || r.byes.length));
+const sectionPosted = (number, key) => {
+  const r = current.rounds[number - 1];
+  return Boolean(r && (r.postedSections ? r.postedSections.includes(key) : r.posted));
+};
+
+/** Each section waits for its own saved pairings or results before starting another round. */
+function sectionWork(s) {
+  const last = s.rounds.findLastIndex(hasRound);
+  const number = last < 0 ? s.first : s.first + last;
+  const r = s.rounds[last];
+  if (r && (!sectionPosted(number, s.key) || r.games.some((g) => !g.result))) {
+    return { s, number, phase: sectionPosted(number, s.key) ? "results" : "draft" };
+  }
+  return { s, number: last < 0 ? s.first : number + 1, phase: "checkin" };
+}
+
+runSection.addEventListener("change", () => {
+  const edited = draft && JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number));
+  const checked = !runCheckin.hidden && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
+  if ((edited || checked) && !confirm("Leave these unsaved pairings or check-in choices and switch sections?")) {
+    runSection.value = previousSection;
+    return;
+  }
+  previousSection = runSection.value;
+  draft = null;
+  renderRun();
+});
 
 const keyParts = () => choice.value.split("/");
 const nameOf = (id) => {
@@ -159,6 +192,7 @@ async function loadRun() {
 
 function renderRun() {
   showStart(false);
+  document.querySelector(".run-section-choice").hidden = true;
   runRound.hidden = runStandingsWrap.hidden = runArena.hidden = runManage.hidden = true;
   if (current && current.status !== "rated") {
     runManage.hidden = false;
@@ -197,8 +231,6 @@ function renderRun() {
     return;
   }
   const t = current;
-  const last = t.rounds.at(-1);
-  const complete = (r) => r.games.every((g) => g.result);
   if (t.format === "arena") return renderArena();
   const parts = Pairing.sections(forEngine(t));
   runStatus.textContent = `${t.name}: ${t.players.length} players, ${t.rounds.length} of ${t.plannedRounds || "?"} rounds paired.`
@@ -210,18 +242,36 @@ function renderRun() {
   renderGiveBye();
   runReport.hidden = !reportReady(t);
   if (t.status === "rated") return;
-  runRound.hidden = false;
-  if (last && !last.posted) draft = draft || draftFrom(t.rounds.length);
-  if (draft) return renderDraft();
-  if (last && !complete(last)) {
-    runTitle.textContent = `Round ${t.rounds.length}: results`;
-    runCheckin.hidden = true;
-    return renderResults(t.rounds.length);
+  if (sectionChoiceKey !== t.key) {
+    sectionChoiceKey = t.key;
+    runSection.value = "";
   }
-  const next = t.rounds.length + 1;
-  if (t.plannedRounds && next > t.plannedRounds) {
+  const selectable = parts.filter((s) => s.key);
+  const selected = selectable.some((s) => s.name === runSection.value) ? runSection.value : "";
+  runSection.replaceChildren(option("", "All sections", !selected),
+    ...selectable.map((s) => option(s.name, s.name, s.name === selected)));
+  previousSection = selected;
+  document.querySelector(".run-section-choice").hidden = selectable.length < 2;
+  const states = parts.filter((s) => s.players.length && (!selected || s.name === selected)).map(sectionWork)
+    .filter(({ s, number }) => number <= (s.last || t.plannedRounds || Infinity));
+  const next = Math.min(...states.map((s) => s.number));
+  const sameRound = states.filter((s) => s.number === next);
+  const phase = sameRound.some((s) => s.phase === "draft") ? "draft"
+    : sameRound.some((s) => s.phase === "results") ? "results" : "checkin";
+  workNumber = next;
+  workParts = sameRound.filter((s) => s.phase === phase).map(({ s }) => s);
+  runRound.hidden = false;
+  if (phase === "draft") draft = draft || draftFrom(next);
+  if (draft) return renderDraft();
+  if (phase === "results") {
+    runTitle.textContent = `Round ${next}: results`;
+    runCheckin.hidden = true;
+    return renderResults(next);
+  }
+  if (!states.length) {
     runRound.hidden = true;
-    runStatus.textContent += " All rounds are played. The rating report is below.";
+    runStatus.textContent += selected ? ` ${selected} has played all its rounds.`
+      : " All rounds are played. The rating report is below.";
     return;
   }
   renderCheckin(t, parts, next);
@@ -229,7 +279,7 @@ function renderRun() {
 
 function renderCheckin(t, parts, next) {
   const quad = t.format === "quad";
-  const active = parts.filter((s) => s.players.length && Pairing.playsIn(s, next));
+  const active = parts.filter((s) => workParts.some((p) => p.name === s.name) && s.players.length && Pairing.playsIn(s, next));
   runTitle.textContent = `Round ${next}: check in`;
   runCheckin.hidden = false;
   runPairings.hidden = true;
@@ -331,12 +381,13 @@ async function moveTo(p, section) {
 function draftFrom(number) {
   return { number, sections: playing(number).map((s) => ({
     section: s.key, name: s.name, waiting: [],
-    games: s.rounds[number - s.first].games.map((g) => ({ board: g.board, white: g.white, black: g.black, result: g.result || "" })),
-    byes: s.rounds[number - s.first].byes.map((b) => ({ id: b.id, points: b.points, kind: b.kind })) })) };
+    games: (s.rounds[number - s.first]?.games || []).map((g) => ({ board: g.board, white: g.white, black: g.black, result: g.result || "" })),
+    byes: (s.rounds[number - s.first]?.byes || []).map((b) => ({ id: b.id, points: b.points, kind: b.kind })) })) };
 }
 
 /** The sections with players that play the tournament's round number. */
-const playing = (number) => Pairing.sections(forEngine(current)).filter((s) => s.players.length && Pairing.playsIn(s, number));
+const playing = (number) => Pairing.sections(forEngine(current)).filter((s) => s.players.length && Pairing.playsIn(s, number)
+  && workParts.some((p) => p.name === s.name));
 // Tables are headed by section, and controls named by it, when the tournament has several, even in a round only one plays.
 const severalSections = () => Pairing.sections(forEngine(current)).filter((s) => s.players.length).length > 1;
 
@@ -609,7 +660,7 @@ let agreedNow = [];
 /** After a result is entered: the standings, and the next round's check-in once every board has one. */
 function afterResults(number) {
   renderStandings();
-  if (current.rounds[number - 1].games.every((g) => g.result)) renderRun();
+  if (playing(number).every((s) => s.rounds[number - s.first].games.every((g) => g.result))) renderRun();
   else keepFocus(() => renderResults(number));
 }
 
@@ -634,7 +685,6 @@ function renderResults(number) {
     + "results on the Pairings page; a report counts once you confirm it. Check for reports to see new ones.";
   const parts = playing(number);
   const several = severalSections();
-  const round = current.rounds[number - 1];
   agreedNow = [];
   runGames.replaceChildren(...parts.flatMap((s, n) => {
     const here = s.rounds[number - s.first];
@@ -673,7 +723,7 @@ function renderResults(number) {
   const agreed = runResultButtons.querySelector(".run-confirm-agreed");
   agreed.hidden = !agreedNow.length;
   agreed.textContent = `Confirm agreed results (${agreedNow.length})`;
-  runResultButtons.querySelector(".run-edit").hidden = round.games.some((g) => g.result);
+  runResultButtons.querySelector(".run-edit").hidden = parts.some((s) => s.rounds[number - s.first].games.some((g) => g.result));
 }
 
 const BYE_LABELS = { bye: "Full-point bye (1)", half: "Half-point bye (½)", zero: "Zero-point bye (0)", unplayed: "Unplayed (0)" };
@@ -688,8 +738,13 @@ let reportSources = null;
 const folders = {};
 
 // Ready once the planned rounds are all posted with their results; to stop early, the TD lowers the rounds.
-const reportReady = (t) => t.format !== "arena" && t.rounds.length > 0 && t.rounds.length >= (t.plannedRounds || 0)
-  && t.rounds.every((r) => r.posted && r.games.every((g) => g.result));
+const reportReady = (t) => t.format !== "arena" && t.rounds.length > 0
+  && Pairing.sections(forEngine(t)).filter((s) => s.players.length).every((s) => {
+    const count = (s.last || t.plannedRounds || t.rounds.length) - s.first + 1;
+    return s.rounds.length >= count && s.rounds.slice(0, count).every((r, i) => hasRound(r)
+      && (t.rounds[s.first + i - 1].postedSections?.includes(s.key) ?? t.rounds[s.first + i - 1].posted)
+      && r.games.every((g) => g.result));
+  });
 
 function folderStore(mode, work) {
   return new Promise((resolve) => {
@@ -1101,7 +1156,7 @@ giveBye.addEventListener("submit", async (event) => {
           ? " They asked for this last-round bye before round 1, so a win counts as a draw for prizes (22C5)." : "");
       pending.add("entries");
       applyChanges();
-      if (!runCheckin.hidden && !runBusy()) renderCheckin(current, Pairing.sections(forEngine(current)), current.rounds.length + 1);
+      if (!runCheckin.hidden && !runBusy()) renderCheckin(current, Pairing.sections(forEngine(current)), workNumber);
     }
     renderStandings();
     renderByesAll();
@@ -1246,22 +1301,24 @@ async function checkIn(number) {
 }
 
 document.querySelector(".run-pair").addEventListener("click", async () => {
-  const number = current.rounds.length + 1;
+  const number = workNumber;
   if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play")) {
     return void refuse("Nobody is present to pair.", runStatus);
   }
   const { choicesMade, withdrawn } = await checkIn(number);
   const chose = (s, value) => choicesMade.filter(([, v, key]) => v === value && key === s.key).map(([id]) => id);
-  const sections = Pairing.pairSections(forEngine(current), (s) => ({
+  const engine = forEngine(current);
+  engine.rounds = engine.rounds.slice(0, number - 1);
+  const sections = Pairing.pairSections(engine, (s) => ({
     halfByes: chose(s, "half"),
     zeroByes: chose(s, "zero"),
     absent: chose(s, "absent"),
     out: withdrawn,
     coin: current.coin,
-  }));
+  }), workParts.map((s) => s.name));
   // A round robin's table pairs absent players too; their games are forfeits.
-  const away = new Set(choicesMade.filter(([, v]) => v === "absent").map(([id]) => id));
   for (const s of sections.filter(Pairing.roundRobin)) {
+    const away = new Set(choicesMade.filter(([, v, key]) => v === "absent" && key === s.section).map(([id]) => id));
     for (const g of s.games) {
       if (away.has(g.white) || away.has(g.black)) g.result = away.has(g.white) ? (away.has(g.black) ? "0F-0F" : "0F-1F") : "1F-0F";
     }
@@ -1274,7 +1331,7 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
 // By hand, the players marked present start out not yet paired, as does everyone when nobody is
 // marked present; the others are unplayed, except in a round robin, where the TD gives them forfeits.
 document.querySelector(".run-by-hand").addEventListener("click", async () => {
-  const number = current.rounds.length + 1;
+  const number = workNumber;
   const { choicesMade, withdrawn } = await checkIn(number);
   current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
   const chosen = new Map(choicesMade.map(([id, v, key]) => [`${key}|${id}`, v]));
@@ -1295,8 +1352,13 @@ document.querySelector(".run-by-hand").addEventListener("click", async () => {
 });
 
 document.querySelector(".run-repair").addEventListener("click", () => {
-  const last = current.rounds.at(-1);
-  if (last && (!last.posted || draft?.posted)) current.rounds.pop();
+  const last = current.rounds[draft.number - 1];
+  if (last) {
+    const keys = new Set(draft.sections.map((s) => s.section));
+    last.games = last.games.filter((g) => !keys.has(g.section || ""));
+    last.byes = last.byes.filter((b) => !keys.has(b.section || ""));
+    if (last.postedSections) last.postedSections = last.postedSections.filter((s) => !keys.has(s));
+  }
   draft = null;
   renderRun();
 });
@@ -1307,8 +1369,8 @@ document.querySelector(".run-cancel").addEventListener("click", () => {
 });
 
 document.querySelector(".run-edit").addEventListener("click", () => {
-  const number = current.rounds.length;
-  const reported = current.rounds[number - 1].games.some((g) => g.reports);
+  const number = workNumber;
+  const reported = playing(number).some((s) => s.rounds[number - s.first].games.some((g) => g.reports));
   if (reported && !confirm("Players have reported results for this round. Changing its pairings clears their reports. Change them?")) return;
   draft = { ...draftFrom(number), posted: true };
   renderDraft();
@@ -1318,7 +1380,7 @@ document.querySelector(".run-edit").addEventListener("click", () => {
 document.querySelector(".run-refresh").addEventListener("click", loadRun);
 
 document.querySelector(".run-confirm-agreed").addEventListener("click", async (event) => {
-  const number = current.rounds.length;
+  const number = workNumber;
   const agreed = agreedNow;
   const [eventName, date] = keyParts();
   event.target.disabled = true;
@@ -1332,6 +1394,9 @@ document.querySelector(".run-confirm-agreed").addEventListener("click", async (e
 });
 
 async function saveDraft(post) {
+  if (runSection.value && !current.sectionPairing) {
+    return void refuse("Update the registration Apps Script deployment to save sections independently, then refresh the desk.", runStatus);
+  }
   const problems = draftProblems();
   if (problems.length) {
     refuse(`Not saved yet. ${problems[0]}${problems.length > 1 ? ` The other ${problems.length - 1} are listed above the buttons.` : ""}`, runStatus);
@@ -1343,7 +1408,8 @@ async function saveDraft(post) {
   const byes = draft.sections.flatMap((s) => s.byes.map((b) => ({ id: b.id, points: b.points, kind: Pairing.byeKind(b),
     section: s.section })));
   const [event, date] = keyParts();
-  const result = await call("round", { event, date, number: draft.number, post: post ? "yes" : "no",
+  const result = await call(current.sectionPairing ? "sectionRound" : "round", { event, date, number: draft.number, post: post ? "yes" : "no",
+    sections: JSON.stringify([...new Set(draft.sections.map((s) => s.section))]),
     games: JSON.stringify(games), byes: JSON.stringify(byes) });
   runStatus.textContent = result.message || result.error;
   if (result.ok) {
@@ -1393,7 +1459,7 @@ function renderSectionNames() {
     item.dataset.from = d.name;
     const format = formatMenu(parts.find((s) => s.key === d.name)?.format, { className: "run-names-format" });
     format.setAttribute("aria-label", `Format of ${d.name}`);
-    format.disabled = current.rounds.some((r) => r.posted && r.games.concat(r.byes).some((x) => x.section === d.name));
+    format.disabled = current.rounds.some((r, i) => sectionPosted(i + 1, d.name) && r.games.concat(r.byes).some((x) => x.section === d.name));
     const name = Object.assign(document.createElement("input"), { type: "text", value: d.name, maxLength: 30, autocomplete: "off" });
     name.setAttribute("aria-label", `New name for ${d.name}`);
     const move = (text, step) => editButton(text, ` ${d.name}`, `${d.name}-${text}`, () => {
@@ -1457,7 +1523,7 @@ function renderExtras() {
     const first = d.first, last = d.last;
     const kind = { rr: " a round robin,", drr: " a double round robin," }[d.format] || "";
     item.append(`${d.name}: ${d.players.length} players,${kind} ${first === last ? `round ${first}` : `rounds ${first} to ${last}`}. `);
-    const posted = current.rounds.some((r) => r.posted && r.games.concat(r.byes).some((x) => x.section === d.name));
+    const posted = current.rounds.some((r, i) => sectionPosted(i + 1, d.name) && r.games.concat(r.byes).some((x) => x.section === d.name));
     if (!posted) {
       item.append(editButton("Take off", ` ${d.name}`, `drop-${d.name}`, async () => {
         if (!confirm(`Take off ${d.name}? Any of its pairings saved but not posted are deleted.`)) return;

@@ -923,6 +923,8 @@
         games: r.games.filter((x) => ids.has(x.white) && ids.has(x.black) && here(x, g.key)),
         byes: (r.byes || []).filter((b) => ids.has(b.id) && here(b, g.key)),
         out: (r.out || []).filter((id) => ids.has(id)) }));
+      // Another section can be several rounds ahead; only this section's paired rounds count.
+      while (rounds.length && !rounds.at(-1).games.length && !rounds.at(-1).byes.length) rounds.pop();
       const size = ROUND_ROBINS.includes(format) ? (order.length ? players.filter((p) => order.includes(p.id)).length : players.length) : null;
       return { extra: false, ...g, format, size, first, last, players, rounds };
     });
@@ -936,12 +938,12 @@
    * section being the key to save the round under. Boards are numbered within each section,
    * except in a tournament started before sections, whose boards run on through its quads as
    * they always did. Only the sections playing the round are paired; options may be a function
-   * that gives each section its own.
+   * that gives each section its own. names limits pairing to the named sections when supplied.
    */
-  function pairSections(t, options = {}) {
+  function pairSections(t, options = {}, names = null) {
     const number = t.rounds.length + 1;
     let board = 0;
-    return sections(t).filter((s) => s.players.length && playsIn(s, number)).map((s) => {
+    return sections(t).filter((s) => s.players.length && playsIn(s, number) && (!names || names.includes(s.name))).map((s) => {
       const own = typeof options === "function" ? options(s) : options;
       const result = roundRobin(s) ? pairRoundRobin(s, number - s.first + 1, own) : pairRound(s, { ...own, extra: s.extra });
       const offset = s.key ? 0 : board;
