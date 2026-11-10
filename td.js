@@ -437,17 +437,26 @@ function showRegisterByes(keep = false) {
 
 /** An entry's Byes: a menu for each round or night it can ask to miss, to play or ask for a half-point or zero-point
  *  bye, saved as soon as it changes, then in words any asked for that no menu shows, as when the rounds aren't known.
- *  A paired round's menu is shown but fixed. */
+ *  Posted rounds show their recorded byes; a paired round's menu is fixed. */
 function showEntryByes(cell, e) {
   const [eventName] = choice.value.split("/");
   const month = e.date?.length === 7;
-  const rounds = month ? byeRounds(`${eventName}/${e.date}`)
+  const key = month ? `${eventName}/${e.date}` : choice.value;
+  const t = loadedTournament?.key === key ? loadedTournament : null;
+  const player = t?.players.find((p) => p.id === e.id);
+  const rounds = month ? byeRounds(key)
     : choices.find((c) => c.key === choice.value)?.kind === "entry" ? byeRounds(choice.value) : [];
   const asked = e.byes || [], zeros = e.zeroByes || [];
   const menus = rounds.map(({ value, label, paired }) => {
     const menu = Object.assign(document.createElement("select"), { disabled: paired });
     menu.append(option("", "–", false), option("half", "½", false), option("zero", "0", false));
-    menu.value = asked.includes(value) ? "half" : zeros.includes(value) ? "zero" : "";
+    const round = t?.rounds[t.roundDates ? t.roundDates.indexOf(value) : Number(value) - 1];
+    const recorded = round?.posted && player;
+    const bye = recorded && round.byes.find((b) => b.id === e.id && (b.section || "") === (player.section || ""));
+    const kind = bye ? Pairing.byeKind(bye) : "";
+    if (kind === "bye") menu.append(option("bye", "1", false));
+    menu.value = recorded ? (kind === "unplayed" ? "" : kind)
+      : asked.includes(value) ? "half" : zeros.includes(value) ? "zero" : "";
     menu.dataset.round = value;
     menu.dataset.was = menu.value;
     menu.setAttribute("aria-label", `${label} bye for ${e.name}`);
@@ -494,17 +503,14 @@ async function saveEntryByes(cell, e, menu) {
   }
 }
 
-// The event and the rounds offered when the entries were last drawn: a tournament that loads,
-// starts, or changes its rounds after that can change the entries' boxes.
+// Keep the entry rows' byes in sync when the tournament loads or its recorded byes change.
 let entriesDrawn = null;
-const byeShape = (key) => byeRounds(key).map((r) => r.value).join();
 
 document.addEventListener("td-tournament", (event) => {
   loadedTournament = event.detail;
   showRegisterByes(true);
-  if (entriesDrawn?.key === choice.value && entriesDrawn.shape !== byeShape(choice.value)) {
-    pending.add("entries");
-    applyChanges();
+  if (entriesDrawn?.key === choice.value) {
+    entriesDrawn.entries.forEach((entry, i) => showEntryByes(tdTable.tBodies[0].rows[i].cells[4], entry));
   }
 });
 
@@ -607,7 +613,7 @@ async function showDeskEntries(quiet = false) {
     ? `${entries.length} ${entries.length === 1 ? "player" : "players"}. Collected: $${dollars(total("paid") - total("refunded"))}. Still owed: $${dollars(owed)}.`
     : "No entries yet.";
   const current = choices.find((c) => c.key === key);
-  entriesDrawn = { key, shape: byeShape(key) };
+  entriesDrawn = { key, entries };
   tdTable.tBodies[0].replaceChildren(...entries.map((e) => {
     const row = document.createElement("tr");
     const lapsed = e.expires && current && e.expires < current.first;

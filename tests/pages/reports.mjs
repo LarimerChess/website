@@ -418,6 +418,8 @@ missedRules.held.halfByes = { limit: 1, everyRound: false };
 missedRules.held.players = sixPlayers.map((p) => p.id === "66666666" ? { ...p, out: 2 } : p);
 const missedAnswer = missedRules.answer;
 missedRules.answer = (p) => {
+  if (p.action === "entries") return { entries: sixPlayers.map((x) => ({ name: x.name, id: x.id, rating: String(x.rating),
+    date: "2026-11-07", token: `t-${x.id}`, byes: x.id === "11111111" ? ["1"] : [] })) };
   if (p.action === "byeKind") {
     missedRules.calls.push(p);
     const r = missedRules.held.rounds[Number(p.number) - 1];
@@ -431,6 +433,9 @@ missedRules.answer = (p) => {
 const missedPage = await mocked("/td/ excusing missed rounds", (p) => missedRules.answer(p));
 await signIn(missedPage);
 await missedPage.waitForSelector('.run-byes-all select[aria-label="Fay (1100), round 3"]');
+await missedPage.waitForSelector('.td-entries select[aria-label="Round 1 bye for Fay"]');
+const recordedByeShown = await missedPage.$eval('.td-entries select[aria-label="Round 1 bye for Fay"]', (s) => s.value === "half" && s.disabled);
+const playedRequestCleared = await missedPage.$eval('.td-entries select[aria-label="Round 1 bye for Ann"]', (s) => s.value === "" && s.disabled);
 const protectedPlayers = await missedPage.$$eval("#run-bye-player option", (os) => os.map((o) => o.value));
 await missedPage.select('.run-byes-all select[aria-label="Fay (1100), round 2"]', "half");
 await missedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("round 2: Half-point bye"));
@@ -442,6 +447,10 @@ await press(missedPage, ".run-give-bye button");
 await missedPage.waitForFunction(() => document.querySelector(".run-status").textContent.includes("round 3: Half-point bye"));
 const excused = missedRules.calls.filter((c) => c.action === "byeKind");
 const fayScore = Pairing.standings(missedRules.held).find((p) => p.id === "66666666").score;
+const entryByes = await missedPage.$$eval('.td-entries select[aria-label$="bye for Fay"]', (ss) => ss.map((s) => s.value));
+recordedByeShown && playedRequestCleared && entryByes.join() === "half,half,half"
+  ? pass("TD entries show recorded past byes, clear requests for rounds actually played, and update immediately after reclassification")
+  : fail(`TD entries recorded byes: ${JSON.stringify({ recordedByeShown, playedRequestCleared, entryByes })}`);
 protectedPlayers.join() === "55555555,66666666" && missedKinds.includes("half") && fayScore === 1.5
   && excused.map((p) => `${p.id}/${p.number}/${p.kind}`).join() === "66666666/2/half,66666666/3/half"
   ? pass("TD can excuse multiple missed past rounds, including the last and withdrawn rounds, while wins, losses, and draws stay protected")

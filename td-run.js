@@ -1124,6 +1124,7 @@ const QUAD_HEADINGS = ["Sonneborn-Berger", "Head-to-head", "Performance", "Est. 
 
 function renderStandings() {
   if (!current?.rounds.length) return;
+  document.dispatchEvent(new CustomEvent("td-tournament", { detail: current }));
   const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
   const robins = parts.some(Pairing.roundRobin);

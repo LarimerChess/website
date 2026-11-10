@@ -211,12 +211,17 @@ const monthByeHeld = { key: "club-night/2026-10", name: "Club Night", format: "s
   roundDates: ["2026-10-12", "2026-10-19", "2026-10-26"],
   players: fourPlayers().map((p) => ({ ...p, ...{ "33333333": { nights: [2] }, "44444444": { nights: [1] } }[p.id] })),
   halfByes: { limit: 1, everyRound: true },
-  rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" },
-    { board: 2, white: "11111111", black: "44444444", result: "1-0", section: "" }], byes: [], out: [], posted: true }] };
+  rounds: [{ games: [{ board: 1, white: "22222222", black: "33333333", result: "1-0", section: "" }],
+    byes: [{ id: "11111111", kind: "zero", points: 0, section: "" }, { id: "44444444", kind: "unplayed", points: 0, section: "" }],
+    out: [], posted: true }] };
 let releaseMonthBye;
 const monthByeLoad = new Promise((resolve) => { releaseMonthBye = resolve; });
 const monthByePage = await mocked("/td/ with a month's byes", async (p) => {
   if (p.action === "tournament") await monthByeLoad;
+  if (p.action === "byeKind") {
+    Object.assign(monthByeHeld.rounds[Number(p.number) - 1].byes.find((b) => b.id === p.id), { kind: p.kind, points: 0.5 });
+    return { ok: true };
+  }
   if (p.action === "byes") {
     monthByeEntries[0].byes = p.byes.split(", ");
     monthByeHeld.players[0].byes = monthByeEntries[0].byes.map((date) => monthByeHeld.roundDates.indexOf(date) + 1);
@@ -251,10 +256,17 @@ JSON.stringify(nightsCheckin) === JSON.stringify([["Cal", "play"], ["Dee (entere
   ? pass("TD desk's check-in starts a player who entered only another night of the month as not here")
   : fail(`TD desk check-in by nights: ${JSON.stringify(nightsCheckin)}`);
 JSON.stringify(monthByesEarly) === JSON.stringify(["2026-10-19", "2026-10-26"]) && monthByesRedrawn
-  && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12", "2026-10-19", "2026-10-26"])
+  && JSON.stringify(monthByesLoaded) === JSON.stringify(["2026-10-12 (zero)", "2026-10-19", "2026-10-26"])
   && monthByeCheckin?.replaceAll(" ", " ") === "2 (October 19)" && JSON.stringify(monthByesFixed) === JSON.stringify(["2026-10-12"])
   ? pass("TD desk shows a started month's nights, past ones too and a paired one fixed, once its tournament loads, and check-in follows a bye saved from the entries")
   : fail(`TD desk month byes: ${JSON.stringify({ monthByesEarly, monthByesRedrawn, monthByesLoaded, monthByesFixed, monthByeCheckin })}`);
+await monthByePage.select('.run-byes-all select[aria-label="Ann (1900), round 1"]', "half");
+await monthByePage.waitForFunction(() => document.querySelector('.td-entries select[data-round="2026-10-12"]').value === "half");
+const monthRecordedByes = await monthByeCell();
+JSON.stringify(monthRecordedByes) === JSON.stringify(["2026-10-12 (half)", "2026-10-19 (half)", "2026-10-26"])
+  && monthByeEntries[0].byes.join() === "2026-10-19"
+  ? pass("TD monthly entries combine recorded past byes with future requests and reflect a past bye change without changing those requests")
+  : fail(`TD monthly recorded byes: ${JSON.stringify({ monthRecordedByes, requested: monthByeEntries[0].byes })}`);
 await monthByePage.close();
 
 await done();
