@@ -8,6 +8,9 @@ on:
       - prices.json
       - scripts/build_pages.py
       - scripts/sync_event_descriptions.py
+      - scripts/sync_tournaments.py
+      - scripts/sync_tournament_conflicts.py
+      - scripts/update_calendar.py
       - .github/workflows/calendar.yml
   schedule:
     - cron: "17 * * * *"
@@ -36,6 +39,10 @@ jobs:
       - run: pip install -r scripts/requirements.txt
       - name: Sync managed event descriptions to Google Calendar
         run: python scripts/sync_event_descriptions.py
+        env:
+          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
+      - name: Sync outside tournaments and reconcile club weekend conflicts
+        run: python scripts/sync_tournaments.py
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
       # Reads the calendars through the Google Calendar API with a read-only token, because

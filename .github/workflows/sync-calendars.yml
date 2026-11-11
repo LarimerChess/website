@@ -24,10 +24,6 @@ jobs:
         if: success() || failure()
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
-      - run: python scripts/sync_tournaments.py
-        if: success() || failure()
-        env:
-          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
       - run: python scripts/sync_evrpd.py
         if: success() || failure()
         env:

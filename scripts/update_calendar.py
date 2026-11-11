@@ -31,6 +31,7 @@ CLUB = "Larimer County Chess Club"
 # Each metadata field: (required, allowed values or a pattern the whole value must match).
 FIELDS = {
     "organizer": (True, re.compile(r"\S.*")),
+    "city": (False, re.compile(r"\S.*")),
     "format": (True, {"tournament", "casual", "other"}),
     "ages": (True, {"all", "youth", "senior", "adults"}),
     "rated": (True, {"yes", "no"}),
@@ -174,7 +175,7 @@ def build(items_by_calendar):
                 "allDay": "date" in item["start"],
                 "location": location,
                 "place": place(location),
-                "city": city(location),
+                "city": meta.get("city") or city(location),
                 "description": item.get("description", ""),
             })
     if bad:
