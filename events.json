@@ -1437,6 +1437,7 @@
   "tags": [
    "tournament",
    "all-ages",
+   "rated",
    "regular"
   ],
   "url": "https://coloradochess.com/tournament/2026-winter-springs-open-bucks-legacy/",
@@ -1449,7 +1450,7 @@
   "allDay": true,
   "location": "Hyatt Place Colorado Springs/Garden of the Gods 503 West Garden of the Gods Road Colorado Springs, Colorado, 80907  I-25 to Exit 146, go West, on South side behind In-N-Out",
   "place": {},
-  "city": "",
+  "city": "Colorado Springs",
   "description": "Cost: entry fee; amounts on the tournament page.\nTime control: All Rounds G/90, +30 seconds increment\n\n2026 WINTER SPRINGS OPEN (Buck’s Legacy), a weekend chess tournament.\n\nRun by Denver Chess Club. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://coloradochess.com/tournament/2026-winter-springs-open-bucks-legacy/\n\nHyatt Place Colorado Springs/Garden of the Gods 503 West Garden of the Gods Road Colorado Springs\nColorado, 80907  I-25 to Exit 146, go West, on South side behind In-N-Out"
  },
  {
@@ -1479,38 +1480,6 @@
   },
   "city": "Fort Collins",
   "description": "Cost: $30 entry (fall or spring bundles available).\n\nChessmates scholastic tournament for students in kindergarten through 12th grade. Five rounds of about an hour each, in sections by grade level or US Chess rating (800+). Check-in from 8:15 AM; round 1 starts at 9:00 AM sharp; done by about 2:00 PM, with an optional awards ceremony.\n\nThe section for players rated 800 and above is US Chess rated and needs a current US Chess ID; grade-level sections don't need a US Chess membership.\n\nRegister by the Friday before; day-of registration closes at 8:30 AM and may start with a round-one bye.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/tournaments/\n\nCEC High School\n4424 Innovation Dr, Fort Collins, CO 80525"
- },
- {
-  "title": "First Saturday Classic",
-  "calendar": "club",
-  "organizer": "Larimer County Chess Club",
-  "tags": [
-   "tournament",
-   "all-ages",
-   "club",
-   "rated",
-   "reduced-youth",
-   "regular",
-   "quick"
-  ],
-  "url": "",
-  "price": "17",
-  "pairing": "swiss",
-  "rounds": "4",
-  "page": "/events/first-saturday-classic/",
-  "start": "2026-12-05T10:00:00-07:00",
-  "end": "2026-12-05T19:00:00-07:00",
-  "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-  "place": {
-   "name": "Peak Community Church",
-   "street": "500 Mathews St",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80524"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -2792,7 +2761,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nWe skip weekends with major Colorado tournaments. Check the event page at https://larimerchess.org/events/first-saturday-classic/ for available dates.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
@@ -4475,7 +4444,7 @@
    "zip": "80524"
   },
   "city": "Fort Collins",
-  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
+  "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nWe skip weekends with major Colorado tournaments. Check the event page at https://larimerchess.org/events/first-saturday-classic/ for available dates.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  },
  {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
