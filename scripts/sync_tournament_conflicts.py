@@ -63,6 +63,15 @@ def patch(service, event, body):
     return verified
 
 
+def fresh_revision(service, event):
+    """Accept revision-only changes from sibling occurrences, never changes to event details."""
+    current = get_event(service, event["id"])
+    fields = SNAPSHOT_FIELDS + ("status", "originalStartTime", "recurringEventId")
+    if not current or any(current.get(key) != event.get(key) for key in fields):
+        raise ValueError("Calendar event changed during conflict reconciliation; retry after inspection.")
+    return current
+
+
 def sync_conflicts(service, tournaments, dry_run=False, now=None):
     now = now or datetime.now(TZ)
     until = now + timedelta(days=DAYS_AHEAD)
@@ -151,6 +160,7 @@ def sync_conflicts(service, tournaments, dry_run=False, now=None):
         if dry_run:
             continue
         if action == "cancel":
+            event = fresh_revision(service, event)
             receipts[event_id] = receipt
             save()
             patch(service, event, body)
@@ -158,7 +168,7 @@ def sync_conflicts(service, tournaments, dry_run=False, now=None):
             save()
         else:
             if action == "restore":
-                patch(service, event, body)
+                patch(service, fresh_revision(service, event), body)
             del receipts[event_id]
             save()
     print(f"Club weekend conflicts: {changed} change(s)" + (" (dry run)" if dry_run else ""))

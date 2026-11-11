@@ -293,5 +293,34 @@ class AutomaticConflicts(unittest.TestCase):
         self.assertEqual(json.loads(fake.data[conflicts.STATE_ID]["description"])["cancelled"], {})
 
 
+    def test_sibling_occurrences_refresh_revisions_for_batch_cancel_and_restore(self):
+        class ChangingSeriesCalendar(FakeCalendar):
+            def patch(self, calendarId, eventId, body):
+                request = super().patch(calendarId, eventId, body)
+                execute = request.execute.side_effect
+
+                def apply():
+                    if request.headers.get("If-Match") != self.data[eventId]["etag"]:
+                        raise HttpError(Response({"status": "412"}), b"stale revision")
+                    result = execute()
+                    if eventId != conflicts.STATE_ID:
+                        for other in self.data.values():
+                            if other["id"] != eventId and other.get("recurringEventId") == "classic":
+                                other["etag"] = '"sibling-update"'
+                    return result
+                request.execute.side_effect = apply
+                return request
+
+        march = club("classic-mar", "2027-03-06T10:00:00-07:00", "2027-03-06T19:00:00-07:00")
+        scholastic = {"key": "csca-scholastic", "first": date(2027, 3, 6), "last": date(2027, 3, 7)}
+        fake = ChangingSeriesCalendar([club(), march])
+        self.assertEqual(self.run_sync(fake, [winter(), scholastic]), 2)
+        self.assertEqual(fake.data["classic-dec"]["status"], "cancelled")
+        self.assertEqual(fake.data["classic-mar"]["status"], "cancelled")
+        self.assertEqual(self.run_sync(fake, []), 2)
+        self.assertEqual(fake.data["classic-dec"]["status"], "confirmed")
+        self.assertEqual(fake.data["classic-mar"]["status"], "confirmed")
+
+
 if __name__ == "__main__":
     unittest.main()
