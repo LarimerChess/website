@@ -9,7 +9,9 @@ event on the club calendar, timed from its round times when it can be, otherwise
 metadata: the card links to the listing and has no "Run by" line. Events are
 added, corrected when the listing changes, and deleted before they start if the
 listing drops them. A tournament on both sites gets one event, from the
-association's listing. If either page can't be read or parsed, nothing is changed. See docs/events/weekend-tournaments.md.
+association's listing. Conflicting club tournament dates are cancelled and dates
+we cancelled are restored when the conflict disappears. If either page can't be
+read or parsed, nothing is changed. See docs/events/weekend-tournaments.md.
 """
 import argparse
 import html
@@ -23,6 +25,7 @@ from zoneinfo import ZoneInfo
 from googleapiclient.discovery import build
 
 from update_calendar import CALENDARS
+from sync_tournament_conflicts import sync_conflicts
 from google_auth import credentials
 from sync_chessmates import fetch
 
@@ -204,7 +207,10 @@ def csca_tournaments():
             "site": row["site"].strip().splitlines()[0].strip() if row["site"].strip() else "",
             "city": row["city"].strip().removesuffix(", CO").removesuffix(", Colorado"),
             "link": post["link"],
-            "rated": "yes" if re.search(r"\bUSCF\b|\bUS Chess\b", listing) else "no",
+            "rated": "yes" if "regular" in (speed(row["time_control"]) or "").split(",")
+                     or re.search(r"\bUSCF\b|\bUS Chess\b", listing, re.I) else "no",
+            "weekdays": sorted({WEEKDAYS[m.group(1).lower()] for m in ROUND_TIME.finditer(row["round_times"])
+                                if m.group(1)}),
             "cost": "paid" if "$" in row["entry_fee"] else "unknown",
         })
     return found
@@ -216,16 +222,20 @@ def dcc_tournaments():
     headings = list(re.finditer(rf"<h3>\s*({MONTHS}), (\d{{4}})\s*</h3>", upcoming))
     if not headings:
         sys.exit(f"No months found on {DCC_SITE}/tournaments/upcoming. Has the page changed? Nothing was changed.")
-    found = []
+    found, parsed = [], set()
     for heading, following in zip(headings, headings[1:] + [None]):
         block = upcoming[heading.end():following.start() if following else len(upcoming)]
         for path, title, when in re.findall(r'<a href="(/tournaments/upcoming/\d+)">\s*(.*?)\s*<small>(.*?)</small>',
                                             block, re.S):
+            parsed.add(path)
             first, last = parse_dates(html.unescape(when), int(heading.group(2)))
             if weekend(first, last):
                 found.append({"key": f"dcc-{first}", "title": html.unescape(title).strip(), "first": first,
                               "last": last, "schedule": None, "time_control": "", "speed": None, "organizer": DCC, "site": "", "city": "Denver",
                               "link": DCC_SITE + path, "rated": "yes", "cost": "paid"})
+    linked = set(re.findall(r'href="(/tournaments/upcoming/\d+)"', upcoming))
+    if not linked or linked != parsed:
+        sys.exit("Can't read every Denver Chess Club tournament. Nothing was changed.")
     return found
 
 
@@ -261,6 +271,7 @@ def event_body(t):
             "source": SOURCE, "key": t["key"],
             "organizer": t["organizer"], "format": "tournament", "ages": "all", "rated": t["rated"],
             "cost": t["cost"], "details": t["link"], "run_by": "hide",
+            **({"city": t["city"]} if t["city"] else {}),
             **({"speed": t["speed"]} if t["speed"] else {}),
         }},
     }
@@ -284,6 +295,22 @@ def differences(event, body):
     current = event.get("extendedProperties", {}).get("private", {})
     changed += [k for k, v in body["extendedProperties"]["private"].items() if current.get(k) != v]
     return changed
+
+
+def write_tournament(cal, body, event=None):
+    """Apply a listing and read back its public details and metadata before proceeding."""
+    if event:
+        if not event.get("etag"):
+            raise ValueError("Tournament event has no revision; inspect before updating.")
+        request = cal.events().patch(calendarId=CALENDAR, eventId=event["id"], body=body)
+        request.headers["If-Match"] = event["etag"]
+    else:
+        request = cal.events().insert(calendarId=CALENDAR, body=body)
+    written = request.execute()
+    event_id = event["id"] if event else written["id"]
+    verified = cal.events().get(calendarId=CALENDAR, eventId=event_id).execute()
+    if differences(verified, body):
+        raise ValueError("Tournament read-back differs from its listing; inspect before retrying.")
 
 
 def main():
@@ -310,6 +337,8 @@ def main():
             sys.exit(f"Two events on the club calendar have source={SOURCE} key={key}; delete one by hand.")
         existing[key] = e
 
+    sync_conflicts(cal, list(wanted.values()), dry_run=args.dry_run)
+
     changes = 0
 
     def act(message, apply):
@@ -324,11 +353,10 @@ def main():
         label = f"{t['first']} {t['title']}"
         if key not in existing:
             act(f"add {label} ({t['city']}, run by {t['organizer']})",
-                lambda body=body: cal.events().insert(calendarId=CALENDAR, body=body).execute())
+                lambda body=body: write_tournament(cal, body))
         elif changed := differences(existing[key], body):
             act(f"update {label}: {', '.join(changed)}",
-                lambda e=existing[key], body=body: cal.events().patch(calendarId=CALENDAR, eventId=e["id"],
-                                                                      body=body).execute())
+                lambda e=existing[key], body=body: write_tournament(cal, body, e))
     for key, e in existing.items():
         start = date.fromisoformat(e["start"].get("date") or e["start"]["dateTime"][:10])
         if key not in wanted and start > today:
