@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { CALENDAR, FORM_FIELDS, emptyState, validateFeed, validateState, formData, plan, execute, validateRecipes } from '../tools/facebook-sync/core.js';
+import { runInNewContext } from 'node:vm';
+import { facebookUI } from '../tools/facebook-sync/facebook-ui.js';
+import { CALENDAR, FORM_FIELDS, emptyState, validateFeed, validateState, formData, plan, execute, validateRecipes, trustedExtensionSender } from '../tools/facebook-sync/core.js';
 
 const now = new Date('2026-11-12T20:00:00Z');
 const group = 'https://www.facebook.com/groups/123456/';
@@ -24,10 +26,22 @@ test('fresh public feeds are accepted; stale, future, or incomplete feeds stop s
 });
 
 test('dates use Mountain Time on both sides of daylight saving', () => {
-  assert.equal(formData(row()).startDate, '11/16/2026');
+  assert.equal(formData(row()).startDate, 'Nov 16, 2026');
   assert.equal(formData(row()).startTime, '6:30 PM');
+  assert.equal(formData(row()).timeZone, 'MST');
+  assert.equal(formData(row({ start: '2027-07-12T18:30:00-06:00' })).timeZone, 'MDT');
   assert.equal(formData(row({ start: '2027-07-12T18:30:00-06:00', end: '2027-07-12T21:30:00-06:00' })).startTime, '6:30 PM');
   assert.ok(formData(row()).body.endsWith(row().marker));
+});
+
+test('settings tabs and popups can message the worker, while content scripts cannot', () => {
+  const id = 'testextension';
+  assert.equal(trustedExtensionSender({ id, url: `chrome-extension://${id}/options.html`, tab: { id: 123 } }, id), true);
+  assert.equal(trustedExtensionSender({ id, url: `chrome-extension://${id}/popup.html` }, id), true);
+  assert.equal(trustedExtensionSender({ id, url: 'https://www.facebook.com/', tab: { id: 123 } }, id), false);
+  assert.equal(trustedExtensionSender({ id: 'other', url: `chrome-extension://${id}/options.html` }, id), false);
+  assert.equal(trustedExtensionSender({ id, url: `chrome-extension://${id}.evil/options.html` }, id), false);
+  assert.equal(trustedExtensionSender({ id }, id), false);
 });
 
 test('first sync creates occurrences and repeats do not duplicate them', () => {
@@ -98,6 +112,8 @@ test('unverified results cannot clear the pending journal', async () => {
 });
 
 test('browser recipes require every form field and a separate saved-value verification', () => {
+  validateRecipes(facebookUI);
+  assert.equal(facebookUI.verified, false);
   const fields = Object.fromEntries(FORM_FIELDS.map(field => [field, `#${field}`]));
   const recipe = () => ({ open: [], commit: [{ action: 'click', selector: '#submit' }],
     fields: { ...fields }, verify: { ...fields }, groupSelector: '#group', identitySelector: '#identity',
@@ -105,9 +121,65 @@ test('browser recipes require every form field and a separate saved-value verifi
   const ui = { authenticatedSelector: '#account', create: recipe(), update: recipe(),
     cancel: { ...recipe(), cancelledSelector: '#status', cancelledText: 'Cancelled' } };
   validateRecipes(ui);
+  validateRecipes({authenticatedSelector:'#account', create:recipe()}, ['create']);
+  assert.throws(() => validateRecipes({authenticatedSelector:'#account', create:recipe()}), /update/);
   delete ui.create.verify.endTime;
   assert.throws(() => validateRecipes(ui), /endTime/);
   assert.throws(() => validateRecipes({}), /setup is incomplete/);
+});
+
+test('Facebook labels survive character counters and nested autocomplete options remain unique', async () => {
+  const context = {};
+  runInNewContext(await readFile(new URL('../tools/facebook-sync/selectors.js', import.meta.url), 'utf8'), context);
+  const input = { labels:[{innerText:'Event name\n27/100'}],getAttribute:()=>null };
+  const other = { labels:[{innerText:'Start date'}],getAttribute:()=>null };
+  const root = {querySelectorAll:()=>[input,other],getElementById:()=>null};
+  assert.deepEqual(Array.from(context.LCCCSelectors.query(root,'label=Event name')), [input]);
+  const inner = {innerText:'Just use "Peak"',contains:()=>false};
+  const outer = {innerText:'Just use "Peak"',contains:el=>el===inner};
+  root.querySelectorAll = ()=>[outer,inner];
+  assert.deepEqual(Array.from(context.LCCCSelectors.query(root,'option=Just use "Peak"')), [outer]);
+  root.querySelectorAll = () => [{innerText:'Event canceled',contains:()=>false},{innerText:'Delete event',contains:()=>false}];
+  assert.equal(context.LCCCSelectors.query(root,'cancelled-status').length, 1);
+});
+
+test('date widgets receive their input render before blur commits the saved value', async () => {
+  class Input {
+    constructor() { this.current='Nov 12, 2026'; this.buffer=this.current; this.persisted=this.current; }
+    get value() { return this.current; }
+    set value(value) { this.current=value; }
+    getClientRects() { return [1]; }
+    focus() {}
+    dispatchEvent(event) { if(event.type==='input') { const value=this.value; setTimeout(()=>{this.buffer=value;},10); } }
+    blur() { this.persisted=this.buffer; }
+  }
+  const date=new Input();
+  const account={getClientRects:()=>[1]};
+  const zone={value:'MST',getClientRects:()=>[1]};
+  let receive;
+  const context={setTimeout,Date,Event:class {constructor(type){this.type=type;}},
+    Intl:{DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'America/Denver'})})},
+    location:{origin:'https://www.facebook.com',pathname:'/events/create/'},getComputedStyle:()=>({visibility:'visible'}),
+    document:{querySelectorAll:selector=>({'#date':[date],'#account':[account],'#zone':[zone]})[selector]||[]},
+    chrome:{runtime:{id:'extension',onMessage:{addListener:listener=>{receive=listener;}}}}};
+  runInNewContext(await readFile(new URL('../tools/facebook-sync/selectors.js',import.meta.url),'utf8'),context);
+  runInNewContext(await readFile(new URL('../tools/facebook-sync/content.js',import.meta.url),'utf8'),context);
+  const response=await new Promise(resolve=>receive({scope:'lccc-event-sync',command:'prepare',fields:['startDate'],
+    ui:{authenticatedSelector:'#account',create:{open:[],fields:{startDate:'#date'},timeZoneSelector:'#zone',timeZoneText:'MST'}},
+    action:{kind:'create',data:{startDate:'Nov 21, 2026'}}},{id:'extension'},resolve));
+  assert.equal(response.ok,true);
+  assert.equal(date.persisted,'Nov 21, 2026');
+  const wrongZone=await new Promise(resolve=>receive({scope:'lccc-event-sync',command:'prepare',fields:['startDate'],
+    ui:{authenticatedSelector:'#account',create:{open:[],fields:{startDate:'#date'},timeZoneSelector:'#zone',timeZoneText:'MDT'}},
+    action:{kind:'create',data:{startDate:'Nov 21, 2026'}}},{id:'extension'},resolve));
+  assert.equal(wrongZone.ok,false);
+  assert.match(wrongZone.error,/Mountain Time/);
+  date.blur=()=>{date.current='Nov 12, 2026';};
+  const rejected=await new Promise(resolve=>receive({scope:'lccc-event-sync',command:'prepare',fields:['startDate'],
+    ui:{authenticatedSelector:'#account',create:{open:[],fields:{startDate:'#date'},timeZoneSelector:'#zone',timeZoneText:'MST'}},
+    action:{kind:'create',data:{startDate:'Nov 22, 2026'}}},{id:'extension'},resolve));
+  assert.equal(rejected.ok,false);
+  assert.match(rejected.error,/rejected startDate/);
 });
 
 test('extension permissions do not include cookies, passwords, remote code, or broad web access', async () => {

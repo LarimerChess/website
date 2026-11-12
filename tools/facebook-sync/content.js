@@ -2,13 +2,13 @@
   if (globalThis.lcccEventSyncInstalled) return;
   globalThis.lcccEventSyncInstalled = true;
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+  const { clean, query } = globalThis.LCCCSelectors;
   const visible = el => !!el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
 
   async function element(selector) {
     const deadline = Date.now() + 12000;
     do {
-      const matches = [...document.querySelectorAll(selector)].filter(visible);
+      const matches = query(document, selector).filter(visible);
       if (matches.length > 1) throw new Error('A Facebook control is ambiguous. Open setup to inspect it.');
       if (matches.length === 1) return matches[0];
       await pause(150);
@@ -49,22 +49,30 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    // Date/time widgets commit their React state on blur, after the input render.
+    await pause(150);
     el.blur();
+    await pause(250);
   }
+
+  const expand = (template, data) => template.replace(/\{(\w+)\}/g, (_, key) => {
+    if (!(key in data)) throw new Error('An event form template field is invalid.');
+    return data[key];
+  });
 
   async function steps(list, data, ui) {
     for (const step of list || []) {
       await guard(ui);
-      const el = await element(step.selector);
+      const selector = expand(step.selector, data);
+      if (step.ifPresent && !query(document, selector).some(visible)) continue;
+      const el = await element(selector);
       if (step.action === 'click') el.click();
-      else if (step.action === 'fill') await fill(step.selector, step.value.replace(/\{(\w+)\}/g, (_, key) => {
-        if (!(key in data)) throw new Error('An event form template field is invalid.');
-        return data[key];
-      }));
+      else if (step.action === 'fill') await fill(selector, expand(step.value, data));
       else if (step.action === 'press') {
         el.dispatchEvent(new KeyboardEvent('keydown', { key: step.value, bubbles: true }));
         el.dispatchEvent(new KeyboardEvent('keyup', { key: step.value, bubbles: true }));
       }
+      await pause(300);
     }
   }
 
@@ -79,6 +87,7 @@
     if (message.command === 'inspect') {
       return [...document.querySelectorAll('input,textarea,button,[role],[contenteditable="true"]')].filter(visible).map(el => ({
         tag: el.tagName, id: el.id, role: el.getAttribute('role'), label: el.getAttribute('aria-label'),
+        labels: [...(el.labels || [])].map(label => clean(label.innerText)),
         placeholder: el.getAttribute('placeholder'), text: el.matches('input,textarea,[contenteditable]') ? '' : el.innerText?.slice(0, 120),
       })).slice(0, 300);
     }
@@ -88,21 +97,31 @@
       if (action.kind !== 'create') {
         await group(recipe.groupSelector, groupUrl);
         await steps(recipe.identify, action.data, ui);
-        if (!action.adopt && !text(await element(recipe.identitySelector)).includes(action.data.marker)) {
+        if (!action.adopt && !text(await element(expand(recipe.identitySelector, action.data))).includes(action.data.marker)) {
           throw new Error('This Facebook event has a different calendar reference.');
         }
       }
       await steps(recipe.open, action.data, ui);
       if (action.kind !== 'cancel') {
-        if (clean(text(await element(recipe.timeZoneSelector))) !== clean(recipe.timeZoneText)) {
+        if (recipe.formGroupSelector && !clean(text(await element(recipe.formGroupSelector))).includes(recipe.formGroupText)) {
+          throw new Error('This Facebook form belongs to a different group.');
+        }
+        for (const field of fields) {
+          if (clean(text(await element(recipe.fields[field]))) === clean(action.data[field])) continue;
+          await fill(recipe.fields[field], action.data[field]);
+          await steps(recipe.afterFill?.[field], action.data, ui);
+        }
+        const zones = query(document, recipe.timeZoneSelector).filter(visible);
+        if (!zones.length || zones.some(el => clean(text(el)) !== clean(expand(recipe.timeZoneText, action.data)))) {
           throw new Error('Facebook is not showing the configured Mountain Time zone.');
         }
-        for (const field of fields) await fill(recipe.fields[field], action.data[field]);
         for (const field of fields) {
           if (clean(text(await element(recipe.fields[field]))) !== clean(action.data[field])) {
             throw new Error(`Facebook rejected ${field}; the event was not submitted.`);
           }
         }
+      } else if (recipe.cancelChoiceSelector && !(await element(recipe.cancelChoiceSelector)).checked) {
+        throw new Error('Facebook has not selected cancellation. The event was not submitted.');
       }
       return { prepared: true };
     }
@@ -117,7 +136,8 @@
       await group(recipe.groupSelector, groupUrl);
       await steps(recipe.read, action.data, ui);
       if (action.kind === 'cancel') {
-        if (clean(text(await element(recipe.cancelledSelector))) !== clean(recipe.cancelledText)) throw new Error('Facebook did not confirm cancellation.');
+        const status = clean(text(await element(recipe.cancelledSelector)));
+        if (recipe.cancelledText === 'cancelled-status' ? !/^(?:event )?cancel(?:ed|led)$/i.test(status) : status !== clean(recipe.cancelledText)) throw new Error('Facebook did not confirm cancellation.');
       } else {
         for (const field of fields) {
           if (clean(text(await element(recipe.verify[field]))) !== clean(action.data[field])) throw new Error(`Saved Facebook ${field} differs from the calendar.`);

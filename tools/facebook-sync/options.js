@@ -1,3 +1,4 @@
+import { facebookUI } from './facebook-ui.js';
 const $ = id => document.getElementById(id);
 let current = {};
 async function request(command, extra = {}) {
@@ -15,7 +16,7 @@ async function refresh() {
   $('horizon').value = config.daysAhead || 30;
   $('auto').checked = !!config.auto;
   $('auto').disabled = !config.pilotVerified;
-  $('recipes').value = JSON.stringify(config.ui || { verified: false, authenticatedSelector: null, create: null, update: null, cancel: null }, null, 2);
+  $('recipes').value = JSON.stringify(config.ui || facebookUI, null, 2);
   $('pending').textContent = state?.pending ? `${state.pending.kind}: ${state.pending.data.title} (${state.pending.data.start})` : 'No pending submission.';
   $('status').textContent = lastError || '';
   const { controls = [] } = await chrome.storage.local.get('controls');

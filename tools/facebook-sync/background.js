@@ -1,4 +1,4 @@
-import { SOURCE, FORM_FIELDS, emptyState, validateState, validateFeed, plan, execute, validateRecipes, isGroupUrl, isEventUrl, formData } from './core.js';
+import { SOURCE, FORM_FIELDS, emptyState, validateState, validateFeed, plan, execute, validateRecipes, isGroupUrl, isEventUrl, formData, trustedExtensionSender } from './core.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const settings = async () => {
@@ -44,7 +44,7 @@ async function send(tabId, message) {
   await ready(tabId);
   const tab = await chrome.tabs.get(tabId);
   if (!tab.url?.startsWith('https://www.facebook.com/')) throw new Error('Facebook navigated outside its expected address.');
-  await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['selectors.js', 'content.js'] });
   const response = await chrome.tabs.sendMessage(tabId, { ...message, scope: 'lccc-event-sync' });
   if (!response?.ok) throw new Error(response?.error || 'Facebook stopped responding. Inspect the pending submission.');
   return response.value;
@@ -129,8 +129,8 @@ async function command(message) {
   }
   if (message.command === 'recover') {
     if (!state.pending || !isEventUrl(message.url)) throw new Error('Enter the saved event URL for the pending submission.');
-    validateRecipes(config.ui);
     const action = state.pending;
+    validateRecipes(config.ui, [action.kind]);
     if (action.kind !== 'create' && message.url !== action.url) throw new Error('The recovery URL must match the pending event.');
     const tab = await chrome.tabs.create({ url: message.url, active: true });
     await chrome.storage.local.set({ lastTabId: tab.id });
@@ -139,16 +139,18 @@ async function command(message) {
       await send(tab.id, { command: 'verify', action, ui: config.ui, groupUrl: config.groupUrl, fields: FORM_FIELDS });
       return { url: message.url };
     }, save, 1);
+    config.pilotVerified = true;
+    await chrome.storage.local.set({ config, lastRun: new Date().toISOString() });
     await chrome.storage.local.set({ lastError: '' });
     return { recovered: true };
   }
   const feed = await source();
   const actions = plan(feed, state, config.groupUrl, new Date(), config.daysAhead || 30);
   if (message.command === 'preview') return { actions, generatedAt: feed.generatedAt };
-  validateRecipes(config.ui);
   if (message.command === 'prepare') {
     const action = actions.find(value => !message.eventId || value.data.id === message.eventId);
     if (!action) return { message: 'No matching change is needed.' };
+    validateRecipes(config.ui, [action.kind]);
     return browserAction(action, config, state, true);
   }
   if (message.command === 'apply' || message.command === 'adopt') {
@@ -162,6 +164,7 @@ async function command(message) {
       if (Object.values(state.events).some(receipt => receipt.url === message.url)) throw new Error('This Facebook event is already linked to a different occurrence.');
       selected = [{ kind: 'update', data: formData(row), url: message.url, adopt: true }];
     }
+    validateRecipes(config.ui, selected.slice(0, message.automatic ? 3 : 1).map(action => action.kind));
     await execute(selected, state, action => browserAction(action, config, state), save, message.automatic ? 3 : 1);
     if (selected.length) {
       config.pilotVerified = true;
@@ -191,7 +194,7 @@ async function recordError(error) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || sender.tab) return;
+  if (!trustedExtensionSender(sender, chrome.runtime.id)) return;
   run(message).then(async value => {
     if (['apply', 'adopt', 'recover', 'clear-pending'].includes(message.command)) await chrome.action.setBadgeText({ text: '' });
     respond({ ok: true, value });

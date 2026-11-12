@@ -3,6 +3,8 @@ export const CALENDAR = 'c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e3
 export const isEventUrl = value => /^https:\/\/www\.facebook\.com\/events\/\d+\/$/.test(value);
 export const isGroupUrl = value => /^https:\/\/www\.facebook\.com\/groups\/[a-zA-Z0-9._-]+\/$/.test(value);
 export const FORM_FIELDS = ['title', 'startDate', 'startTime', 'endDate', 'endTime', 'location', 'body'];
+export const trustedExtensionSender = (sender, id) => sender.id === id
+  && typeof sender.url === 'string' && sender.url.startsWith(`chrome-extension://${id}/`);
 
 export function validateFeed(feed, now = new Date()) {
   const age = +now - Date.parse(feed?.generatedAt);
@@ -28,12 +30,14 @@ export function validateFeed(feed, now = new Date()) {
 
 export function formData(row) {
   const date = value => new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric',
   }).format(new Date(value));
   const time = value => new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: true,
   }).format(new Date(value));
-  return { ...row, startDate: date(row.start), startTime: time(row.start), endDate: date(row.end), endTime: time(row.end),
+  const timeZone = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'short' })
+    .formatToParts(new Date(row.start)).find(part => part.type === 'timeZoneName').value;
+  return { ...row, timeZone, startDate: date(row.start), startTime: time(row.start), endDate: date(row.end), endTime: time(row.end),
     body: `${row.description}\n\nCalendar reference: ${row.marker}` };
 }
 
@@ -84,14 +88,14 @@ export function plan(feed, state, groupUrl, now = new Date(), daysAhead = 30) {
     || a.data.start.localeCompare(b.data.start) || a.data.id.localeCompare(b.data.id));
 }
 
-export function validateRecipes(ui) {
+export function validateRecipes(ui, kinds = ['create', 'update', 'cancel']) {
   if (!ui?.authenticatedSelector) throw new Error('Facebook form setup is incomplete. Inspect the signed-in group first.');
-  for (const kind of ['create', 'update', 'cancel']) {
+  for (const kind of new Set(kinds)) {
     const recipe = ui[kind];
     if (!recipe || !Array.isArray(recipe.open) || !Array.isArray(recipe.commit) || !recipe.commit.length || !recipe.groupSelector) {
       throw new Error(`The Facebook ${kind} form has not been configured.`);
     }
-    for (const step of [...recipe.open, ...recipe.commit, ...(recipe.read || []), ...(recipe.identify || [])]) {
+    for (const step of [...recipe.open, ...recipe.commit, ...(recipe.read || []), ...(recipe.identify || []), ...Object.values(recipe.afterFill || {}).flat()]) {
       if (!['click', 'fill', 'press', 'wait'].includes(step.action) || !step.selector
           || (['fill', 'press'].includes(step.action) && typeof step.value !== 'string')) throw new Error('A Facebook form step is invalid.');
     }
