@@ -86,7 +86,7 @@ async function browserAction(action, config, state, prepareOnly = false) {
   await delay(2000);
   await navigate(tab.id, saved);
   await send(tab.id, { ...common, command: 'verify' });
-  if (config.auto) {
+  if (config.auto || config.closeOnSuccess) {
     const wasActive = (await chrome.tabs.get(tab.id)).active;
     await chrome.tabs.remove(tab.id);
     if (wasActive && previousTab) {
@@ -172,14 +172,15 @@ async function command(message) {
       if (Object.values(state.events).some(receipt => receipt.url === message.url)) throw new Error('This Facebook event is already linked to a different occurrence.');
       selected = [{ kind: 'update', data: formData(row), url: message.url, adopt: true }];
     }
-    validateRecipes(config.ui, selected.slice(0, message.automatic ? 3 : 1).map(action => action.kind));
-    await execute(selected, state, action => browserAction(action, config, state), save, message.automatic ? 3 : 1);
+    const limit = message.automatic || message.batch ? 3 : 1;
+    validateRecipes(config.ui, selected.slice(0, limit).map(action => action.kind));
+    await execute(selected, state, action => browserAction(action, { ...config, closeOnSuccess: !!message.batch }, state), save, limit);
     if (selected.length) {
       config.pilotVerified = true;
       await chrome.storage.local.set({ config });
     }
     await chrome.storage.local.set({ lastRun: new Date().toISOString(), lastError: '' });
-    return { applied: Math.min(selected.length, message.automatic ? 3 : 1) };
+    return { applied: Math.min(selected.length, limit) };
   }
   throw new Error('Unknown extension command.');
 }

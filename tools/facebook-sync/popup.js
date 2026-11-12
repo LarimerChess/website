@@ -1,5 +1,11 @@
+import { syncNow } from './manual-sync.js';
 const $ = id => document.getElementById(id);
 let actions = [];
+const syncRequested = new URLSearchParams(location.search).get('sync') === '1';
+if (syncRequested) {
+  document.body.classList.add('sync-page');
+  history.replaceState(null, '', location.pathname);
+}
 async function send(command, extra = {}) {
   const response = await chrome.runtime.sendMessage({ command, ...extra });
   if (!response?.ok) throw new Error(response?.error || 'The extension stopped responding. Open its service worker log.');
@@ -36,6 +42,7 @@ async function preview() {
   show();
 }
 $('preview').onclick = () => task(preview);
+$('sync-now').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?sync=1') });
 $('occurrence').onchange = show;
 $('setup').onclick = () => chrome.runtime.openOptionsPage();
 $('prepare').onclick = () => task(async () => {
@@ -65,3 +72,11 @@ await task(async () => {
     : lastError || (!config?.groupUrl ? 'Open setup to connect the club’s Facebook group.'
       : lastRun ? `Last successful sync: ${new Date(lastRun).toLocaleString()}` : 'Ready to preview the club calendar.');
 });
+if (syncRequested) {
+  await task(async () => {
+    const { applied } = await syncNow(send, ({ applied, remaining }) => {
+      $('status').textContent = `Synced ${applied} change(s). ${remaining} remaining. Keep this tab open until syncing finishes.`;
+    });
+    $('status').textContent = applied ? `Sync complete. ${applied} change(s) saved and verified.` : 'Already in sync. No changes needed.';
+  });
+}

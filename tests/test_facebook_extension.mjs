@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { facebookUI } from '../tools/facebook-sync/facebook-ui.js';
+import { syncNow } from '../tools/facebook-sync/manual-sync.js';
 import { CALENDAR, FORM_FIELDS, emptyState, validateFeed, validateState, formData, plan, execute, validateRecipes, trustedExtensionSender } from '../tools/facebook-sync/core.js';
 
 const now = new Date('2026-11-12T20:00:00Z');
@@ -13,6 +14,36 @@ const row = (extra = {}) => ({ id: 'series_20261116', status: 'active', title: '
 const feed = (rows = [row()]) => ({ schema: 1, calendarId: CALENDAR, generatedAt: now.toISOString(), events: rows });
 const receipt = (data = row()) => ({ data: formData(data), status: 'active', url: 'https://www.facebook.com/events/123456/' });
 const state = () => ({ ...emptyState(group), events: { [row().id]: receipt() } });
+
+test('one manual sync drains every pending batch and finishes without scheduling another run', async () => {
+  let remaining=7;
+  const progress=[];
+  const commands=[];
+  const result=await syncNow(async (command, options) => {
+    commands.push(command);
+    if(command==='preview') return {actions:Array.from({length:remaining},()=>({kind:'create'}))};
+    assert.equal(command,'apply');
+    assert.deepEqual(options,{batch:true});
+    const applied=Math.min(3,remaining);
+    remaining-=applied;
+    return {applied};
+  }, update=>progress.push(update));
+  assert.deepEqual(result,{applied:7});
+  assert.deepEqual(commands,['preview','apply','preview','apply','preview','apply','preview']);
+  assert.deepEqual(progress.at(-1),{applied:7,remaining:0});
+});
+
+test('manual sync leaves matched calendars alone and stops immediately after a failed batch', async () => {
+  assert.deepEqual(await syncNow(async command=>{assert.equal(command,'preview');return {actions:[]};}),{applied:0});
+  let calls=0;
+  await assert.rejects(syncNow(async command=>{
+    calls++;
+    if(command==='preview')return {actions:[{}]};
+    throw new Error('Saved Facebook startDate differs from the calendar.');
+  }),/Saved Facebook/);
+  assert.equal(calls,2);
+  await assert.rejects(syncNow(async command=>command==='preview'?{actions:[{}]}:{applied:0}),/no progress/);
+});
 
 test('fresh public feeds are accepted; stale, future, or incomplete feeds stop syncing', () => {
   validateFeed(feed(), now);
