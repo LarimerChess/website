@@ -35,5 +35,23 @@
     },
     "previous_title": "Third Saturday Slow",
     "end_time": "23:00"
+  },
+  {
+    "calendar": "club",
+    "event_id": "3clq7u8gubio3ae7hinops7ro0",
+    "title": "First Saturday Classic",
+    "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nWe skip weekends with major Colorado tournaments. Check the event page at https://larimerchess.org/events/first-saturday-classic/ for available dates.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
+    "metadata": {
+      "organizer": "Larimer County Chess Club",
+      "format": "tournament",
+      "ages": "all",
+      "rated": "yes",
+      "cost": "paid",
+      "reduced": "youth",
+      "price": "17",
+      "speed": "regular,quick",
+      "pairing": "swiss",
+      "rounds": "4"
+    }
   }
 ]

@@ -1,12 +1,23 @@
 name: Sync calendars
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/sync_tournaments.py
+      - scripts/sync_tournament_conflicts.py
+      - scripts/update_calendar.py
+      - .github/workflows/sync-calendars.yml
   schedule:
     - cron: "15 13 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: sync-calendar-sources
+  cancel-in-progress: false
 
 jobs:
   sync:

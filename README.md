@@ -37,7 +37,7 @@ Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensio
 | Update calendar | hourly, and when the managed description source changes | scripts/sync_event_descriptions.py, update_calendar.py, then build_pages.py; checks saved tournament controls | LCCC_GOOGLE_CALENDAR_TOKEN, LCCC_GOOGLE_CALENDAR_READ_TOKEN, LCCC_GOOGLE_FIREBASE_TOKEN |
 | Results | hourly | scripts/rating_check.mjs, build_results.py, and build_pages.py | LCCC_GOOGLE_GMAIL_SEND_TOKEN, LCCC_TD_EMAILS |
 | Archive tournaments | daily, 10:30, 11:30, and 12:30 UTC | scripts/archive_tournaments.py, then again with --clear | LCCC_GOOGLE_SHEETS_TOKEN, LCCC_GOOGLE_FIREBASE_TOKEN |
-| Sync calendars | daily, 13:15 UTC | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py, and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
+| Sync calendars | daily, 13:15 UTC, and when tournament sync code changes | scripts/sync_grandslam.py, sync_chessmates.py, sync_tournaments.py (including club weekend conflicts), and sync_evrpd.py | LCCC_GOOGLE_CALENDAR_TOKEN |
 | TD expirations | Mondays | scripts/td_expirations.py | USCHESS_API_KEY, LCCC_JUNIOR_TD_IDS, LCCC_GOOGLE_GMAIL_SEND_TOKEN |
 | Date pages | each push that changes a page | build_pages.py, for the sitemap's lastmod dates | |
 | Docs repo is private | hourly | fails if the docs repo can be seen | |
@@ -54,6 +54,8 @@ Monthly player totals can be fixed in prices.json's monthly_totals. build_pages.
 The Action also checks saved time controls for the managed events' current and future tournaments. A different saved value fails the check for the TD to inspect; it never relabels games already played or changes section overrides.
 
 The Google tokens' secrets are each token's whole JSON file. scripts/google_auth.py makes them, signed in as president@larimerchess.org: --calendar-read, --calendar, --sheets, --firebase, or --gmail-send. LCCC_TD_EMAILS is JSON by US Chess ID. Junior TDs are minors, so their IDs are only in LCCC_JUNIOR_TD_IDS, never in the repo. Action logs are public: nothing may print an address or a junior TD.
+
+The tournament sync preserves each listing's city in Calendar metadata. Multi-day tournaments at regular or dual-rated time controls are marked rated even without rating keywords. It also cancels individual future club tournament dates on the same weekend as a listed multi-day tournament, and restores only its own cancellations when the conflict disappears. It leaves classes, casual play, and manual cancellations alone. A private calendar event dated January 1, 1970 stores cancellation receipts so sparse Google tombstones can be restored; do not delete it. The hourly calendar import then regenerates the public event data and pages.
 
 ## Running scripts locally
 
