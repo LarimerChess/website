@@ -33,7 +33,7 @@ For a site that shows only your calendar, do What you need through step 5, then 
 - [ ] DOMAIN in scripts/google_auth.py (gmail.com for a personal Google account)
 - [ ] Time zone and state changed, if not Colorado
 - [ ] Home, scholastic, privacy, events, and minutes pages rewritten
-- [ ] share.png replaced
+- [ ] Logo, icons, share image, social avatar, and web manifest updated
 - [ ] ratings.json and rated-dates.json are {}, events.json is []
 - [ ] Tests that name this club or its events updated
 - [ ] Credit to the Larimer County Chess Club's site added (CC BY 4.0)

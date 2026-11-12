@@ -98,7 +98,7 @@ These settings take your values:
 Then:
 
 1. Rewrite the pages' words for your club: index.html (home), scholastic/, privacy/, events/index.html's introduction, and minutes/index.html.
-2. Replace share.png, the picture link previews show. The knight icons (favicon.svg, favicon.ico, apple-touch-icon.png, icon-512.png) may stay, with ICON-LICENSE.txt; the fonts may stay, with their OFL files.
+2. Replace the club branding in logo.svg, favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png, share.png, and social-avatar.png. Set your club name in site.webmanifest and update the share image description in the pages and scripts/build_pages.py. The fonts may stay with their OFL files.
 3. Set ratings.json and rated-dates.json to {}, and events.json to [] until the first calendar import.
 4. Update the tests that name this club or its events (tests/pages, tests/fixtures, and the tests that read them) as the checks in step 9 report them.
 5. Run python scripts/sync_assets.py after changing style.css or any page's script, and the checks in the README before each push.

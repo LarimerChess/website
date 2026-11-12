@@ -534,9 +534,10 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
   <title>{escaped(title)}</title>
   <meta name="description" content="{html.escape(description)}">
   <link rel="canonical" href="{url}">
-  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="{CLUB}">
   <meta property="og:title" content="{html.escape(title)}">
@@ -545,7 +546,7 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
   <meta property="og:image" content="{SITE}/share.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
+  <meta property="og:image:alt" content="Larimer County Chess Club seal beside the club name, Fort Collins, Colorado, and larimerchess.org.">
   <meta name="twitter:card" content="summary_large_image">{head}
   <link rel="preload" href="{up}fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="{up}fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -556,7 +557,7 @@ def page_html(title, description, url, main, head="", scripts="", depth=2, curre
   <a class="skip-link" href="#main">Skip to main content</a>
   <nav class="site-nav" aria-label="Main">
     <div class="wrap">
-      <a class="brand" href="/"><span aria-hidden="true">♞ </span>{CLUB}</a>
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" width="20" height="20">{CLUB}</a>
       <ul>
 {nav}
       </ul>

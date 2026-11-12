@@ -7,9 +7,10 @@
   <title>Alley Cat Quad</title>
   <meta name="description" content="Alley Cat Quad, a past event of the Larimer County Chess Club in Fort Collins, Colorado.">
   <link rel="canonical" href="https://larimerchess.org/events/alley-cat-quad/">
-  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Larimer County Chess Club">
   <meta property="og:title" content="Alley Cat Quad">
@@ -18,7 +19,7 @@
   <meta property="og:image" content="https://larimerchess.org/share.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
+  <meta property="og:image:alt" content="Larimer County Chess Club seal beside the club name, Fort Collins, Colorado, and larimerchess.org.">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/json" id="last-event">{"title": "Alley Cat Quad", "calendar": "club", "organizer": "Larimer County Chess Club", "tags": ["tournament", "all-ages", "club", "rated", "free", "regular", "quick", "invitational"], "url": "", "price": "", "pairing": "quad", "rounds": "", "page": "/events/alley-cat-quad/", "start": "2026-10-10T10:00:00-06:00", "end": "2026-10-10T14:30:00-06:00", "allDay": false, "location": "Alleycat Coffee House, 120 1/2 W Laurel St, Fort Collins, CO 80524, USA", "place": {"name": "Alleycat Coffee House", "street": "120 1/2 W Laurel St", "city": "Fort Collins", "region": "CO", "zip": "80524"}, "city": "Fort Collins", "description": "Cost: free.\nTime control: G/30;+10 (30 minutes per player, plus 10 seconds added after each move). Dual rated, regular and quick.\n\nAn invitational quad: four players, three rounds, and everyone plays everyone. Registration is closed; the tournament director invites the players.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 11:30 AM\n• Round 3: 1:00 PM\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nAt the Alleycat Coffee House on Laurel Street in Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"}</script>
   <link rel="preload" href="../../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -93,6 +94,18 @@ a { color: var(--accent); }
     repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 48px 48px;
 }
 .hero .wrap { background: var(--bg); padding: 32px 16px; }
+.hero-brand {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+.hero-brand img { display: block; width: 100%; height: auto; }
+@media (max-width: 600px) {
+  .hero { padding: 32px 0; }
+  .hero-brand { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .hero-brand img { width: 104px; }
+}
 .kicker { color: var(--muted); margin: 0; font-size: 14px; }
 .hero h1 { font-size: clamp(36px, 7vw, 60px); margin: 8px 0 12px; }
 .lede { font-size: 20px; color: var(--muted); max-width: 36em; }
@@ -280,7 +293,13 @@ html { scroll-padding-top: var(--nav-height, 80px); }
   padding-bottom: 12px;
 }
 .site-nav a { color: var(--fg); text-decoration: none; }
-.site-nav .brand { font: 600 18px/1.2 Fraunces, Georgia, serif; }
+.site-nav .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 18px/1.2 Fraunces, Georgia, serif;
+}
+.site-nav .brand img { flex: none; }
 .site-nav ul { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
 .site-nav a:hover, .site-nav a[aria-current] { color: var(--accent); }
 .site-nav ul a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
@@ -643,7 +662,7 @@ section.td-table td { white-space: nowrap; }
   <a class="skip-link" href="#main">Skip to main content</a>
   <nav class="site-nav" aria-label="Main">
     <div class="wrap">
-      <a class="brand" href="/"><span aria-hidden="true">♞ </span>Larimer County Chess Club</a>
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" width="20" height="20">Larimer County Chess Club</a>
       <ul>
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>

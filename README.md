@@ -96,4 +96,4 @@ A fork can run another club's site. [docs/deploying.md](docs/deploying.md) says 
 
 Licensed under [CC BY 4.0](LICENSE). This does not cover material the club does not own, such as third-party photos and logos, or the club's name and logo, which remain the club's.
 
-The knight in the site icon (favicon.svg, favicon.ico, apple-touch-icon.png, icon-512.png) is by Cburnett from Wikimedia Commons, used under the BSD license. See [ICON-LICENSE.txt](ICON-LICENSE.txt) for the notice and license text.
+The club seal appears in logo.svg, the home-screen icons, share.png, and social-avatar.png. The browser favicon uses the knight head from the seal.

@@ -7,9 +7,10 @@
   <title>Knightmare Arena Classical</title>
   <meta name="description" content="Knightmare Arena Classical, a past event of the Larimer County Chess Club in Fort Collins, Colorado.">
   <link rel="canonical" href="https://larimerchess.org/events/knightmare-arena-classical/">
-  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Larimer County Chess Club">
   <meta property="og:title" content="Knightmare Arena Classical">
@@ -18,7 +19,7 @@
   <meta property="og:image" content="https://larimerchess.org/share.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Larimer County Chess Club, Fort Collins, Colorado: Monday club nights and US Chess rated Saturday tournaments. larimerchess.org">
+  <meta property="og:image:alt" content="Larimer County Chess Club seal beside the club name, Fort Collins, Colorado, and larimerchess.org.">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/json" id="last-event">{"title": "Larimer County Chess Club Knightmare Arena Classical", "calendar": "club", "organizer": "Larimer County Chess Club", "tags": ["tournament", "all-ages", "club", "rated", "reduced-youth", "regular", "quick"], "url": "", "price": "18", "pairing": "arena", "rounds": "", "page": "/events/knightmare-arena-classical/", "start": "2026-10-31T10:00:00-06:00", "end": "2026-10-31T19:00:00-06:00", "allDay": false, "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA", "place": {"name": "Peak Community Church", "street": "500 Mathews St", "city": "Fort Collins", "region": "CO", "zip": "80524"}, "city": "Fort Collins", "description": "Cost: $18, the $15 entry plus $3 for US Chess rating, however many games you play. Players under 18 pay the reduced rate, $3. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (Classical), G/15;+15 (Rapid), or G/15;+15 against G/30;+30 (Blood Pact).\n\nA Halloween arena tournament in three sections. Play as many games as you can between 10:00 AM and 5:30 PM. The faster you finish, the more games you get.\n\nHow it works\n• Three sections: Classical at G/30;+30, Rapid at G/15;+15, and Blood Pact, where you play at G/15;+15 against an opponent at G/30;+30. Play in any of them, and switch whenever you like.\n• On the website's Pairings page, mark yourself available in the sections you want, then challenge anyone available there or wait for a challenge. When your game ends, report the result there and you're available again.\n• Win = 2 points, draw = 1, loss = 0, in every section.\n• Possessed: after two wins in a row, each further win is worth 3 points until you lose or draw.\n• Blood Pact: one of you plays at G/15;+15 against the other's G/30;+30, and the challenge says who. Win with the short clock and you get a bonus point. Those games are time odds, which US Chess can't rate, so they count for points here but aren't US Chess rated. Classical and Rapid games are.\n• You won't face the same opponent twice in a row.\n• No new games start after 5:30 PM. Games in progress finish and count.\n• Most points wins, overall and in each section.\n\nCome for the whole day or drop in for a few games. Take a break whenever you like; just mark yourself unavailable until you're back.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nUS Chess rated. Players of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"}</script>
   <link rel="preload" href="../../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -93,6 +94,18 @@ a { color: var(--accent); }
     repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 48px 48px;
 }
 .hero .wrap { background: var(--bg); padding: 32px 16px; }
+.hero-brand {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+.hero-brand img { display: block; width: 100%; height: auto; }
+@media (max-width: 600px) {
+  .hero { padding: 32px 0; }
+  .hero-brand { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .hero-brand img { width: 104px; }
+}
 .kicker { color: var(--muted); margin: 0; font-size: 14px; }
 .hero h1 { font-size: clamp(36px, 7vw, 60px); margin: 8px 0 12px; }
 .lede { font-size: 20px; color: var(--muted); max-width: 36em; }
@@ -280,7 +293,13 @@ html { scroll-padding-top: var(--nav-height, 80px); }
   padding-bottom: 12px;
 }
 .site-nav a { color: var(--fg); text-decoration: none; }
-.site-nav .brand { font: 600 18px/1.2 Fraunces, Georgia, serif; }
+.site-nav .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 18px/1.2 Fraunces, Georgia, serif;
+}
+.site-nav .brand img { flex: none; }
 .site-nav ul { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
 .site-nav a:hover, .site-nav a[aria-current] { color: var(--accent); }
 .site-nav ul a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
@@ -643,7 +662,7 @@ section.td-table td { white-space: nowrap; }
   <a class="skip-link" href="#main">Skip to main content</a>
   <nav class="site-nav" aria-label="Main">
     <div class="wrap">
-      <a class="brand" href="/"><span aria-hidden="true">♞ </span>Larimer County Chess Club</a>
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" width="20" height="20">Larimer County Chess Club</a>
       <ul>
         <li><a href="/events/">Events</a></li>
         <li><a href="/entries/">Entries</a></li>
