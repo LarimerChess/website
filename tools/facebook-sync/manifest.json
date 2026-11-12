@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Larimer Chess event sync",
+  "version": "0.1.0",
+  "description": "Sync the club's public calendar to Facebook Events using your signed-in browser.",
+  "permissions": ["storage", "alarms", "scripting", "activeTab"],
+  "host_permissions": ["https://www.facebook.com/*", "https://larimerchess.org/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Larimer Chess event sync" },
+  "options_page": "options.html"
+}

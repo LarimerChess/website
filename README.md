@@ -59,6 +59,8 @@ Update calendar runs the tournament sync with its existing Calendar write secret
 
 ## Running scripts locally
 
+The [Facebook event sync extension](tools/facebook-sync/README.md) runs in Chrome or Edge, using the signed-in Facebook session. Update calendar publishes its public club event feed with scripts/publish_facebook_feed.py and the existing read-only Calendar token. The extension's setup guide covers the form calibration and single-event pilot required before hourly browser sync is enabled.
+
 Tokens, the US Chess API key, and the other secrets' local copies are in ~/.config/lccc/, outside every repo. The Python scripts that use Google need the venv at ~/.local/share/lccc/venv, with pip install -r scripts/requirements.txt. Each script's opening comment gives its options; the ones that change a calendar or a spreadsheet take --dry-run. Offline, from the fixtures in tests/fixtures/:
 
 ```

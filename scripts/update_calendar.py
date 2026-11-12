@@ -217,7 +217,7 @@ def fetch(calendar_id, token, today):
             "timeMin": datetime.combine(today, datetime.min.time(), TZ).isoformat(),
             "timeMax": datetime.combine(today + timedelta(days=DAYS_AHEAD), datetime.min.time(), TZ).isoformat(),
             "maxResults": "2500",
-            "fields": "nextPageToken,items(status,visibility,summary,description,location,start,end,recurringEventId,extendedProperties)",
+            "fields": "nextPageToken,items(id,status,visibility,summary,description,location,start,end,recurringEventId,extendedProperties)",
         }
         if page:
             query["pageToken"] = page

@@ -1,0 +1,32 @@
+:root { color-scheme: light; font: 15px/1.55 system-ui, sans-serif; color: #26392e; background: #f8f7f2; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; }
+.popup { width: 430px; }
+.options { max-width: 760px; margin: 36px auto; }
+header { display: flex; align-items: center; gap: 15px; padding-bottom: 18px; border-bottom: 1px solid #d8ddd3; }
+.knight { font: 52px/1 Georgia, serif; color: #526b48; }
+.eyebrow { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: #64705f; }
+h1 { margin: 2px 0 0; font: 28px/1.2 Georgia, serif; }
+h2 { font: 22px/1.3 Georgia, serif; margin: 0 0 10px; }
+p { margin: 14px 0; }
+.muted, footer { font-size: 12px; color: #687267; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; font-size: 13px; border: 1px solid #aab7a3; border-radius: 5px; background: transparent; color: #26392e; padding: 9px 12px; cursor: pointer; }
+button:hover { background: #ebeee5; }
+button.primary { background: #405c37; color: #fff; border-color: #405c37; }
+button.primary:hover { background: #30492a; }
+button:disabled { opacity: .5; cursor: wait; }
+button.link { border: 0; padding: 4px 0; margin-right: 16px; text-decoration: underline; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #b3914c; outline-offset: 3px; }
+label { display: block; font-weight: 600; font-size: 13px; margin-top: 18px; margin-bottom: 6px; }
+input:not([type=checkbox]), select, textarea { display: block; width: 100%; padding: 10px; background: #fff; border: 1px solid #b9c2b2; border-radius: 4px; color: #26392e; font: inherit; }
+textarea { font: 12px/1.5 ui-monospace, monospace; }
+.check { display: flex; align-items: start; gap: 8px; font-weight: 400; }
+.check input { margin-top: 4px; }
+section { margin-top: 26px; padding-top: 22px; border-top: 1px solid #d8ddd3; }
+article { margin: 16px 0; }
+details { margin: 18px 0; }
+summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.55 system-ui, sans-serif; }
+footer { margin-top: 24px; }
+#status { overflow-wrap: anywhere; }

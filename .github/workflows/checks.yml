@@ -61,6 +61,12 @@ jobs:
       - name: Rating check tests
         if: success() || failure()
         run: node --test tests/test_rating_check.mjs
+      - name: Facebook extension tests and syntax
+        if: success() || failure()
+        run: |
+          node --test tests/test_facebook_extension.mjs
+          for f in tools/facebook-sync/*.js; do node --check "$f"; done
+          npx --no-install html-validate tools/facebook-sync/*.html
       - name: Pages (accessibility, filters, add to calendar, structured data, tournament and results pages)
         if: success() || failure()
         run: |

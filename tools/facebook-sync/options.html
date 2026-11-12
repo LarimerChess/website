@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Event sync setup</title><link rel="stylesheet" href="extension.css"></head>
+<body class="options">
+  <header><span class="knight" aria-hidden="true">♞</span><div><p class="eyebrow">Larimer County Chess Club</p><h1>Event sync setup</h1></div></header>
+  <p>The club calendar supplies the event details. This extension uses your existing Facebook login; it never reads or stores your password.</p>
+  <form id="settings">
+    <label for="group">Facebook group URL</label><input id="group" type="url" placeholder="https://www.facebook.com/groups/123456/" required>
+    <label for="horizon">Create events this many days ahead</label><input id="horizon" type="number" min="1" max="90" value="30" required>
+    <label class="check"><input id="auto" type="checkbox">Sync up to three changes hourly while this browser is open</label>
+    <p class="muted">Automatic sync requires a successful single-event pilot. New form settings require a new pilot.</p>
+    <details><summary>Facebook form setup and diagnostics</summary>
+      <p>Facebook changes its event forms. The selectors below must come from the signed-in group’s actual forms. Use <strong>Inspect this Facebook form</strong> in the toolbar popup after opening each form.</p>
+      <label for="recipes">Form recipes (JSON)</label><textarea id="recipes" rows="16" spellcheck="false"></textarea>
+      <p class="muted">Prepare an event from the toolbar before setting <code>verified</code> to <code>true</code>. Confirm Mountain Time, the host group, every date and time, the venue, and the full description. Publish one event, then enable hourly sync.</p>
+      <label for="controls">Last inspected controls (local only)</label><textarea id="controls" rows="10" readonly></textarea>
+    </details>
+    <button class="primary" type="submit">Save settings</button>
+  </form>
+  <p id="status" role="status"></p>
+  <section><h2>Link an existing Facebook event</h2>
+    <p>Use this for events that already exist, so the extension updates them rather than creating duplicates. The event’s title and dates must match the calendar before it can be linked.</p>
+    <label for="event-id">Google occurrence ID (from the preview)</label><input id="event-id" type="text">
+    <label for="event-url">Facebook event URL</label><input id="event-url" type="url" placeholder="https://www.facebook.com/events/123456/">
+    <button type="button" id="adopt">Link and sync this existing event</button>
+  </section>
+  <section><h2>Recover an interrupted sync</h2>
+    <p id="pending">No pending submission.</p>
+    <label for="recovery-url">If Facebook saved it, enter the event URL</label><input id="recovery-url" type="url" placeholder="https://www.facebook.com/events/123456/">
+    <button type="button" id="recover">Verify the saved event</button>
+    <label class="check"><input id="not-submitted" type="checkbox">I checked Facebook; the pending change was never submitted.</label>
+    <button type="button" id="clear">Discard the unsubmitted attempt</button>
+  </section>
+  <section><h2>Local sync receipts</h2><p>Keep a copy before removing this extension or changing browser profiles. These receipts prevent duplicate events.</p><button type="button" id="backup">Download receipts</button></section>
+  <footer>Google Calendar → GitHub Actions → this browser → Facebook</footer>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

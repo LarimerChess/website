@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Larimer Chess sync</title><link rel="stylesheet" href="extension.css"></head>
+<body class="popup">
+  <header><span class="knight" aria-hidden="true">♞</span><div><p class="eyebrow">Larimer County Chess Club</p><h1>Facebook events</h1></div></header>
+  <p id="status" role="status">Checking sync status…</p>
+  <div class="toolbar"><button type="button" id="preview" class="primary">Check for changes</button><button type="button" id="setup">Setup</button></div>
+  <section id="changes" hidden>
+    <label for="occurrence">Next calendar change</label><select id="occurrence"></select>
+    <article><h2 id="title">Upcoming event</h2><p id="when" class="muted"></p><p id="where"></p><details><summary>Event description and reference</summary><pre id="description"></pre><p class="muted">Google occurrence ID: <code id="google-id"></code></p></details></article>
+    <div class="toolbar"><button type="button" id="prepare">Prepare without publishing</button><button type="button" id="apply" class="primary">Sync this event</button></div>
+  </section>
+  <footer><button type="button" id="open-tab" class="link">Open Facebook sync tab</button><button type="button" id="inspect" class="link">Inspect this Facebook form</button><p class="muted">Google Calendar → Facebook · Mountain Time</p></footer>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
