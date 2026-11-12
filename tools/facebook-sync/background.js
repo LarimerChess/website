@@ -53,7 +53,9 @@ async function send(tabId, message) {
 async function browserAction(action, config, state, prepareOnly = false) {
   const target = action.kind === 'create' ? `${config.groupUrl}events/` : action.url;
   if (action.kind !== 'create' && !isEventUrl(target)) throw new Error('The saved Facebook event URL is invalid.');
-  const tab = await chrome.tabs.create({ url: target, active: prepareOnly || !config.auto });
+  // Facebook's date widgets do not reliably commit in an inactive tab.
+  const [previousTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await chrome.tabs.create({ url: target, active: true });
   await chrome.storage.local.set({ lastTabId: tab.id });
   if (!prepareOnly) {
     state.pending.tabId = tab.id;
@@ -84,7 +86,13 @@ async function browserAction(action, config, state, prepareOnly = false) {
   await delay(2000);
   await navigate(tab.id, saved);
   await send(tab.id, { ...common, command: 'verify' });
-  if (config.auto) await chrome.tabs.remove(tab.id);
+  if (config.auto) {
+    const wasActive = (await chrome.tabs.get(tab.id)).active;
+    await chrome.tabs.remove(tab.id);
+    if (wasActive && previousTab) {
+      try { await chrome.tabs.update(previousTab.id, { active: true }); } catch { /* The previous tab may have closed. */ }
+    }
+  }
   return { url: saved };
 }
 

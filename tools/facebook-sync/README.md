@@ -13,7 +13,7 @@ The publisher is deployed. The extension is installed for the club's [Facebook g
 5. Setup includes the captured club form recipes. Use **Prepare without publishing** for one event and inspect every field, including the host group, time zone, dates, venue, and full description. Inspect and update the recipes if Facebook changes its forms.
 6. Set the form recipe's `verified` value to `true` after preparation succeeds. Use **Sync this event** for one event. The extension reopens the saved event and checks every field before recording its URL.
 7. For events that already exist, use **Link an existing Facebook event** in Setup instead of creating duplicates. Linking verifies the existing title and dates before updating it, preserving its URL and responses. Expand **Event description and reference** in the preview to copy the Google occurrence ID.
-8. Enable hourly sync after the pilot succeeds. It applies up to three changes each hour while this browser profile is running. Sleep, a closed browser, or an expired Facebook session delays syncing.
+8. Enable hourly sync after the pilot succeeds. It applies up to three changes each hour while this browser profile is running. Facebook's date controls require an active tab, so sync briefly selects its Facebook tab, verifies the saved event, then closes it and returns to your previous tab. Sleep, a closed browser, or an expired Facebook session delays syncing.
 
 Use one browser profile as the sync owner. Another installation with an empty receipt history can create duplicates. Download receipts before removing the extension. No browser store publication is needed for the unpacked club installation.
 
