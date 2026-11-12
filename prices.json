@@ -44,8 +44,8 @@
       "applies": "2026-11",
       "kind": "month",
       "youth": 0,
-      "adult": 15.5,
-      "senior": 10.5
+      "adult": 16.0,
+      "senior": 11.0
     },
     {
       "applies": "2026-12",
@@ -65,8 +65,8 @@
       "applies": "2027-02",
       "kind": "month",
       "youth": 0,
-      "adult": 17.0,
-      "senior": 12.0
+      "adult": 16.5,
+      "senior": 11.5
     }
   ],
   "knightmare-arena-classical": [

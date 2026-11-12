@@ -1,23 +1,12 @@
 name: Sync calendars
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - scripts/sync_tournaments.py
-      - scripts/sync_tournament_conflicts.py
-      - scripts/update_calendar.py
-      - .github/workflows/sync-calendars.yml
   schedule:
     - cron: "15 13 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: sync-calendar-sources
-  cancel-in-progress: false
 
 jobs:
   sync:
@@ -32,10 +21,6 @@ jobs:
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
       - run: python scripts/sync_chessmates.py
-        if: success() || failure()
-        env:
-          LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
-      - run: python scripts/sync_tournaments.py
         if: success() || failure()
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
