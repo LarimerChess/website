@@ -1,30 +1,8 @@
 {
  "schema": 1,
  "calendarId": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
- "generatedAt": "2026-11-16T15:16:35.658923-07:00",
+ "generatedAt": "2026-11-16T21:38:29.844199-07:00",
  "events": [
-  {
-   "id": "gbef7h5591kbj1jo99l98bfqrk_20261117T003000Z",
-   "status": "active",
-   "title": "Chess for Beginners at Peak",
-   "description": "Cost: Free. No US Chess membership needed.\n\nAn hour for players new to chess, Mondays from 5:30 to 6:30 PM at Peak Community Church in Old Town Fort Collins, the hour before Monday Club Night. Learn the rules of chess and get ready to play in US Chess rated tournaments. Players of every age welcome. Just show up.\n\nWhen you're ready for rated games, stay for Monday Club Night at 6:30 PM. Rated games need a current US Chess membership. Join at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
-   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-   "start": "2026-11-16T17:30:00-07:00",
-   "end": "2026-11-16T18:30:00-07:00",
-   "marker": "LCCC-6d29c0582ca1283ba2579533",
-   "fingerprint": "3157ad9c8239f8eb6c7d32e26fc86eaabced5c7d34f1b1490ce7162005dd2a44"
-  },
-  {
-   "id": "5ok4vomkgvb6fui6csb1uignvi_20261117T013000Z",
-   "status": "active",
-   "title": "Monday Club Night at Peak",
-   "description": "Cost:\n• Adults: $17.50 for the whole month including rating, or $8 a night plus the rating fee\n• Seniors (65+): $12.50 for the whole month including rating, or $6 a night plus the rating fee\n• Under 18: the reduced rate, the rating fee only\nAdult and senior monthly prices include the rating fee. Players under 18 pay only the rating fee: $0.50 per night, or $0.50 for each scheduled Monday in a whole-month registration. Paying by card adds 2.5% + $0.50.\nTime control: G/60;+30 (60 minutes per player, with a 30-second increment on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
-   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-   "start": "2026-11-16T18:30:00-07:00",
-   "end": "2026-11-16T21:30:00-07:00",
-   "marker": "LCCC-d0106ba4de4f1af2159c1c63",
-   "fingerprint": "f2073a3e6d559b4f9c0a6dbf16f0154f3d612beab14185ca1f75c3aa6c654cc0"
-  },
   {
    "id": "20ioosbdu3gj7qtudlan91rirj_20261121T170000Z",
    "status": "active",
