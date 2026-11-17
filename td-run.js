@@ -40,6 +40,7 @@ let sectionChoiceKey = "";
 let workNumber = 1;
 let workParts = [];
 let previousSection = "";
+let withdrawalSaving = false;
 
 const hasRound = (r) => Boolean(r && (r.games.length || r.byes.length));
 const sectionPosted = (number, key) => {
@@ -79,7 +80,7 @@ const nameOf = (id) => {
 function forEngine(t) {
   return {
     format: t.format, sections: t.sections || [],
-    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "",
+    players: t.players.map((p) => ({ id: p.id, name: p.name, rating: p.rating, number: p.number, section: p.section || "", out: p.out,
       games: p.games, floor: p.floor, sweep: p.sweep, ...(p.byes ? { byes: p.byes } : {}),
       ...(p.zeroByes ? { zeroByes: p.zeroByes } : {}), ...(p.nights ? { nights: p.nights } : {}) })),
     rounds: t.rounds.map((r) => ({ games: r.games, byes: r.byes, out: r.out })),
@@ -300,14 +301,14 @@ function renderCheckin(t, parts, next) {
   runAttendance.replaceChildren(...active.flatMap((s) => {
     const movable = (p) => !quad && !s.extra && defs.length > 1 && !s.rounds.some((r) => r.games.some((g) => g.white === p.id || g.black === p.id)
       || r.byes.some((b) => b.id === p.id && Pairing.byeKind(b) === "bye"));
-    const choosing = s.players.some((p) => !p.out && movable(p));
+    const choosing = s.players.some((p) => !withdrawnAt(p, next) && movable(p));
     const table = Pairing.roundRobin(s);
     const scores = new Map(Pairing.standings(s).map((r) => [r.id, r.score]));
     const own = next - s.first + 1;
     // 28P: a player who lost the last round by forfeit is dropped unless the TD accepts their excuse.
     const forfeited = new Set((s.rounds[own - 2]?.games || []).flatMap((g) => [g.result === "0F-1F" || g.result === "0F-0F" ? g.white : null,
       g.result === "1F-0F" || g.result === "0F-0F" ? g.black : null]).filter(Boolean));
-    const rows = s.players.filter((p) => !p.out).map((p) => {
+    const rows = s.players.filter((p) => !withdrawnAt(p, next)).map((p) => {
       const byes = p.byes || [], zeros = p.zeroByes || [];
       const noShow = forfeited.has(p.id);
       // A player who entered single nights of a month plays only those.
@@ -392,10 +393,8 @@ const playing = (number) => Pairing.sections(forEngine(current)).filter((s) => s
 const severalSections = () => Pairing.sections(forEngine(current)).filter((s) => s.players.length).length > 1;
 
 const numberOf = (id) => current.players.find((p) => p.id === id)?.number ?? Infinity;
-const isWithdrawn = (id) => {
-  const out = current.players.find((p) => p.id === id)?.out;
-  return Boolean(out && out <= draft.number);
-};
+const withdrawnAt = (p, number) => Boolean(p?.out && p.out <= number);
+const isWithdrawn = (id) => withdrawnAt(current.players.find((p) => p.id === id), draft.number);
 
 /** The players of a draft's section who play this round, in number order. */
 function activeIn(s) {
@@ -450,14 +449,17 @@ function draftProblems() {
     const seen = new Set();
     const where = several ? ` (${s.name})` : "";
     const active = activeIn(s);
-    const placed = [...s.games.flatMap((g) => [g.white, g.black]), ...s.byes.map((b) => b.id)];
-    for (const id of placed) {
+    const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
+    const members = new Set((part?.players || []).map((p) => p.id));
+    const placed = [...s.games.flatMap((g) => [[g.white, false], [g.black, false]]),
+      ...s.byes.map((b) => [b.id, Pairing.byeKind(b) === "unplayed"])];
+    for (const [id, unplayed] of placed) {
       if (seen.has(id)) problems.push(`${nameOf(id)} is in the pairings twice.`);
-      else if (!active.includes(id)) problems.push(`${nameOf(id)}${where} ${isWithdrawn(id) ? "is withdrawn" : "plays in another section"}; take them out of these pairings.`);
+      else if (!members.has(id)) problems.push(`${nameOf(id)}${where} plays in another section; take them out of these pairings.`);
+      else if (isWithdrawn(id) && !unplayed) problems.push(`${nameOf(id)}${where} is withdrawn; use Bring back beside their entry to keep them in these pairings.`);
       seen.add(id);
     }
-    for (const id of active) if (!placed.includes(id)) problems.push(`${nameOf(id)}${where} isn't paired yet: add a board for them, or choose a round without a game.`);
-    const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
+    for (const id of active) if (!seen.has(id)) problems.push(`${nameOf(id)}${where} isn't paired yet: add a board for them, or choose a round without a game.`);
     if (part) problems.push(...byeProblemsIn(part, draft.number, s.games, s.byes).map((text) => (several ? `${s.name}: ${text}` : text)));
   }
   return [...new Set(problems)];
@@ -1177,10 +1179,47 @@ function roundsInWords(numbers) {
 const SWISS_HEADINGS = ["Median", "Solkoff", "Cumulative", "Opp. cumulative", "Performance", "Est. rating"];
 const QUAD_HEADINGS = ["Sonneborn-Berger", "Head-to-head", "Performance", "Est. rating"];
 
+/** The next unposted round of the player's main section, including a draft being edited. */
+function withdrawalRound(p) {
+  const part = Pairing.sections(forEngine(current)).find((s) => !s.extra && s.players.some((x) => x.id === p.id));
+  if (!part) return current.rounds.length + 1;
+  const work = sectionWork(part);
+  return work.number + (work.phase === "results" ? 1 : 0);
+}
+
+function withdrawalButton(p) {
+  const button = editButton(p.out ? "Bring back" : "Withdraw", ` ${p.name}`, `withdraw-${p.id}`, async () => {
+    if (withdrawalSaving) return;
+    const from = p.out ? "" : withdrawalRound(p);
+    if (from && !confirm(`Withdraw ${p.name} from round ${from} on? Their remaining rounds score zero (28P).`)) return;
+    const key = choice.value;
+    const [event, date] = keyParts();
+    button.disabled = withdrawalSaving = true;
+    try {
+      const result = await call("out", { event, date, id: p.id, from });
+      if (choice.value !== key) return;
+      if (result.ok) {
+        p.out = from || null;
+        current.rounds.forEach((r, i) => { r.out = current.players.filter((x) => withdrawnAt(x, i + 1)).map((x) => x.id); });
+        const checked = new Map([...runAttendance.querySelectorAll(".run-this-round")].map((s) => [`${s.dataset.section}|${s.dataset.id}`, s.value]));
+        renderRun();
+        for (const s of runAttendance.querySelectorAll(".run-this-round")) {
+          const value = checked.get(`${s.dataset.section}|${s.dataset.id}`);
+          if (value) s.value = value;
+        }
+        document.dispatchEvent(new CustomEvent("td-tournament", { detail: current }));
+      }
+      runStatus.textContent = deskStatus.textContent = result.message || result.error;
+    } finally {
+      button.disabled = withdrawalSaving = false;
+    }
+  });
+  return button;
+}
+
 function renderStandings() {
   if (!current?.rounds.length) return;
   document.dispatchEvent(new CustomEvent("td-tournament", { detail: current }));
-  const next = current.rounds.length + 1;
   const parts = Pairing.sections(forEngine(current)).filter((s) => s.players.length);
   const robins = parts.some(Pairing.roundRobin);
   runStandingsHint.textContent = [robins && "Each round robin, a quad too, is ranked by score, then Sonneborn-Berger, then the games between the tied players (34F).",
@@ -1199,19 +1238,7 @@ function renderStandings() {
       const cells = [r.place, name, r.rating ?? "Unrated", r.score, ...rounds(r.id), ...(quad ? [r.sonnebornBerger, r.headToHead ?? ""]
         : [r.median, r.solkoff, r.cumulative, r.opposition]), r.performance ?? "", r.estimate ?? ""];
       for (const text of cells) row.insertCell().textContent = text;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "td-action";
-      button.textContent = p?.out ? "Bring back" : "Withdraw";
-      button.append(hidden(` ${r.name}`));
-      button.addEventListener("click", async () => {
-        if (!p?.out && !confirm(`Withdraw ${r.name} from round ${next} on? Their remaining rounds score zero (28P).`)) return;
-        const [event, date] = keyParts();
-        const result = await call("out", { event, date, id: r.id, from: p?.out ? "" : next });
-        runStatus.textContent = result.message || result.error;
-        loadRun();
-      });
-      row.insertCell().append(button);
+      row.insertCell().append(withdrawalButton(p));
       return row;
     });
     const headings = ["Place", "Name", "Rating", "Score", ...s.rounds.map((_, i) => `Round ${i + 1}`), ...(quad ? QUAD_HEADINGS : SWISS_HEADINGS)];
@@ -1226,7 +1253,7 @@ function runBusy() {
   const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
   const checkingIn = !runRound.hidden && !runCheckin.hidden
     && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
-  return Boolean(field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || document.querySelector(".run-arena-sections-wrap").open
+  return Boolean(withdrawalSaving || field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || document.querySelector(".run-arena-sections-wrap").open
     || (!runStart.hidden && startEdited));
 }
 
@@ -1295,8 +1322,16 @@ document.querySelector(".run-sync").addEventListener("click", async () => {
 async function checkIn(number) {
   const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value, s.dataset.section]);
   const withdrawn = [...new Set(choicesMade.filter(([, v]) => v === "withdraw").map(([id]) => id))];
+  if (withdrawn.length && !confirm(`Withdraw ${andList.format(withdrawn.map(nameOf))} from round ${number} on? They will not be paired. Cancel to keep the check-in open.`)) return null;
   const [event, date] = keyParts();
-  for (const id of withdrawn) await call("out", { event, date, id, from: number });
+  for (const id of withdrawn) {
+    const result = await call("out", { event, date, id, from: number });
+    if (!result.ok) {
+      runStatus.textContent = result.error || "The withdrawal wasn't saved. Check in again before pairing.";
+      return null;
+    }
+    current.players.find((p) => p.id === id).out = number;
+  }
   return { choicesMade, withdrawn };
 }
 
@@ -1305,7 +1340,9 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
   if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play")) {
     return void refuse("Nobody is present to pair.", runStatus);
   }
-  const { choicesMade, withdrawn } = await checkIn(number);
+  const checked = await checkIn(number);
+  if (!checked) return;
+  const { choicesMade, withdrawn } = checked;
   const chose = (s, value) => choicesMade.filter(([, v, key]) => v === value && key === s.key).map(([id]) => id);
   const engine = forEngine(current);
   engine.rounds = engine.rounds.slice(0, number - 1);
@@ -1313,7 +1350,7 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
     halfByes: chose(s, "half"),
     zeroByes: chose(s, "zero"),
     absent: chose(s, "absent"),
-    out: withdrawn,
+    out: [...new Set([...withdrawn, ...current.players.filter((p) => withdrawnAt(p, number)).map((p) => p.id)])],
     coin: current.coin,
   }), workParts.map((s) => s.name));
   // A round robin's table pairs absent players too; their games are forfeits.
@@ -1324,7 +1361,6 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
     }
   }
   draft = { number, sections: sections.map(({ format, ...s }) => s) };
-  if (withdrawn.length) current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
   renderDraft();
 });
 
@@ -1332,8 +1368,9 @@ document.querySelector(".run-pair").addEventListener("click", async () => {
 // marked present; the others are unplayed, except in a round robin, where the TD gives them forfeits.
 document.querySelector(".run-by-hand").addEventListener("click", async () => {
   const number = workNumber;
-  const { choicesMade, withdrawn } = await checkIn(number);
-  current.players.forEach((p) => { if (withdrawn.includes(p.id)) p.out = number; });
+  const checked = await checkIn(number);
+  if (!checked) return;
+  const { choicesMade, withdrawn } = checked;
   const chosen = new Map(choicesMade.map(([id, v, key]) => [`${key}|${id}`, v]));
   const anyone = choicesMade.some(([, v]) => v === "play");
   draft = { number, sections: playing(number).map((s) => {

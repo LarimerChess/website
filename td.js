@@ -506,11 +506,25 @@ async function saveEntryByes(cell, e, menu) {
 // Keep the entry rows' byes in sync when the tournament loads or its recorded byes change.
 let entriesDrawn = null;
 
+function showEntryWithdrawal(wrap, entry) {
+  wrap.replaceChildren();
+  const t = loadedTournament?.key === choice.value ? loadedTournament : null;
+  const p = t?.players.find((player) => player.id === entry.id);
+  if (!p || t.format === "arena") return;
+  wrap.append(" ", Object.assign(document.createElement("span"), {
+    textContent: p.out ? `Withdrawn from round ${p.out}. ` : "Active. " }));
+  if (t.status !== "rated") wrap.append(withdrawalButton(p));
+}
+
 document.addEventListener("td-tournament", (event) => {
   loadedTournament = event.detail;
   showRegisterByes(true);
   if (entriesDrawn?.key === choice.value) {
-    entriesDrawn.entries.forEach((entry, i) => showEntryByes(tdTable.tBodies[0].rows[i].cells[4], entry));
+    entriesDrawn.entries.forEach((entry, i) => {
+      const row = tdTable.tBodies[0].rows[i];
+      showEntryByes(row.cells[4], entry);
+      showEntryWithdrawal(row.querySelector(".td-entry-withdrawal"), entry);
+    });
   }
 });
 
@@ -752,7 +766,9 @@ async function showDeskEntries(quiet = false) {
       deskStatus.textContent = result.message || result.error;
       showDeskEntries();
     });
-    row.insertCell().append(remove);
+    const withdrawal = Object.assign(document.createElement("span"), { className: "td-entry-withdrawal" });
+    showEntryWithdrawal(withdrawal, e);
+    row.insertCell().append(remove, withdrawal);
     return row;
   }));
   tdTable.hidden = !entries.length;

@@ -459,7 +459,7 @@ JSON.stringify(review) === JSON.stringify(["Open", "Under 1400"])
   ? pass("TD desk pairs round one in each section on its own, boards numbered within each")
   : fail(`TD desk two-section round one: ${JSON.stringify({ review, sectionGames, sectionByes })}`);
 await sectionDesk.select('select[aria-label="Under 1400 board 1 result"]', "1-0");
-await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standings").length === 2);
+await sectionDesk.waitForFunction(() => document.querySelectorAll(".run-standings").length === 2 && document.querySelector(".run-edit").hidden);
 const resulted = sectionCalls.find((c) => c.action === "result") || {};
 resulted.section === "Under 1400" && resulted.board === "1" && resulted.result === "1-0"
   ? pass("TD desk enters a result by section and board, with each section's standings") : fail(`TD desk result: ${JSON.stringify(resulted)}`);
