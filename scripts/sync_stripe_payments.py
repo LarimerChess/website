@@ -97,13 +97,25 @@ class Stripe:
 
 def intent_record(intent, config):
     """Verify standalone payments; preserve reversal facts for backend review."""
-    if intent.get("status") != "succeeded":
-        return None
     metadata = intent.get("metadata")
     intent_id = intent.get("id")
     if (not isinstance(metadata, dict) or metadata.get("lccc_checkout") != "payment_intent_v1"
             or not isinstance(intent_id, str) or not re.fullmatch(r"pi_[A-Za-z0-9]+", intent_id)):
         raise SyncError("A standalone payment failed source validation.")
+    state = intent.get("status")
+    if state != "succeeded":
+        if state not in ("processing", "requires_action", "requires_confirmation", "requires_capture",
+                         "requires_payment_method", "canceled"):
+            raise SyncError("A standalone payment has an unknown lifecycle state.")
+        amount = intent.get("amount")
+        if (type(amount) is not int or amount <= 0 or intent.get("currency") != config["currency"]
+                or intent.get("livemode") is not config["livemode"]):
+            raise SyncError("A standalone lifecycle record failed amount, currency, or mode validation.")
+        return {"sessionId": "", "paymentIntentId": intent_id,
+                "clientReferenceId": metadata.get("lccc_reference") or "",
+                "checkoutType": "payment_intent_status_v1", "kind": "basket_intent_status",
+                "amountCents": amount, "currency": intent["currency"], "livemode": intent["livemode"],
+                "created": intent.get("created"), "intentStatus": state}
     charge = intent.get("latest_charge")
     if (not isinstance(charge, dict) or charge.get("status") != "succeeded"
             or charge.get("payment_intent") != intent_id):
@@ -169,13 +181,16 @@ def send_records(endpoint, secret, records):
             or [r.get("sessionId") for r in results] != [r["sessionId"] for r in records]
             or any(not record["sessionId"] and result.get("paymentIntentId") != record["paymentIntentId"]
                    for record, result in zip(records, results))
-            or any(r.get("status") not in ("imported", "duplicate", "review", "test") for r in results)):
+            or any(r.get("status") not in ("imported", "duplicate", "review", "test", "pending", "failed") for r in results)
+            or any(record.get("checkoutType") == "payment_intent_status_v1" and result.get("status") == "imported"
+                   for record, result in zip(records, results))):
         raise SyncError("Registration backend did not acknowledge the entire batch.")
     return results
 
 
 def sync(stripe, config, sender=None):
-    counts = {"verified": 0, "skipped": 0, "imported": 0, "duplicate": 0, "review": 0, "test": 0}
+    counts = {"verified": 0, "skipped": 0, "imported": 0, "duplicate": 0, "review": 0, "test": 0,
+              "pending": 0, "failed": 0}
     batch = []
     checkout_intents = set()
 

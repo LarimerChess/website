@@ -198,7 +198,7 @@ test('public balance lookup includes all active dates, credits, refunds, unknown
   assert.equal(result.entries[0].name,'Old Event');
   assert.ok(!JSON.stringify(result).includes('private'));
   assert.ok(!JSON.stringify(result).includes('secret@example.com'));
-  for(const entry of result.entries) assert.deepEqual(Object.keys(entry).sort(),['balanceCents','date','event','name','review']);
+  for(const entry of result.entries) assert.deepEqual(Object.keys(entry).sort(),['balanceCents','date','event','name','pending','review']);
 });
 
 test('balance lookup rejects malformed IDs and rate limits before reading private sheets', () => {
@@ -615,4 +615,42 @@ test('quote response follows actual sheet column order',()=>{
  const f=cardFixture(),read=f.ctx.readTab;
  f.ctx.readTab=(name,headers)=>{if(name==='Stripe card quotes'){headers=[...headers];[headers[0],headers[1]]=[headers[1],headers[0]];}return read(name,headers);};
  const q=f.ctx.quoteCardPayment(f.params);assert.equal(q.ok,true);assert.equal(q.quoteId,f.params.requestId);assert.equal(q.subtotal,3000);
+});
+
+function lifecycleRecord(f,q,intentStatus) {
+ return {sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,checkoutType:'payment_intent_status_v1',kind:'basket_intent_status',amountCents:q.amount,currency:'usd',livemode:f.config.livemode,created:1700000000,intentStatus};
+}
+test('live confirmed entries remain pending without credit until verified successful import',()=>{
+ const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+ let view=f.ctx.paymentBalances({id:'12345678'});assert.equal(view.entries[0].pending,true);assert.equal(view.entries[0].balanceCents,1750);assert.equal(f.book.rows.length,0);
+ for(const state of ['processing','requires_action','requires_capture','requires_confirmation']) {
+  assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,state),f.config).status,'pending');assert.equal(f.book.rows.length,0);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
+ }
+ assert.match(f.ctx.quoteCardPayment({...f.params,requestId:'new_request_abcdefghijklmnop'}).error,/pending verification/);
+ const paid={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
+ assert.equal(f.ctx.stripeImport(paid,f.config).status,'imported');view=f.ctx.paymentBalances({id:'12345678'});assert.equal(view.entries[0].pending,false);assert.equal(view.entries[0].balanceCents,0);
+ // A delayed lifecycle response cannot erase verified financial facts or recreate debt.
+ assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,2);
+});
+test('verified decline or cancellation releases pending without a payment ledger entry',()=>{
+ for(const state of ['requires_payment_method','canceled']) {
+  const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+  assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
+  assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,state),f.config).status,'failed');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+ }
+});
+test('sandbox lifecycle cannot mark live entries pending or paid',()=>{
+ const f=cardFixture();f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+ assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');const entry=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(entry.pending,false);assert.equal(entry.balanceCents,1750);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+});
+test('lifecycle updates require a matching confirmed request and fail closed on mode, amount and identifiers',()=>{
+ for(const patch of [{amountCents:1},{livemode:false},{currency:'eur'},{paymentIntentId:'pi_other'},{intentStatus:'succeeded'},{clientReferenceId:'unknown'}]) {
+  const f=cardFixture('credit',false);const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+  assert.equal(f.ctx.stripeImport({...lifecycleRecord(f,q,'canceled'),...patch},f.config).status,'review');const t=f.ctx.stripeCardQuotes();assert.equal(t.rows[0][t.col.State],'succeeded');assert.equal(f.book.rows.length,0);
+ }
+ const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'review');assert.equal(f.book.rows.length,0);
+});
+test('sync status recovers a missing intent ID after interrupted confirmation storage',()=>{
+ const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.failSave();f.ctx.confirmCardPayment({quoteId:q.quoteId});
+ const t=f.ctx.stripeCardQuotes();assert.equal(t.rows[0][t.col.Intent],'');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(t.rows[0][t.col.Intent],'pi_card_fixture');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.book.rows.length,0);
 });

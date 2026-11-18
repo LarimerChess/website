@@ -101,7 +101,7 @@ if (typeof document !== "undefined") (async () => {
   let activePlayer = -1;
   const money = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
   const entryKey = (playerId, entry) => JSON.stringify([playerId, entry.event, entry.date]);
-  const eligible = (entry) => Number.isSafeInteger(entry.balanceCents) && entry.balanceCents > 0 && !entry.review;
+  const eligible = (entry) => Number.isSafeInteger(entry.balanceCents) && entry.balanceCents > 0 && !entry.review && !entry.pending && !entry.testPending;
   const resetCheckout = () => {
     revision++;
     checkoutRequestId = crypto.randomUUID();
@@ -264,7 +264,7 @@ if (typeof document !== "undefined") (async () => {
   });
   cardConfirm.addEventListener("click", async () => {
     if (checkoutPending || !cardQuote || !ClubPayments.cardEnabled(config)) return;
-    const quote = cardQuote, version = revision;
+    const quote = cardQuote, version = revision, submittedEntries = selectedEntries();
     checkoutPending = true;
     updateTotal();
     try {
@@ -274,6 +274,14 @@ if (typeof document !== "undefined") (async () => {
       cardConfirm.hidden = cardTotals.hidden = true;
       if (payment.status === "requires_payment_method" || payment.status === "canceled") {
         throw new Error("Enter new card details and review the fee before trying again.");
+      }
+      if (version === revision) {
+        for (const submitted of submittedEntries) {
+          const entry = people.get(submitted.id)?.entries.find(e => e.event === submitted.event && e.date === submitted.date);
+          if (entry) entry[config.livemode ? "pending" : "testPending"] = true;
+          selected.delete(entryKey(submitted.id,submitted));
+        }
+        renderBalances();
       }
       if (payment.status === "requires_action") {
         const action = await stripe.handleNextAction({ clientSecret: payment.clientSecret });
@@ -306,6 +314,7 @@ if (typeof document !== "undefined") (async () => {
       : !people.size ? "Find a player above to load unpaid entries."
       : entries.length ? ""
       : allEntries.some(eligible) ? "Select at least one entry to pay."
+      : allEntries.some(entry => entry.pending || entry.testPending) ? "Payment pending verification. Do not pay again; contact the tournament director if it remains pending."
       : allEntries.some(entry => entry.review) ? "Ask the tournament director to review these entries."
       : allEntries.some(entry => entry.balanceCents === null) ? "Fees are not set yet. Ask the tournament director."
       : "Nothing to pay for these players.";
@@ -395,6 +404,7 @@ if (typeof document !== "undefined") (async () => {
           const event = document.createElement("th");
           event.scope = "row";
           event.textContent = entry.name;
+          if (entry.pending || entry.testPending) event.append(Object.assign(document.createElement("small"), { textContent: entry.testPending ? "Test payment pending verification" : "Payment pending verification" }));
           if (entry.review) event.append(Object.assign(document.createElement("small"), { textContent: "Needs review" }));
           row.append(event);
           row.insertCell().textContent = entry.date;

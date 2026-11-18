@@ -55,7 +55,7 @@ class SyncTests(unittest.TestCase):
                        {"amount_received": 1751}, {"amount": True}, {"latest_charge": "ch_notexpanded"}):
             with self.subTest(change=change), self.assertRaises(sync.SyncError):
                 sync.intent_record({**intent, **change}, CONFIG)
-        self.assertIsNone(sync.intent_record({**intent, "status": "processing"}, CONFIG))
+        self.assertEqual(sync.intent_record({**intent, "status": "processing"}, CONFIG)["intentStatus"], "processing")
         for change in ({"status": "pending"}, {"payment_intent": "pi_other"}, {"paid": False},
                        {"captured": False}, {"amount": 1751}, {"amount_refunded": -1}):
             charge = {**intent["latest_charge"], **change}
@@ -74,9 +74,10 @@ class SyncTests(unittest.TestCase):
                 patch.object(stripe, "intents", return_value=[intent, {**intent, "id": "pi_associated"},
                              {**intent, "metadata": {}}, {**intent, "status": "processing"}]):
             counts = sync.sync(stripe, CONFIG, sender)
-        self.assertEqual(counts["verified"], 1)
-        self.assertEqual(counts["skipped"], 1)
-        self.assertEqual([r["paymentIntentId"] for r in records], ["pi_standalone"])
+        self.assertEqual(counts["verified"], 2)
+        self.assertEqual(counts["skipped"], 0)
+        self.assertEqual([r["paymentIntentId"] for r in records], ["pi_standalone", "pi_standalone"])
+        self.assertEqual(records[1]["checkoutType"], "payment_intent_status_v1")
 
     def test_standalone_acknowledgement_requires_matching_intent_identifier(self):
         record = sync.intent_record(self.standalone(), CONFIG)
@@ -87,6 +88,57 @@ class SyncTests(unittest.TestCase):
         response = {"ok": True, "results": [{"sessionId": "", "paymentIntentId": "pi_standalone", "status": "test"}]}
         with patch.object(sync, "request_json", return_value=response):
             self.assertEqual(sync.send_records("https://example.com", "secret", [record]), response["results"])
+
+    def test_lifecycle_records_never_claim_settlement_or_forward_charge_and_payer_data(self):
+        states = ("processing", "requires_action", "requires_confirmation", "requires_capture",
+                  "requires_payment_method", "canceled")
+        expected_keys = {"sessionId", "paymentIntentId", "clientReferenceId", "checkoutType", "kind",
+                         "amountCents", "currency", "livemode", "created", "intentStatus"}
+        for state in states:
+            intent = {**self.standalone(), "status": state, "latest_charge": None, "amount_received": 0}
+            with self.subTest(state=state):
+                record = sync.intent_record(intent, CONFIG)
+                self.assertEqual(set(record), expected_keys)
+                self.assertEqual(record["intentStatus"], state)
+                self.assertEqual(record["kind"], "basket_intent_status")
+                self.assertEqual(record["checkoutType"], "payment_intent_status_v1")
+                self.assertEqual(record["clientReferenceId"], "basket_ref")
+                self.assertEqual(record["amountCents"], 1750)
+                self.assertFalse(record["livemode"])
+                self.assertNotIn("private", str(record))
+        for change in ({"livemode": True}, {"livemode": 0}, {"currency": "eur"}, {"amount": True},
+                       {"amount": 0}, {"metadata": {}}, {"id": "pi_invalid/value"}, {"status": "unknown"}):
+            with self.subTest(change=change), self.assertRaises(sync.SyncError):
+                sync.intent_record({**self.standalone(), "status": "processing", **change}, CONFIG)
+
+    def test_lifecycle_acknowledgements_are_intent_specific_and_cannot_claim_import(self):
+        record = sync.intent_record({**self.standalone(), "status": "processing"}, CONFIG)
+        for state in ("pending", "failed", "review", "test", "duplicate"):
+            response = {"ok": True, "results": [{"sessionId": "", "paymentIntentId": "pi_standalone", "status": state}]}
+            with self.subTest(state=state), patch.object(sync, "request_json", return_value=response):
+                self.assertEqual(sync.send_records("https://example.com", "secret", [record]), response["results"])
+        for identity, state in (("pi_other", "pending"), (None, "failed"), ("pi_standalone", "imported")):
+            response = {"ok": True, "results": [{"sessionId": "", "paymentIntentId": identity, "status": state}]}
+            with self.subTest(identity=identity, state=state), patch.object(sync, "request_json", return_value=response), self.assertRaises(sync.SyncError):
+                sync.send_records("https://example.com", "secret", [record])
+
+    def test_discovery_reports_pending_and_failed_without_crediting_or_skipping_them(self):
+        stripe = sync.Stripe("unused")
+        intents = [{**self.standalone(), "id": "pi_pending", "status": "processing", "latest_charge": None},
+                   {**self.standalone(), "id": "pi_failed", "status": "requires_payment_method", "latest_charge": None}]
+        records = []
+        def sender(batch):
+            records.extend(copy.deepcopy(batch))
+            return [{"sessionId": "", "paymentIntentId": r["paymentIntentId"],
+                     "status": "pending" if r["intentStatus"] == "processing" else "failed"} for r in batch]
+        with patch.object(stripe, "sessions", return_value=[]), patch.object(stripe, "intents", return_value=intents):
+            counts = sync.sync(stripe, CONFIG, sender)
+        self.assertEqual(counts["pending"], 1)
+        self.assertEqual(counts["failed"], 1)
+        self.assertEqual(counts["imported"], 0)
+        self.assertEqual(counts["skipped"], 0)
+        self.assertEqual(counts["verified"], 2)
+        self.assertEqual([r["intentStatus"] for r in records], ["processing", "requires_payment_method"])
 
     def test_intent_pagination_expands_charges_without_history_cutoff(self):
         stripe = sync.Stripe("unused")

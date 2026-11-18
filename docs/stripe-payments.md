@@ -167,3 +167,32 @@ Official integration references: [server-side finalization](https://docs.stripe.
 and [Stripe API schema](https://github.com/stripe/openapi/blob/master/openapi/spec3.json).
 Checkout funding restrictions do not include `unknown`; they cannot provide the
 same fail-closed funding classification for this fee policy.
+
+
+## Pending verification
+
+After a confirmed card submission, every selected entry shows **Payment pending
+verification** and cannot be selected again. For live payments, this state comes
+from the durable confirmation request and survives a reload. It is not a Paid
+credit. Actions must verify a succeeded, captured charge before importing entry
+and rating credit. Processing/authentication/capture-pending intents remain
+pending. Verified declines and cancellations release the reservation without
+writing payment credit. Lifecycle records are authenticated with the same sync
+secret and validated against the stored quote, gross amount, mode, and intent.
+
+If creation succeeded but saving the intent ID was interrupted, the durable
+request still reserves the entries; sync can recover and bind the verified
+intent. An uncertain transport failure can remain pending until the tournament
+director reconciles it. Do not repay merely because confirmation was interrupted.
+A quote that was only reviewed, without a final confirmation request, does not
+reserve entries.
+
+Sandbox submissions show **Test payment pending verification** only in the current
+page session. Reloading removes that local test display; sandbox lifecycle records
+never reserve or pay live registration balances. Test imports remain isolated.
+
+Pending verification clears through a scheduled or manually dispatched Stripe
+payment-sync Action. Scheduling is currently disabled unless the repository
+variable `LCCC_STRIPE_SYNC_ENABLED` is explicitly set to `true`; with it unset,
+run the Action manually with `dry_run: false`. A dry run reads Stripe but cannot
+update pending states or credit any ledger.

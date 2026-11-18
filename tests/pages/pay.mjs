@@ -75,6 +75,8 @@ page.on("request", async (request) => {
     if (fields.action === "paymentBalances" && fields.id === "00000000") Object.assign(body,{name:"",entries:[],totalCents:0,unknownCount:0});
     if (fields.action === "createPaymentCheckout" && checkoutFailure) Object.assign(body,{ok:false,error:"Test checkout service unavailable."});
     if (fields.action === "paymentBalances" && balanceVariant === "unknown") Object.assign(body,{entries:[{event:"unknown",date:"2027-06-01",name:"Unknown Fee",balanceCents:null,review:false}],totalCents:0,unknownCount:1});
+    if (fields.action === "paymentBalances" && balanceVariant === "pending") body.entries.forEach(entry => { entry.pending = entry.balanceCents > 0; });
+    if (fields.action === "paymentBalances" && balanceVariant === "verified") body.entries = body.entries.filter(entry => entry.balanceCents > 0).map(entry => ({...entry,balanceCents:0,pending:false}));
     request.respond({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(body) });
   } else request.continue();
 });
@@ -240,6 +242,14 @@ balanceVariant="unknown";
 await query("12345678");await press(page,"#pay-form button[type=submit]");await page.waitForNetworkIdle();
 (await page.$eval("#pay-cart-status",el=>el.textContent.includes("Fees are not set yet"))) && (await page.$eval("#pay-review",el=>el.disabled))
   ? pass("Unknown fees explain why online payment is unavailable") : fail("Unknown fee left payer without guidance");
+balanceVariant="pending";
+await query("12345678");await press(page,"#pay-form button[type=submit]");await page.waitForNetworkIdle();
+(await page.$eval('#pay-balances',el=>el.textContent.includes('Payment pending verification'))) && (await page.$$('#pay-balances input[type=checkbox]')).length===0 && (await page.$eval('#pay-review',el=>el.disabled))
+  ? pass('Server pending entries remain visible and cannot be selected or paid again') : fail('Server pending entries remained payable');
+balanceVariant="verified";
+await query("12345678");await press(page,"#pay-form button[type=submit]");await page.waitForNetworkIdle();
+(await page.$eval('#pay-balances',el=>el.textContent.includes('No unpaid entries') && !el.textContent.includes('Payment pending verification')))
+  ? pass('Verified ledger payment removes settled entries instead of calling pending paid') : fail('Verified entries retained a stale pending state');
 balanceVariant="";
 config.cardProcessing={enabled:true,publishableKey:'pk_test_fixture',complianceReady:false};
 await page.evaluate(saved=>localStorage.setItem('lccc-register-players',JSON.stringify(saved)),saved);
@@ -274,6 +284,11 @@ releaseCardConfirm();holdCardConfirm=false;
 await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Payment submitted'));
 (await page.evaluate(()=>window.stripeMock.actions===1)) && priorConfirms()===initialConfirms+1
   ? pass('Card authentication runs once and reports submission without another confirmation') : fail('Card authentication repeated confirmation');
+(await page.$eval('#pay-balances',el=>el.textContent.includes('Test payment pending verification'))) && (await page.$$('#pay-balances input[type=checkbox]')).length===0 && (await page.$eval('#pay-review',el=>el.disabled))
+  ? pass('Submitted test entries show per-entry pending verification and cannot be selected again') : fail('Submitted entries remained payable');
+await page.reload({waitUntil:'networkidle0'});
+(await page.$$('#pay-balances input[type=checkbox]')).length===4
+  ? pass('Test pending is session-only and never persists in live balance records') : fail('Test pending persisted after reload');
 await press(page,'#pay-review');
 await press(page,'#pay-card-review');
 await page.waitForSelector('#pay-card-confirm:not([hidden])');
