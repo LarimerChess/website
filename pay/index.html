@@ -727,23 +727,11 @@ section.td-table td { white-space: nowrap; }
       <div id="pay-balances" aria-live="polite"></div>
       <p id="pay-selected-total" role="status"></p>
       <p id="pay-cart-status"></p>
-      <button id="pay-review" type="button" class="button" disabled>Select entries to pay</button>
       <section id="pay-card" aria-label="Secure card payment" hidden>
         <h3>Card details</h3>
         <div id="pay-card-element"></div>
-        <label><input id="pay-cover-costs" type="checkbox"> Cover additional processing costs</label>
-        <p>Debit and prepaid cards have no required card fee. Additional cost coverage is optional. Total card fees never exceed 3%.</p>
-        <button id="pay-card-review" type="button" class="button">Review card fee</button>
-        <table id="pay-card-totals" hidden>
-          <caption>Payment total</caption>
-          <tbody>
-            <tr><th scope="row">Entry fees</th><td id="pay-card-subtotal"></td></tr>
-            <tr><th scope="row">Card fee</th><td id="pay-card-fee"></td></tr>
-            <tr><th scope="row">Total</th><td id="pay-card-total"></td></tr>
-          </tbody>
-        </table>
-        <button id="pay-card-confirm" type="button" class="button" hidden>Pay</button>
       </section>
+      <button id="pay-review" type="button" class="button" disabled>Select entries to pay</button>
       <p id="pay-summary" aria-live="polite" tabindex="-1"></p>
       <a id="pay-checkout" class="button" hidden>Continue to Stripe</a>
     </section>
