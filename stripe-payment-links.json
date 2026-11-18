@@ -1,8 +1,17 @@
 {
-  "enabled": false,
+  "enabled": true,
   "livemode": false,
   "currency": "usd",
-  "dynamicCheckout": { "enabled": false },
-  "entry": { "amount": 1750, "paymentLinkId": "", "url": "" },
-  "donation": { "paymentLinkId": "", "url": "" }
+  "dynamicCheckout": {
+    "enabled": true
+  },
+  "entry": {
+    "amount": 1750,
+    "paymentLinkId": "",
+    "url": ""
+  },
+  "donation": {
+    "paymentLinkId": "",
+    "url": ""
+  }
 }
