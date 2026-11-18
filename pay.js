@@ -37,12 +37,11 @@ const ClubPayments = (() => {
       && new RegExp(`^pk_${config.livemode ? "live" : "test"}_[A-Za-z0-9]+$`).test(c.publishableKey || ""));
   }
   function verifiedQuote(result, config, subtotal, count) {
-    if (!result?.ok) throw new Error(result?.error || "Card fee could not be reviewed.");
+    if (!result?.ok) throw new Error(result?.error || "Card payment could not be prepared.");
     if (!cardEnabled(config) || typeof result.quoteId !== "string" || !/^[A-Za-z0-9_-]{16,200}$/.test(result.quoteId)
       || result.subtotal !== subtotal || result.count !== count || result.currency !== "usd" || result.livemode !== config.livemode
-      || !Number.isSafeInteger(result.cardFee) || result.cardFee < 0 || result.cardFee > Math.floor(subtotal * 3 / 100)
-      || !Number.isSafeInteger(result.amount) || result.amount !== subtotal + result.cardFee || result.amount > 99999999) {
-      throw new Error("Card total could not be verified. Review your card fee again.");
+      || result.cardFee !== 0 || result.amount !== subtotal || result.amount > 99999999) {
+      throw new Error("Card payment total could not be verified. Reload balances and try again.");
     }
     return result;
   }
@@ -79,10 +78,7 @@ if (typeof document !== "undefined") (async () => {
   const selectedTotal = document.querySelector("#pay-selected-total");
   const review = document.querySelector("#pay-review");
   const cardForm = document.querySelector("#pay-card");
-  const cardReview = document.querySelector("#pay-card-review");
-  const cardConfirm = document.querySelector("#pay-card-confirm");
-  const coverCosts = document.querySelector("#pay-cover-costs");
-  const cardTotals = document.querySelector("#pay-card-totals");
+  const cardPay = review;
   const saved = newSavedBox();
   const remember = newRemember("pay-remember");
   form.prepend(saved);
@@ -91,6 +87,8 @@ if (typeof document !== "undefined") (async () => {
   let revision = 0;
   let checkoutPending = false;
   let stripe, elements, cardElement, cardToken, cardQuote, stripeScript;
+  let cardFormLoading = false;
+  let cardFormLoadFailed = false;
   let checkoutRequestId = crypto.randomUUID();
   let defaultSelected = true;
   const people = new Map();
@@ -109,13 +107,14 @@ if (typeof document !== "undefined") (async () => {
     checkout.removeAttribute("href");
     summary.textContent = "";
     cardToken = cardQuote = null;
-    cardForm.hidden = cardTotals.hidden = cardConfirm.hidden = true;
+    cardForm.hidden = true;
+    cardFormLoadFailed = false;
     if (cardElement) cardElement.destroy();
     cardElement = elements = null;
   };
   const post = async (fields) => networkActivity(fields.action === "paymentPlayers" ? null
     : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout"
-    : fields.action === "quoteCardPayment" ? "Reviewing card fee"
+    : fields.action === "quoteCardPayment" ? "Preparing card payment"
     : fields.action === "confirmCardPayment" ? "Submitting card payment" : "Loading entry balances", async () => {
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
     if (!response.ok) throw new Error("The payment service could not be reached. Please try again.");
@@ -187,11 +186,12 @@ if (typeof document !== "undefined") (async () => {
     revision++;
     checkoutRequestId = crypto.randomUUID();
     cardQuote = null;
-    cardTotals.hidden = cardConfirm.hidden = true;
-    summary.textContent = "Review the card fee before paying.";
+    summary.textContent = "Enter card details, then pay the selected entry fees.";
   }
   async function openCardForm() {
+    if (cardFormLoading || cardFormLoadFailed || !ClubPayments.cardEnabled(config) || !selectedEntries().length) return;
     const version = revision;
+    cardFormLoading = true;
     checkoutPending = true;
     updateTotal();
     try {
@@ -217,22 +217,21 @@ if (typeof document !== "undefined") (async () => {
         cardElement.mount("#pay-card-element");
       }
       cardForm.hidden = false;
-      summary.textContent = "Enter card details, then review the fee. You will confirm the total before paying.";
-      cardForm.scrollIntoView({ block: "center" });
-    } catch (error) { if (version === revision) cardError(error); }
-    finally { checkoutPending = false; updateTotal(); }
+      summary.textContent = "Enter card details, then pay the selected entry fees.";
+    } catch (error) { if (version === revision) { cardFormLoadFailed = true; cardError(error); } }
+    finally { cardFormLoading = false; checkoutPending = false; updateTotal(); }
   }
-  coverCosts.addEventListener("change", () => {
-    invalidateCardQuote();
-    updateTotal();
-  });
-  cardReview.addEventListener("click", async () => {
-    if (checkoutPending || !elements || !ClubPayments.cardEnabled(config)) return;
+  cardPay.addEventListener("click", async () => {
+    if (checkoutPending || !ClubPayments.cardEnabled(config)) return;
+    if (!elements) {
+      cardFormLoadFailed = false;
+      await openCardForm();
+      return;
+    }
     const entries = selectedEntries(), subtotal = entries.reduce((n, entry) => n + entry.balanceCents, 0);
     if (!entries.length) return;
     const version = revision;
     cardQuote = null;
-    cardTotals.hidden = cardConfirm.hidden = true;
     checkoutPending = true;
     updateTotal();
     try {
@@ -248,38 +247,18 @@ if (typeof document !== "undefined") (async () => {
       }
       const result = await post({ action: "quoteCardPayment", requestId: checkoutRequestId,
         entries: JSON.stringify(entries.map(({ id, event, date }) => ({ id, event, date }))),
-        confirmationToken: cardToken, coverCosts: String(coverCosts.checked) });
+        confirmationToken: cardToken, coverCosts: "false" });
       const quote = ClubPayments.verifiedQuote(result, config, subtotal, entries.length);
       if (version !== revision) return;
       cardQuote = quote;
-      document.querySelector("#pay-card-subtotal").textContent = money(quote.subtotal);
-      document.querySelector("#pay-card-fee").textContent = money(quote.cardFee);
-      document.querySelector("#pay-card-total").textContent = money(quote.amount);
-      cardTotals.hidden = cardConfirm.hidden = false;
-      cardConfirm.textContent = `${config.livemode ? "Pay" : "Test pay"} ${money(quote.amount)}`;
-      summary.textContent = "Review the total, then confirm your payment.";
-      cardConfirm.focus();
-    } catch (error) { if (version === revision) cardError(error); }
-    finally { checkoutPending = false; updateTotal(); }
-  });
-  cardConfirm.addEventListener("click", async () => {
-    if (checkoutPending || !cardQuote || !ClubPayments.cardEnabled(config)) return;
-    const quote = cardQuote, version = revision, submittedEntries = selectedEntries();
-    checkoutPending = true;
-    updateTotal();
-    try {
       const payment = ClubPayments.verifiedCardPayment(await post({ action: "confirmCardPayment", quoteId: quote.quoteId }), config, quote.amount);
-      // A retry must collect/review card details; never submit a second confirmation automatically.
       cardQuote = cardToken = null;
-      cardConfirm.hidden = cardTotals.hidden = true;
-      if (payment.status === "requires_payment_method" || payment.status === "canceled") {
-        throw new Error("Enter new card details and review the fee before trying again.");
-      }
+      if (payment.status === "requires_payment_method" || payment.status === "canceled") throw new Error("Check your card details and try again.");
       if (version === revision) {
-        for (const submitted of submittedEntries) {
+        for (const submitted of entries) {
           const entry = people.get(submitted.id)?.entries.find(e => e.event === submitted.event && e.date === submitted.date);
           if (entry) entry[config.livemode ? "pending" : "testPending"] = true;
-          selected.delete(entryKey(submitted.id,submitted));
+          selected.delete(entryKey(submitted.id, submitted));
         }
         renderBalances();
       }
@@ -303,11 +282,10 @@ if (typeof document !== "undefined") (async () => {
     const card = ClubPayments.cardEnabled(config);
     const available = card || (!config.cardProcessing?.enabled && config.enabled && config.dynamicCheckout?.enabled);
     review.disabled = checkoutPending || !available || !entries.length;
-    cardReview.disabled = cardConfirm.disabled = coverCosts.disabled = checkoutPending;
-    cardReview.setAttribute("aria-busy", String(checkoutPending));
+    cardPay.disabled = review.disabled;
     review.setAttribute("aria-busy", String(checkoutPending));
-    review.textContent = checkoutPending ? "Opening secure checkout..." : entries.length
-      ? card ? "Enter card details" : `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
+    review.textContent = checkoutPending ? card ? "Preparing secure payment..." : "Opening secure checkout..." : entries.length
+      ? card ? cardFormLoadFailed ? "Reload secure card form" : `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} by card` : `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
     const allEntries = [...people.values()].flatMap(person => person.entries);
     document.querySelector("#pay-cart-status").textContent = !available
       ? "Online checkout is unavailable. You can still view balances; please arrange payment with the tournament director."
@@ -318,13 +296,11 @@ if (typeof document !== "undefined") (async () => {
       : allEntries.some(entry => entry.review) ? "Ask the tournament director to review these entries."
       : allEntries.some(entry => entry.balanceCents === null) ? "Fees are not set yet. Ask the tournament director."
       : "Nothing to pay for these players.";
+    if (card && entries.length && cardForm.hidden && !cardFormLoading && !cardFormLoadFailed && !checkoutPending) openCardForm();
   }
   review.addEventListener("click", async () => {
     const entries = selectedEntries();
-    if (ClubPayments.cardEnabled(config)) {
-      if (!checkoutPending && entries.length) await openCardForm();
-      return;
-    }
+    if (ClubPayments.cardEnabled(config)) return;
     if (config.cardProcessing?.enabled) return;
     if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length) return;
     const amount = entries.reduce((n, entry) => n + entry.balanceCents, 0);
