@@ -49,10 +49,12 @@ def validate_config(config, key):
     ids = []
     for kind in ("entry", "donation"):
         link = config.get(kind, {}).get("paymentLinkId", "")
+        if not link and config.get("dynamicCheckout", {}).get("enabled") is True:
+            continue
         if not re.fullmatch(r"plink_[A-Za-z0-9]+", link):
             raise SyncError("Both Payment Link IDs must be configured.")
         ids.append(link)
-    if ids[0] == ids[1] or config["entry"].get("amount") != 1750:
+    if len(ids) != len(set(ids)) or config["entry"].get("amount") != 1750:
         raise SyncError("Expected distinct links and a 1750-cent entry fee.")
 
 
@@ -154,6 +156,8 @@ def sync(stripe, config, sender=None):
     for kind, link, checkout_type in (("entry", config["entry"]["paymentLinkId"], ""),
                                       ("donation", config["donation"]["paymentLinkId"], ""),
                                       ("entry", None, "basket_v1")):
+        if not checkout_type and not link:
+            continue
         for session in stripe.sessions(link):
             if checkout_type:
                 # Stripe has no metadata list filter; inspect the full history

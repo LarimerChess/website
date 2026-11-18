@@ -79,6 +79,11 @@ class SyncTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(sync.SyncError):
                 sync.validate_config({**CONFIG, **change}, key)
 
+    def test_dynamic_checkout_needs_no_legacy_payment_links(self):
+        config = {**CONFIG, "dynamicCheckout": {"enabled": True},
+                  "entry": {"amount": 1750, "paymentLinkId": ""}, "donation": {"paymentLinkId": ""}}
+        sync.validate_config(config, "rk_test_example")
+
     def test_unpaid_or_incomplete_never_credit(self):
         for change in ({"payment_status": "unpaid"}, {"status": "open"}, {"payment_status": "no_payment_required"}):
             self.assertIsNone(sync.payment_record({**SESSION, **change}, {}, CONFIG, "entry"))
