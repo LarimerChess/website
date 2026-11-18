@@ -26,12 +26,17 @@ const ClubPayments = (() => {
         || result.currency !== "usd" || result.livemode !== config.livemode) throw new Error("Balances changed or checkout could not be verified. Reload balances and try again.");
     return url.href;
   }
+  function requestedPlayerId(search) {
+    const params = new URLSearchParams(search);
+    const value = params.get("id") ?? params.get("uscfid");
+    return /^\d{8}$/.test(value || "") ? value : null;
+  }
   function requestFor(event, player) {
     const [name, date] = event.key.split("/");
     return new URLSearchParams({ action: "paymentLink", event: name,
       date: player.for === "Whole month" ? date.slice(0, 7) : date, id: player.id });
   }
-  return { stripeURL, verifiedLink, verifiedCheckout, requestFor };
+  return { stripeURL, verifiedLink, verifiedCheckout, requestedPlayerId, requestFor };
 })();
 if (typeof module !== "undefined") module.exports = ClubPayments;
 
@@ -39,7 +44,9 @@ if (typeof document !== "undefined") (async () => {
   const status = document.querySelector("#pay-status");
   const form = document.querySelector("#pay-form");
   const id = document.querySelector("#pay-id");
+  const requestedId = ClubPayments.requestedPlayerId(location.search);
   const balances = document.querySelector("#pay-balances");
+  const playerList = document.querySelector("#pay-players");
   const summary = document.querySelector("#pay-summary");
   const checkout = document.querySelector("#pay-checkout");
   const donation = document.querySelector("#donation-link");
@@ -56,6 +63,9 @@ if (typeof document !== "undefined") (async () => {
   const people = new Map();
   const selected = new Set();
   const requests = new Map();
+  let searchSequence = 0;
+  let searchTimer;
+  let activePlayer = -1;
   const money = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
   const entryKey = (playerId, entry) => JSON.stringify([playerId, entry.event, entry.date]);
   const eligible = (entry) => Number.isSafeInteger(entry.balanceCents) && entry.balanceCents > 0 && !entry.review;
@@ -73,6 +83,57 @@ if (typeof document !== "undefined") (async () => {
     if (!data.ok) throw new Error(data.error || "The request could not be completed. Please ask the tournament director.");
     return data;
   };
+  function setActivePlayer(index) {
+    const options = [...playerList.querySelectorAll("[role=option]")];
+    activePlayer = Math.max(-1, Math.min(index, options.length - 1));
+    options.forEach((option, i) => option.setAttribute("aria-selected", String(i === activePlayer)));
+    if (activePlayer >= 0) {
+      id.setAttribute("aria-activedescendant", options[activePlayer].id);
+      options[activePlayer].scrollIntoView({ block: "nearest" });
+    } else id.removeAttribute("aria-activedescendant");
+  }
+  function closePlayerSearch() {
+    clearTimeout(searchTimer);
+    searchSequence++;
+    playerList.hidden = true;
+    id.setAttribute("aria-expanded", "false");
+    setActivePlayer(-1);
+  }
+  function showPlayerMatches(players, empty) {
+    playerList.replaceChildren(...players.map((player, index) => {
+      const option = document.createElement("li");
+      option.id = `pay-player-${index}`;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", "false");
+      option.textContent = `${player.name} ? ${player.id}`;
+      option.player = player;
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        loadBalances(player.id, remember.querySelector("input").checked);
+      });
+      return option;
+    }));
+    if (!players.length) playerList.append(Object.assign(document.createElement("li"), { className: "td-none", textContent: empty }));
+    playerList.hidden = false;
+    id.setAttribute("aria-expanded", "true");
+    setActivePlayer(-1);
+  }
+  async function searchPlayers() {
+    clearTimeout(searchTimer);
+    const q = id.value.trim(), version = ++searchSequence;
+    if (q.length < 2) { closePlayerSearch(); status.textContent = "Type at least two characters to search club records."; return; }
+    if (q.length > 80 || /^\d{9,}$/.test(q)) { closePlayerSearch(); status.textContent = "Enter a name or an eight-digit US Chess ID."; return; }
+    status.textContent = "Searching club registration records?";
+    try {
+      const data = await post({ action: "paymentPlayers", q });
+      if (version !== searchSequence) return;
+      if (!Array.isArray(data.players) || data.players.length > 12 || data.players.some((p) => !/^\d{8}$/.test(p.id || "") || typeof p.name !== "string")) throw new Error("Player search is unavailable. Enter a full US Chess ID to show balances.");
+      showPlayerMatches(data.players, "No matching players in club registration records.");
+      status.textContent = data.players.length ? "Choose a player to show their balances." : "No matching players in club registration records. You can enter a full eight-digit ID.";
+    } catch (error) {
+      if (version === searchSequence) { closePlayerSearch(); status.textContent = "Player search is unavailable. Enter a full US Chess ID to show balances."; }
+    }
+  }
   function selectedEntries() {
     return [...people.values()].flatMap((person) => person.entries.filter((entry) => eligible(entry) && selected.has(entryKey(person.id, entry)))
       .map((entry) => ({ ...entry, id: person.id, playerName: person.name })));
@@ -132,7 +193,8 @@ if (typeof document !== "undefined") (async () => {
     for (const data of people.values()) {
       const group = document.createElement("section");
       group.dataset.player = data.id;
-      group.append(Object.assign(document.createElement("h3"), { textContent: `${data.name || data.id} (${data.id}) — all registered events` }));
+      if (data.id === requestedId) group.setAttribute("aria-label", "Player from payment link");
+      group.append(Object.assign(document.createElement("h3"), { textContent: `${data.id === requestedId ? "Player from your payment link: " : ""}${data.name || data.id} (${data.id}) — all registered events` }));
       if (!data.entries.length) group.append(Object.assign(document.createElement("p"), { textContent: "No active registrations found for this player." }));
       for (const entry of data.entries) {
         const card = Object.assign(document.createElement("div"), { className: "pay-entry" });
@@ -163,6 +225,7 @@ if (typeof document !== "undefined") (async () => {
     updateTotal();
   }
   async function loadBalances(playerId, keep) {
+    closePlayerSearch();
     resetCheckout();
     id.value = playerId;
     const token = Symbol();
@@ -205,11 +268,28 @@ if (typeof document !== "undefined") (async () => {
       renderBalances();
     });
   }
-  id.addEventListener("input", resetCheckout);
+  id.addEventListener("input", () => {
+    resetCheckout();
+    closePlayerSearch();
+    if (id.value.trim().length < 2) { status.textContent = "Type at least two characters to search club records."; return; }
+    searchTimer = setTimeout(searchPlayers, 250);
+  });
+  id.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { closePlayerSearch(); return; }
+    if (playerList.hidden) return;
+    if (event.key === "ArrowDown") { event.preventDefault(); setActivePlayer(activePlayer + 1); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); setActivePlayer(activePlayer - 1); }
+    else if (event.key === "Enter" && activePlayer >= 0) {
+      event.preventDefault();
+      loadBalances(playerList.querySelectorAll("[role=option]")[activePlayer].player.id, remember.querySelector("input").checked);
+    }
+  });
+  id.addEventListener("blur", closePlayerSearch);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const playerId = id.value.trim();
     if (/^\d{8}$/.test(playerId)) loadBalances(playerId, remember.querySelector("input").checked);
+    else searchPlayers();
   });
   if (new URLSearchParams(location.search).has("returned")) document.querySelector("#pay-returned").hidden = false;
   try {
@@ -228,11 +308,10 @@ if (typeof document !== "undefined") (async () => {
   form.hidden = false;
   showSavedPlayers();
   const ids = savedPlayers().map((player) => player.id);
-  const requestedId = new URLSearchParams(location.search).get("id");
   if (/^\d{8}$/.test(requestedId || "") && !ids.includes(requestedId)) ids.unshift(requestedId);
   if (ids.length) {
     await Promise.all(ids.map((playerId) => loadBalances(playerId, false)));
     id.value = /^\d{8}$/.test(requestedId || "") ? requestedId : ids[0];
-  } else { renderBalances(); status.textContent = "Enter a player's US Chess ID to see all their entry balances. No login is needed."; }
+  } else { renderBalances(); status.textContent = "Enter a player's name or US Chess ID to search club registration records. No login is needed."; }
 })();
 

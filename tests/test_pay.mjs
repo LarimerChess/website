@@ -30,3 +30,12 @@ test('combined hosted checkout verifies server total, selection size, host and m
   assert.equal(verifiedCheckout(r,c,3000,2),r.checkoutUrl);
   for (const patch of [{amount:2999},{count:1},{livemode:true},{currency:'eur'},{checkoutUrl:'https://checkout.stripe.com.evil.test/pay'},{checkoutUrl:'https://user@checkout.stripe.com/pay'}]) assert.throws(() => verifiedCheckout({...r,...patch},c,3000,2));
 });
+
+
+test("textable payment links accept exact IDs and the uscfid alias without trusting malformed input", () => {
+  const { requestedPlayerId } = createRequire(import.meta.url)("../pay.js");
+  assert.equal(requestedPlayerId("?id=12345678"),"12345678");
+  assert.equal(requestedPlayerId("?uscfid=87654321"),"87654321");
+  assert.equal(requestedPlayerId("?id=12345678&uscfid=87654321"),"12345678");
+  for (const search of ["", "?id=123", "?uscfid=123456789", "?id=bad&uscfid=87654321", "?id=%3Cscript%3E", "?id=%2012345678"]) assert.equal(requestedPlayerId(search),null);
+});

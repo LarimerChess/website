@@ -666,10 +666,17 @@ section.td-table td { white-space: nowrap; }
     <p id="pay-returned" role="status" hidden>Returning from checkout does not confirm payment. We verify payments periodically; your entry may take longer than 15 minutes to update. Check your Stripe receipt before trying again. Test payments never change your entry balance.</p>
     <section aria-labelledby="entry-heading">
       <h2 id="entry-heading">Entry balances</h2>
-      <p>All players saved on this device load automatically. To add someone else, enter their eight-digit US Chess ID. See balances for all their registered events, past and upcoming.</p>
+      <p>All players saved on this device load automatically. To add someone else, search club registration records by name or US Chess ID. See balances for all their registered events, past and upcoming.</p>
       <p id="pay-status" role="status">Loading payment options…</p>
       <form id="pay-form" class="register-form" hidden>
-        <p><label for="pay-id">US Chess ID</label><br><input id="pay-id" type="text" name="player-id" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off" required></p>
+        <label for="pay-id">Name or US Chess ID</label>
+        <div class="td-combobox">
+          <input id="pay-id" type="text" name="player-id" role="combobox" aria-autocomplete="list" aria-expanded="false"
+            aria-controls="pay-players" aria-describedby="pay-player-hint" maxlength="80" autocomplete="off" spellcheck="false" required>
+          <!-- [html-validate-disable-next prefer-native-element -- a select cannot search as you type] -->
+          <ul id="pay-players" class="td-players" role="listbox" aria-label="Matching registered players" hidden></ul>
+        </div>
+        <p id="pay-player-hint" class="register-hint">Type at least two characters, then choose a player. Searches club registration records only, without searching US Chess. You can also enter a full eight-digit ID.</p>
         <button type="submit" class="button">Show balances</button>
       </form>
       <p>Outstanding entries are selected by default. Deselect any you do not want to pay.</p>
@@ -699,6 +706,6 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=bad2623284" defer></script>
-  <script src="../pay.js?v=5e56149e7b" defer></script>
+  <script src="../pay.js?v=8b069458eb" defer></script>
 </body>
 </html>

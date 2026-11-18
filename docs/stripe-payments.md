@@ -1,7 +1,10 @@
 # Stripe checkout and payment reconciliation
 
 The GitHub Pages payment page lets anyone select active entries for one or more
-players without signing in. The existing registration Apps Script recalculates
+players without signing in. The Name or US Chess ID field searches club registration
+records only, returning at most 12 names and IDs after two typed characters. It
+never searches US Chess or private contacts. Historical registrants can be found
+even if they have no current balance. The existing registration Apps Script recalculates
 all balances, stores a private basket allocation, and creates one Stripe Checkout
 Session for the exact total in USD. Client amounts are never trusted. The club
 absorbs processing fees. Donations remain a separate anonymous Payment Link.
@@ -35,6 +38,16 @@ allocation and opaque random references; Stripe receives only the reference,
 generic entry-fee description and total, without player names, US Chess IDs,
 registration-edit credentials or stored contact details. Stripe collects the
 payer's receipt/billing information independently; it is never used for matching.
+
+## Text a player payment link
+
+Use `https://larimerchess.org/pay/?id=12345678`, replacing the example eight-digit
+ID with the player's actual ID. `?uscfid=12345678` is also accepted. The page loads
+that player's balances automatically and labels their group as the player from
+the link. Existing saved players remain visible; payable entries start selected.
+Opening the link does not save the player or any contact credentials. Invalid
+IDs are ignored. A valid ID without active registrations shows that no active
+registrations were found. This link cannot change a registration or prove payment.
 
 ## Reconciliation and recovery
 

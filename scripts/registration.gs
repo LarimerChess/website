@@ -149,6 +149,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const p = e.parameter;
+    if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
     if (p.action === "createPaymentCheckout") return json(createPaymentCheckout(p));
     if (p.action === "paymentLink") return json(stripePaymentLink(p));
@@ -3688,6 +3689,24 @@ function stripeBalance(r, col, book) {
   const held = ledgerByToken(book)[r[col.Token]] || { entry: 0, rating: 0, refunded: 0 };
   const balance = cents(r[col.Amount]) - cents(r[col.Discount]) - held.entry - held.rating - held.refunded;
   return Number.isSafeInteger(balance) ? { balanceCents: Math.max(0, balance), review: Boolean(r[col["Payment review"]]) } : { balanceCents: null, review: true };
+}
+
+/** Public player search uses registration names and IDs only, never private contacts or US Chess. */
+function paymentPlayers(p) {
+  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  const raw = String(p.q || "");
+  if (raw.length > 80) return { error: "Enter a name or US Chess ID using at most 80 characters." };
+  const q = raw.trim().toLowerCase();
+  if (q.length < 2) return { ok: true, players: [] };
+  const { col, rows } = readEntries(), latest = new Map();
+  for (const r of rows) {
+    const id = r[col["US Chess ID"]];
+    if (/^\d{8}$/.test(id) && r[col.Name]) latest.set(id, { id, name: r[col.Name] });
+  }
+  const words = q.split(/\s+/), numeric = /^\d+$/.test(q);
+  const players = [...latest.values()].filter((player) => numeric ? player.id.startsWith(q)
+    : words.every((word) => player.name.toLowerCase().includes(word))).slice(0, 12);
+  return { ok: true, players };
 }
 
 function paymentBalances(p) {

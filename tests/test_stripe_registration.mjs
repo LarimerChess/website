@@ -306,3 +306,65 @@ test('basket creation refuses mode mismatch and duplicate selections before crea
   const e={id:'12345678',event:'chess',date:'2026-12-01'};
   assert.throws(()=>f.ctx.createPaymentCheckout({entries:JSON.stringify([e,e])}),/duplicate/);
 });
+
+function paymentSearchFixture(people) {
+  const f = fixture();
+  const keys = [...new Set(people.flatMap(Object.keys))];
+  f.ctx.readEntries = () => ({ col: Object.fromEntries(keys.map((key, i) => [key, i])),
+    rows: people.map(person => keys.map(key => person[key] || '')) });
+  for (const helper of ['search', 'lookup', 'contactFor', 'knownPlayer', 'readPayments']) {
+    f.ctx[helper] = () => { throw Error('public player search must not call ' + helper); };
+  }
+  f.ctx.UrlFetchApp = { fetch() { throw Error('public player search must not call US Chess'); },
+    fetchAll() { throw Error('public player search must not call US Chess'); } };
+  return f;
+}
+
+const plain = value => JSON.parse(JSON.stringify(value));
+
+test('payment player search uses latest registration names and discloses only club name and ID', () => {
+  const f = paymentSearchFixture([
+    { 'US Chess ID': '12345678', Name: 'Obsolete Name', Token: 'private-token', Email: 'secret@example.com' },
+    { 'US Chess ID': '12345678', Name: 'Alice Example', Status: 'withdrawn', Phone: '5551234567' },
+    { 'US Chess ID': '23456789', Name: 'Alice Other Example', Event: 'private-event' },
+    { 'US Chess ID': 'invalid', Name: 'Alice Example' },
+    { 'US Chess ID': '1234567', Name: 'Alice Example' },
+  ]);
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: '  aLiCe   EXAMPLE  ' })), {
+    ok: true, players: [{ id: '12345678', name: 'Alice Example' }, { id: '23456789', name: 'Alice Other Example' }],
+  });
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: 'obsolete' })), { ok: true, players: [] });
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: 'alice absent' })), { ok: true, players: [] });
+});
+
+test('payment player search uses literal name words and numeric ID prefixes', () => {
+  const f = paymentSearchFixture([
+    { 'US Chess ID': '12345678', Name: 'Ann [Test]' },
+    { 'US Chess ID': '99123456', Name: 'Ann Else' },
+    { 'US Chess ID': '87654321', Name: 'Anna Example' },
+  ]);
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: '123' }).players), [{ id: '12345678', name: 'Ann [Test]' }]);
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: '99123456' }).players), [{ id: '99123456', name: 'Ann Else' }]);
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: '[test]' }).players), [{ id: '12345678', name: 'Ann [Test]' }]);
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: '.*' }).players), []);
+});
+
+test('payment player search validates query and rate limit before reading registration rows', () => {
+  const f = fixture();
+  f.ctx.readEntries = () => { throw Error('must reject before reading'); };
+  for (const q of ['', 'a', '  a  ']) assert.deepEqual(plain(f.ctx.paymentPlayers({ q })), { ok: true, players: [] });
+  assert.ok(f.ctx.paymentPlayers({ q: 'a'.repeat(81) }).error);
+  f.ctx.underLimit = () => false;
+  assert.ok(f.ctx.paymentPlayers({ q: 'Alice' }).error);
+});
+
+test('payment player search caps results at twelve unique players after deduplication', () => {
+  const people = Array.from({ length: 15 }, (_, i) => ({ 'US Chess ID': String(12345000 + i), Name: `Club Player ${String(i).padStart(2, '0')}` }));
+  const f = paymentSearchFixture(people.flatMap(person => [person, { ...person }]));
+  const result = plain(f.ctx.paymentPlayers({ q: 'club' }));
+  assert.equal(result.ok, true);
+  assert.equal(result.players.length, 12);
+  assert.equal(new Set(result.players.map(person => person.id)).size, 12);
+  assert.ok(result.players.every(person => Object.keys(person).sort().join(',') === 'id,name'));
+  assert.deepEqual(plain(f.ctx.paymentPlayers({ q: 'club' })), result);
+});
