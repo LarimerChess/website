@@ -946,7 +946,7 @@ async function syncReport(key, t) {
 
 /** Downloads one file from the tournament as the script has it now, not as the desk last loaded it. */
 async function downloadReport(name) {
-  await loadRun();
+  await networkActivity("Loading rating report…", loadRun);
   if (!current || !reportReady(current)) return;
   const problems = reportProblems(current);
   if (problems.length) return void refuse(`Not yet: ${problems[0]}`, runStatus);
@@ -1414,7 +1414,7 @@ document.querySelector(".run-edit").addEventListener("click", () => {
   runStatus.textContent = `Change round ${number}'s pairings, then post them again.`;
 });
 
-document.querySelector(".run-refresh").addEventListener("click", loadRun);
+document.querySelector(".run-refresh").addEventListener("click", () => networkActivity("Loading tournament…", loadRun));
 
 document.querySelector(".run-confirm-agreed").addEventListener("click", async (event) => {
   const number = workNumber;

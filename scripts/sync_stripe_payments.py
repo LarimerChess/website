@@ -161,6 +161,10 @@ def payment_record(session, intent, config, kind, checkout_type=""):
     refunded = charge.get("amount_refunded")
     if type(refunded) is not int or not 0 <= refunded <= amount or type(charge.get("disputed")) is not bool:
         raise SyncError("A charge has invalid reversal information.")
+    receipt_url = charge.get("receipt_url")
+    if receipt_url is not None and (not isinstance(receipt_url, str)
+                                    or not re.fullmatch(r"https://pay\.stripe\.com/receipts/[A-Za-z0-9/_?=&%-]+", receipt_url)):
+        raise SyncError("A charge has an invalid receipt URL.")
     # Wrong amounts and missing references are retained for backend review, never
     # silently dropped. Backend also checks the registration's current balance.
     return {"sessionId": session["id"], "paymentIntentId": intent["id"],
@@ -168,7 +172,8 @@ def payment_record(session, intent, config, kind, checkout_type=""):
             **({"checkoutType": "basket_v1"} if basket else {}),
             "amountCents": amount, "currency": session["currency"], "livemode": session["livemode"],
             "paymentStatus": "paid", "status": "complete", "kind": kind,
-            "refundCents": refunded, "disputed": charge["disputed"], "created": session.get("created")}
+            "refundCents": refunded, "disputed": charge["disputed"], "created": session.get("created"),
+            "receiptUrl": receipt_url or ""}
 
 
 def send_records(endpoint, secret, records):

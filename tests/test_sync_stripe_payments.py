@@ -223,12 +223,22 @@ class SyncTests(unittest.TestCase):
 
     def test_output_has_no_payer_details_and_retains_reversals(self):
         intent = copy.deepcopy(INTENT)
-        intent["latest_charge"].update(amount_refunded=500, disputed=True)
+        intent["latest_charge"].update(amount_refunded=500, disputed=True,
+                                        receipt_url="https://pay.stripe.com/receipts/payment/example")
         result = sync.payment_record(SESSION, intent, CONFIG, "entry")
         self.assertEqual(result["refundCents"], 500)
         self.assertTrue(result["disputed"])
         self.assertNotIn("email", str(result))
         self.assertEqual(result["clientReferenceId"], "pay_reference")
+        self.assertEqual(result["receiptUrl"], "https://pay.stripe.com/receipts/payment/example")
+
+    def test_receipt_url_must_be_a_stripe_hosted_receipt(self):
+        for receipt_url in ("https://evil.example/receipt", "http://pay.stripe.com/receipts/payment/example",
+                            "https://pay.stripe.com.evil.example/receipts/payment/example", 17):
+            intent = copy.deepcopy(INTENT)
+            intent["latest_charge"]["receipt_url"] = receipt_url
+            with self.subTest(receipt_url=receipt_url), self.assertRaises(sync.SyncError):
+                sync.payment_record(SESSION, intent, CONFIG, "entry")
 
     def test_wrong_entry_amount_and_missing_reference_reach_review_backend(self):
         session = {**SESSION, "amount_total": 1800, "client_reference_id": None}

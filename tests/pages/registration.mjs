@@ -263,7 +263,7 @@ desk.on("request", async (request) => {
           incident: { ok: true, message: "Logged: Game loss, Test Player." },
           incidents: { incidents: [] },
           tournament: { tournament: null } }[p.action];
-    // Registering answers slowly, like the real script, so a second player can be entered meanwhile.
+    // Registering answers slowly, like the real script, so its busy overlay can be checked.
     if (p.action === "register") await new Promise((resolve) => setTimeout(resolve, 1500));
     request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json", body: JSON.stringify(body) });
   } else {
@@ -290,9 +290,12 @@ await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
 await desk.keyboard.press("Enter");
 await desk.click(".td-register button[type=submit]");
-// While the first saves, the form is clear and takes the next player.
+// The form clears immediately, and the overlay waits for the first player to finish saving.
 const whileSaving = await desk.evaluate(() => ({ field: document.querySelector("#td-player").value,
-  pending: document.querySelectorAll(".td-saving .td-save-pending").length }));
+  pending: document.querySelectorAll(".td-saving .td-save-pending").length,
+  overlay: document.querySelector(".network-activity")?.matches(":modal") }));
+await desk.waitForFunction(() => document.querySelectorAll(".td-saving .td-save-done").length === 1);
+await desk.waitForSelector(".network-activity:not([open])", { hidden: true });
 await desk.type("#td-player", "test pl");
 await desk.waitForSelector("#td-players:not([hidden]) [role=option]");
 await desk.keyboard.press("ArrowDown");
@@ -390,8 +393,8 @@ sentByDesk.email === "test@example.com" && sentByDesk.phone === "970-555-0100"
   ? pass("TD desk fills in a known player's email and phone") : fail(`TD desk contact: ${JSON.stringify(sentByDesk)}`);
 sentByDesk.event === "club-night" && sentByDesk.date === "2026-10" && sentByDesk.id === "12345678"
   ? pass("TD desk finds a player and registers them") : fail(`TD desk sent ${JSON.stringify(sentByDesk)}`);
-whileSaving.field === "" && whileSaving.pending === 1 && deskCalls.filter((c) => c.action === "register").length === 2
-  ? pass("TD desk takes the next player while the last one saves") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
+whileSaving.field === "" && whileSaving.pending === 1 && whileSaving.overlay && deskCalls.filter((c) => c.action === "register").length === 2
+  ? pass("TD desk shows its busy overlay while saving, then takes the next player") : fail(`TD desk while saving: ${JSON.stringify(whileSaving)}`);
 await desk.click(".td-entries tbody tr td:nth-child(9) button");
 await desk.waitForFunction(() => document.querySelector(".td-register-status").textContent.includes("paid $15"));
 deskCalls.some((c) => c.action === "paid" && c.token === "t1" && c.amount === "16.50" && c.by === "cash") ? pass("TD desk marks a player paid in cash")

@@ -24,6 +24,7 @@ let checkoutFailure = false;
 let balanceVariant = "";
 let cardStatus = "succeeded", cardQuoteTampered = false, cardActionError = false;
 let holdCardConfirm = false, releaseCardConfirm;
+let serverTestPending = false;
 const searchRoster = [{id:"12345678",name:"Latest Player"},{id:"22222222",name:"Second Player"}];
 const uscfRequests = [];
 await page.setRequestInterception(true);
@@ -57,6 +58,7 @@ page.on("request", async (request) => {
       return;
     }
     if (fields.action === "confirmCardPayment") {
+      serverTestPending = !["requires_payment_method","canceled"].includes(cardStatus);
       const quote=calls.filter(c=>c.action==='quoteCardPayment' && c.requestId===fields.quoteId).at(-1);
       const subtotal=JSON.parse(quote.entries).reduce((n,e)=>n+(e.event==='club-night'?1750:750),0);
       const amount=subtotal+(quote.coverCosts==='true'?Math.floor(subtotal*.03):Math.floor(subtotal*.025));
@@ -75,6 +77,7 @@ page.on("request", async (request) => {
     if (fields.action === "paymentBalances" && fields.id === "00000000") Object.assign(body,{name:"",entries:[],totalCents:0,unknownCount:0});
     if (fields.action === "createPaymentCheckout" && checkoutFailure) Object.assign(body,{ok:false,error:"Test checkout service unavailable."});
     if (fields.action === "paymentBalances" && balanceVariant === "unknown") Object.assign(body,{entries:[{event:"unknown",date:"2027-06-01",name:"Unknown Fee",balanceCents:null,review:false}],totalCents:0,unknownCount:1});
+    if (fields.action === "paymentBalances" && serverTestPending) body.entries.forEach(entry => { entry.testPending = entry.balanceCents > 0 && !entry.review; });
     if (fields.action === "paymentBalances" && balanceVariant === "pending") body.entries.forEach(entry => { entry.pending = entry.balanceCents > 0; });
     if (fields.action === "paymentBalances" && balanceVariant === "verified") body.entries = body.entries.filter(entry => entry.balanceCents > 0).map(entry => ({...entry,balanceCents:0,pending:false}));
     request.respond({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(body) });
@@ -287,8 +290,12 @@ await page.waitForFunction(()=>document.querySelector('#pay-summary').textConten
 (await page.$eval('#pay-balances',el=>el.textContent.includes('Test payment pending verification'))) && (await page.$$('#pay-balances input[type=checkbox]')).length===0 && (await page.$eval('#pay-review',el=>el.disabled))
   ? pass('Submitted test entries show per-entry pending verification and cannot be selected again') : fail('Submitted entries remained payable');
 await page.reload({waitUntil:'networkidle0'});
+(await page.$$('#pay-balances input[type=checkbox]')).length===0 && (await page.$eval('#pay-balances',el=>el.textContent.includes('Test payment pending verification'))) && (await page.$eval('#pay-review',el=>el.disabled))
+  ? pass('Server test pending survives refresh and still prevents another payment') : fail('Refresh lost the in-progress test payment');
+serverTestPending=false;
+await page.reload({waitUntil:'networkidle0'});
 (await page.$$('#pay-balances input[type=checkbox]')).length===4
-  ? pass('Test pending is session-only and never persists in live balance records') : fail('Test pending persisted after reload');
+  ? pass('Verified isolated test sync clears pending without marking real entries paid') : fail('Verified test sync did not release test pending');
 await press(page,'#pay-review');
 await press(page,'#pay-card-review');
 await page.waitForSelector('#pay-card-confirm:not([hidden])');

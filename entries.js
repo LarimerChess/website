@@ -53,7 +53,7 @@ function switchButton(event, player, toNight) {
       id: player.id, last: player.last, email: player.email });
     let said;
     try {
-      const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
+      const result = await postRegistration(body, "Changing registration…");
       said = result.message || result.error;
       if (result.ok) await load();
     } catch {
@@ -129,7 +129,7 @@ function byesButton(cell, event, entry, player) {
       try {
         const body = new URLSearchParams({ action: "byes", event: name, date: month ? date.slice(0, 7) : date, id: player.id,
           last: player.last, email: player.email, byes: byes.join(", "), zeroByes: zeroByes.join(", ") });
-        const result = await (await fetch(ENDPOINT, { method: "POST", body })).json();
+        const result = await postRegistration(body);
         said = result.message || result.error;
         if (result.ok) {
           close();

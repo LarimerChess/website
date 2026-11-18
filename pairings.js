@@ -184,9 +184,8 @@ function reportBox(t, number, g, name) {
       status.textContent = "Sending…";
       sending.add(where);
       try {
-        const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams({ action: "report", event, date, number,
-          board: g.board, section: g.section || "", id, result: value }) });
-        const result = await response.json();
+        const result = await postRegistration(new URLSearchParams({ action: "report", event, date, number,
+          board: g.board, section: g.section || "", id, result: value }));
         if (result.ok) claimed.set(where, [side, value]);
         reported.set(where, result.message || result.error);
       } catch {
@@ -292,8 +291,7 @@ async function arenaSend(t, action, fields) {
   arenaNotes.set(t.key, "Sending…");
   redrawAll();
   try {
-    const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams({ action, event, date, ...fields }) });
-    const result = await response.json();
+    const result = await postRegistration(new URLSearchParams({ action, event, date, ...fields }));
     arenaNotes.set(t.key, result.message || result.error || "");
     if (result.ok) challenging.delete(t.key);
     if (result.ok && !LIVE_DB) loadOnce();

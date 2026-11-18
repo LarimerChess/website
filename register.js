@@ -49,6 +49,33 @@ const networkActivity = (() => {
   };
 })();
 
+const networkMessages = {
+  login: "Signing in…", register: "Registering player…", remove: "Removing registration…",
+  toNight: "Changing registration…", byes: "Saving byes…", byeKind: "Saving bye…",
+  paid: "Saving payment…", refund: "Recording refund…", discount: "Saving discount…",
+  registrationLimit: "Saving registration limit…", refresh: "Refreshing club data…",
+  incident: "Saving incident report…", createEvent: "Creating tournament…",
+  contactSave: "Saving contact…", contactDelete: "Deleting contact…", donation: "Recording donation…",
+  messages: "Loading messages…", search: "Searching US Chess…",
+  start: "Starting tournament…", restart: "Restarting tournament…", sync: "Updating players…",
+  section: "Moving player…", sections: "Saving sections…", sectionNames: "Saving section names…",
+  extraSection: "Adding section…", dropSection: "Removing section…", extraPlayer: "Adding player…",
+  timeControl: "Saving time control…", rounds: "Saving tournament schedule…", out: "Updating player availability…",
+  result: "Saving result…", results: "Saving results…", report: "Sending result…",
+  round: "Saving round…", sectionRound: "Saving round…",
+  arenaJoin: "Adding player to the queue…", arenaLeave: "Removing player from the queue…",
+  arenaAvailable: "Updating availability…", arenaChallenge: "Sending challenge…",
+  arenaPair: "Starting games…", arenaResult: "Saving result…", arenaReport: "Sending result…",
+  arenaCancel: "Taking back game…", arenaPact: "Saving Blood Pact…", arenaSections: "Saving arena sections…",
+};
+
+async function postRegistration(body, message = networkMessages[body.get("action") || "register"] || "Processing request…") {
+  return networkActivity(message, async () => {
+    const response = await fetch(ENDPOINT, { method: "POST", body });
+    return response.json();
+  });
+}
+
 const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");
 const entriesStatus = document.querySelector(".entries-status");
@@ -295,8 +322,7 @@ if (!dateField) {
       const byes = [...new Set(body.getAll("byes"))];
       body.delete("byes");
       if (byes.length) body.set("byes", byes.join(", "));
-      const response = await fetch(ENDPOINT, { method: "POST", body });
-      const result = await response.json();
+      const result = await postRegistration(body);
       status.textContent = result.message || result.error;
       if (result.ok) {
         status.append(" ", Object.assign(document.createElement("a"), {

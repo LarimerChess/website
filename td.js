@@ -111,10 +111,11 @@ async function credentials() {
 
 /** The script's answer to a desk action, without call's handling of a sign-in it refused. */
 async function ask(action, fields = {}) {
-  const response = await fetch(ENDPOINT, {
-    method: "POST", body: new URLSearchParams({ action, ...(await credentials()), ...fields }),
+  // Reads used by live updates and type-ahead search must not interrupt the desk.
+  const quiet = new Set(["changes", "choices", "people", "contacts", "entries", "ledger", "incidents", "tournament", "search"]);
+  return networkActivity(quiet.has(action) ? null : networkMessages[action] || "Processing request…", async () => {
+    return postRegistration(new URLSearchParams({ action, ...(await credentials()), ...fields }), null);
   });
-  return response.json();
 }
 
 // Sign-in shows its own errors beside its form, and the background check for changes stays quiet.
@@ -152,7 +153,7 @@ function signOut(message = "") {
   remember("");
   signedIn = false;
   td = null;
-  if (firebase?.auth.currentUser) firebase.signOut(firebase.auth).catch(() => {});
+  if (firebase?.auth.currentUser) networkActivity("Signing out…", () => firebase.signOut(firebase.auth)).catch(() => {});
   desk.hidden = navEvent.hidden = true;
   showLogin(message);
 }
@@ -369,7 +370,7 @@ playerInput.addEventListener("input", () => {
 });
 
 uschessButton.addEventListener("click", async () => {
-  await searchUsChess(playerInput.value.trim(), "US Chess has nobody by that name.");
+  await networkActivity(networkMessages.search, () => searchUsChess(playerInput.value.trim(), "US Chess has nobody by that name."));
   playerInput.focus();
 });
 
@@ -528,9 +529,8 @@ document.addEventListener("td-tournament", (event) => {
   }
 });
 
-// Saving takes a few seconds, so Register hands the player off and clears the form at once: the
-// TD can fill in the next player while earlier ones save. Each shows in the list below the form
-// until the script answers, then says how it went; one that failed can be tried again.
+// Keep each registration's outcome below the form after the request overlay closes;
+// a failed registration can be tried again without re-entering the player's details.
 const saving = document.querySelector(".td-saving");
 
 function save(job, item) {
@@ -581,7 +581,7 @@ registerForm.addEventListener("submit", (event) => {
   const item = document.createElement("li");
   saving.prepend(item);
   save(job, item);
-  deskStatus.textContent = `Saving ${player.name}. You can fill in the next player.`;
+  deskStatus.textContent = `Saving ${player.name}…`;
   player = null;
   playerInput.value = "";
   chosen.textContent = "";
@@ -974,15 +974,17 @@ async function signInWith(provider) {
   // Club laptops are shared, so the provider asks which account rather than using the last TD's.
   provider.setCustomParameters({ prompt: "select_account" });
   loginStatus.textContent = "Signing in…";
-  try {
-    await firebase.signInWithPopup(firebase.auth, provider);
-  } catch (error) {
-    if (error?.code !== "auth/popup-blocked") {
-      loginStatus.textContent = authProblem(error);
-      return;
+  return networkActivity("Signing in…", async () => {
+    try {
+      await firebase.signInWithPopup(firebase.auth, provider);
+    } catch (error) {
+      if (error?.code !== "auth/popup-blocked") {
+        loginStatus.textContent = authProblem(error);
+        return;
+      }
+      await firebase.signInWithRedirect(firebase.auth, provider).catch((e) => { loginStatus.textContent = authProblem(e); });
     }
-    await firebase.signInWithRedirect(firebase.auth, provider).catch((e) => { loginStatus.textContent = authProblem(e); });
-  }
+  });
 }
 
 /** Sends a sign-in link, or, when the page was opened from one on a device that didn't ask for it,
@@ -997,7 +999,7 @@ async function emailLink() {
       await finishEmailLink(email).catch(spentLink);
     } else {
       loginStatus.textContent = "Sending…";
-      await firebase.sendSignInLinkToEmail(firebase.auth, email, { url: deskAddress(), handleCodeInApp: true });
+      await networkActivity("Sending sign-in link…", () => firebase.sendSignInLinkToEmail(firebase.auth, email, { url: deskAddress(), handleCodeInApp: true }));
       try { localStorage.setItem(EMAIL_KEY, email); } catch {}
       loginStatus.textContent = `Check ${email} for a sign-in link, and open it to sign in.`;
     }
@@ -1008,7 +1010,7 @@ async function emailLink() {
 }
 
 async function finishEmailLink(email) {
-  await firebase.signInWithEmailLink(firebase.auth, email, location.href);
+  await networkActivity("Signing in…", () => firebase.signInWithEmailLink(firebase.auth, email, location.href));
   try { localStorage.removeItem(EMAIL_KEY); } catch {}
   leaveEmailLink();
 }

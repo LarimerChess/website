@@ -89,6 +89,18 @@ review flags, then mark the matching review row `Resolution` as lowercase
 `resolved`. The row's Snapshot identifies the reviewed reversal state; changed
 states reopen review. No code here issues Stripe refunds.
 
+## President payment receipts
+
+After sync verifies and imports a payment, Apps Script emails
+`president@larimerchess.org` a receipt summary with the player/event allocations
+or anonymous donation, total, any card fee, Stripe IDs, and Stripe's hosted
+receipt URL when available. Sandbox notifications are clearly labeled `[TEST]`
+and state that no real funds were collected. The notification goes to the
+president; this flow does not collect a payer email address. The private `Stripe
+receipt emails` sheet prevents repeat syncs from sending duplicate messages and
+allows a failed email to retry on the next sync. The payment remains recorded if
+email delivery fails.
+
 Anonymous donations never create player contacts. Missing/altered basket
 references and unexpected amounts are reviewed, never reclassified as donations.
 
@@ -187,9 +199,12 @@ director reconciles it. Do not repay merely because confirmation was interrupted
 A quote that was only reviewed, without a final confirmation request, does not
 reserve entries.
 
-Sandbox submissions show **Test payment pending verification** only in the current
-page session. Reloading removes that local test display; sandbox lifecycle records
-never reserve or pay live registration balances. Test imports remain isolated.
+Sandbox submissions show **Test payment pending verification** for their exact
+selected registrations. This server-derived test state survives a refresh while
+the site is in sandbox mode. A verified isolated test import or verified failure
+clears it; it never changes real balances, Paid summaries, or the live ledger.
+Switching the site to live mode excludes sandbox reservations. Test imports remain
+isolated.
 
 Pending verification clears through a scheduled or manually dispatched Stripe
 payment-sync Action. Scheduling is currently disabled unless the repository
