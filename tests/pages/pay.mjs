@@ -53,15 +53,15 @@ page.on("request", async (request) => {
     if (fields.action === "confirmCardPayment" && holdCardConfirm) await new Promise(resolve=>{releaseCardConfirm=resolve;});
     if (fields.action === "quoteCardPayment") {
       const subtotal=JSON.parse(fields.entries).reduce((n,e)=>n+(e.event==='club-night'?1750:750),0);
-      const cardFee=fields.coverCosts==='true'?Math.floor(subtotal*.03):Math.floor(subtotal*.025);
-      request.respond({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify({ok:true,quoteId:fields.requestId,subtotal,cardFee,amount:subtotal+cardFee+(cardQuoteTampered?1:0),currency:'usd',livemode:false,count:JSON.parse(fields.entries).length})});
+      const cardFee=0;
+      request.respond({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify({ok:true,quoteId:fields.requestId,subtotal,cardFee,amount:subtotal+(cardQuoteTampered?1:0),currency:'usd',livemode:false,count:JSON.parse(fields.entries).length})});
       return;
     }
     if (fields.action === "confirmCardPayment") {
       serverTestPending = !["requires_payment_method","canceled"].includes(cardStatus);
       const quote=calls.filter(c=>c.action==='quoteCardPayment' && c.requestId===fields.quoteId).at(-1);
       const subtotal=JSON.parse(quote.entries).reduce((n,e)=>n+(e.event==='club-night'?1750:750),0);
-      const amount=subtotal+(quote.coverCosts==='true'?Math.floor(subtotal*.03):Math.floor(subtotal*.025));
+      const amount=subtotal;
       await page.evaluate((amount,error)=>{window.stripeMock.amount=amount;window.stripeMock.actionError=error;},amount,cardActionError);
       request.respond({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify({ok:true,paymentIntentId:'pi_fixture',clientSecret:cardStatus==='requires_action'?'pi_fixture_secret_private':null,status:cardStatus,amount,currency:'usd',livemode:false})});
       return;
@@ -259,30 +259,15 @@ await page.evaluate(saved=>localStorage.setItem('lccc-register-players',JSON.str
 await page.goto(base+'/pay/',{waitUntil:'networkidle0'});
 const priorConfirms=()=>calls.filter(c=>c.action==='confirmCardPayment').length;
 const initialConfirms=priorConfirms();
-await press(page,'#pay-review');
 await page.waitForFunction(()=>!document.querySelector('#pay-card').hidden && window.stripeMock);
-priorConfirms()===initialConfirms && (await page.$eval('#pay-card-confirm',el=>el.hidden)) && !(await page.$eval('#pay-cover-costs',el=>el.checked))
-  && (await page.evaluate(()=>window.stripeMock.tokens===0 && window.stripeMock.options.amount===5000 && window.stripeMock.options.allowedPaymentMethodTypes.join(',')==='card'))
-  ? pass('Opening the sandbox card form collects no token or charge and optional coverage starts unchecked') : fail('Card form charged early or had incorrect defaults');
-await press(page,'#pay-card-review');
-await page.waitForSelector('#pay-card-confirm:not([hidden])');
-const firstQuote=calls.filter(c=>c.action==='quoteCardPayment').at(-1);
-firstQuote.coverCosts==='false' && priorConfirms()===initialConfirms && (await page.$eval('#pay-card-total',el=>el.textContent))==='$51.25'
-  ? pass('Card fee and final total are reviewed before a separate explicit payment') : fail('Card quote total or ordering wrong');
-await press(page,'#pay-cover-costs');
-(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('Changing optional costs invalidates the prior quote') : fail('Stale quote remained payable');
-await press(page,'#pay-card-review');
-await page.waitForSelector('#pay-card-confirm:not([hidden])');
-const coveredQuote=calls.filter(c=>c.action==='quoteCardPayment').at(-1);
-coveredQuote.coverCosts==='true' && coveredQuote.requestId!==firstQuote.requestId && coveredQuote.confirmationToken===firstQuote.confirmationToken
-  && (await page.evaluate(()=>window.stripeMock.tokens===1)) && (await page.$eval('#pay-card-total',el=>el.textContent))==='$51.50'
-  ? pass('Optional coverage requotes one basket with a fresh nonce and the same unconsumed card token') : fail('Optional coverage did not revalidate total');
+priorConfirms()===initialConfirms && (await page.evaluate(()=>window.stripeMock.tokens===0 && window.stripeMock.options.amount===5000 && window.stripeMock.options.allowedPaymentMethodTypes.join(',')==='card'))
+  ? pass('Secure card form appears automatically after balances load and collects no payment details early') : fail('Card form did not load automatically or had incorrect settings');
 holdCardConfirm=true;cardStatus='requires_action';
-await press(page,'#pay-card-confirm');
+await press(page,'#pay-review');
 while(!releaseCardConfirm) await new Promise(resolve=>setTimeout(resolve,10));
-await page.$eval('#pay-card-confirm',el=>el.dispatchEvent(new MouseEvent('click',{bubbles:true})));
-priorConfirms()===initialConfirms+1 && (await page.$eval('#pay-card-confirm',el=>el.disabled))
-  ? pass('Explicit final payment blocks double confirmation while pending') : fail('Card payment submitted twice');
+await page.$eval('#pay-review',el=>el.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+priorConfirms()===initialConfirms+1 && (await page.$eval('#pay-review',el=>el.disabled))
+  ? pass('One pay action submits the card and blocks duplicate confirmation while pending') : fail('Card payment submitted twice');
 releaseCardConfirm();holdCardConfirm=false;
 await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Payment submitted'));
 (await page.evaluate(()=>window.stripeMock.actions===1)) && priorConfirms()===initialConfirms+1
@@ -296,26 +281,20 @@ serverTestPending=false;
 await page.reload({waitUntil:'networkidle0'});
 (await page.$$('#pay-balances input[type=checkbox]')).length===4
   ? pass('Verified isolated test sync clears pending without marking real entries paid') : fail('Verified test sync did not release test pending');
-await press(page,'#pay-review');
-await press(page,'#pay-card-review');
-await page.waitForSelector('#pay-card-confirm:not([hidden])');
+await page.waitForFunction(()=>!document.querySelector('#pay-card').hidden && window.stripeMock);
 await page.evaluate(()=>window.stripeMock.changes());
-(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('Editing card details invalidates the quoted fee') : fail('Edited card retained quote');
+(await page.$eval('#pay-review',el=>!el.disabled)) ? pass('Card details remain editable before payment') : fail('Editing card details disabled payment');
 cardQuoteTampered=true;
-await press(page,'#pay-card-review');
+await press(page,'#pay-review');
 await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('could not be verified'));
-(await page.$eval('#pay-card-confirm',el=>el.hidden)) && priorConfirms()===initialConfirms+1
-  ? pass('Tampered quote totals never enable final payment') : fail('Tampered card total became payable');
+priorConfirms()===initialConfirms+1
+  ? pass('Tampered quote totals never reach Stripe confirmation') : fail('Tampered card total became payable');
 cardQuoteTampered=false;cardStatus='requires_payment_method';
-await press(page,'#pay-card-review');
-await page.waitForSelector('#pay-card-confirm:not([hidden])');
-await press(page,'#pay-card-confirm');
-await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Enter new card details'));
-(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('A failed card requires a new review instead of automatic confirmation') : fail('Failed card stayed payable');
+await press(page,'#pay-review');
+await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Check your card details'));
+pass('A declined card can be retried by correcting the details');
 cardStatus='requires_action';cardActionError=true;
-await press(page,'#pay-card-review');
-await page.waitForSelector('#pay-card-confirm:not([hidden])');
-await press(page,'#pay-card-confirm');
+await press(page,'#pay-review');
 await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('authentication was not completed'));
 (await page.$eval('#pay-summary',el=>document.activeElement===el)) ? pass('Authentication failure stays beside the action with receipt guidance') : fail('Authentication error was hidden');
 await axeBoth(page,'Sandbox card payment');
