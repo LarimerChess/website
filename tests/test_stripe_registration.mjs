@@ -292,6 +292,8 @@ test('basket creation recalculates fees, sends only opaque reference and reuses 
   const p={requestId:'request_abcdefghijklmnop',entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01',amount:1},{id:'87654321',event:'chess',date:'2026-12-01',amount:1}])};
   assert.equal(f.ctx.createPaymentCheckout(p).amount,3000);
   assert.equal(sent.payload['line_items[0][price_data][unit_amount]'],'3000');
+  assert.equal(sent.payload['allowed_payment_method_types[0]'],'card');
+  assert.ok(!('payment_method_types[0]' in sent.payload));
   assert.ok(!JSON.stringify(sent.payload).includes('12345678'));
   assert.ok(!JSON.stringify(sent.payload).includes('private-withdraw-token'));
   assert.equal(f.ctx.createPaymentCheckout(p).amount,3000);assert.equal(calls,1);assert.equal(rows.length,1);

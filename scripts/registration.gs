@@ -3914,7 +3914,7 @@ function createPaymentCheckout(p) {
       const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
         "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
         "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
-        "payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
+        "allowed_payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
         success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
       stage = "stripe-request";
       const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload,
