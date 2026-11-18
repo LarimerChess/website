@@ -8,8 +8,9 @@ even if they have no current balance. The existing registration Apps Script reca
 all balances, stores a private basket allocation, and creates one Stripe Checkout
 Session for the exact total in USD. After selecting entries, the Pay on Stripe
 button opens secure Checkout directly; a visible checkout link remains available
-if navigation is blocked. Client amounts are never trusted. The club
-absorbs processing fees in the legacy hosted-checkout fallback. The card flow below adds a disclosed, capped Card fee after Stripe identifies the card. Donations remain a separate anonymous Payment Link.
+if navigation is blocked. Client amounts are never trusted. The club absorbs
+processing costs for online payments. Donations remain a separate anonymous
+Payment Link.
 
 ## Configure sandbox deployment
 
@@ -89,17 +90,33 @@ review flags, then mark the matching review row `Resolution` as lowercase
 `resolved`. The row's Snapshot identifies the reviewed reversal state; changed
 states reopen review. No code here issues Stripe refunds.
 
-## President payment receipts
+## Card payments
 
-After sync verifies and imports a payment, Apps Script emails
-`president@larimerchess.org` a receipt summary with the player/event allocations
-or anonymous donation, total, any card fee, Stripe IDs, and Stripe's hosted
-receipt URL when available. Sandbox notifications are clearly labeled `[TEST]`
-and state that no real funds were collected. The notification goes to the
-president; this flow does not collect a payer email address. The private `Stripe
-receipt emails` sheet prevents repeat syncs from sending duplicate messages and
-allows a failed email to retry on the next sync. The payment remains recorded if
-email delivery fails.
+`cardProcessing.enabled` selects the Payment Element flow. Keep it false until the
+latest `scripts/registration.gs` is deployed as a new version of the existing web
+app. The publishable key is public browser configuration; secret keys remain in
+Script Properties and GitHub secrets. Sandbox mode permits testing with
+`complianceReady: false`; live mode requires that flag to be explicitly true after
+applicable merchant/acquirer notification and surcharge requirements are met.
+The flag is a deployment gate, not a substitute for those requirements.
+
+After balances load, the secure Stripe card form appears automatically. The player
+enters card details and presses the single Pay button. The club absorbs card
+processing costs; the Stripe amount is exactly the selected entry balance. The
+server retrieves a ConfirmationToken and records a zero Card fee. This online
+payment policy does not change in-person TD accounting or the event's entry fees.
+
+New quotes in **Stripe card quotes** store immutable allocations, subtotal, zero
+Card fee, total, token identifier, funding classification, and exact confirmation
+request. They contain no card number or client secret. Confirmation uses the same
+token and durable idempotency key; a consumed token recovers the existing intent
+following an interrupted sheet write. Other unsettled payments for overlapping
+entries block a second confirmation until reconciliation. Existing fee-bearing
+quotes continue to reconcile, but an unconfirmed old quote cannot charge a fee.
+Test reservations clear after their isolated test import; they never change live
+balances.
+
+The sync reads both Checkout sessions and standalone marked PaymentIntents.
 
 Anonymous donations never create player contacts. Missing/altered basket
 references and unexpected amounts are reviewed, never reclassified as donations.
