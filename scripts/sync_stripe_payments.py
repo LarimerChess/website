@@ -72,9 +72,15 @@ class Stripe:
         params = {"limit": 100}
         if link is not None:
             params["payment_link"] = link
+        return self.pages("checkout/sessions", params)
+
+    def intents(self):
+        return self.pages("payment_intents", {"limit": 100, "expand[]": "data.latest_charge"})
+
+    def pages(self, path, params):
         seen = set()
         while True:
-            page = self.get("checkout/sessions", params)
+            page = self.get(path, params)
             if not isinstance(page.get("data"), list) or type(page.get("has_more")) is not bool:
                 raise SyncError("Unexpected Stripe pagination response.")
             yield from page["data"]
@@ -87,6 +93,31 @@ class Stripe:
                 raise SyncError("Stripe pagination did not advance.")
             seen.add(cursor)
             params["starting_after"] = cursor
+
+
+def intent_record(intent, config):
+    """Verify standalone payments; preserve reversal facts for backend review."""
+    if intent.get("status") != "succeeded":
+        return None
+    metadata = intent.get("metadata")
+    intent_id = intent.get("id")
+    if (not isinstance(metadata, dict) or metadata.get("lccc_checkout") != "payment_intent_v1"
+            or not isinstance(intent_id, str) or not re.fullmatch(r"pi_[A-Za-z0-9]+", intent_id)):
+        raise SyncError("A standalone payment failed source validation.")
+    charge = intent.get("latest_charge")
+    if (not isinstance(charge, dict) or charge.get("status") != "succeeded"
+            or charge.get("payment_intent") != intent_id):
+        raise SyncError("A standalone payment failed charge validation.")
+    # Reuse the settled-payment checks without allowing metadata to set amounts
+    # or allocations. The backend resolves the reference against its basket.
+    session = {"id": "", "payment_status": "paid", "status": "complete", "mode": "payment",
+               "livemode": intent.get("livemode"), "currency": intent.get("currency"),
+               "payment_link": None, "payment_intent": intent_id, "amount_total": intent.get("amount"),
+               "metadata": {"lccc_checkout": "basket_v1"},
+               "client_reference_id": metadata.get("lccc_reference"), "created": intent.get("created")}
+    record = payment_record(session, intent, config, "entry", "basket_v1")
+    record.update(kind="basket_intent", checkoutType="payment_intent_v1")
+    return record
 
 
 def payment_record(session, intent, config, kind, checkout_type=""):
@@ -136,6 +167,8 @@ def send_records(endpoint, secret, records):
     results = response.get("results", [])
     if (response.get("ok") is not True or len(results) != len(records)
             or [r.get("sessionId") for r in results] != [r["sessionId"] for r in records]
+            or any(not record["sessionId"] and result.get("paymentIntentId") != record["paymentIntentId"]
+                   for record, result in zip(records, results))
             or any(r.get("status") not in ("imported", "duplicate", "review", "test") for r in results)):
         raise SyncError("Registration backend did not acknowledge the entire batch.")
     return results
@@ -144,6 +177,7 @@ def send_records(endpoint, secret, records):
 def sync(stripe, config, sender=None):
     counts = {"verified": 0, "skipped": 0, "imported": 0, "duplicate": 0, "review": 0, "test": 0}
     batch = []
+    checkout_intents = set()
 
     def flush():
         if batch and sender:
@@ -159,6 +193,8 @@ def sync(stripe, config, sender=None):
         if not checkout_type and not link:
             continue
         for session in stripe.sessions(link):
+            if isinstance(session.get("payment_intent"), str):
+                checkout_intents.add(session["payment_intent"])
             if checkout_type:
                 # Stripe has no metadata list filter; inspect the full history
                 # and exclude Payment Links already handled by the scans above.
@@ -177,6 +213,19 @@ def sync(stripe, config, sender=None):
             counts["verified"] += 1
             if len(batch) == 50:
                 flush()
+    for intent in stripe.intents():
+        metadata = intent.get("metadata")
+        if (not isinstance(metadata, dict) or metadata.get("lccc_checkout") != "payment_intent_v1"
+                or intent.get("id") in checkout_intents):
+            continue
+        record = intent_record(intent, config)
+        if record is None:
+            counts["skipped"] += 1
+            continue
+        batch.append(record)
+        counts["verified"] += 1
+        if len(batch) == 50:
+            flush()
     flush()
     return counts
 

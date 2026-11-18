@@ -31,12 +31,38 @@ const ClubPayments = (() => {
     const value = params.get("id") ?? params.get("uscfid");
     return /^\d{8}$/.test(value || "") ? value : null;
   }
+  function cardEnabled(config) {
+    const c = config.cardProcessing;
+    return Boolean(config.enabled && c?.enabled && (config.livemode === false || c.complianceReady === true)
+      && new RegExp(`^pk_${config.livemode ? "live" : "test"}_[A-Za-z0-9]+$`).test(c.publishableKey || ""));
+  }
+  function verifiedQuote(result, config, subtotal, count) {
+    if (!result?.ok) throw new Error(result?.error || "Card fee could not be reviewed.");
+    if (!cardEnabled(config) || typeof result.quoteId !== "string" || !/^[A-Za-z0-9_-]{16,200}$/.test(result.quoteId)
+      || result.subtotal !== subtotal || result.count !== count || result.currency !== "usd" || result.livemode !== config.livemode
+      || !Number.isSafeInteger(result.cardFee) || result.cardFee < 0 || result.cardFee > Math.floor(subtotal * 3 / 100)
+      || !Number.isSafeInteger(result.amount) || result.amount !== subtotal + result.cardFee || result.amount > 99999999) {
+      throw new Error("Card total could not be verified. Review your card fee again.");
+    }
+    return result;
+  }
+  function verifiedCardPayment(result, config, amount) {
+    if (!result?.ok) throw new Error(result?.error || "Card payment could not be submitted.");
+    if (!cardEnabled(config) || !/^pi_[A-Za-z0-9]+$/.test(result.paymentIntentId || "")
+      || (result.status === "requires_action" && (typeof result.clientSecret !== "string"
+        || !result.clientSecret.startsWith(result.paymentIntentId + "_secret_")))
+      || result.amount !== amount || result.currency !== "usd" || result.livemode !== config.livemode
+      || !["succeeded", "processing", "requires_action", "requires_payment_method", "canceled"].includes(result.status)) {
+      throw new Error("Payment response could not be verified. Check your receipt before trying again.");
+    }
+    return result;
+  }
   function requestFor(event, player) {
     const [name, date] = event.key.split("/");
     return new URLSearchParams({ action: "paymentLink", event: name,
       date: player.for === "Whole month" ? date.slice(0, 7) : date, id: player.id });
   }
-  return { stripeURL, verifiedLink, verifiedCheckout, requestedPlayerId, requestFor };
+  return { stripeURL, verifiedLink, verifiedCheckout, requestedPlayerId, requestFor, cardEnabled, verifiedQuote, verifiedCardPayment };
 })();
 if (typeof module !== "undefined") module.exports = ClubPayments;
 
@@ -52,6 +78,11 @@ if (typeof document !== "undefined") (async () => {
   const donation = document.querySelector("#donation-link");
   const selectedTotal = document.querySelector("#pay-selected-total");
   const review = document.querySelector("#pay-review");
+  const cardForm = document.querySelector("#pay-card");
+  const cardReview = document.querySelector("#pay-card-review");
+  const cardConfirm = document.querySelector("#pay-card-confirm");
+  const coverCosts = document.querySelector("#pay-cover-costs");
+  const cardTotals = document.querySelector("#pay-card-totals");
   const saved = newSavedBox();
   const remember = newRemember("pay-remember");
   form.prepend(saved);
@@ -59,6 +90,7 @@ if (typeof document !== "undefined") (async () => {
   let config = { enabled: false };
   let revision = 0;
   let checkoutPending = false;
+  let stripe, elements, cardElement, cardToken, cardQuote, stripeScript;
   let checkoutRequestId = crypto.randomUUID();
   let defaultSelected = true;
   const people = new Map();
@@ -76,9 +108,15 @@ if (typeof document !== "undefined") (async () => {
     checkout.hidden = true;
     checkout.removeAttribute("href");
     summary.textContent = "";
+    cardToken = cardQuote = null;
+    cardForm.hidden = cardTotals.hidden = cardConfirm.hidden = true;
+    if (cardElement) cardElement.destroy();
+    cardElement = elements = null;
   };
   const post = async (fields) => networkActivity(fields.action === "paymentPlayers" ? null
-    : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout" : "Loading entry balances", async () => {
+    : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout"
+    : fields.action === "quoteCardPayment" ? "Reviewing card fee"
+    : fields.action === "confirmCardPayment" ? "Submitting card payment" : "Loading entry balances", async () => {
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
     if (!response.ok) throw new Error("The payment service could not be reached. Please try again.");
     const data = await response.json();
@@ -140,15 +178,130 @@ if (typeof document !== "undefined") (async () => {
     return [...people.values()].flatMap((person) => person.entries.filter((entry) => eligible(entry) && selected.has(entryKey(person.id, entry)))
       .map((entry) => ({ ...entry, id: person.id, playerName: person.name })));
   }
+  const cardError = (error) => {
+    status.textContent = summary.textContent = error.message;
+    summary.scrollIntoView({ block: "center" });
+    summary.focus({ preventScroll: true });
+  };
+  function invalidateCardQuote() {
+    revision++;
+    checkoutRequestId = crypto.randomUUID();
+    cardQuote = null;
+    cardTotals.hidden = cardConfirm.hidden = true;
+    summary.textContent = "Review the card fee before paying.";
+  }
+  async function openCardForm() {
+    const version = revision;
+    checkoutPending = true;
+    updateTotal();
+    try {
+      if (!stripeScript) stripeScript = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://js.stripe.com/endive/stripe.js";
+        script.onload = resolve;
+        script.onerror = () => { stripeScript = null; reject(new Error("Secure card form could not load. Please try again.")); };
+        document.head.append(script);
+      });
+      await stripeScript;
+      if (version !== revision) return;
+      stripe ||= Stripe(config.cardProcessing.publishableKey);
+      if (!elements) {
+        const amount = selectedEntries().reduce((n, entry) => n + entry.balanceCents, 0);
+        elements = stripe.elements({ mode: "payment", currency: "usd", amount,
+          paymentMethodCreation: "manual", allowedPaymentMethodTypes: ["card"] });
+        cardElement = elements.create("payment");
+        cardElement.on("change", () => {
+          cardToken = null;
+          invalidateCardQuote();
+        });
+        cardElement.mount("#pay-card-element");
+      }
+      cardForm.hidden = false;
+      summary.textContent = "Enter card details, then review the fee. You will confirm the total before paying.";
+      cardForm.scrollIntoView({ block: "center" });
+    } catch (error) { if (version === revision) cardError(error); }
+    finally { checkoutPending = false; updateTotal(); }
+  }
+  coverCosts.addEventListener("change", () => {
+    invalidateCardQuote();
+    updateTotal();
+  });
+  cardReview.addEventListener("click", async () => {
+    if (checkoutPending || !elements || !ClubPayments.cardEnabled(config)) return;
+    const entries = selectedEntries(), subtotal = entries.reduce((n, entry) => n + entry.balanceCents, 0);
+    if (!entries.length) return;
+    const version = revision;
+    cardQuote = null;
+    cardTotals.hidden = cardConfirm.hidden = true;
+    checkoutPending = true;
+    updateTotal();
+    try {
+      if (!cardToken) {
+        const submitted = await elements.submit();
+        if (submitted.error) throw new Error(submitted.error.message || "Check your card details.");
+        const created = await stripe.createConfirmationToken({ elements,
+          params: { return_url: location.origin + "/pay/?returned=1" } });
+        if (created.error) throw new Error(created.error.message || "Check your card details.");
+        if (version !== revision) return;
+        if (!/^ctoken_[A-Za-z0-9]+$/.test(created.confirmationToken?.id || "")) throw new Error("Card details could not be verified.");
+        cardToken = created.confirmationToken.id;
+      }
+      const result = await post({ action: "quoteCardPayment", requestId: checkoutRequestId,
+        entries: JSON.stringify(entries.map(({ id, event, date }) => ({ id, event, date }))),
+        confirmationToken: cardToken, coverCosts: String(coverCosts.checked) });
+      const quote = ClubPayments.verifiedQuote(result, config, subtotal, entries.length);
+      if (version !== revision) return;
+      cardQuote = quote;
+      document.querySelector("#pay-card-subtotal").textContent = money(quote.subtotal);
+      document.querySelector("#pay-card-fee").textContent = money(quote.cardFee);
+      document.querySelector("#pay-card-total").textContent = money(quote.amount);
+      cardTotals.hidden = cardConfirm.hidden = false;
+      cardConfirm.textContent = `${config.livemode ? "Pay" : "Test pay"} ${money(quote.amount)}`;
+      summary.textContent = "Review the total, then confirm your payment.";
+      cardConfirm.focus();
+    } catch (error) { if (version === revision) cardError(error); }
+    finally { checkoutPending = false; updateTotal(); }
+  });
+  cardConfirm.addEventListener("click", async () => {
+    if (checkoutPending || !cardQuote || !ClubPayments.cardEnabled(config)) return;
+    const quote = cardQuote, version = revision;
+    checkoutPending = true;
+    updateTotal();
+    try {
+      const payment = ClubPayments.verifiedCardPayment(await post({ action: "confirmCardPayment", quoteId: quote.quoteId }), config, quote.amount);
+      // A retry must collect/review card details; never submit a second confirmation automatically.
+      cardQuote = cardToken = null;
+      cardConfirm.hidden = cardTotals.hidden = true;
+      if (payment.status === "requires_payment_method" || payment.status === "canceled") {
+        throw new Error("Enter new card details and review the fee before trying again.");
+      }
+      if (payment.status === "requires_action") {
+        const action = await stripe.handleNextAction({ clientSecret: payment.clientSecret });
+        if (action.error) throw new Error("Card authentication was not completed. Check your payment status before trying again.");
+        const intent = action.paymentIntent;
+        if (intent?.id !== payment.paymentIntentId || intent.amount !== quote.amount || intent.currency !== "usd"
+          || !["succeeded", "processing"].includes(intent.status)) throw new Error("Payment status could not be verified. Check your receipt before trying again.");
+      }
+      if (version !== revision) return;
+      resetCheckout();
+      status.textContent = summary.textContent = "Payment submitted. Check your Stripe receipt. Entry balances update after payment verification.";
+      summary.focus();
+    } catch (error) { if (version === revision) cardError(error); }
+    finally { checkoutPending = false; updateTotal(); }
+  });
   function updateTotal() {
     const entries = selectedEntries(), amount = entries.reduce((total, entry) => total + entry.balanceCents, 0);
     selectedTotal.textContent = `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"}: ${money(amount)}.`;
-    review.disabled = checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length;
+    const card = ClubPayments.cardEnabled(config);
+    const available = card || (!config.cardProcessing?.enabled && config.enabled && config.dynamicCheckout?.enabled);
+    review.disabled = checkoutPending || !available || !entries.length;
+    cardReview.disabled = cardConfirm.disabled = coverCosts.disabled = checkoutPending;
+    cardReview.setAttribute("aria-busy", String(checkoutPending));
     review.setAttribute("aria-busy", String(checkoutPending));
     review.textContent = checkoutPending ? "Opening secure checkout..." : entries.length
-      ? `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
+      ? card ? "Enter card details" : `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
     const allEntries = [...people.values()].flatMap(person => person.entries);
-    document.querySelector("#pay-cart-status").textContent = !config.enabled || !config.dynamicCheckout?.enabled
+    document.querySelector("#pay-cart-status").textContent = !available
       ? "Online checkout is unavailable. You can still view balances; please arrange payment with the tournament director."
       : !people.size ? "Find a player above to load unpaid entries."
       : entries.length ? ""
@@ -159,6 +312,11 @@ if (typeof document !== "undefined") (async () => {
   }
   review.addEventListener("click", async () => {
     const entries = selectedEntries();
+    if (ClubPayments.cardEnabled(config)) {
+      if (!checkoutPending && entries.length) await openCardForm();
+      return;
+    }
+    if (config.cardProcessing?.enabled) return;
     if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length) return;
     const amount = entries.reduce((n, entry) => n + entry.balanceCents, 0);
     checkout.hidden = true;
@@ -338,4 +496,3 @@ if (typeof document !== "undefined") (async () => {
     id.value = /^\d{8}$/.test(requestedId || "") ? requestedId : ids[0];
   } else { renderBalances(); status.textContent = "Find a player by name or US Chess ID to start."; }
 })();
-

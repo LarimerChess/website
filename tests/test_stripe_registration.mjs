@@ -521,3 +521,98 @@ test('idempotency errors give explicit reload guidance with safe diagnostic fiel
   const f=fixture(), result=f.ctx.stripeCheckoutHttpError({getContentText:()=>JSON.stringify({error:{type:'idempotency_error',message:'private old payload'}}),getHeaders:()=>({'Request-Id':'req_safe123'})},400);
   assert.match(result.error,/Reload this page and try again/);assert.equal(result.checkoutDiagnostic.type,'idempotency_error');assert.ok(!result.error.includes('private'));
 });
+
+function cardFixture(funding='credit',testMode=true) {
+  const f=basketFixture(testMode);
+  f.config.cardProcessing={enabled:true,complianceReady:!testMode,rateBasisPoints:290,fixedCents:30};
+  f.ctx.prices=()=>({fees:{card:{percent:2.5,fixed:0.5}}});
+  f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=>testMode?'sk_test_fixture':'sk_live_fixture'})};
+  const read=f.ctx.readTab;
+  f.ctx.readTab=(...args)=>{const t=read(...args);t.sheet.getRange=(row,col)=>{const r={setNumberFormat:()=>r,setValue:v=>{t.rows[row-2][col-1]=v;}};return r;};return t;};
+  const calls=[];let failSave=false;
+  f.ctx.UrlFetchApp={fetch:(url,options)=>{
+    calls.push({url,options});
+    let object;
+    if(url.includes('/confirmation_tokens/')) object={id:'ctoken_fixture',livemode:!testMode,payment_intent:calls.some(c=>c.options.method==='post')?'pi_card_fixture':null,expires_at:Math.floor(Date.now()/1000)+3600,payment_method_preview:{type:'card',card:{funding}}};
+    else {
+      const tab=f.ctx.stripeCardQuotes(),r=tab.rows[0],p=options.payload;
+      object={id:'pi_card_fixture',livemode:!testMode,amount:p?Number(p.amount):Number(r[tab.col.Amount]),currency:'usd',metadata:{lccc_checkout:'payment_intent_v1',lccc_reference:r[tab.col.Reference]},status:'succeeded'};
+      if(failSave){const original=tab.sheet.getRange;tab.sheet.getRange=(row,col)=>{if(col===tab.col.Intent+1)throw Error('interrupted');return original(row,col);};failSave=false;}
+    }
+    return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(object)};
+  }};
+  const params={requestId:'card_request_abcdefghijklmnop',confirmationToken:'ctoken_fixture',coverCosts:'false',entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'},{id:'87654321',event:'chess',date:'2026-12-01'}])};
+  return {...f,calls,params,failSave:()=>{failSave=true;}};
+}
+test('card quote inspects trusted funding, adds one capped fee and cannot charge',()=>{
+  for(const funding of ['credit','debit','prepaid','unknown',null]){
+    const f=cardFixture(funding),q=f.ctx.quoteCardPayment(f.params);
+    assert.equal(q.ok,true);assert.equal(q.subtotal,3000);assert.equal(q.cardFee,funding==='credit'?90:0);assert.equal(q.amount,3000+q.cardFee);
+    assert.equal(f.calls.length,1);assert.match(f.calls[0].url,/confirmation_tokens/);assert.equal(f.calls[0].options.method,'get');
+    assert.equal(f.ctx.quoteCardPayment(f.params).quoteId,q.quoteId);assert.equal(f.calls.length,1);
+    assert.ok(!JSON.stringify(q).includes('private-withdraw'));assert.ok(!JSON.stringify(q).includes('ctoken'));
+  }
+});
+test('card fee arithmetic preserves config, never exceeds3percent and optional recovery is bounded',()=>{
+  const f=cardFixture(),card={percent:2.5,fixed:.5},policy={rateBasisPoints:290,fixedCents:30};
+  assert.equal(f.ctx.stripeCardFee(1750,'credit',false,card,policy),52);
+  assert.equal(f.ctx.stripeCardFee(10000,'credit',false,card,policy),300);
+  assert.equal(f.ctx.stripeCardFee(20000,'credit',false,card,policy),550);
+  assert.equal(f.ctx.stripeCardFee(20000,'credit',true,card,policy),600);
+  assert.equal(f.ctx.stripeCardFee(50,'credit',false,card,policy),1);
+  for(let base=50;base<30000;base+=137)for(const funding of ['credit','debit','prepaid','unknown'])for(const cover of [false,true]){
+    const fee=f.ctx.stripeCardFee(base,funding,cover,card,policy);assert.ok(Number.isSafeInteger(fee)&&fee>=0&&fee<=Math.floor(base*.03));if(funding!=='credit'&&!cover)assert.equal(fee,0);
+  }
+  assert.deepEqual(card,{percent:2.5,fixed:.5});
+});
+test('card confirmation binds exact quote and same token, retries do not issue another confirmation',()=>{
+  const f=cardFixture(),q=f.ctx.quoteCardPayment(f.params);
+  const result=f.ctx.confirmCardPayment({quoteId:q.quoteId});assert.equal(result.status,'succeeded');
+  const post=f.calls.find(c=>c.options.method==='post');assert.equal(post.options.payload.amount,'3090');assert.equal(post.options.payload.confirmation_token,'ctoken_fixture');assert.equal(post.options.payload['allowed_payment_method_types[0]'],'card');
+  assert.equal(post.options.headers['Stripe-Version'],'2026-10-28.endive');
+  assert.equal(f.ctx.confirmCardPayment({quoteId:q.quoteId}).status,'succeeded');assert.equal(f.calls.filter(c=>c.options.method==='post').length,1);
+});
+test('changed balance, invalid option, stale quote and live compliance gate cannot confirm',()=>{
+  const f=cardFixture();assert.ok(f.ctx.quoteCardPayment({...f.params,coverCosts:'1'}).error);assert.equal(f.calls.length,0);
+  const q=f.ctx.quoteCardPayment(f.params);f.entry.Discount='1';assert.match(f.ctx.confirmCardPayment({quoteId:q.quoteId}).error,/Balances changed/);assert.equal(f.calls.filter(c=>c.options.method==='post').length,0);
+  const live=cardFixture('credit',false);live.config.cardProcessing.complianceReady=false;assert.ok(live.ctx.quoteCardPayment(live.params).error);assert.equal(live.calls.length,0);
+  const stale=cardFixture(),sq=stale.ctx.quoteCardPayment(stale.params),tab=stale.ctx.stripeCardQuotes();tab.rows[0][tab.col.Created]='1';assert.match(stale.ctx.confirmCardPayment({quoteId:sq.quoteId}).error,/expired/);
+});
+test('standalone gross credits only entry allocations and one separate Card fee, idempotently',()=>{
+  const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+  const r={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
+  assert.equal(f.ctx.stripeImport(r,f.config).status,'imported');assert.deepEqual(f.book.rows.map(x=>x.Received),['18.4','12.5']);assert.equal(f.book.rows[0]['Card fee'],'0.9');assert.equal(f.entry.Paid,'18.40');assert.equal(f.second.Paid,'12.50');assert.equal(f.ctx.stripeBalance(f.ctx.readEntries().rows[0],f.ctx.readEntries().col,f.book).balanceCents,0);
+  assert.equal(f.ctx.stripeImport(r,f.config).status,'duplicate');assert.equal(f.book.rows.length,2);
+});
+test('sandbox intent imports stay isolated and wrong gross or unpaid records never credit',()=>{
+  const f=cardFixture(),q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
+  const r={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
+  assert.equal(f.ctx.stripeImport({...r,amountCents:q.amount+1},f.config).status,'review');assert.equal(f.ctx.stripeImport(r,f.config).status,'test');assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+});
+
+test('successful intent with interrupted ID save is recovered by token without another charge and imported safely',()=>{
+ const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);f.failSave();assert.match(f.ctx.confirmCardPayment({quoteId:q.quoteId}).error,/CARD_CONFIRM/);
+ const tab=f.ctx.stripeCardQuotes();assert.equal(tab.rows[0][tab.col.Intent],'');assert.ok(tab.rows[0][tab.col.Request]);
+ assert.equal(f.ctx.confirmCardPayment({quoteId:q.quoteId}).status,'succeeded');assert.equal(f.calls.filter(c=>c.options.method==='post').length,1);
+ const record={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
+ assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);
+});
+test('unconfirmed quotes cannot be credited and partial intent ledger appends recover fee once',()=>{
+ const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);
+ const record={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
+ assert.equal(f.ctx.stripeImport(record,f.config).status,'review');assert.equal(f.book.rows.length,0);
+ f.ctx.confirmCardPayment({quoteId:q.quoteId});const original=f.ctx.addPayment;let writes=0;f.ctx.addPayment=(...args)=>{if(++writes===2)throw Error('interrupted');return original(...args);};
+ assert.throws(()=>f.ctx.stripeImport(record,f.config),/interrupted/);assert.equal(f.book.rows.length,1);f.ctx.addPayment=original;
+ assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);assert.equal(f.book.rows.reduce((n,r)=>n+Number(r['Card fee']||0),0),.9);
+});
+
+test('overlapping pending quotes cannot charge the same entries again before sync',()=>{
+ const f=cardFixture(),q=f.ctx.quoteCardPayment(f.params),second=f.ctx.quoteCardPayment({...f.params,requestId:'second_request_abcdefghijklmnop'});
+ assert.equal(second.ok,true);assert.equal(f.ctx.confirmCardPayment({quoteId:q.quoteId}).status,'succeeded');
+ assert.match(f.ctx.confirmCardPayment({quoteId:second.quoteId}).error,/already in progress/);assert.equal(f.calls.filter(c=>c.options.method==='post').length,1);
+});
+test('quote response follows actual sheet column order',()=>{
+ const f=cardFixture(),read=f.ctx.readTab;
+ f.ctx.readTab=(name,headers)=>{if(name==='Stripe card quotes'){headers=[...headers];[headers[0],headers[1]]=[headers[1],headers[0]];}return read(name,headers);};
+ const q=f.ctx.quoteCardPayment(f.params);assert.equal(q.ok,true);assert.equal(q.quoteId,f.params.requestId);assert.equal(q.subtotal,3000);
+});

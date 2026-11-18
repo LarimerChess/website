@@ -39,3 +39,32 @@ test("textable payment links accept exact IDs and the uscfid alias without trust
   assert.equal(requestedPlayerId("?id=12345678&uscfid=87654321"),"12345678");
   for (const search of ["", "?id=123", "?uscfid=123456789", "?id=bad&uscfid=87654321", "?id=%3Cscript%3E", "?id=%2012345678"]) assert.equal(requestedPlayerId(search),null);
 });
+
+test('card flow requires matching publishable-key mode and live compliance readiness', () => {
+  const {cardEnabled}=createRequire(import.meta.url)('../pay.js');
+  const c={enabled:true,livemode:false,cardProcessing:{enabled:true,publishableKey:'pk_test_fixture',complianceReady:false}};
+  assert.equal(cardEnabled(c),true);
+  assert.equal(cardEnabled({...c,livemode:true}),false);
+  assert.equal(cardEnabled({...c,livemode:true,cardProcessing:{...c.cardProcessing,publishableKey:'pk_live_fixture',complianceReady:true}}),true);
+  assert.equal(cardEnabled({...c,cardProcessing:{...c.cardProcessing,enabled:false}}),false);
+});
+
+test('card quote binds exact entries and capped fee to the displayed total', () => {
+  const {verifiedQuote}=createRequire(import.meta.url)('../pay.js');
+  const c={enabled:true,livemode:false,cardProcessing:{enabled:true,publishableKey:'pk_test_fixture'}};
+  const q={ok:true,quoteId:'quote_abcdefghijklmnop',subtotal:5000,cardFee:150,amount:5150,count:4,currency:'usd',livemode:false};
+  assert.equal(verifiedQuote(q,c,5000,4),q);
+  for(const patch of [{subtotal:4999},{cardFee:151,amount:5151},{cardFee:-1,amount:4999},{cardFee:1.5,amount:5001.5},{amount:5000},{count:3},{currency:'eur'},{livemode:true},{quoteId:'bad'},{ok:false}]) {
+    assert.throws(()=>verifiedQuote({...q,...patch},c,5000,4));
+  }
+  assert.equal(verifiedQuote({...q,cardFee:0,amount:5000},c,5000,4).amount,5000);
+});
+
+test('card confirmation validates gross and intent before any authentication action', () => {
+  const {verifiedCardPayment}=createRequire(import.meta.url)('../pay.js');
+  const c={enabled:true,livemode:false,cardProcessing:{enabled:true,publishableKey:'pk_test_fixture'}};
+  const r={ok:true,paymentIntentId:'pi_fixture',clientSecret:'pi_fixture_secret_private',status:'requires_action',amount:5150,currency:'usd',livemode:false};
+  assert.equal(verifiedCardPayment(r,c,5150),r);
+  for(const patch of [{amount:5000},{paymentIntentId:'pi_other'},{clientSecret:null},{clientSecret:'pi_other_secret_bad'},{status:'unknown'},{livemode:true},{currency:'eur'}]) assert.throws(()=>verifiedCardPayment({...r,...patch},c,5150));
+  assert.equal(verifiedCardPayment({...r,status:'succeeded',clientSecret:null},c,5150).status,'succeeded');
+});

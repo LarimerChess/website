@@ -152,6 +152,8 @@ function doPost(e) {
     if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
     if (p.action === "createPaymentCheckout") return json(createPaymentCheckout(p));
+    if (p.action === "quoteCardPayment") return json(quoteCardPayment(p));
+    if (p.action === "confirmCardPayment") return json(confirmCardPayment(p));
     if (p.action === "paymentLink") return json(stripePaymentLink(p));
     if (p.action === "stripeSync") return json(stripeSync(p));
     if (!p.action) return json(register(p, false));
@@ -3794,6 +3796,7 @@ function stripeSync(p) {
 
 function stripeImport(record, config) {
   const test = !config.livemode;
+  if (record?.checkoutType === "payment_intent_v1") return stripeImportCardPayment(record, config);
   if (!record || !/^cs_[A-Za-z0-9_]+$/.test(record.sessionId || "")) throw new Error("Invalid Stripe session identifier.");
   const review = (reason) => stripeReview(record, reason, test);
   if (record.checkoutType === "basket_v1") return stripeImportBasket(record, config);
@@ -4027,4 +4030,220 @@ function stripeImportBasket(record, config) {
   for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe basket; processing fees absorbed by club" });
   allocations.forEach((a) => stripeRepairEntry(a.token,book));
   return { sessionId: record.sessionId, status: pending.length ? "imported" : "duplicate" };
+}
+
+const STRIPE_CARD_HEADERS = ["Reference", "Mode", "Subtotal", "Card fee", "Amount", "Allocations", "Token", "Funding", "Cover", "Created", "Intent", "Request"];
+function stripeCardQuotes() { return readTab("Stripe card quotes", STRIPE_CARD_HEADERS); }
+function stripeCardEnabled(config) {
+  return config.enabled && config.dynamicCheckout?.enabled && config.cardProcessing?.enabled
+    && (!config.livemode || config.cardProcessing.complianceReady === true);
+}
+function stripeCardSecret(config) {
+  const secret = PropertiesService.getScriptProperties().getProperty("LCCC_STRIPE_SECRET_KEY") || "";
+  if (!(config.livemode ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/).test(secret)) throw Error("Payment mode is not configured.");
+  return secret;
+}
+function stripeCardRequest(path, secret, payload, key, apiVersion = "2026-10-28.endive") {
+  const response = UrlFetchApp.fetch("https://api.stripe.com/v1/" + path, { method: payload ? "post" : "get",
+    ...(payload ? { payload } : {}), headers: { Authorization: "Bearer " + secret, "Stripe-Version": apiVersion, ...(key ? { "Idempotency-Key": key } : {}) }, muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) throw Error(stripeCheckoutHttpError(response,response.getResponseCode()).error);
+  return JSON.parse(response.getContentText());
+}
+function stripeCardAllocations(entries) {
+  if (!Array.isArray(entries) || !entries.length || entries.length > 50) throw Error("Select between one and 50 entries.");
+  const { rows, col } = readEntries(), book = readPayments(), seen = new Set();
+  return entries.map(item => {
+    const key = JSON.stringify([item.id,item.event,item.date]);
+    if (seen.has(key) || !/^\d{8}$/.test(item.id || "")) throw Error("Invalid or duplicate entry selection.");
+    seen.add(key);
+    const matches = rows.filter(r => r[col["US Chess ID"]] === item.id && r[col.Event] === item.event && r[col.Date] === item.date && active(r[col.Status]));
+    if (matches.length !== 1) throw Error("A registration changed. Reload balances.");
+    const row = matches[0], balance = stripeBalance(row,col,book);
+    if (balance.review || !Number.isSafeInteger(balance.balanceCents) || balance.balanceCents <= 0) throw Error("A balance changed or needs review. Reload balances.");
+    const held = ledgerByToken(book)[row[col.Token]] || {rating:0};
+    return {token:row[col.Token],party:partyOf(row,col),amount:balance.balanceCents,rating:Math.min(balance.balanceCents,Math.max(0,cents(row[col["Rating fee"]])-held.rating))};
+  });
+}
+function stripeCardFee(subtotal, funding, cover, card, policy) {
+  if (!Number.isSafeInteger(subtotal) || subtotal < 50 || subtotal > 90000000) throw Error("Unsupported payment total.");
+  if (typeof cover !== "boolean" || !Number.isFinite(card.percent) || !Number.isFinite(card.fixed) || card.percent < 0 || card.percent > 100 || card.fixed < 0) throw Error("Invalid card fee configuration.");
+  // A configured cost estimate is a ceiling, never a promise of Stripe's final settlement fee.
+  if (!Number.isSafeInteger(policy.rateBasisPoints) || policy.rateBasisPoints < 0 || policy.rateBasisPoints > 1000 || !Number.isSafeInteger(policy.fixedCents) || policy.fixedCents < 0 || policy.fixedCents > 1000) throw Error("Invalid processing cost configuration.");
+  const cap = Math.floor(subtotal * 300 / 10000);
+  const estimate = gross => Math.floor((gross * policy.rateBasisPoints + 5000) / 10000) + policy.fixedCents;
+  const club = Math.ceil(subtotal * card.percent / 100 + card.fixed * 100);
+  let fee = funding === "credit" ? Math.min(club,cap,estimate(subtotal)) : 0;
+  if (cover) {
+    let low = fee, high = cap;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (mid >= estimate(subtotal + mid)) high = mid; else low = mid + 1;
+    }
+    fee = low;
+  }
+  return fee;
+}
+function stripeCardView(row,col,config) {
+  return {ok:true,quoteId:row[col.Reference],subtotal:Number(row[col.Subtotal]),cardFee:Number(row[col["Card fee"]]),amount:Number(row[col.Amount]),currency:"usd",livemode:config.livemode,count:JSON.parse(row[col.Allocations]).length};
+}
+function quoteCardPayment(p) {
+  let lock;
+  try {
+    if (!underLimit()) return {error:"Too many requests. Try again in a minute."};
+    const config = stripeConfig();
+    if (!stripeCardEnabled(config)) return {error:"Card checkout is unavailable."};
+    const secret = stripeCardSecret(config), reference = String(p.requestId || ""), tokenId = String(p.confirmationToken || "");
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(reference) || !/^ctoken_[A-Za-z0-9_]{4,150}$/.test(tokenId) || !["true","false"].includes(p.coverCosts)) return {error:"Invalid card payment request."};
+    lock = LockService.getScriptLock(); lock.waitLock(20000);
+    const allocations = stripeCardAllocations(JSON.parse(p.entries || "[]"));
+    const subtotal = allocations.reduce((n,a) => n+a.amount,0), tab = stripeCardQuotes();
+    const old = tab.rows.find(row => row[tab.col.Reference] === reference);
+    if (old) {
+      if (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations) || old[tab.col.Token] !== tokenId || old[tab.col.Cover] !== p.coverCosts) return {error:"Payment selection changed. Review it again."};
+      return stripeCardView(old,tab.col,config);
+    }
+    const token = stripeCardRequest("confirmation_tokens/" + tokenId,secret);
+    if (token.id !== tokenId || token.livemode !== config.livemode || token.payment_intent || token.expires_at <= Math.floor(Date.now()/1000)+60 || token.payment_method_preview?.type !== "card") return {error:"Card details expired or could not be verified. Enter them again."};
+    const funding = ["credit","debit","prepaid"].includes(token.payment_method_preview.card?.funding) ? token.payment_method_preview.card.funding : "unknown";
+    const fee = stripeCardFee(subtotal,funding,p.coverCosts === "true",prices().fees.card,config.cardProcessing);
+    const row = {Reference:reference,Mode:String(config.livemode),Subtotal:String(subtotal),"Card fee":String(fee),Amount:String(subtotal+fee),Allocations:JSON.stringify(allocations),Token:tokenId,Funding:funding,Cover:p.coverCosts,Created:String(Math.floor(Date.now()/1000)),Intent:"",Request:""};
+    appendText(tab.sheet,tab.col,row);
+    const saved = []; Object.keys(tab.col).forEach(k => { saved[tab.col[k]] = row[k]; });
+    return stripeCardView(saved,tab.col,config);
+  } catch(error) { return {error:/^(Select|Invalid or duplicate|A registration|A balance|Unsupported|Stripe checkout|Checkout permission|This checkout)/.test(error.message || "") ? error.message : "Card payment could not be prepared. Please try again. (CARD_QUOTE)"}; }
+  finally { if (lock) lock.releaseLock(); }
+}
+function confirmCardPayment(p) {
+  let lock;
+  try {
+    if (!underLimit()) return {error:"Too many requests. Try again in a minute."};
+    const config = stripeConfig();
+    if (!stripeCardEnabled(config)) return {error:"Card checkout is unavailable."};
+    const secret = stripeCardSecret(config), reference = String(p.quoteId || "");
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(reference)) return {error:"Invalid payment quote."};
+    lock = LockService.getScriptLock(); lock.waitLock(20000);
+    const tab = stripeCardQuotes(), matches = tab.rows.filter(r => r[tab.col.Reference] === reference);
+    if (matches.length !== 1) return {error:"Payment quote not found. Review the card fee again."};
+    const row = matches[0], c = tab.col, allocations = JSON.parse(row[c.Allocations]);
+    if (row[c.Mode] !== String(config.livemode)) return {error:"Payment mode changed. Reload this page."};
+    const amount = Number(row[c.Amount]), subtotal = Number(row[c.Subtotal]), fee = Number(row[c["Card fee"]]);
+    if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(fee) || fee < 0 || fee > Math.floor(subtotal*3/100) || amount !== subtotal+fee || allocations.reduce((n,a)=>n+a.amount,0) !== subtotal || (row[c.Funding] !== "credit" && row[c.Cover] !== "true" && fee)) return {error:"Payment quote could not be verified."};
+    let intent;
+    if (row[c.Intent]) intent = stripeCardRequest("payment_intents/" + row[c.Intent],secret);
+    else {
+      if (row[c.Request]) {
+        const token = stripeCardRequest("confirmation_tokens/" + row[c.Token],secret);
+        if (token.livemode !== config.livemode || token.id !== row[c.Token]) return {error:"Payment token could not be verified."};
+        if (token.payment_intent) intent = stripeCardRequest("payment_intents/" + token.payment_intent,secret);
+      }
+      if (!intent) {
+      // Recheck every allocation before the first attempt. A durable request retries unchanged.
+      {
+        if (!row[c.Request] && Number(row[c.Created]) < Math.floor(Date.now()/1000)-900) return {error:"Payment quote expired. Review the card fee again."};
+        const current = stripeCardAllocations(allocations.map(a => ({id:a.party["US Chess ID"],event:a.party.Event,date:a.party.Date})));
+        if (JSON.stringify(current) !== JSON.stringify(allocations)) return {error:"Balances changed. Reload balances before paying."};
+        stripeCardCheckPending(tab,reference,allocations,secret);
+      }
+      const payload = {amount:String(amount),currency:"usd",confirmation_token:row[c.Token],confirm:"true","allowed_payment_method_types[0]":"card","metadata[lccc_checkout]":"payment_intent_v1","metadata[lccc_reference]":reference,return_url:SITE+"/pay/?returned=1"};
+      const request = row[c.Request] ? JSON.parse(row[c.Request]) : {contract:"card-intent-v1",apiVersion:"2026-10-28.endive",key:"lccc-card-intent-v1-"+reference,payload};
+      if (!stripeCardDescriptor(request,reference,amount,row[c.Token])) return {error:"Stored payment request could not be verified."};
+      const index = tab.rows.indexOf(row)+2;
+      if (!row[c.Request]) tab.sheet.getRange(index,c.Request+1).setNumberFormat("@").setValue(JSON.stringify(request));
+      intent = stripeCardRequest("payment_intents",secret,request.payload,request.key,request.apiVersion);
+      if (intent.id && /^pi_[A-Za-z0-9_]+$/.test(intent.id)) tab.sheet.getRange(index,c.Intent+1).setNumberFormat("@").setValue(intent.id);
+      }
+    }
+    if (!/^pi_[A-Za-z0-9_]+$/.test(intent.id || "") || intent.livemode !== config.livemode || intent.amount !== amount || intent.currency !== "usd" || intent.metadata?.lccc_reference !== reference || intent.metadata?.lccc_checkout !== "payment_intent_v1" || !["succeeded","requires_action","processing","requires_payment_method","canceled"].includes(intent.status)) return {error:"Payment could not be verified. Check your Stripe receipt before retrying."};
+    return {ok:true,paymentIntentId:intent.id,clientSecret:intent.status === "requires_action" ? intent.client_secret : null,status:intent.status,amount,currency:"usd",livemode:config.livemode};
+  } catch(error) { return {error:/^(Stripe checkout|Checkout permission|This checkout|A payment for these entries)/.test(error.message || "") ? error.message : "Payment could not be confirmed. Check your Stripe receipt before retrying. (CARD_CONFIRM)"}; }
+  finally { if(lock) lock.releaseLock(); }
+}
+
+function stripeImportCardPayment(input, config) {
+  if (!input || input.sessionId !== "" || !/^pi_[A-Za-z0-9_]+$/.test(input.paymentIntentId || "")) throw Error("Invalid Stripe intent identifier.");
+  const record = {...input, sessionId:input.paymentIntentId};
+  const ack = result => ({...result,sessionId:"",paymentIntentId:input.paymentIntentId});
+  const test = !config.livemode, review = (reason) => ack(stripeReview(record, reason, test));
+  if (!config.dynamicCheckout?.enabled || record.kind !== "basket_intent" || record.paymentLinkId || record.currency !== "usd"
+      || record.livemode !== config.livemode || record.status !== "complete" || record.paymentStatus !== "paid"
+      || !/^pi_[A-Za-z0-9_]+$/.test(record.paymentIntentId || "") || !Number.isSafeInteger(record.created)
+      || record.created <= 0 || record.created > Math.floor(Date.now()/1000)+300
+      || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
+      || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
+      || typeof record.disputed !== "boolean") return review("Basket payment validation failed");
+  const tab = stripeCardQuotes(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
+  if (matches.length !== 1) return review("Unknown checkout basket");
+  const basket = matches[0];
+  if (basket[tab.col.Mode] !== String(config.livemode) || Number(basket[tab.col.Amount]) !== record.amountCents
+      || (basket[tab.col.Intent] && basket[tab.col.Intent] !== record.paymentIntentId)) return review("Basket session or amount mismatch");
+  let descriptor;
+  try { descriptor = JSON.parse(basket[tab.col.Request]); } catch { return review("Missing confirmed payment request"); }
+  if (!stripeCardDescriptor(descriptor,record.clientReferenceId,record.amountCents,basket[tab.col.Token])) return review("Invalid confirmed payment request");
+  const fee = Number(basket[tab.col["Card fee"]]), subtotal = Number(basket[tab.col.Subtotal]);
+  if (!Number.isSafeInteger(fee) || fee < 0 || fee > Math.floor(subtotal*3/100) || subtotal + fee !== record.amountCents || (basket[tab.col.Funding] !== "credit" && basket[tab.col.Cover] !== "true" && fee)) return review("Invalid card fee allocation");
+  const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments(), { rows, col, sheet } = readEntries();
+  if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || allocations.reduce((n,a) => n+a.amount,0) !== subtotal) return review("Invalid basket allocation");
+  const prior = book.rows.filter((r) => r["Stripe intent"] === record.paymentIntentId);
+  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
+    const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
+    if (history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Snapshot] === snapshot && r[history.col.Resolution] === "resolved")) return ack({status:"duplicate"});
+    if (!test) rows.forEach((r,i) => { if (allocations.some((a) => a.token === r[col.Token] || (a.party.Event === r[col.Event] && a.party["US Chess ID"] === r[col["US Chess ID"]]))) sheet.getRange(i+2,col["Payment review"]+1).setNumberFormat("@").setValue("Stripe refund/dispute requires reconciliation"); });
+    return review("Basket refund/dispute requires reconciliation");
+  }
+  const pending = [];
+  for (const a of allocations) {
+    const existing = prior.filter((r) => r.Token === a.token);
+    if (existing.length) {
+      if (existing.length !== 1 || existing[0]["Stripe session"] !== "" || existing[0]["Stripe intent"] !== record.paymentIntentId || existing[0].Type !== "payment" || existing[0].Method !== "card" || Object.keys(a.party).some(k => existing[0][k] !== a.party[k]) || cents(existing[0].Received) !== a.amount + (a === allocations[0] ? fee : 0) || cents(existing[0]["Card fee"]) !== (a === allocations[0] ? fee : 0) || cents(existing[0]["Rating fee"]) !== a.rating || cents(existing[0]["Entry fee"]) !== a.amount-a.rating) return review("Basket ledger allocation mismatch");
+      continue;
+    }
+    const found = rows.filter((r) => r[col.Token] === a.token);
+    if (found.length !== 1 || !active(found[0][col.Status]) || JSON.stringify(partyOf(found[0],col)) !== JSON.stringify(a.party)) return review("Basket registration changed");
+    const balance = stripeBalance(found[0],col,book);
+    if (balance.review || balance.balanceCents !== a.amount) return review("Basket balance changed");
+    pending.push(a);
+  }
+  if (prior.some((r) => !allocations.some((a) => a.token === r.Token))) return review("Basket ledger allocation mismatch");
+  if (test) {
+    const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
+    return ack({status:"test"});
+  }
+  // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
+  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: "Stripe card payment; disclosed Card fee" });
+  allocations.forEach((a) => stripeRepairEntry(a.token,book));
+  return ack({status:pending.length ? "imported" : "duplicate"});
+}
+
+function stripeCardDescriptor(request,reference,amount,token) {
+  const p = request?.payload;
+  return request?.contract === "card-intent-v1" && request.apiVersion === "2026-10-28.endive"
+    && request.key === "lccc-card-intent-v1-"+reference && p && Object.keys(p).length === 8
+    && p.amount === String(amount) && p.currency === "usd" && p.confirmation_token === token
+    && /^ctoken_[A-Za-z0-9_]{4,150}$/.test(token) && p.confirm === "true" && p["allowed_payment_method_types[0]"] === "card"
+    && p["metadata[lccc_checkout]"] === "payment_intent_v1" && p["metadata[lccc_reference]"] === reference
+    && p.return_url === "https://larimerchess.org/pay/?returned=1";
+}
+
+function stripeCardCheckPending(tab,reference,allocations,secret) {
+  const c=tab.col, tokens=new Set(allocations.map(a=>a.token)), book=readPayments();
+  for (const row of tab.rows) {
+    if (row[c.Reference] === reference || !row[c.Request] || row[c.Mode] !== tab.rows.find(r=>r[c.Reference]===reference)?.[c.Mode]) continue;
+    const other=JSON.parse(row[c.Allocations]);
+    if (!other.some(a=>tokens.has(a.token))) continue;
+    let id=row[c.Intent];
+    if (id && other.every(a=>book.rows.some(r=>r["Stripe intent"]===id && r.Token===a.token))) continue;
+    if (id && row[c.Mode] === "false") {
+      const test=readTab("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
+      if (test.rows.some(r=>r[test.col.Intent]===id)) continue;
+    }
+    if (!id) {
+      const token=stripeCardRequest("confirmation_tokens/"+row[c.Token],secret);
+      id=token.payment_intent;
+    }
+    if (!id) continue;
+    const intent=stripeCardRequest("payment_intents/"+id,secret);
+    if (["succeeded","processing","requires_action"].includes(intent.status)) throw Error("A payment for these entries is already in progress. Check your Stripe receipt before trying again.");
+  }
 }

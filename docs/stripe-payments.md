@@ -9,7 +9,7 @@ all balances, stores a private basket allocation, and creates one Stripe Checkou
 Session for the exact total in USD. After selecting entries, the Pay on Stripe
 button opens secure Checkout directly; a visible checkout link remains available
 if navigation is blocked. Client amounts are never trusted. The club
-absorbs processing fees. Donations remain a separate anonymous Payment Link.
+absorbs processing fees in the legacy hosted-checkout fallback. The card flow below adds a disclosed, capped Card fee after Stripe identifies the card. Donations remain a separate anonymous Payment Link.
 
 ## Configure sandbox deployment
 
@@ -116,3 +116,54 @@ Official references: [create Checkout Sessions](https://docs.stripe.com/api/chec
 [list Sessions](https://docs.stripe.com/api/checkout/sessions/list),
 [idempotent requests](https://docs.stripe.com/api/idempotent_requests),
 [restricted keys](https://docs.stripe.com/keys/restricted-api-keys).
+
+
+## Funding-aware card payments
+
+`cardProcessing.enabled` selects the Payment Element flow. Keep it false until the
+latest `scripts/registration.gs` is deployed as a new version of the existing web
+app. The publishable key is public browser configuration; secret keys remain in
+Script Properties and GitHub secrets. Sandbox mode permits testing with
+`complianceReady: false`; live mode requires that flag to be explicitly true after
+applicable merchant/acquirer notification and surcharge requirements are met.
+The flag is a deployment gate, not a substitute for those requirements.
+
+The player selects entries, enters card details directly in Stripe's iframe,
+reviews the exact Card fee and total, then explicitly presses Pay. Opening the
+form and reviewing the fee never confirms a payment. The server retrieves a
+ConfirmationToken and uses Stripe's trusted funding classification. Credit cards
+use the existing `prices.json` 2.5% plus $0.50 calculation, limited to the lesser
+of that amount, a configured processing-cost estimate, and 3% of the entry
+subtotal rounded down to whole cents. Debit, prepaid, and unknown funding have
+no required Card fee. An unchecked optional additional-cost checkbox can add
+estimated uncovered costs, while the total Card fee still cannot exceed 3%.
+Existing `prices.json` fees and TD accounting calculations are unchanged.
+
+The separate `cardProcessing.rateBasisPoints: 290` and `fixedCents: 30` estimate
+standard domestic Stripe card processing; settlement costs can differ. These
+values are not an assertion of the actual settlement fee. The server uses integer
+cents and a rounded estimate, with one fixed component per combined payment.
+At a $17.50 subtotal, the 3% ceiling is $0.52. At $200, the existing formula gives
+$5.50; optional additional coverage can raise the total Card fee to at most $6.
+
+Quotes in **Stripe card quotes** store the immutable allocations, subtotal, Card
+fee, gross total, token identifier, funding classification, and exact confirmation
+request. They contain no card number or client secret. Confirmation uses the same
+token and durable idempotency key; a consumed token recovers the existing intent
+following an interrupted sheet write. Other unsettled payments for overlapping
+entries block a second confirmation until reconciliation. Unused or declined
+quotes do not reserve debt. Test reservations clear after their isolated test
+import; they never change live balances.
+
+The sync reads both Checkout sessions and standalone marked PaymentIntents.
+It verifies the gross charge but credits only entry/rating allocations; the Card
+fee is recorded separately on the first allocation's ledger row. Existing Paid
+summaries retain gross-received semantics. Partial ledger writes resume without
+repeating either debt credit or the fee. Test records use the existing isolated
+test tabs. Refunds and disputes continue to require review.
+
+Official integration references: [server-side finalization](https://docs.stripe.com/payments/finalize-payments-on-the-server?platform=web&type=payment),
+[ConfirmationToken funding preview](https://docs.stripe.com/api/confirmation_tokens/object),
+and [Stripe API schema](https://github.com/stripe/openapi/blob/master/openapi/spec3.json).
+Checkout funding restrictions do not include `unknown`; they cannot provide the
+same fail-closed funding classification for this fee policy.

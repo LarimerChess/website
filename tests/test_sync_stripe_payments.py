@@ -24,6 +24,78 @@ INTENT = {"id": "pi_example", "status": "succeeded", "amount_received": 1750, "c
 
 
 class SyncTests(unittest.TestCase):
+    def setUp(self):
+        self.intents = patch.object(sync.Stripe, "intents", return_value=[])
+        self.intents.start()
+        self.addCleanup(self.intents.stop)
+
+    def standalone(self):
+        intent = {**copy.deepcopy(INTENT), "id": "pi_standalone", "amount": 1750, "created": 1,
+                "metadata": {"lccc_checkout": "payment_intent_v1", "lccc_reference": "basket_ref",
+                             "processingFeeCents": "999999", "email": "private@example.com"}}
+        intent["latest_charge"].update(status="succeeded", payment_intent="pi_standalone")
+        return intent
+
+    def test_standalone_verification_and_reversals_use_authoritative_gross(self):
+        intent = self.standalone()
+        record = sync.intent_record(intent, CONFIG)
+        self.assertEqual(record["sessionId"], "")
+        self.assertEqual(record["paymentIntentId"], "pi_standalone")
+        self.assertEqual(record["kind"], "basket_intent")
+        self.assertEqual(record["checkoutType"], "payment_intent_v1")
+        self.assertEqual(record["clientReferenceId"], "basket_ref")
+        self.assertEqual(record["amountCents"], 1750)
+        self.assertNotIn("processingFeeCents", record)
+        self.assertNotIn("email", str(record))
+        intent["latest_charge"].update(amount_refunded=500, disputed=True)
+        reversed_record = sync.intent_record(intent, CONFIG)
+        self.assertEqual(reversed_record["refundCents"], 500)
+        self.assertTrue(reversed_record["disputed"])
+        for change in ({"livemode": True}, {"currency": "eur"}, {"amount": 1751},
+                       {"amount_received": 1751}, {"amount": True}, {"latest_charge": "ch_notexpanded"}):
+            with self.subTest(change=change), self.assertRaises(sync.SyncError):
+                sync.intent_record({**intent, **change}, CONFIG)
+        self.assertIsNone(sync.intent_record({**intent, "status": "processing"}, CONFIG))
+        for change in ({"status": "pending"}, {"payment_intent": "pi_other"}, {"paid": False},
+                       {"captured": False}, {"amount": 1751}, {"amount_refunded": -1}):
+            charge = {**intent["latest_charge"], **change}
+            with self.subTest(charge=change), self.assertRaises(sync.SyncError):
+                sync.intent_record({**intent, "latest_charge": charge}, CONFIG)
+
+    def test_standalone_discovery_excludes_every_checkout_intent_and_unrelated_payment(self):
+        stripe = sync.Stripe("unused")
+        intent = self.standalone()
+        associated = {**SESSION, "payment_link": None, "metadata": {}, "payment_intent": "pi_associated"}
+        records = []
+        def sender(batch):
+            records.extend(copy.deepcopy(batch))
+            return [{"sessionId": r["sessionId"], "paymentIntentId": r["paymentIntentId"], "status": "test"} for r in batch]
+        with patch.object(stripe, "sessions", side_effect=lambda link: [associated] if link is None else []), \
+                patch.object(stripe, "intents", return_value=[intent, {**intent, "id": "pi_associated"},
+                             {**intent, "metadata": {}}, {**intent, "status": "processing"}]):
+            counts = sync.sync(stripe, CONFIG, sender)
+        self.assertEqual(counts["verified"], 1)
+        self.assertEqual(counts["skipped"], 1)
+        self.assertEqual([r["paymentIntentId"] for r in records], ["pi_standalone"])
+
+    def test_standalone_acknowledgement_requires_matching_intent_identifier(self):
+        record = sync.intent_record(self.standalone(), CONFIG)
+        for identity in ({}, {"paymentIntentId": "pi_wrong"}):
+            response = {"ok": True, "results": [{"sessionId": "", "status": "test", **identity}]}
+            with patch.object(sync, "request_json", return_value=response), self.assertRaises(sync.SyncError):
+                sync.send_records("https://example.com", "secret", [record])
+        response = {"ok": True, "results": [{"sessionId": "", "paymentIntentId": "pi_standalone", "status": "test"}]}
+        with patch.object(sync, "request_json", return_value=response):
+            self.assertEqual(sync.send_records("https://example.com", "secret", [record]), response["results"])
+
+    def test_intent_pagination_expands_charges_without_history_cutoff(self):
+        stripe = sync.Stripe("unused")
+        self.intents.stop()
+        with patch.object(stripe, "get", side_effect=[{"data": [{"id": "pi_new"}], "has_more": True},
+                                                     {"data": [{"id": "pi_old"}], "has_more": False}]) as get:
+            self.assertEqual([i["id"] for i in stripe.intents()], ["pi_new", "pi_old"])
+            self.assertEqual(get.call_args.args, ("payment_intents", {"limit": 100, "expand[]": "data.latest_charge", "starting_after": "pi_new"}))
+
     def test_dynamic_basket_amount_and_reference_reach_backend(self):
         session = {**SESSION, "payment_link": None, "metadata": {"lccc_checkout": "basket_v1"},
                    "client_reference_id": "basket_example", "amount_total": 5250}

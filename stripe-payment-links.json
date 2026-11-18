@@ -13,5 +13,12 @@
   "donation": {
     "paymentLinkId": "",
     "url": ""
+  },
+  "cardProcessing": {
+    "enabled": false,
+    "publishableKey": "pk_test_51UcSwqHT0FdPwbJ7UrPRHe82qHdjlO7MIrxQqiiUCS8psYZhTW3zaYgATnU4mH5S8jfkWnDd51JMeTp7GcOykZwE00s8r7DjEW",
+    "complianceReady": false,
+    "rateBasisPoints": 290,
+    "fixedCents": 30
   }
 }

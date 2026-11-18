@@ -22,13 +22,24 @@ let holdCheckout = false;
 let releaseCheckout;
 let checkoutFailure = false;
 let balanceVariant = "";
+let cardStatus = "succeeded", cardQuoteTampered = false, cardActionError = false;
+let holdCardConfirm = false, releaseCardConfirm;
 const searchRoster = [{id:"12345678",name:"Latest Player"},{id:"22222222",name:"Second Player"}];
 const uscfRequests = [];
 await page.setRequestInterception(true);
 page.on("request", async (request) => {
   const url = new URL(request.url());
   if (url.hostname.endsWith("uschess.org")) uscfRequests.push(request.url());
-  if (url.pathname === "/register.js") {
+  if (url.hostname === "js.stripe.com") {
+    request.respond({ contentType: "text/javascript", body: `
+      window.stripeMock={tokens:0,submits:0,actions:0,changes:null};
+      window.Stripe=()=>({elements:options=>{window.stripeMock.options=options;return {
+        create:()=>({on:(_name,fn)=>window.stripeMock.changes=fn,mount:selector=>document.querySelector(selector).textContent='Secure test card fields',destroy:()=>{document.querySelector('#pay-card-element').textContent='';}}),
+        submit:async()=>{window.stripeMock.submits++;return {};}
+      };},createConfirmationToken:async()=>{window.stripeMock.tokens++;return {confirmationToken:{id:'ctoken_fixture'}};},
+        handleNextAction:async()=>{window.stripeMock.actions++;return window.stripeMock.actionError?{error:{message:'authentication failed'}}:{paymentIntent:{id:'pi_fixture',amount:window.stripeMock.amount,currency:'usd',status:'succeeded'}};}});
+    ` });
+  } else if (url.pathname === "/register.js") {
     request.respond({ contentType: "text/javascript", body: offline(await (await fetch(base + "/register.js")).text()) });
   } else if (url.pathname === "/stripe-payment-links.json") {
     request.respond({ contentType: "application/json", body: JSON.stringify(config) });
@@ -38,6 +49,21 @@ page.on("request", async (request) => {
     if (fields.action === "paymentBalances" && fields.id === holdId) await new Promise((resolve) => { release = resolve; });
     if (fields.action === "paymentPlayers" && fields.q === holdSearch) await new Promise(resolve => { releaseSearch = resolve; });
     if (fields.action === "createPaymentCheckout" && holdCheckout) await new Promise(resolve=>{releaseCheckout=resolve;});
+    if (fields.action === "confirmCardPayment" && holdCardConfirm) await new Promise(resolve=>{releaseCardConfirm=resolve;});
+    if (fields.action === "quoteCardPayment") {
+      const subtotal=JSON.parse(fields.entries).reduce((n,e)=>n+(e.event==='club-night'?1750:750),0);
+      const cardFee=fields.coverCosts==='true'?Math.floor(subtotal*.03):Math.floor(subtotal*.025);
+      request.respond({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify({ok:true,quoteId:fields.requestId,subtotal,cardFee,amount:subtotal+cardFee+(cardQuoteTampered?1:0),currency:'usd',livemode:false,count:JSON.parse(fields.entries).length})});
+      return;
+    }
+    if (fields.action === "confirmCardPayment") {
+      const quote=calls.filter(c=>c.action==='quoteCardPayment' && c.requestId===fields.quoteId).at(-1);
+      const subtotal=JSON.parse(quote.entries).reduce((n,e)=>n+(e.event==='club-night'?1750:750),0);
+      const amount=subtotal+(quote.coverCosts==='true'?Math.floor(subtotal*.03):Math.floor(subtotal*.025));
+      await page.evaluate((amount,error)=>{window.stripeMock.amount=amount;window.stripeMock.actionError=error;},amount,cardActionError);
+      request.respond({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify({ok:true,paymentIntentId:'pi_fixture',clientSecret:cardStatus==='requires_action'?'pi_fixture_secret_private':null,status:cardStatus,amount,currency:'usd',livemode:false})});
+      return;
+    }
     const body = fields.action === "paymentPlayers" ? {ok:true,players:searchRoster.filter(p => /^\d+$/.test(fields.q) ? p.id.startsWith(fields.q) : fields.q.toLowerCase().split(/\s+/).every(w => p.name.toLowerCase().includes(w)))} : fields.action === "paymentBalances" ? { ok: true, id: fields.id, name: fields.id === "12345678" ? "Latest Player" : "Second Player", currency: "usd",
       entries: [{ event: "club-night", date: "2026-11", name: "Club Night", balanceCents: 1750, review: false },
         { event: "classic", date: "2025-05-01", name: "Past Classic", balanceCents: 750, review: false },
@@ -214,5 +240,63 @@ balanceVariant="unknown";
 await query("12345678");await press(page,"#pay-form button[type=submit]");await page.waitForNetworkIdle();
 (await page.$eval("#pay-cart-status",el=>el.textContent.includes("Fees are not set yet"))) && (await page.$eval("#pay-review",el=>el.disabled))
   ? pass("Unknown fees explain why online payment is unavailable") : fail("Unknown fee left payer without guidance");
+balanceVariant="";
+config.cardProcessing={enabled:true,publishableKey:'pk_test_fixture',complianceReady:false};
+await page.evaluate(saved=>localStorage.setItem('lccc-register-players',JSON.stringify(saved)),saved);
+await page.goto(base+'/pay/',{waitUntil:'networkidle0'});
+const priorConfirms=()=>calls.filter(c=>c.action==='confirmCardPayment').length;
+const initialConfirms=priorConfirms();
+await press(page,'#pay-review');
+await page.waitForFunction(()=>!document.querySelector('#pay-card').hidden && window.stripeMock);
+priorConfirms()===initialConfirms && (await page.$eval('#pay-card-confirm',el=>el.hidden)) && !(await page.$eval('#pay-cover-costs',el=>el.checked))
+  && (await page.evaluate(()=>window.stripeMock.tokens===0 && window.stripeMock.options.amount===5000 && window.stripeMock.options.allowedPaymentMethodTypes.join(',')==='card'))
+  ? pass('Opening the sandbox card form collects no token or charge and optional coverage starts unchecked') : fail('Card form charged early or had incorrect defaults');
+await press(page,'#pay-card-review');
+await page.waitForSelector('#pay-card-confirm:not([hidden])');
+const firstQuote=calls.filter(c=>c.action==='quoteCardPayment').at(-1);
+firstQuote.coverCosts==='false' && priorConfirms()===initialConfirms && (await page.$eval('#pay-card-total',el=>el.textContent))==='$51.25'
+  ? pass('Card fee and final total are reviewed before a separate explicit payment') : fail('Card quote total or ordering wrong');
+await press(page,'#pay-cover-costs');
+(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('Changing optional costs invalidates the prior quote') : fail('Stale quote remained payable');
+await press(page,'#pay-card-review');
+await page.waitForSelector('#pay-card-confirm:not([hidden])');
+const coveredQuote=calls.filter(c=>c.action==='quoteCardPayment').at(-1);
+coveredQuote.coverCosts==='true' && coveredQuote.requestId!==firstQuote.requestId && coveredQuote.confirmationToken===firstQuote.confirmationToken
+  && (await page.evaluate(()=>window.stripeMock.tokens===1)) && (await page.$eval('#pay-card-total',el=>el.textContent))==='$51.50'
+  ? pass('Optional coverage requotes one basket with a fresh nonce and the same unconsumed card token') : fail('Optional coverage did not revalidate total');
+holdCardConfirm=true;cardStatus='requires_action';
+await press(page,'#pay-card-confirm');
+while(!releaseCardConfirm) await new Promise(resolve=>setTimeout(resolve,10));
+await page.$eval('#pay-card-confirm',el=>el.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+priorConfirms()===initialConfirms+1 && (await page.$eval('#pay-card-confirm',el=>el.disabled))
+  ? pass('Explicit final payment blocks double confirmation while pending') : fail('Card payment submitted twice');
+releaseCardConfirm();holdCardConfirm=false;
+await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Payment submitted'));
+(await page.evaluate(()=>window.stripeMock.actions===1)) && priorConfirms()===initialConfirms+1
+  ? pass('Card authentication runs once and reports submission without another confirmation') : fail('Card authentication repeated confirmation');
+await press(page,'#pay-review');
+await press(page,'#pay-card-review');
+await page.waitForSelector('#pay-card-confirm:not([hidden])');
+await page.evaluate(()=>window.stripeMock.changes());
+(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('Editing card details invalidates the quoted fee') : fail('Edited card retained quote');
+cardQuoteTampered=true;
+await press(page,'#pay-card-review');
+await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('could not be verified'));
+(await page.$eval('#pay-card-confirm',el=>el.hidden)) && priorConfirms()===initialConfirms+1
+  ? pass('Tampered quote totals never enable final payment') : fail('Tampered card total became payable');
+cardQuoteTampered=false;cardStatus='requires_payment_method';
+await press(page,'#pay-card-review');
+await page.waitForSelector('#pay-card-confirm:not([hidden])');
+await press(page,'#pay-card-confirm');
+await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('Enter new card details'));
+(await page.$eval('#pay-card-confirm',el=>el.hidden)) ? pass('A failed card requires a new review instead of automatic confirmation') : fail('Failed card stayed payable');
+cardStatus='requires_action';cardActionError=true;
+await press(page,'#pay-card-review');
+await page.waitForSelector('#pay-card-confirm:not([hidden])');
+await press(page,'#pay-card-confirm');
+await page.waitForFunction(()=>document.querySelector('#pay-summary').textContent.includes('authentication was not completed'));
+(await page.$eval('#pay-summary',el=>document.activeElement===el)) ? pass('Authentication failure stays beside the action with receipt guidance') : fail('Authentication error was hidden');
+await axeBoth(page,'Sandbox card payment');
+await fitsPhone(page,'Sandbox card payment');
 await page.close();
 await done();
