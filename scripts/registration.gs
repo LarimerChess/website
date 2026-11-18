@@ -3797,58 +3797,6 @@ function stripeSync(p) {
   } finally { lock.releaseLock(); }
 }
 
-const STRIPE_RECEIPT_HEADERS = ["Payment", "Status", "Updated"];
-
-/** Send one verified-payment receipt notice to the president. Failed sends can retry on the next sync. */
-function stripeNotifyPresident(record, allocations, amountCents, cardFeeCents = 0) {
-  const payment = record.paymentIntentId || record.sessionId;
-  if (!/^pi_[A-Za-z0-9_]+$/.test(payment || "") && !/^cs_[A-Za-z0-9_]+$/.test(payment || "")) return;
-  const tab = readTab("Stripe receipt emails", STRIPE_RECEIPT_HEADERS);
-  let row = tab.rows.find(r => r[tab.col.Payment] === payment);
-  if (row && ["sent", "sending"].includes(row[tab.col.Status])) return;
-  let index;
-  if (row) {
-    index = tab.rows.indexOf(row) + 2;
-    tab.sheet.getRange(index, tab.col.Status + 1).setValue("sending");
-  } else {
-    index = tab.rows.length + 2;
-    appendText(tab.sheet, tab.col, { Payment: payment, Status: "sending", Updated: new Date().toISOString() });
-  }
-  const test = record.livemode === false;
-  const subjectItems = allocations.map(a => a.party?.Event || "Donation").filter(Boolean).slice(0, 3).join(", ");
-  const subject = `${test ? "[TEST] " : ""}Payment confirmed: $${money(amountCents / 100)}${subjectItems ? " — " + subjectItems : ""}`;
-  const lines = [
-    test ? "TEST MODE — no real funds were collected." : "Stripe confirmed and imported this payment.",
-    "",
-    `Total: $${money(amountCents / 100)}`,
-    ...(cardFeeCents ? [`Card fee: $${money(cardFeeCents / 100)}`] : []),
-    "",
-    ...allocations.map(a => {
-      const p = a.party || {};
-      const who = p.Name && p.Name !== "Anonymous" ? `${p.Name}${p["US Chess ID"] ? " (US Chess ID " + p["US Chess ID"] + ")" : ""}` : "Anonymous donation";
-      const event = p.Event ? ` — ${p.Event}${p.Date ? " on " + p.Date : ""}` : "";
-      return `${who}${event}: $${money(a.amount / 100)}`;
-    }),
-    "",
-    `PaymentIntent: ${record.paymentIntentId || "not available"}`,
-    `Checkout Session: ${record.sessionId || "not available"}`,
-    `Mode: ${test ? "Stripe test" : "Stripe live"}`,
-    "",
-    "This notice was sent after Stripe payment sync verified the captured payment."
-  ];
-  const receiptUrl = record.receiptUrl || "";
-  if (receiptUrl && /^https:\/\/pay\.stripe\.com\/receipts\/[A-Za-z0-9\/_?=&%-]+$/.test(receiptUrl)) lines.splice(lines.length - 1, 0, `Stripe receipt: ${receiptUrl}`, "");
-  try {
-    MailApp.sendEmail({ to: "president@larimerchess.org", subject, body: lines.join("\n") });
-  } catch (_) {
-    tab.sheet.getRange(index, tab.col.Status + 1).setValue("failed");
-    tab.sheet.getRange(index, tab.col.Updated + 1).setValue(new Date().toISOString());
-    throw new Error("President payment receipt email could not be sent.");
-  }
-  tab.sheet.getRange(index, tab.col.Status + 1).setValue("sent");
-  tab.sheet.getRange(index, tab.col.Updated + 1).setValue(new Date().toISOString());
-}
-
 function stripeImport(record, config) {
   const test = !config.livemode;
   if (record?.checkoutType === "payment_intent_status_v1") return stripeImportCardStatus(record, config);
@@ -3894,7 +3842,6 @@ function stripeImport(record, config) {
     stripeRepairEntry(prior.Token, book);
     const { col, rows } = readEntries();
     if (rows.some((r) => r[col.Token] === prior.Token && r[col["Payment review"]])) return review("Payment reconciliation remains open");
-    stripeNotifyPresident(record, [{ party: { Event: prior.Event, Date: prior.Date, "US Chess ID": prior["US Chess ID"], Name: prior.Name }, amount: record.amountCents }], record.amountCents);
     return { sessionId: record.sessionId, status: "duplicate" };
   }
   let token = "", party = { Event: "", Date: Utilities.formatDate(new Date(record.created * 1000), TZ, "yyyy-MM-dd"), "US Chess ID": "", Name: "Anonymous" };
@@ -3919,13 +3866,11 @@ function stripeImport(record, config) {
     if (record.refundCents || record.disputed) return review("Test refund or dispute");
     if (!tab.rows.some((r) => r[tab.col.Session] === record.sessionId)) appendText(tab.sheet, tab.col,
       { Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId || "", Kind: record.kind });
-    stripeNotifyPresident(record, [{ party, amount: record.amountCents }], record.amountCents);
     return { sessionId: record.sessionId, status: "test" };
   }
   addPayment(book, token, party, { Type: record.kind === "entry" ? "payment" : "donation", Method: "card", Received: record.amountCents,
     ...split, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe Payment Link; processing fees absorbed by club" });
   stripeRepairEntry(token, book);
-  stripeNotifyPresident(record, [{ party, amount: record.amountCents }], record.amountCents);
   return { sessionId: record.sessionId, status: "imported" };
 }
 const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request"];
@@ -4084,13 +4029,11 @@ function stripeImportBasket(record, config) {
   if (test) {
     const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
     if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
-    stripeNotifyPresident(record, allocations, record.amountCents);
     return { sessionId: record.sessionId, status: "test" };
   }
   // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
   for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe basket; processing fees absorbed by club" });
   allocations.forEach((a) => stripeRepairEntry(a.token,book));
-  stripeNotifyPresident(record, allocations, record.amountCents);
   return { sessionId: record.sessionId, status: pending.length ? "imported" : "duplicate" };
 }
 
@@ -4127,25 +4070,6 @@ function stripeCardAllocations(entries, excludeReference, livemode = true) {
     return {token:row[col.Token],party:partyOf(row,col),amount:balance.balanceCents,rating:Math.min(balance.balanceCents,Math.max(0,cents(row[col["Rating fee"]])-held.rating))};
   });
 }
-function stripeCardFee(subtotal, funding, cover, card, policy) {
-  if (!Number.isSafeInteger(subtotal) || subtotal < 50 || subtotal > 90000000) throw Error("Unsupported payment total.");
-  if (typeof cover !== "boolean" || !Number.isFinite(card.percent) || !Number.isFinite(card.fixed) || card.percent < 0 || card.percent > 100 || card.fixed < 0) throw Error("Invalid card fee configuration.");
-  // A configured cost estimate is a ceiling, never a promise of Stripe's final settlement fee.
-  if (!Number.isSafeInteger(policy.rateBasisPoints) || policy.rateBasisPoints < 0 || policy.rateBasisPoints > 1000 || !Number.isSafeInteger(policy.fixedCents) || policy.fixedCents < 0 || policy.fixedCents > 1000) throw Error("Invalid processing cost configuration.");
-  const cap = Math.floor(subtotal * 300 / 10000);
-  const estimate = gross => Math.floor((gross * policy.rateBasisPoints + 5000) / 10000) + policy.fixedCents;
-  const club = Math.ceil(subtotal * card.percent / 100 + card.fixed * 100);
-  let fee = funding === "credit" ? Math.min(club,cap,estimate(subtotal)) : 0;
-  if (cover) {
-    let low = fee, high = cap;
-    while (low < high) {
-      const mid = Math.floor((low + high) / 2);
-      if (mid >= estimate(subtotal + mid)) high = mid; else low = mid + 1;
-    }
-    fee = low;
-  }
-  return fee;
-}
 function stripeCardView(row,col,config) {
   return {ok:true,quoteId:row[col.Reference],subtotal:Number(row[col.Subtotal]),cardFee:Number(row[col["Card fee"]]),amount:Number(row[col.Amount]),currency:"usd",livemode:config.livemode,count:JSON.parse(row[col.Allocations]).length};
 }
@@ -4168,7 +4092,7 @@ function quoteCardPayment(p) {
     const token = stripeCardRequest("confirmation_tokens/" + tokenId,secret);
     if (token.id !== tokenId || token.livemode !== config.livemode || token.payment_intent || token.expires_at <= Math.floor(Date.now()/1000)+60 || token.payment_method_preview?.type !== "card") return {error:"Card details expired or could not be verified. Enter them again."};
     const funding = ["credit","debit","prepaid"].includes(token.payment_method_preview.card?.funding) ? token.payment_method_preview.card.funding : "unknown";
-    const fee = stripeCardFee(subtotal,funding,p.coverCosts === "true",prices().fees.card,config.cardProcessing);
+    const fee = 0;
     const row = {Reference:reference,Mode:String(config.livemode),Subtotal:String(subtotal),"Card fee":String(fee),Amount:String(subtotal+fee),Allocations:JSON.stringify(allocations),Token:tokenId,Funding:funding,Cover:p.coverCosts,Created:String(Math.floor(Date.now()/1000)),Intent:"",Request:"",State:""};
     appendText(tab.sheet,tab.col,row);
     const saved = []; Object.keys(tab.col).forEach(k => { saved[tab.col[k]] = row[k]; });
@@ -4186,11 +4110,12 @@ function confirmCardPayment(p) {
     if (!/^[A-Za-z0-9_-]{16,100}$/.test(reference)) return {error:"Invalid payment quote."};
     lock = LockService.getScriptLock(); lock.waitLock(20000);
     const tab = stripeCardQuotes(), matches = tab.rows.filter(r => r[tab.col.Reference] === reference);
-    if (matches.length !== 1) return {error:"Payment quote not found. Review the card fee again."};
+    if (matches.length !== 1) return {error:"Payment quote not found. Reload balances and try again."};
     const row = matches[0], c = tab.col, allocations = JSON.parse(row[c.Allocations]);
     if (row[c.Mode] !== String(config.livemode)) return {error:"Payment mode changed. Reload this page."};
     const amount = Number(row[c.Amount]), subtotal = Number(row[c.Subtotal]), fee = Number(row[c["Card fee"]]);
-    if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(fee) || fee < 0 || fee > Math.floor(subtotal*3/100) || amount !== subtotal+fee || allocations.reduce((n,a)=>n+a.amount,0) !== subtotal || (row[c.Funding] !== "credit" && row[c.Cover] !== "true" && fee)) return {error:"Payment quote could not be verified."};
+    if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(subtotal) || !Number.isSafeInteger(fee) || fee < 0 || fee > Math.floor(subtotal*3/100) || amount !== subtotal+fee || allocations.reduce((n,a)=>n+a.amount,0) !== subtotal || (row[c.Funding] !== "credit" && row[c.Cover] !== "true" && fee)) return {error:"Payment quote could not be verified."};
+    if (fee && !row[c.Intent] && !row[c.Request]) return {error:"Payment quote expired. Reload balances and try again."};
     let intent;
     if (row[c.Intent]) intent = stripeCardRequest("payment_intents/" + row[c.Intent],secret);
     else {
@@ -4202,7 +4127,7 @@ function confirmCardPayment(p) {
       if (!intent) {
       // Recheck every allocation before the first attempt. A durable request retries unchanged.
       {
-        if (!row[c.Request] && Number(row[c.Created]) < Math.floor(Date.now()/1000)-900) return {error:"Payment quote expired. Review the card fee again."};
+        if (!row[c.Request] && Number(row[c.Created]) < Math.floor(Date.now()/1000)-900) return {error:"Payment quote expired. Reload balances and try again."};
         const current = stripeCardAllocations(allocations.map(a => ({id:a.party["US Chess ID"],event:a.party.Event,date:a.party.Date})),reference,config.livemode);
         if (JSON.stringify(current) !== JSON.stringify(allocations)) return {error:"Balances changed. Reload balances before paying."};
         stripeCardCheckPending(tab,reference,allocations,secret);
@@ -4272,13 +4197,11 @@ function stripeImportCardPayment(input, config) {
   if (test) {
     const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
     if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
-    stripeNotifyPresident(record, allocations, record.amountCents);
     return ack({status:"test"});
   }
   // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
   for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: "Stripe card payment; disclosed Card fee" });
   allocations.forEach((a) => stripeRepairEntry(a.token,book));
-  stripeNotifyPresident(record, allocations, record.amountCents, fee);
   return ack({status:pending.length ? "imported" : "duplicate"});
 }
 
