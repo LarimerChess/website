@@ -683,6 +683,22 @@ section.td-table td { white-space: nowrap; }
 }
 
 #pay-form select { max-width: 100%; }
+
+.pay-search-row { display: flex; align-items: center; gap: 8px; }
+.pay-search-row .td-combobox { flex: 1; min-width: 0; }
+.pay-search-row .button { white-space: nowrap; }
+.pay-entries { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 20px; }
+.pay-entries th, .pay-entries td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.pay-entries th:first-child, .pay-entries td:first-child { width: 2.5em; text-align: center; }
+.pay-entries th:nth-child(3), .pay-entries td:nth-child(3) { width: 6.5em; }
+.pay-entries th:nth-child(4), .pay-entries td:nth-child(4) { width: 5.5em; text-align: right; }
+.pay-entries tbody th { font-weight: 400; }
+.pay-entries small { display: block; color: var(--muted); }
+.pay-entries input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+@media (max-width: 480px) {
+  .pay-entries { font-size: 14px; }
+  .pay-entries th, .pay-entries td { padding: 8px 4px; }
+}
 </style>
   <script src="../calendar.js?v=b906cbfc37" defer></script>
 </head>

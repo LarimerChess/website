@@ -55,7 +55,7 @@ if (typeof document !== "undefined") (async () => {
   const saved = newSavedBox();
   const remember = newRemember("pay-remember");
   form.prepend(saved);
-  form.querySelector("button[type=submit]").before(remember);
+  form.append(remember);
   let config = { enabled: false };
   let revision = 0;
   let checkoutPending = false;
@@ -201,42 +201,48 @@ if (typeof document !== "undefined") (async () => {
   }
   function renderBalances() {
     balances.replaceChildren();
-    let total = 0;
-    let unknown = 0;
-    for (const data of people.values()) { total += data.totalCents; unknown += data.unknownCount; }
-    balances.append(Object.assign(document.createElement("p"), { id: "pay-total",
-      textContent: `${unknown ? "Known balance subtotal" : "Total owed"}: ${money(total)}.` }));
-    if (unknown) balances.append(Object.assign(document.createElement("p"), {
-      textContent: `${unknown} entry fee(s) are not set yet and are excluded from the subtotal. Please ask the tournament director.` }));
     for (const data of people.values()) {
       const group = document.createElement("section");
       group.dataset.player = data.id;
       if (data.id === requestedId) group.setAttribute("aria-label", "Player from payment link");
       group.append(Object.assign(document.createElement("h3"), { textContent: `${data.id === requestedId ? "Player from your payment link: " : ""}${data.name || data.id} (${data.id})` }));
       if (!data.entries.some(entry => entry.balanceCents !== 0)) group.append(Object.assign(document.createElement("p"), { textContent: "No unpaid entries for this player." }));
-      for (const entry of data.entries.filter(entry => entry.balanceCents !== 0)) {
-        const card = Object.assign(document.createElement("div"), { className: "pay-entry" });
-        const amount = entry.balanceCents;
-        const title = `${entry.name} — ${entry.date}`;
-        if (eligible(entry)) {
-          const key = entryKey(data.id, entry);
-          const label = document.createElement("label");
-          const checkbox = Object.assign(document.createElement("input"), { type: "checkbox", checked: selected.has(key) });
-          checkbox.dataset.entry = key;
-          checkbox.addEventListener("change", () => {
-            if (checkbox.checked) selected.add(key); else selected.delete(key);
-            resetCheckout();
-            updateTotal();
-          });
-          label.append(checkbox, ` ${title}: ${money(amount)} owed`);
-          card.append(label);
-        } else {
-          card.append(Object.assign(document.createElement("p"), { textContent: `${title}: ${amount === null ? "Fee not set yet."
-            : amount === 0 ? "Nothing owed — balance $0.00." : amount < 0 ? `Credit: ${money(-amount)}.` : `${money(amount)} owed.`}` }));
+      const visible = data.entries.filter(entry => entry.balanceCents !== 0);
+      if (visible.length) {
+        const table = Object.assign(document.createElement("table"), { className: "pay-entries" });
+        table.append(Object.assign(document.createElement("caption"), { className: "visually-hidden", textContent: `Unpaid entries for ${data.name || data.id}` }));
+        const header = table.createTHead().insertRow();
+        for (const text of ["Pay", "Event", "Date", "Amount"]) {
+          const th = Object.assign(document.createElement("th"), { textContent: text });
+          th.scope = "col";
+          header.append(th);
         }
-        if (entry.review) card.append(Object.assign(document.createElement("p"), {
-          textContent: "Payment needs review. Contact the tournament director." }));
-        group.append(card);
+        const body = table.createTBody();
+        for (const entry of visible) {
+          const row = body.insertRow();
+          row.className = "pay-entry";
+          const selection = row.insertCell();
+          if (eligible(entry)) {
+            const key = entryKey(data.id, entry);
+            const checkbox = Object.assign(document.createElement("input"), { type: "checkbox", checked: selected.has(key) });
+            checkbox.dataset.entry = key;
+            checkbox.setAttribute("aria-label", `Pay ${entry.name}, ${entry.date}, for ${data.name || data.id}`);
+            checkbox.addEventListener("change", () => {
+              if (checkbox.checked) selected.add(key); else selected.delete(key);
+              resetCheckout();
+              updateTotal();
+            });
+            selection.append(checkbox);
+          }
+          const event = document.createElement("th");
+          event.scope = "row";
+          event.textContent = entry.name;
+          if (entry.review) event.append(Object.assign(document.createElement("small"), { textContent: "Needs review" }));
+          row.append(event);
+          row.insertCell().textContent = entry.date;
+          row.insertCell().textContent = entry.balanceCents === null ? "Not set" : money(entry.balanceCents);
+        }
+        group.append(table);
       }
       balances.append(group);
     }
@@ -270,7 +276,7 @@ if (typeof document !== "undefined") (async () => {
       }
       resetCheckout();
       renderBalances();
-      status.textContent = "Select entries, then pay on Stripe.";
+      status.textContent = "";
     } catch (error) {
       if (requests.get(playerId) === token) status.textContent = error.message;
     }

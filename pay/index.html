@@ -667,6 +667,22 @@ section.td-table td { white-space: nowrap; }
 }
 
 #pay-form select { max-width: 100%; }
+
+.pay-search-row { display: flex; align-items: center; gap: 8px; }
+.pay-search-row .td-combobox { flex: 1; min-width: 0; }
+.pay-search-row .button { white-space: nowrap; }
+.pay-entries { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 20px; }
+.pay-entries th, .pay-entries td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.pay-entries th:first-child, .pay-entries td:first-child { width: 2.5em; text-align: center; }
+.pay-entries th:nth-child(3), .pay-entries td:nth-child(3) { width: 6.5em; }
+.pay-entries th:nth-child(4), .pay-entries td:nth-child(4) { width: 5.5em; text-align: right; }
+.pay-entries tbody th { font-weight: 400; }
+.pay-entries small { display: block; color: var(--muted); }
+.pay-entries input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+@media (max-width: 480px) {
+  .pay-entries { font-size: 14px; }
+  .pay-entries th, .pay-entries td { padding: 8px 4px; }
+}
 </style>
 </head>
 <body>
@@ -692,18 +708,19 @@ section.td-table td { white-space: nowrap; }
     <p id="pay-returned" role="status" hidden>Returning from checkout does not confirm payment. We verify payments periodically; your entry may take longer than 15 minutes to update. Check your Stripe receipt before trying again. Test payments never change your entry balance.</p>
     <section aria-labelledby="entry-heading">
       <h2 id="entry-heading">Pay entry fees</h2>
-      <p>Find a player, select unpaid entries, then pay on Stripe.</p>
       <p id="pay-status" role="status">Loading payment options…</p>
       <form id="pay-form" class="register-form" hidden>
         <label for="pay-id">Name or US Chess ID</label>
+        <div class="pay-search-row">
         <div class="td-combobox">
           <input id="pay-id" type="text" name="player-id" role="combobox" aria-autocomplete="list" aria-expanded="false"
             aria-controls="pay-players" aria-describedby="pay-player-hint" maxlength="80" autocomplete="off" spellcheck="false" required>
           <!-- [html-validate-disable-next prefer-native-element -- a select cannot search as you type] -->
           <ul id="pay-players" class="td-players" role="listbox" aria-label="Matching registered players" hidden></ul>
         </div>
-        <p id="pay-player-hint" class="register-hint">Club records only. Type two characters or enter an eight-digit ID.</p>
         <button type="submit" class="button">Show balances</button>
+        </div>
+        <p id="pay-player-hint" class="register-hint">Club records only. Type two characters or enter an eight-digit ID.</p>
       </form>
       <p>Unpaid entries start selected.</p>
       <p><button id="pay-select-all" type="button" class="td-action">Select all</button> <button id="pay-deselect-all" type="button" class="td-action">Deselect all</button></p>
@@ -713,7 +730,6 @@ section.td-table td { white-space: nowrap; }
       <button id="pay-review" type="button" class="button" disabled>Select entries to pay</button>
       <p id="pay-summary" aria-live="polite" tabindex="-1"></p>
       <a id="pay-checkout" class="button" hidden>Continue to Stripe</a>
-      <p>Not registered yet? <a href="/events/">Choose an event and register first</a>.</p>
     </section>
     <section aria-labelledby="donation-heading">
       <h2 id="donation-heading">Donate to the club</h2>
@@ -732,6 +748,6 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=79ee0bb1fa" defer></script>
-  <script src="../pay.js?v=7f8391178e" defer></script>
+  <script src="../pay.js?v=5f80ca77df" defer></script>
 </body>
 </html>

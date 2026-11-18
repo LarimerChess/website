@@ -58,8 +58,8 @@ const balanceText = await page.$eval("#pay-balances", (el) => el.textContent);
 const checkedCount = () => page.$$eval(".pay-entry input:checked", (els) => els.length);
 const totalText = () => page.$eval("#pay-selected-total", (el) => el.textContent);
 calls.some((call) => call.id === "12345678") && calls.some((call) => call.id === "22222222")
-  && balanceText.includes("$85.00") && balanceText.includes("subtotal") && balanceText.includes("2025-05-01")
-  && !balanceText.includes("Paid Event") && balanceText.includes("Fee not set") && await checkedCount() === 4
+  && !balanceText.includes("Total owed") && balanceText.includes("2025-05-01")
+  && !balanceText.includes("Paid Event") && balanceText.includes("Not set") && await checkedCount() === 4
   && (await totalText()).includes("$50.00")
   ? pass("All saved players load automatically with all payable entries selected; unknown, paid, review entries excluded") : fail(JSON.stringify({ calls, balanceText }));
 await press(page, "#pay-deselect-all");
@@ -84,6 +84,11 @@ const payment = calls.filter((call) => call.action === "createPaymentCheckout").
 JSON.parse(payment.entries)[0].id === "12345678" && JSON.parse(payment.entries)[0].date === "2026-11" && Object.keys(payment).length === 3
   && (await page.$eval("#pay-test", (el) => !el.hidden))
   ? pass("Single saved-player entry pays exact month without credentials and shows test mode") : fail(JSON.stringify(payment));
+(await page.$$eval(".pay-entries", tables=>tables.length===2 && tables.every(table=>[...table.querySelectorAll("thead th")].map(th=>th.textContent).join(",")==="Pay,Event,Date,Amount" && !table.textContent.includes("\u2014"))))
+  ? pass("Unpaid line items use accessible event, date and amount tables") : fail("Payment entries are not proper tables");
+(await page.$eval("#pay-form", form=>{const input=form.querySelector("#pay-id").getBoundingClientRect(),button=form.querySelector("button[type=submit]").getBoundingClientRect();return button.left>=input.right && button.top<input.bottom;}))
+  ? pass("Show balances sits beside the player field") : fail("Show balances is not beside the field");
+(!await page.$("#pay-total")) ? pass("Payment page omits the total-owed summary") : fail("Total owed remains");
 await axeBoth(page, "Saved player balances");
 await page.setViewport({ width: 390, height: 844 });
 await fitsPhone(page, "Saved player balances");
@@ -175,7 +180,7 @@ calls.filter(call=>call.action==="createPaymentCheckout").at(-1).requestId===ret
   ? pass("Retrying unchanged entries keeps the same checkout request identity") : fail("Retry lost its idempotent request identity");
 config.enabled = false;
 await page.reload({ waitUntil: "networkidle0" });
-await page.waitForSelector("#pay-total");
+await page.waitForSelector("#pay-balances section");
 (await page.$$(".pay-entry input")).length === 4 && (await page.$eval("#pay-review", (el) => el.disabled))
   && (await page.$eval("#donation-link", (el) => el.hidden))
   ? pass("All balances and selection remain available when Stripe checkout is disabled") : fail("Disabled Stripe prevented lookup or enabled checkout");
@@ -202,7 +207,7 @@ await page.removeScriptToEvaluateOnNewDocument(seed.identifier);
 await page.evaluate(()=>localStorage.removeItem("lccc-register-players"));
 config.enabled=true;
 await page.goto(base+"/pay/",{waitUntil:"networkidle0"});
-(await page.$eval("#pay-review",el=>el.disabled && el.textContent==="Select entries to pay")) && (await page.$eval("#pay-cart-status",el=>el.textContent.includes("Find a player above"))) && (await page.$eval("#main",el=>el.textContent.includes("Find a player, select unpaid entries, then pay on Stripe.")))
+(await page.$eval("#pay-review",el=>el.disabled && el.textContent==="Select entries to pay")) && (await page.$eval("#pay-cart-status",el=>el.textContent.includes("Find a player above"))) && (await page.$eval("#main",el=>!el.textContent.includes("Find a player, select unpaid entries, then pay on Stripe.") && !el.textContent.includes("Not registered yet?")))
   && (await page.$eval("#pay-test",el=>!el.hidden))
   ? pass("A first-time payer sees concise payment guidance and the test-mode notice") : fail("Initial page does not explain how to pay");
 balanceVariant="unknown";
