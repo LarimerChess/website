@@ -6,7 +6,9 @@ records only, returning at most 12 names and IDs after two typed characters. It
 never searches US Chess or private contacts. Historical registrants can be found
 even if they have no current balance. The existing registration Apps Script recalculates
 all balances, stores a private basket allocation, and creates one Stripe Checkout
-Session for the exact total in USD. Client amounts are never trusted. The club
+Session for the exact total in USD. After selecting entries, the Pay on Stripe
+button opens secure Checkout directly; a visible checkout link remains available
+if navigation is blocked. Client amounts are never trusted. The club
 absorbs processing fees. Donations remain a separate anonymous Payment Link.
 
 ## Configure sandbox deployment

@@ -640,6 +640,32 @@ section.td-table td { white-space: nowrap; }
 .td-login .td-google { justify-self: stretch; }
 .td-who { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 
+.network-activity {
+  width: min(360px, calc(100% - 32px));
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--fg);
+  text-align: center;
+  box-shadow: 0 12px 48px #0003;
+}
+.network-activity::backdrop { background: #0007; }
+.network-activity p { margin: 12px 0 0; }
+.network-spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: network-spin 0.8s linear infinite;
+}
+@keyframes network-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .network-spinner { animation: none; }
+}
+
 #pay-form select { max-width: 100%; }
 </style>
 </head>
@@ -661,12 +687,12 @@ section.td-table td { white-space: nowrap; }
   </nav>
   <main id="main" class="wrap">
     <h1>Pay an entry or donate</h1>
-    <p>Pay for yourself, a family member, or another player. No account or login is needed.</p>
+    <p>Pay for yourself or another player. No login needed.</p>
     <p id="pay-test" role="status" hidden><strong>Test mode:</strong> No real money is collected. Test payments do not pay tournament entry fees.</p>
     <p id="pay-returned" role="status" hidden>Returning from checkout does not confirm payment. We verify payments periodically; your entry may take longer than 15 minutes to update. Check your Stripe receipt before trying again. Test payments never change your entry balance.</p>
     <section aria-labelledby="entry-heading">
-      <h2 id="entry-heading">Entry balances</h2>
-      <p>All players saved on this device load automatically. To add someone else, search club registration records by name or US Chess ID. See balances for all their registered events, past and upcoming.</p>
+      <h2 id="entry-heading">Pay entry fees</h2>
+      <p>Find a player, select unpaid entries, then pay on Stripe.</p>
       <p id="pay-status" role="status">Loading payment options…</p>
       <form id="pay-form" class="register-form" hidden>
         <label for="pay-id">Name or US Chess ID</label>
@@ -676,22 +702,22 @@ section.td-table td { white-space: nowrap; }
           <!-- [html-validate-disable-next prefer-native-element -- a select cannot search as you type] -->
           <ul id="pay-players" class="td-players" role="listbox" aria-label="Matching registered players" hidden></ul>
         </div>
-        <p id="pay-player-hint" class="register-hint">Type at least two characters, then choose a player. Searches club registration records only, without searching US Chess. You can also enter a full eight-digit ID.</p>
+        <p id="pay-player-hint" class="register-hint">Club records only. Type two characters or enter an eight-digit ID.</p>
         <button type="submit" class="button">Show balances</button>
       </form>
-      <p>Outstanding entries are selected by default. Deselect any you do not want to pay.</p>
+      <p>Unpaid entries start selected.</p>
       <p><button id="pay-select-all" type="button" class="td-action">Select all</button> <button id="pay-deselect-all" type="button" class="td-action">Deselect all</button></p>
       <div id="pay-balances" aria-live="polite"></div>
       <p id="pay-selected-total" role="status"></p>
       <p id="pay-cart-status"></p>
-      <button id="pay-review" type="button" class="button" disabled>Review selected payments</button>
-      <p id="pay-summary" aria-live="polite"></p>
+      <button id="pay-review" type="button" class="button" disabled>Select entries to pay</button>
+      <p id="pay-summary" aria-live="polite" tabindex="-1"></p>
       <a id="pay-checkout" class="button" hidden>Continue to Stripe</a>
       <p>Not registered yet? <a href="/events/">Choose an event and register first</a>.</p>
     </section>
     <section aria-labelledby="donation-heading">
       <h2 id="donation-heading">Donate to the club</h2>
-      <p>Choose an amount at checkout. Donations support club programs and are recorded anonymously in the club ledger, without a player or event. Stripe and authorized club staff viewing Stripe records may still see billing details.</p>
+      <p>Choose an amount on Stripe. Donations are recorded anonymously in the club ledger.</p>
       <p id="donation-status">Online donations are not available yet.</p>
       <a id="donation-link" class="button" hidden>Donate through Stripe</a>
     </section>
@@ -705,7 +731,7 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=bad2623284" defer></script>
-  <script src="../pay.js?v=8b069458eb" defer></script>
+  <script src="../register.js?v=79ee0bb1fa" defer></script>
+  <script src="../pay.js?v=f877a95c74" defer></script>
 </body>
 </html>

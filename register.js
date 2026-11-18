@@ -13,6 +13,42 @@ const LIVE_DB = "https://larimer-county-chess-club-default-rtdb.firebaseio.com";
 const FIREBASE = { apiKey: "AIzaSyD6-eIPPNpagaX5oF9ioT2Fu4_6YaxxHz4", authDomain: "larimer-county-chess-club.firebaseapp.com",
   projectId: "larimer-county-chess-club", appId: "1:1048640298130:web:b846ee163e099645b89a4b" };
 
+// One modal for overlapping requests, including actions submitted from another dialog.
+const networkActivity = (() => {
+  const pending = new Map();
+  let dialog;
+  let status;
+  return async (message, work) => {
+    if (!message) return work();
+    if (!dialog) {
+      dialog = document.createElement("dialog");
+      dialog.className = "network-activity";
+      dialog.setAttribute("aria-label", "Request in progress");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.addEventListener("cancel", (event) => event.preventDefault());
+      const spinner = document.createElement("span");
+      spinner.className = "network-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      status = document.createElement("p");
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      dialog.append(spinner, status);
+      document.body.append(dialog);
+    }
+    const request = Symbol();
+    pending.set(request, message);
+    status.textContent = message;
+    if (!dialog.open) dialog.showModal();
+    try {
+      return await work();
+    } finally {
+      pending.delete(request);
+      if (pending.size) status.textContent = [...pending.values()].at(-1);
+      else dialog.close();
+    }
+  };
+})();
+
 const form = document.querySelector("form.register-form:not(.td-login)");
 const status = document.querySelector(".register-status");
 const entriesStatus = document.querySelector(".entries-status");

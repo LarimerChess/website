@@ -58,6 +58,7 @@ if (typeof document !== "undefined") (async () => {
   form.querySelector("button[type=submit]").before(remember);
   let config = { enabled: false };
   let revision = 0;
+  let checkoutPending = false;
   let checkoutRequestId = crypto.randomUUID();
   let defaultSelected = true;
   const people = new Map();
@@ -76,13 +77,14 @@ if (typeof document !== "undefined") (async () => {
     checkout.removeAttribute("href");
     summary.textContent = "";
   };
-  const post = async (fields) => {
+  const post = async (fields) => networkActivity(fields.action === "paymentPlayers" ? null
+    : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout?" : "Loading entry balances?", async () => {
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
     if (!response.ok) throw new Error("The payment service could not be reached. Please try again.");
     const data = await response.json();
     if (!data.ok) throw new Error(data.error || "The request could not be completed. Please ask the tournament director.");
     return data;
-  };
+  });
   function setActivePlayer(index) {
     const options = [...playerList.querySelectorAll("[role=option]")];
     activePlayer = Math.max(-1, Math.min(index, options.length - 1));
@@ -105,7 +107,7 @@ if (typeof document !== "undefined") (async () => {
       option.id = `pay-player-${index}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", "false");
-      option.textContent = `${player.name} ? ${player.id}`;
+      option.textContent = `${player.name} (${player.id})`;
       option.player = player;
       option.addEventListener("mousedown", (event) => {
         event.preventDefault();
@@ -123,7 +125,7 @@ if (typeof document !== "undefined") (async () => {
     const q = id.value.trim(), version = ++searchSequence;
     if (q.length < 2) { closePlayerSearch(); status.textContent = "Type at least two characters to search club records."; return; }
     if (q.length > 80 || /^\d{9,}$/.test(q)) { closePlayerSearch(); status.textContent = "Enter a name or an eight-digit US Chess ID."; return; }
-    status.textContent = "Searching club registration records?";
+    status.textContent = "Searching club records...";
     try {
       const data = await post({ action: "paymentPlayers", q });
       if (version !== searchSequence) return;
@@ -139,35 +141,51 @@ if (typeof document !== "undefined") (async () => {
       .map((entry) => ({ ...entry, id: person.id, playerName: person.name })));
   }
   function updateTotal() {
-    const entries = selectedEntries();
-    selectedTotal.textContent = `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"} — ${money(entries.reduce((total, entry) => total + entry.balanceCents, 0))}.`;
-    review.disabled = !config.enabled || !config.dynamicCheckout?.enabled || !entries.length;
-    document.querySelector("#pay-cart-status").textContent = !config.enabled
-      ? "Online payments are not available yet. Your balances are shown above; please pay the tournament director."
-      : !config.dynamicCheckout?.enabled ? "Online checkout is not available yet. Please pay the tournament director." : "";
+    const entries = selectedEntries(), amount = entries.reduce((total, entry) => total + entry.balanceCents, 0);
+    selectedTotal.textContent = `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"}: ${money(amount)}.`;
+    review.disabled = checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length;
+    review.setAttribute("aria-busy", String(checkoutPending));
+    review.textContent = checkoutPending ? "Opening secure checkout..." : entries.length
+      ? `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
+    const allEntries = [...people.values()].flatMap(person => person.entries);
+    document.querySelector("#pay-cart-status").textContent = !config.enabled || !config.dynamicCheckout?.enabled
+      ? "Online checkout is unavailable. You can still view balances; please arrange payment with the tournament director."
+      : !people.size ? "Find a player above to load unpaid entries."
+      : entries.length ? ""
+      : allEntries.some(eligible) ? "Select at least one entry to pay."
+      : allEntries.some(entry => entry.review) ? "Ask the tournament director to review these entries."
+      : allEntries.some(entry => entry.balanceCents === null) ? "Fees are not set yet. Ask the tournament director."
+      : "Nothing to pay for these players.";
   }
   review.addEventListener("click", async () => {
     const entries = selectedEntries();
-    if (!config.enabled || !config.dynamicCheckout?.enabled || !entries.length) return;
+    if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length) return;
     const amount = entries.reduce((n, entry) => n + entry.balanceCents, 0);
     checkout.hidden = true;
     checkout.removeAttribute("href");
     const version = revision;
-    review.disabled = true;
+    checkoutPending = true;
+    updateTotal();
+    summary.textContent = `Preparing secure ${config.livemode ? "payment" : "test checkout"} for ${money(amount)}...`;
     status.textContent = "Checking the selected entry balance…";
     try {
       const result = await post({ action: "createPaymentCheckout", requestId: checkoutRequestId, entries: JSON.stringify(entries.map(({ id, event, date }) => ({ id, event, date }))) });
       const url = ClubPayments.verifiedCheckout(result, config, amount, entries.length);
       if (version !== revision) return;
-      summary.textContent = `${config.livemode ? "You are paying" : "Test payment"}: ${money(amount)} for ${entries.length} selected entries. ${entries.map((entry) => `${entry.playerName}: ${entry.name}, ${entry.date}`).join("; ")}`;
+      summary.textContent = `Opening ${config.livemode ? "secure" : "test"} checkout for ${money(amount)}.`;
       checkout.href = url;
-      checkout.textContent = config.livemode ? `Confirm and pay ${money(amount)} on Stripe` : "Continue to test checkout";
+      checkout.textContent = `Open ${config.livemode ? "secure" : "test"} Stripe checkout: ${money(amount)}`;
       checkout.hidden = false;
-      status.textContent = "Check the player and event below before continuing. Enter your own receipt email at checkout.";
-      checkout.focus();
+      status.textContent = "Opening Stripe checkout. If it does not open, use the checkout link below. Enter your own receipt email on Stripe.";
+      checkout.click();
     } catch (error) {
-      if (version === revision) status.textContent = error.message;
-    } finally { updateTotal(); }
+      if (version === revision) {
+        status.textContent = error.message;
+        summary.textContent = error.message;
+        summary.scrollIntoView({ block: "center" });
+        summary.focus({ preventScroll: true });
+      }
+    } finally { checkoutPending = false; updateTotal(); }
   });
   function showSavedPlayers() {
     showSavedIn(saved, (player) => loadBalances(player.id, false), (player) => {
@@ -194,9 +212,9 @@ if (typeof document !== "undefined") (async () => {
       const group = document.createElement("section");
       group.dataset.player = data.id;
       if (data.id === requestedId) group.setAttribute("aria-label", "Player from payment link");
-      group.append(Object.assign(document.createElement("h3"), { textContent: `${data.id === requestedId ? "Player from your payment link: " : ""}${data.name || data.id} (${data.id}) — all registered events` }));
-      if (!data.entries.length) group.append(Object.assign(document.createElement("p"), { textContent: "No active registrations found for this player." }));
-      for (const entry of data.entries) {
+      group.append(Object.assign(document.createElement("h3"), { textContent: `${data.id === requestedId ? "Player from your payment link: " : ""}${data.name || data.id} (${data.id})` }));
+      if (!data.entries.some(entry => entry.balanceCents !== 0)) group.append(Object.assign(document.createElement("p"), { textContent: "No unpaid entries for this player." }));
+      for (const entry of data.entries.filter(entry => entry.balanceCents !== 0)) {
         const card = Object.assign(document.createElement("div"), { className: "pay-entry" });
         const amount = entry.balanceCents;
         const title = `${entry.name} — ${entry.date}`;
@@ -217,7 +235,7 @@ if (typeof document !== "undefined") (async () => {
             : amount === 0 ? "Nothing owed — balance $0.00." : amount < 0 ? `Credit: ${money(-amount)}.` : `${money(amount)} owed.`}` }));
         }
         if (entry.review) card.append(Object.assign(document.createElement("p"), {
-          textContent: "A payment needs review. Contact the tournament director before paying again." }));
+          textContent: "Payment needs review. Contact the tournament director." }));
         group.append(card);
       }
       balances.append(group);
@@ -252,7 +270,7 @@ if (typeof document !== "undefined") (async () => {
       }
       resetCheckout();
       renderBalances();
-      status.textContent = "Balances include past and upcoming active registrations. Select the entries you want to pay. Updates after checkout may take longer than 15 minutes.";
+      status.textContent = "Select entries, then pay on Stripe.";
     } catch (error) {
       if (requests.get(playerId) === token) status.textContent = error.message;
     }
@@ -312,6 +330,6 @@ if (typeof document !== "undefined") (async () => {
   if (ids.length) {
     await Promise.all(ids.map((playerId) => loadBalances(playerId, false)));
     id.value = /^\d{8}$/.test(requestedId || "") ? requestedId : ids[0];
-  } else { renderBalances(); status.textContent = "Enter a player's name or US Chess ID to search club registration records. No login is needed."; }
+  } else { renderBalances(); status.textContent = "Find a player by name or US Chess ID to start."; }
 })();
 

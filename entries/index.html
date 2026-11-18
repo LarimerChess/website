@@ -658,6 +658,32 @@ section.td-table td { white-space: nowrap; }
 .td-login .td-google { justify-self: stretch; }
 .td-who { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 
+.network-activity {
+  width: min(360px, calc(100% - 32px));
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--fg);
+  text-align: center;
+  box-shadow: 0 12px 48px #0003;
+}
+.network-activity::backdrop { background: #0007; }
+.network-activity p { margin: 12px 0 0; }
+.network-spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: network-spin 0.8s linear infinite;
+}
+@keyframes network-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .network-spinner { animation: none; }
+}
+
 #pay-form select { max-width: 100%; }
 </style>
 </head>
@@ -693,7 +719,7 @@ section.td-table td { white-space: nowrap; }
     <p><a href="/privacy/">Privacy</a></p>
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
-  <script src="../register.js?v=bad2623284" defer></script>
+  <script src="../register.js?v=79ee0bb1fa" defer></script>
   <script src="../entries.js?v=69972ad35b" defer></script>
 </body>
 </html>

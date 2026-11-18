@@ -295,7 +295,7 @@ test('basket creation recalculates fees, sends only opaque reference and reuses 
   assert.ok(!JSON.stringify(sent.payload).includes('12345678'));
   assert.ok(!JSON.stringify(sent.payload).includes('private-withdraw-token'));
   assert.equal(f.ctx.createPaymentCheckout(p).amount,3000);assert.equal(calls,1);assert.equal(rows.length,1);
-  f.second.Discount='1';assert.throws(()=>f.ctx.createPaymentCheckout(p),/Balances changed/);
+  f.second.Discount='1';assert.match(f.ctx.createPaymentCheckout(p).error,/Balances changed/);
 });
 
 test('basket creation refuses mode mismatch and duplicate selections before creating checkout', () => {
@@ -304,7 +304,7 @@ test('basket creation refuses mode mismatch and duplicate selections before crea
   assert.match(f.ctx.createPaymentCheckout({}).error,/payment mode/);
   f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=> 'sk_test_fixture'})};
   const e={id:'12345678',event:'chess',date:'2026-12-01'};
-  assert.throws(()=>f.ctx.createPaymentCheckout({entries:JSON.stringify([e,e])}),/duplicate/);
+  assert.match(f.ctx.createPaymentCheckout({entries:JSON.stringify([e,e])}).error,/duplicate/);
 });
 
 function paymentSearchFixture(people) {
@@ -367,4 +367,77 @@ test('payment player search caps results at twelve unique players after deduplic
   assert.equal(new Set(result.players.map(person => person.id)).size, 12);
   assert.ok(result.players.every(person => Object.keys(person).sort().join(',') === 'id,name'));
   assert.deepEqual(plain(f.ctx.paymentPlayers({ q: 'club' })), result);
+});
+
+test('checkout returns safe diagnostics for Stripe permission, HTTP and transport failures without logs or bodies', () => {
+  for (const failure of [401, 403, 429, 500, 'transport', 'json', 'configuration', 'storage']) {
+    const f = basketFixture(true), logs = [];
+    f.ctx.console = { log: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) };
+    f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_test_PRIVATEKEY' }) };
+    const headers = ['Reference','Mode','Amount','Allocations','Session','URL'];
+    f.ctx.stripeBaskets = () => {
+      if (failure === 'storage') throw Error('private storage player name');
+      return { sheet: [], col: Object.fromEntries(headers.map((h,i) => [h,i])), rows: [] };
+    };
+    if (failure === 'configuration') f.ctx.stripeConfig = () => { throw Error('private config details'); };
+    let bodies = 0;
+    f.ctx.UrlFetchApp = { fetch: () => {
+      if (failure === 'transport') throw Error('Bearer sk_test_PRIVATEKEY private player name');
+      return { getResponseCode: () => failure === 'json' ? 200 : failure,
+        getContentText: () => { bodies++; return 'private Stripe response sk_test_PRIVATEKEY'; } };
+    } };
+    const result = f.ctx.createPaymentCheckout({ requestId: 'request_abcdefghijklmnop',
+      entries: JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'}]) });
+    const expected = { transport: 'STRIPE_REQUEST', json: 'STRIPE_RESPONSE', configuration: 'CONFIGURATION', storage: 'BASKET_STORAGE' }[failure] || 'HTTP_' + failure;
+    assert.ok(result.error.includes('(CHECKOUT_' + expected + ')'), result.error);
+    if (failure === 401 || failure === 403) assert.match(result.error, /permission/);
+    assert.ok(!/private|PRIVATEKEY|12345678/i.test(result.error));
+    assert.deepEqual(logs, []);
+    assert.equal(bodies, failure === 'json' ? 1 : 0);
+  }
+});
+
+test('checkout returns expected validation errors and malformed selection never reaches Stripe', () => {
+  const f = basketFixture(true);
+  f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_test_fixture' }) };
+  f.ctx.UrlFetchApp = { fetch() { throw Error('must not request Stripe'); } };
+  assert.match(f.ctx.createPaymentCheckout({ entries: '{' }).error, /valid entries/);
+  const entry = {id:'12345678',event:'chess',date:'2026-12-01'};
+  f.entry['Rating fee'] = '';
+  assert.match(f.ctx.createPaymentCheckout({ entries: JSON.stringify([entry]) }).error, /balance needs review/);
+  f.entry['Rating fee'] = '2.50';
+  f.entry.Status = 'withdrawn';
+  assert.match(f.ctx.createPaymentCheckout({ entries: JSON.stringify([entry]) }).error, /registration changed/);
+});
+
+test('unknown rating allocation flags authoritative balances and refuses checkout while explicit zero stays payable', () => {
+  for (const rating of ['', undefined, '   ']) {
+    const f = fixture();
+    f.entry['Rating fee'] = rating;
+    f.ctx.clubEvents = () => ({});
+    const balance = f.ctx.paymentBalances({id:'12345678'}).entries[0];
+    assert.equal(balance.balanceCents, 1750);
+    assert.equal(balance.review, true);
+    f.config.dynamicCheckout = { enabled: true };
+    f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_live_fixture' }) };
+    f.ctx.UrlFetchApp = { fetch() { throw Error('unknown allocation must not request Stripe'); } };
+    const result = f.ctx.createPaymentCheckout({requestId:'request_abcdefghijklmnop', entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'}])});
+    assert.match(result.error, /balance needs review/);
+  }
+  const f = fixture();
+  f.entry['Rating fee'] = '0';
+  f.ctx.clubEvents = () => ({});
+  const balance = f.ctx.paymentBalances({id:'12345678'}).entries[0];
+  assert.equal(balance.balanceCents, 1750);
+  assert.equal(balance.review, false);
+  f.config.dynamicCheckout = { enabled: true };
+  f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_live_fixture' }) };
+  const headers = ['Reference','Mode','Amount','Allocations','Session','URL'];
+  const sheet = { getRange: () => { const range = { setNumberFormat: () => range, setValue() {} }; return range; } };
+  f.ctx.stripeBaskets = () => ({ sheet, rows: [], col: Object.fromEntries(headers.map((h,i) => [h,i])) });
+  f.ctx.appendText = () => {};
+  let requests = 0;
+  f.ctx.UrlFetchApp = { fetch: () => { requests++; return { getResponseCode: () => 200, getContentText: () => JSON.stringify({id:'cs_live_fixture',url:'https://checkout.stripe.com/c/pay/cs_live_fixture',livemode:true,amount_total:1750,client_reference_id:'request_abcdefghijklmnop'}) }; } };
+  assert.equal(f.ctx.createPaymentCheckout({requestId:'request_abcdefghijklmnop',entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'}])}).ok, true);
+  assert.equal(requests, 1);
 });

@@ -3681,14 +3681,16 @@ function stripeConfig() {
 /** Public balance lookup deliberately returns no registration-changing credentials or contacts. */
 function stripeBalance(r, col, book) {
   const mine = book.rows.filter((payment) => payment.Token === r[col.Token]);
+  const rating = r[col["Rating fee"]];
+  const review = rating == null || String(rating).trim() === "" || Boolean(r[col["Payment review"]]);
   const numeric = [r[col.Amount], r[col.Discount], r[col.Paid], r[col["Rating fee"]], ...mine.flatMap((payment) =>
     [payment.Received, payment["Entry fee"], payment["Rating fee"]])];
   const unresolved = numeric.some((value) => !Number.isFinite(Number(value || 0)))
     || (cents(r[col.Paid]) !== 0 && mine.length === 0);
-  if (unresolved || r[col.Amount] === "") return { balanceCents: null, review: unresolved || Boolean(r[col["Payment review"]]) };
+  if (unresolved || r[col.Amount] === "") return { balanceCents: null, review: unresolved || review };
   const held = ledgerByToken(book)[r[col.Token]] || { entry: 0, rating: 0, refunded: 0 };
   const balance = cents(r[col.Amount]) - cents(r[col.Discount]) - held.entry - held.rating - held.refunded;
-  return Number.isSafeInteger(balance) ? { balanceCents: Math.max(0, balance), review: Boolean(r[col["Payment review"]]) } : { balanceCents: null, review: true };
+  return Number.isSafeInteger(balance) ? { balanceCents: Math.max(0, balance), review } : { balanceCents: null, review: true };
 }
 
 /** Public player search uses registration names and IDs only, never private contacts or US Chess. */
@@ -3869,54 +3871,77 @@ const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Se
 function stripeBaskets() { return readTab("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
 
 function createPaymentCheckout(p) {
-  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
-  const config = stripeConfig();
-  if (!config.dynamicCheckout?.enabled) return { error: "Combined checkout is not enabled." };
-  const secret = PropertiesService.getScriptProperties().getProperty("LCCC_STRIPE_SECRET_KEY") || "";
-  if (!(config.livemode ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/).test(secret)) return { error: "Checkout credentials are not configured for this payment mode." };
-  const requested = JSON.parse(p.entries || "[]");
-  if (!Array.isArray(requested) || !requested.length || requested.length > 50) return { error: "Select between one and 50 entries." };
-  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  let stage = "configuration", validationError;
+  const reject = (message) => { validationError = { error: message }; throw validationError; };
   try {
-    const { rows, col } = readEntries(), book = readPayments(), seen = new Set();
-    const allocations = requested.map((item) => {
-      const key = JSON.stringify([item.id, item.event, item.date]);
-      if (seen.has(key) || !/^\d{8}$/.test(String(item.id || ""))) throw new Error("Invalid or duplicate entry selection.");
-      seen.add(key);
-      const matches = rows.filter((r) => r[col["US Chess ID"]] === item.id && r[col.Event] === item.event && r[col.Date] === item.date && active(r[col.Status]));
-      if (matches.length !== 1) throw new Error("A selected registration changed. Reload balances.");
-      const r = matches[0], balance = stripeBalance(r, col, book);
-      if (balance.review || !Number.isSafeInteger(balance.balanceCents) || balance.balanceCents <= 0 || r[col["Rating fee"]] === "") throw new Error("A selected balance needs review. Reload balances.");
-      const held = ledgerByToken(book)[r[col.Token]] || { rating: 0 };
-      return { token: r[col.Token], party: partyOf(r, col), amount: balance.balanceCents,
-        rating: Math.min(balance.balanceCents, Math.max(0, cents(r[col["Rating fee"]]) - held.rating)) };
-    });
-    const amount = allocations.reduce((n, a) => n + a.amount, 0);
-    if (!Number.isSafeInteger(amount) || amount < 50 || amount > 99999999) throw new Error("The selected total is outside the supported checkout range.");
-    const reference = String(p.requestId || "");
-    if (!/^[a-zA-Z0-9_-]{16,100}$/.test(reference)) throw new Error("Invalid checkout request. Reload the page.");
-    const tab = stripeBaskets(), old = tab.rows.find((r) => r[tab.col.Reference] === reference);
-    if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) throw new Error("Balances changed. Reload the page before checkout.");
-    if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
-    // Persist the allocation before requesting Stripe so a successful charge can always be reconciled.
-    if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount), Allocations: JSON.stringify(allocations), Session: "", URL: "" });
-    const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
-      "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
-      "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
-      "payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
-      success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
-    const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload,
-      headers: { Authorization: "Bearer " + secret, "Idempotency-Key": "lccc-" + reference }, muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) throw new Error("Stripe checkout is temporarily unavailable. Please try again.");
-    const session = JSON.parse(response.getContentText());
-    if (session.livemode !== config.livemode || session.amount_total !== amount || session.client_reference_id !== reference
-        || !/^https:\/\/checkout\.stripe\.com\//.test(session.url || "")) throw new Error("Stripe checkout could not be verified.");
-    const index = old ? tab.rows.indexOf(old) + 2 : tab.rows.length + 2;
-    tab.sheet.getRange(index, tab.col.Session + 1).setNumberFormat("@").setValue(session.id);
-    tab.sheet.getRange(index, tab.col.URL + 1).setNumberFormat("@").setValue(session.url);
-    return { ok: true, checkoutUrl: session.url, amount, currency: "usd", livemode: config.livemode, count: allocations.length };
-  } finally { lock.releaseLock(); }
+    if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+    const config = stripeConfig();
+    if (!config.dynamicCheckout?.enabled) return { error: "Combined checkout is not enabled." };
+    const secret = PropertiesService.getScriptProperties().getProperty("LCCC_STRIPE_SECRET_KEY") || "";
+    if (!(config.livemode ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/).test(secret)) return { error: "Checkout credentials are not configured for this payment mode." };
+    stage = "selection";
+    let requested;
+    try { requested = JSON.parse(p.entries || "[]"); }
+    catch { return { error: "Select valid entries and try again." }; }
+    if (!Array.isArray(requested) || !requested.length || requested.length > 50) return { error: "Select between one and 50 entries." };
+    stage = "lock";
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try {
+      stage = "balances";
+      const { rows, col } = readEntries(), book = readPayments(), seen = new Set();
+      const allocations = requested.map((item) => {
+        const key = JSON.stringify([item.id, item.event, item.date]);
+        if (seen.has(key) || !/^\d{8}$/.test(String(item.id || ""))) reject("Invalid or duplicate entry selection.");
+        seen.add(key);
+        const matches = rows.filter((r) => r[col["US Chess ID"]] === item.id && r[col.Event] === item.event && r[col.Date] === item.date && active(r[col.Status]));
+        if (matches.length !== 1) reject("A selected registration changed. Reload balances.");
+        const r = matches[0], balance = stripeBalance(r, col, book);
+        if (balance.review || !Number.isSafeInteger(balance.balanceCents) || balance.balanceCents <= 0 || r[col["Rating fee"]] === "") reject("A selected balance needs review. Reload balances.");
+        const held = ledgerByToken(book)[r[col.Token]] || { rating: 0 };
+        return { token: r[col.Token], party: partyOf(r, col), amount: balance.balanceCents,
+          rating: Math.min(balance.balanceCents, Math.max(0, cents(r[col["Rating fee"]]) - held.rating)) };
+      });
+      const amount = allocations.reduce((n, a) => n + a.amount, 0);
+      if (!Number.isSafeInteger(amount) || amount < 50 || amount > 99999999) reject("The selected total is outside the supported checkout range.");
+      const reference = String(p.requestId || "");
+      if (!/^[a-zA-Z0-9_-]{16,100}$/.test(reference)) reject("Invalid checkout request. Reload the page.");
+      stage = "basket-storage";
+      const tab = stripeBaskets(), old = tab.rows.find((r) => r[tab.col.Reference] === reference);
+      if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) reject("Balances changed. Reload the page before checkout.");
+      if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
+      // Persist the allocation before requesting Stripe so a successful charge can always be reconciled.
+      if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount), Allocations: JSON.stringify(allocations), Session: "", URL: "" });
+      const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
+        "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
+        "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
+        "payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
+        success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
+      stage = "stripe-request";
+      const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload,
+        headers: { Authorization: "Bearer " + secret, "Idempotency-Key": "lccc-" + reference }, muteHttpExceptions: true });
+      stage = "stripe-response";
+      const http = response.getResponseCode();
+      if (http !== 200) {
+        const code = Number.isInteger(http) && http >= 100 && http <= 599 ? String(http) : "UNKNOWN";
+        return { error: http === 401 || http === 403
+          ? "Checkout permission is not configured. Please contact the tournament director. (CHECKOUT_HTTP_" + code + ")"
+          : "Stripe checkout is temporarily unavailable. Please try again. (CHECKOUT_HTTP_" + code + ")" };
+      }
+      const session = JSON.parse(response.getContentText());
+      if (session.livemode !== config.livemode || session.amount_total !== amount || session.client_reference_id !== reference
+          || !/^https:\/\/checkout\.stripe\.com\//.test(session.url || "")) reject("Stripe checkout could not be verified.");
+      stage = "basket-save";
+      const index = old ? tab.rows.indexOf(old) + 2 : tab.rows.length + 2;
+      tab.sheet.getRange(index, tab.col.Session + 1).setNumberFormat("@").setValue(session.id);
+      tab.sheet.getRange(index, tab.col.URL + 1).setNumberFormat("@").setValue(session.url);
+      return { ok: true, checkoutUrl: session.url, amount, currency: "usd", livemode: config.livemode, count: allocations.length };
+    } finally { lock.releaseLock(); }
+  } catch (error) {
+    if (validationError && error === validationError) return validationError;
+    return { error: "Checkout could not be prepared. Please retry or contact the tournament director. (CHECKOUT_" + stage.toUpperCase().replace(/-/g, "_") + ")" };
+  }
 }
+
 
 function stripeImportBasket(record, config) {
   const test = !config.livemode, review = (reason) => stripeReview(record, reason, test);
