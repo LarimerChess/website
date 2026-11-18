@@ -103,11 +103,11 @@ const TZ = "America/Denver";
 const DOLLARS = /^(\d+(\.\d\d?)?|\.\d\d?)$/;
 const HEADER = ["Registered", "Event", "Date", "US Chess ID", "Name", "Category", "Amount", "Paid", "Paid on", "Regular rating",
   "Quick rating", "Membership expires", "Email", "Status", "Added by", "Token", "Phone", "Paid by", "Rating fee",
-  "Discount", "Discount note", "Byes", "Zero-point byes"];
+  "Discount", "Discount note", "Byes", "Zero-point byes", "Payment reference", "Payment review"];
 const MOVED = "moved to month";
 const TO_NIGHT = "moved to night";
 const PAYMENT_HEADER = ["No.", "Recorded", "Token", "Event", "Date", "US Chess ID", "Name", "Type", "Method", "Received",
-  "Entry fee", "Rating fee", "Card fee", "Reverses", "Note", "Donation"];
+  "Entry fee", "Rating fee", "Card fee", "Reverses", "Note", "Donation", "Stripe session", "Stripe intent"];
 const METHODS = ["cash", "check", "card", "other"];
 const CATEGORIES = ["Adult", "Senior (65+)", "Under 18"];
 const INCIDENT_HEADER = ["Logged", "Event", "Date", "US Chess ID", "Name", "Action", "Round", "Reason", "TD", "Until"];
@@ -149,6 +149,10 @@ function doGet(e) {
 function doPost(e) {
   try {
     const p = e.parameter;
+    if (p.action === "paymentBalances") return json(paymentBalances(p));
+    if (p.action === "createPaymentCheckout") return json(createPaymentCheckout(p));
+    if (p.action === "paymentLink") return json(stripePaymentLink(p));
+    if (p.action === "stripeSync") return json(stripeSync(p));
     if (!p.action) return json(register(p, false));
     if (p.action === "report") return json(reportResult(p));
     // The Entries page's switch and byes; the desk's carry its sign-in and come through below.
@@ -397,7 +401,7 @@ function entries(key, td, read) {
         // A refund gives back what's over the fee, so it never adds to what's still owed.
         const balance = fee === null ? "" : money(Math.max(0, fee - kept - held.refunded) / 100);
         Object.assign(entry, { out, category: r[col.Category], amount: r[col.Amount], paid: r[col.Paid],
-          paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email],
+          paidOn: r[col["Paid on"]], paidBy: r[col["Paid by"]] || "", email: r[col.Email], paymentReview: r[col["Payment review"]] || "",
           credit: credit ? money(credit) : "", due, balance,
           card: balance === "" || balance === "0" ? "" : money(cardTotal(Number(balance), card)),
           expires: r[col["Membership expires"]], addedBy: r[col["Added by"]], token: r[col.Token], date: r[col.Date],
@@ -3660,4 +3664,286 @@ function letters(s) {
 
 function json(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Payment-only references never authorize registration changes. Stripe is polled by the
+ * trusted Actions importer; no card or payer contact details enter this endpoint. */
+function stripeConfig() {
+  const response = UrlFetchApp.fetch(SITE + "/stripe-payment-links.json", { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) throw new Error("Payment configuration is unavailable.");
+  const config = JSON.parse(response.getContentText());
+  if (!config.enabled || typeof config.livemode !== "boolean" || config.currency !== "usd"
+      || !config.entry || config.entry.amount !== 1750) throw new Error("Online payments are not enabled.");
+  return config;
+}
+
+/** Public balance lookup deliberately returns no registration-changing credentials or contacts. */
+function stripeBalance(r, col, book) {
+  const mine = book.rows.filter((payment) => payment.Token === r[col.Token]);
+  const numeric = [r[col.Amount], r[col.Discount], r[col.Paid], r[col["Rating fee"]], ...mine.flatMap((payment) =>
+    [payment.Received, payment["Entry fee"], payment["Rating fee"]])];
+  const unresolved = numeric.some((value) => !Number.isFinite(Number(value || 0)))
+    || (cents(r[col.Paid]) !== 0 && mine.length === 0);
+  if (unresolved || r[col.Amount] === "") return { balanceCents: null, review: unresolved || Boolean(r[col["Payment review"]]) };
+  const held = ledgerByToken(book)[r[col.Token]] || { entry: 0, rating: 0, refunded: 0 };
+  const balance = cents(r[col.Amount]) - cents(r[col.Discount]) - held.entry - held.rating - held.refunded;
+  return Number.isSafeInteger(balance) ? { balanceCents: Math.max(0, balance), review: Boolean(r[col["Payment review"]]) } : { balanceCents: null, review: true };
+}
+
+function paymentBalances(p) {
+  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  const id = String(p.id || "").trim();
+  if (!/^\d{8}$/.test(id)) return { error: "Enter an eight-digit US Chess ID." };
+  const { col, rows } = readEntries();
+  const matching = rows.filter((r) => r[col["US Chess ID"]] === id && active(r[col.Status]));
+  const book = readPayments();
+  const events = clubEvents();
+  const entries = matching.map((r) => {
+    const event = r[col.Event], date = r[col.Date];
+    return { event, date,
+      name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      ...stripeBalance(r, col, book) };
+  }).sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
+  return { ok: true, id, name: matching.length ? matching[0][col.Name] : "", currency: "usd", entries,
+    totalCents: entries.reduce((total, entry) => total + (entry.balanceCents || 0), 0),
+    unknownCount: entries.filter((entry) => entry.balanceCents === null).length };
+}
+
+function stripePaymentLink(p) {
+  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  const config = stripeConfig();
+  if (!/^https:\/\/buy\.stripe\.com\/[A-Za-z0-9_]+$/.test(config.entry.url || "")) return { error: "Payment link is not configured." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { sheet, col, rows } = readEntries();
+    const matches = rows.filter((r) => r[col.Event] === p.event && r[col.Date] === p.date
+      && r[col["US Chess ID"]] === String(p.id || "") && active(r[col.Status]));
+    if (matches.length !== 1) return { error: "Choose one current registration." };
+    const r = matches[0];
+    if (r[col["Payment review"]]) return { error: "This payment needs the tournament director's review before another payment." };
+    const balance = stripeBalance(r, col, readPayments());
+    const due = balance.balanceCents;
+    if (balance.review || due !== config.entry.amount) return { error: "Online payment currently supports an unpaid $17.50 entry. Contact the tournament director for other balances." };
+    let reference = r[col["Payment reference"]];
+    if (!reference) {
+      reference = Utilities.getUuid();
+      sheet.getRange(rows.indexOf(r) + 2, col["Payment reference"] + 1).setNumberFormat("@").setValue(reference);
+    }
+    return { ok: true, url: config.entry.url + "?client_reference_id=" + encodeURIComponent(reference),
+      name: r[col.Name], event: p.event, date: p.date, amount: due, currency: config.currency, livemode: config.livemode };
+  } finally { lock.releaseLock(); }
+}
+
+function stripeReview(record, reason, test) {
+  const tab = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
+  if (!tab.rows.some((r) => r[tab.col.Session] === record.sessionId && r[tab.col.Reason] === reason && r[tab.col.Snapshot] === snapshot)) {
+    appendText(tab.sheet, tab.col, { Session: record.sessionId, Reason: reason, Recorded: new Date().toISOString(), Snapshot: snapshot, Resolution: "" });
+  }
+  return { sessionId: record.sessionId, status: "review" };
+}
+
+function stripeRepairEntry(token, book) {
+  if (!token) return;
+  const { sheet, col, rows } = readEntries();
+  const index = rows.findIndex((r) => r[col.Token] === token);
+  if (index < 0) return;
+  const mine = book.rows.filter((r) => r.Token === token);
+  const received = sum(mine, "Received");
+  const values = { Paid: received > 0 ? money(received / 100) : "", "Paid on": received > 0 ? mine[mine.length - 1].Recorded : "",
+    "Paid by": received > 0 ? [...new Set(mine.filter((r) => cents(r.Received) > 0).map((r) => r.Method).filter(Boolean))].join(", ") : "" };
+  for (const [key, value] of Object.entries(values)) sheet.getRange(index + 2, col[key] + 1).setNumberFormat("@").setValue(value);
+}
+
+function stripeSync(p) {
+  const secret = PropertiesService.getScriptProperties().getProperty("LCCC_STRIPE_SYNC_SECRET");
+  if (!secret || secret.length < 32 || p.syncSecret !== secret) return { error: "Payment sync authorization failed." };
+  const config = stripeConfig();
+  const records = JSON.parse(p.records || "[]");
+  if (!Array.isArray(records) || records.length > 100) return { error: "Send at most 100 payment records." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const results = records.map((record) => stripeImport(record, config));
+    if (config.livemode) clearEntriesCache();
+    return { ok: true, results };
+  } finally { lock.releaseLock(); }
+}
+
+function stripeImport(record, config) {
+  const test = !config.livemode;
+  if (!record || !/^cs_[A-Za-z0-9_]+$/.test(record.sessionId || "")) throw new Error("Invalid Stripe session identifier.");
+  const review = (reason) => stripeReview(record, reason, test);
+  if (record.checkoutType === "basket_v1") return stripeImportBasket(record, config);
+  const link = config[record.kind];
+  if (!["entry", "donation"].includes(record.kind) || !link || !link.paymentLinkId || record.paymentLinkId !== link.paymentLinkId
+      || record.currency !== config.currency || record.livemode !== config.livemode
+      || record.status !== "complete" || record.paymentStatus !== "paid"
+      || !/^pi_[A-Za-z0-9_]+$/.test(record.paymentIntentId || "")
+      || !Number.isSafeInteger(record.created) || record.created <= 0 || record.created > Math.floor(Date.now() / 1000) + 300
+      || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
+      || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
+      || typeof record.disputed !== "boolean") return review("Payment validation failed");
+  const book = readPayments();
+  const prior = !test && book.rows.find((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
+  const reviewReason = "Refund/dispute: reconcile credit and any moved entries manually";
+  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  const hasReviewHistory = history && history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === reviewReason);
+  if (record.refundCents || record.disputed || hasReviewHistory) {
+    {
+      const tab = history;
+      const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
+      if (tab.rows.some((r) => r[tab.col.Session] === record.sessionId && r[tab.col.Snapshot] === snapshot
+          && r[tab.col.Reason] === "Refund/dispute: reconcile credit and any moved entries manually"
+          && r[tab.col.Resolution] === "resolved")) return { sessionId: record.sessionId, status: "duplicate" };
+    }
+    if (prior && prior.Token) {
+      const { sheet, col, rows } = readEntries();
+      // Credits can have moved between a month and its nights. Flag the player's
+      // entries in this event so a moved original cannot hide the warning.
+      rows.forEach((r, index) => {
+        if (r[col.Token] === prior.Token || (r[col.Event] === prior.Event && r[col["US Chess ID"]] === prior["US Chess ID"])) {
+          sheet.getRange(index + 2, col["Payment review"] + 1).setNumberFormat("@").setValue("Stripe refund/dispute requires reconciliation");
+        }
+      });
+    }
+    return review("Refund/dispute: reconcile credit and any moved entries manually");
+  }
+  if (prior) {
+    stripeRepairEntry(prior.Token, book);
+    const { col, rows } = readEntries();
+    if (rows.some((r) => r[col.Token] === prior.Token && r[col["Payment review"]])) return review("Payment reconciliation remains open");
+    return { sessionId: record.sessionId, status: "duplicate" };
+  }
+  let token = "", party = { Event: "", Date: Utilities.formatDate(new Date(record.created * 1000), TZ, "yyyy-MM-dd"), "US Chess ID": "", Name: "Anonymous" };
+  let split = { Donation: record.amountCents };
+  if (record.kind === "entry") {
+    const { col, rows } = readEntries();
+    const matches = rows.filter((r) => r[col["Payment reference"]] && r[col["Payment reference"]] === record.clientReferenceId);
+    if (matches.length !== 1 || !active(matches[0][col.Status])) return review("Missing, ambiguous, withdrawn, or moved registration");
+    const r = matches[0];
+    token = r[col.Token];
+    if (r[col["Payment review"]]) return review("Registration has an unresolved payment review");
+    party = partyOf(r, col);
+    const held = ledgerByToken(book)[token] || { entry: 0, rating: 0 };
+    const balance = stripeBalance(r, col, book);
+    if (balance.review || record.amountCents !== config.entry.amount || balance.balanceCents !== record.amountCents) return review("Amount or registration balance changed");
+    if (r[col["Rating fee"]] === "") return review("Rating allocation is unknown");
+    const rating = Math.min(record.amountCents, Math.max(0, cents(r[col["Rating fee"]]) - held.rating));
+    split = { "Rating fee": rating, "Entry fee": record.amountCents - rating };
+  }
+  if (test) {
+    const tab = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    if (record.refundCents || record.disputed) return review("Test refund or dispute");
+    if (!tab.rows.some((r) => r[tab.col.Session] === record.sessionId)) appendText(tab.sheet, tab.col,
+      { Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId || "", Kind: record.kind });
+    return { sessionId: record.sessionId, status: "test" };
+  }
+  addPayment(book, token, party, { Type: record.kind === "entry" ? "payment" : "donation", Method: "card", Received: record.amountCents,
+    ...split, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe Payment Link; processing fees absorbed by club" });
+  stripeRepairEntry(token, book);
+  return { sessionId: record.sessionId, status: "imported" };
+}
+const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL"];
+
+function stripeBaskets() { return readTab("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
+
+function createPaymentCheckout(p) {
+  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  const config = stripeConfig();
+  if (!config.dynamicCheckout?.enabled) return { error: "Combined checkout is not enabled." };
+  const secret = PropertiesService.getScriptProperties().getProperty("LCCC_STRIPE_SECRET_KEY") || "";
+  if (!(config.livemode ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/).test(secret)) return { error: "Checkout credentials are not configured for this payment mode." };
+  const requested = JSON.parse(p.entries || "[]");
+  if (!Array.isArray(requested) || !requested.length || requested.length > 50) return { error: "Select between one and 50 entries." };
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const { rows, col } = readEntries(), book = readPayments(), seen = new Set();
+    const allocations = requested.map((item) => {
+      const key = JSON.stringify([item.id, item.event, item.date]);
+      if (seen.has(key) || !/^\d{8}$/.test(String(item.id || ""))) throw new Error("Invalid or duplicate entry selection.");
+      seen.add(key);
+      const matches = rows.filter((r) => r[col["US Chess ID"]] === item.id && r[col.Event] === item.event && r[col.Date] === item.date && active(r[col.Status]));
+      if (matches.length !== 1) throw new Error("A selected registration changed. Reload balances.");
+      const r = matches[0], balance = stripeBalance(r, col, book);
+      if (balance.review || !Number.isSafeInteger(balance.balanceCents) || balance.balanceCents <= 0 || r[col["Rating fee"]] === "") throw new Error("A selected balance needs review. Reload balances.");
+      const held = ledgerByToken(book)[r[col.Token]] || { rating: 0 };
+      return { token: r[col.Token], party: partyOf(r, col), amount: balance.balanceCents,
+        rating: Math.min(balance.balanceCents, Math.max(0, cents(r[col["Rating fee"]]) - held.rating)) };
+    });
+    const amount = allocations.reduce((n, a) => n + a.amount, 0);
+    if (!Number.isSafeInteger(amount) || amount < 50 || amount > 99999999) throw new Error("The selected total is outside the supported checkout range.");
+    const reference = String(p.requestId || "");
+    if (!/^[a-zA-Z0-9_-]{16,100}$/.test(reference)) throw new Error("Invalid checkout request. Reload the page.");
+    const tab = stripeBaskets(), old = tab.rows.find((r) => r[tab.col.Reference] === reference);
+    if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) throw new Error("Balances changed. Reload the page before checkout.");
+    if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
+    // Persist the allocation before requesting Stripe so a successful charge can always be reconciled.
+    if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount), Allocations: JSON.stringify(allocations), Session: "", URL: "" });
+    const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
+      "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
+      "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
+      "payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
+      success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
+    const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload,
+      headers: { Authorization: "Bearer " + secret, "Idempotency-Key": "lccc-" + reference }, muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) throw new Error("Stripe checkout is temporarily unavailable. Please try again.");
+    const session = JSON.parse(response.getContentText());
+    if (session.livemode !== config.livemode || session.amount_total !== amount || session.client_reference_id !== reference
+        || !/^https:\/\/checkout\.stripe\.com\//.test(session.url || "")) throw new Error("Stripe checkout could not be verified.");
+    const index = old ? tab.rows.indexOf(old) + 2 : tab.rows.length + 2;
+    tab.sheet.getRange(index, tab.col.Session + 1).setNumberFormat("@").setValue(session.id);
+    tab.sheet.getRange(index, tab.col.URL + 1).setNumberFormat("@").setValue(session.url);
+    return { ok: true, checkoutUrl: session.url, amount, currency: "usd", livemode: config.livemode, count: allocations.length };
+  } finally { lock.releaseLock(); }
+}
+
+function stripeImportBasket(record, config) {
+  const test = !config.livemode, review = (reason) => stripeReview(record, reason, test);
+  if (!config.dynamicCheckout?.enabled || record.kind !== "entry" || record.paymentLinkId || record.currency !== "usd"
+      || record.livemode !== config.livemode || record.status !== "complete" || record.paymentStatus !== "paid"
+      || !/^pi_[A-Za-z0-9_]+$/.test(record.paymentIntentId || "") || !Number.isSafeInteger(record.created)
+      || record.created <= 0 || record.created > Math.floor(Date.now()/1000)+300
+      || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
+      || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
+      || typeof record.disputed !== "boolean") return review("Basket payment validation failed");
+  const tab = stripeBaskets(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
+  if (matches.length !== 1) return review("Unknown checkout basket");
+  const basket = matches[0];
+  if (basket[tab.col.Mode] !== String(config.livemode) || Number(basket[tab.col.Amount]) !== record.amountCents
+      || (basket[tab.col.Session] && basket[tab.col.Session] !== record.sessionId)) return review("Basket session or amount mismatch");
+  const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments(), { rows, col, sheet } = readEntries();
+  if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || allocations.reduce((n,a) => n+a.amount,0) !== record.amountCents) return review("Invalid basket allocation");
+  const prior = book.rows.filter((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
+  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
+    const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
+    if (history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Snapshot] === snapshot && r[history.col.Resolution] === "resolved")) return { sessionId: record.sessionId, status: "duplicate" };
+    if (!test) rows.forEach((r,i) => { if (allocations.some((a) => a.token === r[col.Token] || (a.party.Event === r[col.Event] && a.party["US Chess ID"] === r[col["US Chess ID"]]))) sheet.getRange(i+2,col["Payment review"]+1).setNumberFormat("@").setValue("Stripe refund/dispute requires reconciliation"); });
+    return review("Basket refund/dispute requires reconciliation");
+  }
+  const pending = [];
+  for (const a of allocations) {
+    const existing = prior.filter((r) => r.Token === a.token);
+    if (existing.length) {
+      if (existing.length !== 1 || existing[0]["Stripe session"] !== record.sessionId || existing[0]["Stripe intent"] !== record.paymentIntentId || existing[0].Type !== "payment" || existing[0].Method !== "card" || Object.keys(a.party).some(k => existing[0][k] !== a.party[k]) || cents(existing[0].Received) !== a.amount || cents(existing[0]["Rating fee"]) !== a.rating || cents(existing[0]["Entry fee"]) !== a.amount-a.rating) return review("Basket ledger allocation mismatch");
+      continue;
+    }
+    const found = rows.filter((r) => r[col.Token] === a.token);
+    if (found.length !== 1 || !active(found[0][col.Status]) || JSON.stringify(partyOf(found[0],col)) !== JSON.stringify(a.party)) return review("Basket registration changed");
+    const balance = stripeBalance(found[0],col,book);
+    if (balance.review || balance.balanceCents !== a.amount) return review("Basket balance changed");
+    pending.push(a);
+  }
+  if (prior.some((r) => !allocations.some((a) => a.token === r.Token))) return review("Basket ledger allocation mismatch");
+  if (test) {
+    const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
+    return { sessionId: record.sessionId, status: "test" };
+  }
+  // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
+  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe basket; processing fees absorbed by club" });
+  allocations.forEach((a) => stripeRepairEntry(a.token,book));
+  return { sessionId: record.sessionId, status: pending.length ? "imported" : "duplicate" };
 }

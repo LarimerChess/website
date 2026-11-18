@@ -1,0 +1,43 @@
+name: Stripe payment sync
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Read Stripe without updating the club ledger
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stripe-payment-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || vars.LCCC_STRIPE_SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - name: Reconcile Stripe Payment Links
+        env:
+          LCCC_STRIPE_SECRET_KEY: ${{ secrets.LCCC_STRIPE_SECRET_KEY }}
+          LCCC_STRIPE_SYNC_SECRET: ${{ secrets.LCCC_STRIPE_SYNC_SECRET }}
+          LCCC_STRIPE_SYNC_URL: ${{ vars.LCCC_STRIPE_SYNC_URL }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/sync_stripe_payments.py --dry-run
+          else
+            python scripts/sync_stripe_payments.py
+          fi

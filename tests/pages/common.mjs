@@ -18,7 +18,7 @@ export const resultsPages = [...sitemap.matchAll(/<loc>https:\/\/larimerchess\.o
 // So are the archived event pages, which have left events.json.
 export const archivedPages = [...sitemap.matchAll(/<loc>https:\/\/larimerchess\.org(\/events\/[^<]+\/)<\/loc>/g)]
   .map((m) => m[1]).filter((path) => !seriesPages.includes(path));
-export const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/minutes/2026-10-19.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/",
+export const pages = ["/", "/events/", "/scholastic/", "/minutes/", "/minutes/2026-09-24.html", "/minutes/2026-10-19.html", "/privacy/", "/td/", "/entries/", "/pairings/", "/standings/", "/pay/",
   ...seriesPages, ...archivedPages, ...resultsPages];
 export const failures = [];
 export const fail = (message) => { failures.push(message); console.log(`FAIL ${message}`); };

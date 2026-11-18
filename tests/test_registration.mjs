@@ -1956,7 +1956,7 @@ test("an Entries tab and a month's tournament from before byes get their columns
       [month, "1", "66666666", "Ann Ash", "1900", "", "", "", "", "", "CO"]],
   });
   eq(t.gs.entries("monday-club-night-at-peak/2099-10-05", false).map((e) => [e.name, "byes" in e]), [["Ann Ash", false]]);
-  eq(heading(t.sheets.Entries).slice(-3), ["Discount note", "Byes", "Zero-point byes"]);
+  eq(heading(t.sheets.Entries).slice(-5), ["Discount note", "Byes", "Zero-point byes", "Payment reference", "Payment review"]);
   assert.equal(t.register({}).ok, true);
   assert.equal(t.register({ event: "open", date: "2026-11-21" }).ok, true);
   eq(rowsOf(t.sheets.Entries).map((r) => [r.Date, r.Email, r.Byes]), [["2099-10", "ann@example.com", ""], ["2026-11-07", "ann@example.com", ""],

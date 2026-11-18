@@ -22,11 +22,15 @@ How each part works is in the opening comment of its file. This README says wher
 - **New pages.** Add a hand-written page's URL to sitemap.xml. The Date pages Action keeps every page's lastmod.
 - **Written pages.** Never edit events.json, events/<name>/, results/, the Event data in events/index.html, or the home page's marked data-event-time-control text by hand; the Actions below rewrite them. build_pages.py fills the home page's marked time control from the next event's description and checks it with --check.
 
+## Online card payments
+
+The existing Apps Script creates exact-total Stripe Checkout sessions; a scheduled GitHub Action reconciles payments with the private registration ledger. The public `/pay/` page supports paying another player's entry and anonymous club donations without a login. Configuration ships disabled and in test mode. See [Stripe payment setup](docs/stripe-payments.md) for the required links, secrets, Apps Script deployment, test isolation, and reconciliation procedure.
+
 ## The registration script
 
 scripts/registration.gs is the only server. It is an Apps Script in the private registration Sheet, deployed as a web app whose URL is ENDPOINT in register.js. It takes registrations, serves the public entry lists and tournaments, and runs the TD desk, which signs in with the password in its TD_PASSWORD property. Players, pairings, and results live in a second private spreadsheet, Tournaments in progress, until US Chess rates the tournament; once the script property FIREBASE_URL is set, they live in a Firebase Realtime Database instead, which also streams the public copies to the Pairings page and the TD desk, and keeps a copy of the entry lists that the Entries page shows while the script answers (LIVE_DB in register.js; database.rules.json).
 
-What the site shows of them is public: names, US Chess IDs, ratings, pairings, results, and the byes players asked for, minors' included, as US Chess's crosstables and wall charts show them. Emails, phones, fees, payments, ages, and incidents stay in the Sheets.
+What the site shows of them is public: names, US Chess IDs, ratings, pairings, results, and the byes players asked for, minors' included, as US Chess's crosstables and wall charts show them. The payment page also shows registered events and outstanding balances when a player is selected by US Chess ID. Emails, phones, payment history, ages, and incidents stay in the Sheets.
 
 Pushing registration.gs changes nothing live. Paste it into the Sheet's Extensions → Apps Script, then Deploy → Manage deployments → Edit → New version, which keeps the URL. Only the president's account can deploy it.
 

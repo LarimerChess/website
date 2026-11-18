@@ -700,6 +700,11 @@ async function showDeskEntries(quiet = false) {
     // Marking paid asks for the amount, which can differ from the fee under the hardship waiver; by
     // card, it starts from the fee with the card fee. Paying less leaves the rest owed, for another payment.
     const paidCell = row.insertCell();
+    if (e.paymentReview) {
+      const review = document.createElement("strong");
+      review.textContent = "Payment needs review: " + e.paymentReview;
+      paidCell.append(review, document.createElement("br"));
+    }
     if (e.paid) {
       const unpaid = deskButton(`$${e.paid}${e.paidBy ? ` ${e.paidBy}` : ""} ✓`, ` paid by ${e.name}; mark unpaid`);
       unpaid.addEventListener("click", () => {

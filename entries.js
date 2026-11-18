@@ -165,6 +165,13 @@ function eventSection(event) {
   hint.textContent = ` for ${event.name}, ${night ? `all of ${monthFormat.format(new Date(event.start))}` : dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
+  const payment = Object.assign(document.createElement("a"), {
+    href: `/pay/?event=${encodeURIComponent(event.key)}${yourId() ? `&id=${encodeURIComponent(yourId())}` : ""}`,
+    textContent: yourId() ? "View balances and pay" : "Pay for a registered player",
+  });
+  const paymentParagraph = document.createElement("p");
+  paymentParagraph.append(payment);
+  section.append(paymentParagraph);
   // Saved players on this list, who can change their entry.
   const editors = !event.closed && event.page ? players().filter((p) => event.entries.some((e) => e.id === p.id)) : [];
   const switchers = nights.has(event.key) ? editors : [];

@@ -262,6 +262,12 @@ if (!dateField) {
       const response = await fetch(ENDPOINT, { method: "POST", body });
       const result = await response.json();
       status.textContent = result.message || result.error;
+      if (result.ok) {
+        status.append(" ", Object.assign(document.createElement("a"), {
+          href: `/pay/?event=${encodeURIComponent(`${body.get("event")}/${body.get("date")}`)}&id=${encodeURIComponent(body.get("id").trim())}`,
+          textContent: "View balances and pay",
+        }));
+      }
       // What's saved is what the player typed, once the script has accepted it: a registration,
       // or a player already registered. US Chess's spelling of the name only labels the saved player.
       const already = result.error?.match(/^(.+?) is already registered\b/);
