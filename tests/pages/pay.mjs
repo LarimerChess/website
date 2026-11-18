@@ -92,6 +92,7 @@ if (process.env.PAY_SCREENSHOT) await page.screenshot({ path: process.env.PAY_SC
 holdId = "22222222";
 await page.evaluate(() => [...document.querySelectorAll(".register-pick")].find((el) => el.textContent.includes("22222222")).click());
 await page.waitForFunction(() => document.querySelector("#pay-id").value === "22222222");
+(await page.$eval(".network-activity",el=>el.matches(":modal") && el.querySelector("p").textContent==="Loading entry balances")) ? pass("Balance progress uses a plain statement without question marks") : fail("Incorrect balance request message");
 (await page.$eval("#pay-checkout", (el) => el.hidden && !el.hasAttribute("href")))
   ? pass("Refreshing another player clears a stale checkout") : fail("Stale checkout after switching player");
 await page.evaluate(() => [...document.querySelectorAll(".register-forget")].find((el) => el.textContent.includes("22222222")).click());
@@ -161,7 +162,7 @@ const checkoutCount=calls.filter(call=>call.action==="createPaymentCheckout").le
 await page.click("#pay-review");
 await page.waitForFunction(()=>document.querySelector("#pay-review").getAttribute("aria-busy")==="true");
 await page.$eval("#pay-review",el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
-calls.filter(call=>call.action==="createPaymentCheckout").length===checkoutCount+1 && (await page.$eval("#pay-review",el=>el.disabled && el.textContent.includes("Opening secure checkout"))) && (await page.$eval(".network-activity",el=>el.matches(":modal")))
+calls.filter(call=>call.action==="createPaymentCheckout").length===checkoutCount+1 && (await page.$eval("#pay-review",el=>el.disabled && el.textContent.includes("Opening secure checkout"))) && (await page.$eval(".network-activity",el=>el.matches(":modal") && el.querySelector("p").textContent === "Opening Stripe checkout"))
   ? pass("Payment preparation shows progress and blocks duplicate submissions") : fail("Pending checkout was submitted twice or lacked progress");
 const retryRequest=calls.filter(call=>call.action==="createPaymentCheckout").at(-1).requestId;
 releaseCheckout();holdCheckout=false;

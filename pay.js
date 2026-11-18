@@ -78,7 +78,7 @@ if (typeof document !== "undefined") (async () => {
     summary.textContent = "";
   };
   const post = async (fields) => networkActivity(fields.action === "paymentPlayers" ? null
-    : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout?" : "Loading entry balances?", async () => {
+    : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout" : "Loading entry balances", async () => {
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
     if (!response.ok) throw new Error("The payment service could not be reached. Please try again.");
     const data = await response.json();

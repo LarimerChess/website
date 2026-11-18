@@ -3866,9 +3866,35 @@ function stripeImport(record, config) {
   stripeRepairEntry(token, book);
   return { sessionId: record.sessionId, status: "imported" };
 }
-const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL"];
+const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request"];
 
 function stripeBaskets() { return readTab("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
+
+function stripeCheckoutHttpError(response, http) {
+  const status = Number.isInteger(http) && http >= 100 && http <= 599 ? String(http) : "UNKNOWN";
+  const detail = {};
+  try {
+    const error = JSON.parse(response.getContentText()).error || {};
+    const types = ["invalid_request_error", "idempotency_error", "authentication_error", "permission_error", "api_error", "card_error"];
+    const codes = ["parameter_unknown", "parameter_missing", "parameter_invalid_empty", "parameter_invalid_integer", "parameter_invalid_string_blank", "resource_missing", "idempotency_key_in_use", "url_invalid", "amount_too_small", "amount_too_large"];
+    const params = ["mode", "client_reference_id", "payment_method_types", "allowed_payment_method_types", "payment_method_types[0]", "allowed_payment_method_types[0]", "automatic_tax", "automatic_tax[enabled]", "adaptive_pricing", "adaptive_pricing[enabled]", "line_items", "line_items[0][quantity]", "line_items[0][price_data]", "line_items[0][price_data][currency]", "line_items[0][price_data][unit_amount]", "line_items[0][price_data][product_data][name]", "success_url", "cancel_url", "currency", "metadata", "metadata[lccc_checkout]"];
+    if (types.includes(error.type)) detail.type = error.type;
+    if (codes.includes(error.code)) detail.code = error.code;
+    if (params.includes(error.param)) detail.param = error.param;
+  } catch {}
+  try {
+    const headers = response.getHeaders();
+    const id = Object.entries(headers).find(([key]) => key.toLowerCase() === "request-id")?.[1];
+    if (typeof id === "string" && /^req_[A-Za-z0-9]{4,64}$/.test(id)) detail.requestId = id;
+  } catch {}
+  const message = detail.type === "idempotency_error"
+    ? "This checkout request changed. Reload this page and try again."
+    : http === 401 || http === 403
+    ? "Checkout permission is not configured. Please contact the tournament director."
+    : "Stripe checkout is temporarily unavailable. Please try again.";
+  const diagnostic = Object.values(detail).join("; ");
+  return { error: message + " (CHECKOUT_HTTP_" + status + ")" + (diagnostic ? " " + diagnostic : ""), checkoutDiagnostic: detail };
+}
 
 function createPaymentCheckout(p) {
   let stage = "configuration", validationError;
@@ -3909,24 +3935,35 @@ function createPaymentCheckout(p) {
       const tab = stripeBaskets(), old = tab.rows.find((r) => r[tab.col.Reference] === reference);
       if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) reject("Balances changed. Reload the page before checkout.");
       if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
-      // Persist the allocation before requesting Stripe so a successful charge can always be reconciled.
-      if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount), Allocations: JSON.stringify(allocations), Session: "", URL: "" });
+      if (old && !old[tab.col["Checkout request"]]) reject("This checkout started before an update. Reload this page and try again.");
       const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
         "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
         "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
         "allowed_payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
         success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
+      const request = old ? JSON.parse(old[tab.col["Checkout request"]]) : { contract: "entry-usd-card-v2",
+        apiVersion: "2026-10-28.endive", key: "lccc-entry-usd-card-v2-" + reference, payload };
+      const requestPayload = request.payload;
+      if (request.contract !== "entry-usd-card-v2" || request.apiVersion !== "2026-10-28.endive"
+          || request.key !== "lccc-entry-usd-card-v2-" + reference || !requestPayload
+          || requestPayload.mode !== "payment" || requestPayload.client_reference_id !== reference
+          || requestPayload["line_items[0][price_data][unit_amount]"] !== String(amount)
+          || requestPayload["line_items[0][price_data][currency]"] !== "usd" || requestPayload["line_items[0][quantity]"] !== "1"
+          || requestPayload["metadata[lccc_checkout]"] !== "basket_v1"
+          || requestPayload["allowed_payment_method_types[0]"] !== "card"
+          || requestPayload["line_items[0][price_data][product_data][name]"] !== "LCCC selected entry fees"
+          || requestPayload["automatic_tax[enabled]"] !== "false" || requestPayload["adaptive_pricing[enabled]"] !== "false"
+          || requestPayload.success_url !== "https://larimerchess.org/pay/?returned=1" || requestPayload.cancel_url !== "https://larimerchess.org/pay/"
+          || Object.keys(requestPayload).length !== Object.keys(payload).length) reject("Stored checkout could not be verified. Contact the tournament director.");
+      // Persist the exact nonsecret request before Stripe; retries replay it unchanged.
+      if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount),
+        Allocations: JSON.stringify(allocations), Session: "", URL: "", "Checkout request": JSON.stringify(request) });
       stage = "stripe-request";
-      const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload,
-        headers: { Authorization: "Bearer " + secret, "Idempotency-Key": "lccc-" + reference }, muteHttpExceptions: true });
+      const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload: request.payload,
+        headers: { Authorization: "Bearer " + secret, "Idempotency-Key": request.key, "Stripe-Version": request.apiVersion }, muteHttpExceptions: true });
       stage = "stripe-response";
       const http = response.getResponseCode();
-      if (http !== 200) {
-        const code = Number.isInteger(http) && http >= 100 && http <= 599 ? String(http) : "UNKNOWN";
-        return { error: http === 401 || http === 403
-          ? "Checkout permission is not configured. Please contact the tournament director. (CHECKOUT_HTTP_" + code + ")"
-          : "Stripe checkout is temporarily unavailable. Please try again. (CHECKOUT_HTTP_" + code + ")" };
-      }
+      if (http !== 200) return stripeCheckoutHttpError(response, http);
       const session = JSON.parse(response.getContentText());
       if (session.livemode !== config.livemode || session.amount_total !== amount || session.client_reference_id !== reference
           || !/^https:\/\/checkout\.stripe\.com\//.test(session.url || "")) reject("Stripe checkout could not be verified.");

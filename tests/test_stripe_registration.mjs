@@ -282,7 +282,7 @@ test('basket refund flags every affected player without changing ledger credit',
 
 test('basket creation recalculates fees, sends only opaque reference and reuses network retry', () => {
   const f=basketFixture(true), rows=[]; let calls=0, sent;
-  const headers=['Reference','Mode','Amount','Allocations','Session','URL'], col=Object.fromEntries(headers.map((h,i)=>[h,i]));
+  const headers=['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'], col=Object.fromEntries(headers.map((h,i)=>[h,i]));
   const sheet={getRange:(r,c)=>{const range={setNumberFormat:()=>range,setValue:v=>{rows[r-2][c-1]=v;}};return range;}};
   f.ctx.stripeBaskets=()=>({sheet,col,rows:rows.map(r=>[...r])});
   const append=f.ctx.appendText;
@@ -376,7 +376,7 @@ test('checkout returns safe diagnostics for Stripe permission, HTTP and transpor
     const f = basketFixture(true), logs = [];
     f.ctx.console = { log: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) };
     f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_test_PRIVATEKEY' }) };
-    const headers = ['Reference','Mode','Amount','Allocations','Session','URL'];
+    const headers = ['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'];
     f.ctx.stripeBaskets = () => {
       if (failure === 'storage') throw Error('private storage player name');
       return { sheet: [], col: Object.fromEntries(headers.map((h,i) => [h,i])), rows: [] };
@@ -395,7 +395,7 @@ test('checkout returns safe diagnostics for Stripe permission, HTTP and transpor
     if (failure === 401 || failure === 403) assert.match(result.error, /permission/);
     assert.ok(!/private|PRIVATEKEY|12345678/i.test(result.error));
     assert.deepEqual(logs, []);
-    assert.equal(bodies, failure === 'json' ? 1 : 0);
+    assert.equal(bodies, typeof failure === 'number' || failure === 'json' ? 1 : 0);
   }
 });
 
@@ -434,7 +434,7 @@ test('unknown rating allocation flags authoritative balances and refuses checkou
   assert.equal(balance.review, false);
   f.config.dynamicCheckout = { enabled: true };
   f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_live_fixture' }) };
-  const headers = ['Reference','Mode','Amount','Allocations','Session','URL'];
+  const headers = ['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'];
   const sheet = { getRange: () => { const range = { setNumberFormat: () => range, setValue() {} }; return range; } };
   f.ctx.stripeBaskets = () => ({ sheet, rows: [], col: Object.fromEntries(headers.map((h,i) => [h,i])) });
   f.ctx.appendText = () => {};
@@ -442,4 +442,82 @@ test('unknown rating allocation flags authoritative balances and refuses checkou
   f.ctx.UrlFetchApp = { fetch: () => { requests++; return { getResponseCode: () => 200, getContentText: () => JSON.stringify({id:'cs_live_fixture',url:'https://checkout.stripe.com/c/pay/cs_live_fixture',livemode:true,amount_total:1750,client_reference_id:'request_abcdefghijklmnop'}) }; } };
   assert.equal(f.ctx.createPaymentCheckout({requestId:'request_abcdefghijklmnop',entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'}])}).ok, true);
   assert.equal(requests, 1);
+});
+
+
+test('Stripe checkout diagnostics expose only allowlisted fields and a provider request ID', () => {
+  const f=fixture();
+  const response={getContentText:()=>JSON.stringify({error:{type:'invalid_request_error',code:'parameter_unknown',param:'allowed_payment_method_types',message:'Bearer sk_test_SECRET payer@example.com'}}),getHeaders:()=>({'Request-Id':'req_safe123'})};
+  const result=f.ctx.stripeCheckoutHttpError(response,400);
+  assert.deepEqual(plain(result.checkoutDiagnostic),{type:'invalid_request_error',code:'parameter_unknown',param:'allowed_payment_method_types',requestId:'req_safe123'});
+  assert.ok(!/SECRET|payer@example|Bearer/.test(JSON.stringify(result)));
+  for(const field of ['type','code','param']) {
+    const bad={getContentText:()=>JSON.stringify({error:{[field]:'sk_test_SECRET'}}),getHeaders:()=>({'request-id':'payer@example.com'})};
+    assert.deepEqual(plain(f.ctx.stripeCheckoutHttpError(bad,400).checkoutDiagnostic),{});
+  }
+  assert.deepEqual(plain(f.ctx.stripeCheckoutHttpError({getContentText:()=>'{',getHeaders:()=>({})},400).checkoutDiagnostic),{});
+});
+
+
+function checkoutAttemptFixture() {
+  const f=basketFixture(true), rows=[], calls=[], cache=new Map();
+  const headers=['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'];
+  const col=Object.fromEntries(headers.map((h,i)=>[h,i]));
+  let failUrl=false, sessions=0;
+  const sheet={getRange:(r,c)=>{const range={setNumberFormat:()=>range,setValue:value=>{
+    if(failUrl && c===col.URL+1){failUrl=false;throw Error('interrupted save');}
+    rows[r-2][c-1]=value;
+  }};return range;}};
+  f.ctx.stripeBaskets=()=>({sheet,col,rows:rows.map(r=>[...r])});
+  const append=f.ctx.appendText;
+  f.ctx.appendText=(target,cols,row)=>target===sheet?rows.push(headers.map(h=>row[h]||'')):append(target,cols,row);
+  f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=> 'sk_test_fixture'})};
+  f.ctx.UrlFetchApp={fetch:(url,options)=>{
+    const key=options.headers['Idempotency-Key'], payload=JSON.stringify(options.payload);
+    calls.push(plain(options));
+    if(cache.has(key) && cache.get(key).payload!==payload) return {getResponseCode:()=>400,getContentText:()=>JSON.stringify({error:{type:'idempotency_error'}}),getHeaders:()=>({})};
+    if(!cache.has(key)) cache.set(key,{payload,id:'cs_test_created'+(++sessions)});
+    const session=cache.get(key);
+    return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({id:session.id,url:'https://checkout.stripe.com/c/pay/'+session.id,livemode:false,amount_total:3000,client_reference_id:options.payload.client_reference_id})};
+  }};
+  const params={requestId:'request_abcdefghijklmnop',entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'},{id:'87654321',event:'chess',date:'2026-12-01'}])};
+  return {...f,rows,col,calls,cache,params,failSave:()=>{failUrl=true;},sessions:()=>sessions};
+}
+
+test('checkout persists its versioned immutable request and retries a post-Stripe interruption without another session',()=>{
+  const f=checkoutAttemptFixture();f.failSave();
+  assert.match(f.ctx.createPaymentCheckout(f.params).error,/CHECKOUT_BASKET_SAVE/);
+  const descriptor=JSON.parse(f.rows[0][f.col['Checkout request']]);
+  assert.equal(descriptor.contract,'entry-usd-card-v2');
+  assert.equal(descriptor.apiVersion,'2026-10-28.endive');
+  assert.equal(descriptor.key,'lccc-entry-usd-card-v2-'+f.params.requestId);
+  assert.ok(!JSON.stringify(descriptor).includes('sk_test'));
+  assert.equal(f.ctx.createPaymentCheckout(f.params).ok,true);
+  assert.deepEqual(f.calls[1],f.calls[0]);assert.equal(f.sessions(),1);
+  assert.equal(f.calls[0].headers['Stripe-Version'],'2026-10-28.endive');
+  assert.equal(f.ctx.createPaymentCheckout(f.params).ok,true);assert.equal(f.calls.length,2);
+});
+
+test('legacy pending attempts fail closed with reload guidance while saved legacy sessions remain reusable',()=>{
+  const f=checkoutAttemptFixture();
+  f.rows.push([f.params.requestId,'false','3000',JSON.stringify(f.allocations),'','']);
+  assert.match(f.ctx.createPaymentCheckout(f.params).error,/Reload this page/);assert.equal(f.calls.length,0);
+  f.rows[0][f.col.URL]='https://checkout.stripe.com/c/pay/cs_test_legacy';
+  assert.equal(f.ctx.createPaymentCheckout(f.params).checkoutUrl,f.rows[0][f.col.URL]);assert.equal(f.calls.length,0);
+  const next={...f.params,requestId:'fresh_abcdefghijklmnop'};
+  assert.equal(f.ctx.createPaymentCheckout(next).ok,true);
+  assert.equal(f.calls[0].headers['Idempotency-Key'],'lccc-entry-usd-card-v2-'+next.requestId);
+});
+
+test('corrupt durable request bindings cannot issue another Stripe request',()=>{
+  for(const patch of [{mode:'subscription'},{client_reference_id:'another-reference'},{'line_items[0][price_data][unit_amount]':'1'},{'line_items[0][price_data][currency]':'eur'},{success_url:'https://evil.example/pay'}]){
+    const f=checkoutAttemptFixture();assert.equal(f.ctx.createPaymentCheckout(f.params).ok,true);
+    f.rows[0][f.col.URL]='';const descriptor=JSON.parse(f.rows[0][f.col['Checkout request']]);Object.assign(descriptor.payload,patch);f.rows[0][f.col['Checkout request']]=JSON.stringify(descriptor);
+    assert.match(f.ctx.createPaymentCheckout(f.params).error,/Stored checkout could not be verified/);assert.equal(f.calls.length,1);
+  }
+});
+
+test('idempotency errors give explicit reload guidance with safe diagnostic fields',()=>{
+  const f=fixture(), result=f.ctx.stripeCheckoutHttpError({getContentText:()=>JSON.stringify({error:{type:'idempotency_error',message:'private old payload'}}),getHeaders:()=>({'Request-Id':'req_safe123'})},400);
+  assert.match(result.error,/Reload this page and try again/);assert.equal(result.checkoutDiagnostic.type,'idempotency_error');assert.ok(!result.error.includes('private'));
 });

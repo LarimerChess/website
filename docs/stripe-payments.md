@@ -67,8 +67,15 @@ payer goes to private review instead of overcrediting. A checkout return page
 never proves payment. Polling can take longer than 15 minutes.
 
 A browser retries the same unchanged checkout request with the same random
-request ID and Stripe idempotency key. Changing selection creates another ID.
-Reload balances if an old checkout has expired or the amount changed.
+request ID. Each new basket durably stores its contract version, Stripe API
+version, exact form payload and versioned idempotency key before contacting
+Stripe; retries replay that nonsecret descriptor unchanged. No Stripe key is
+stored in the basket. A saved successful checkout URL is reused. Pending baskets
+from before this descriptor was introduced require a page reload to start a new
+reference; they never silently rotate keys after an uncertain outcome. Future
+payload changes must introduce a new contract while preserving existing request
+snapshots. Stripe idempotency errors show explicit reload guidance. Changing
+selection creates another browser request ID.
 
 **Test mode never credits the live Payments ledger or marks real registrations
 paid.** It validates the full basket and records one isolated row in `Stripe test
