@@ -30,6 +30,7 @@ function fixture() {
   ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'a'.repeat(32) }) };
   ctx.clearEntriesCache = () => {};
   const record = { created: 1700000000, sessionId: 'cs_test_123', paymentIntentId: 'pi_123', paymentLinkId: 'plink_entry', clientReferenceId: 'payment-reference', amountCents: 1750, currency: 'usd', livemode: true, kind: 'entry', refundCents: 0, disputed: false, paymentStatus: 'paid', status: 'complete', receiptUrl: 'https://pay.stripe.com/receipts/payment/test_receipt' };
+  return { ctx, config, entry, book, tabs, record, interrupt: () => { failRepair = true; } };
 }
 
 test('guest link targets payment reference and discloses no withdrawal token or contacts', () => {
@@ -58,7 +59,6 @@ test('Stripe sync does not send a duplicate president receipt email', () => {
   assert.equal(f.ctx.stripeImport(f.record,f.config).status,'duplicate');
   assert.equal(emails.length,0);
 });
-
 test('retry repairs entry after durable ledger append and interrupted summary update', () => {
   const f = fixture(); f.interrupt();
   assert.throws(() => f.ctx.stripeImport(f.record,f.config), /interrupted/);

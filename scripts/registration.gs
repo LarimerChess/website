@@ -4200,7 +4200,7 @@ function stripeImportCardPayment(input, config) {
     return ack({status:"test"});
   }
   // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
-  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: "Stripe card payment; disclosed Card fee" });
+  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: fee ? "Stripe card payment; disclosed Card fee" : "Stripe card payment" });
   allocations.forEach((a) => stripeRepairEntry(a.token,book));
   return ack({status:pending.length ? "imported" : "duplicate"});
 }

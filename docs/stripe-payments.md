@@ -90,34 +90,6 @@ review flags, then mark the matching review row `Resolution` as lowercase
 `resolved`. The row's Snapshot identifies the reviewed reversal state; changed
 states reopen review. No code here issues Stripe refunds.
 
-## Card payments
-
-`cardProcessing.enabled` selects the Payment Element flow. Keep it false until the
-latest `scripts/registration.gs` is deployed as a new version of the existing web
-app. The publishable key is public browser configuration; secret keys remain in
-Script Properties and GitHub secrets. Sandbox mode permits testing with
-`complianceReady: false`; live mode requires that flag to be explicitly true after
-applicable merchant/acquirer notification and surcharge requirements are met.
-The flag is a deployment gate, not a substitute for those requirements.
-
-After balances load, the secure Stripe card form appears automatically. The player
-enters card details and presses the single Pay button. The club absorbs card
-processing costs; the Stripe amount is exactly the selected entry balance. The
-server retrieves a ConfirmationToken and records a zero Card fee. This online
-payment policy does not change in-person TD accounting or the event's entry fees.
-
-New quotes in **Stripe card quotes** store immutable allocations, subtotal, zero
-Card fee, total, token identifier, funding classification, and exact confirmation
-request. They contain no card number or client secret. Confirmation uses the same
-token and durable idempotency key; a consumed token recovers the existing intent
-following an interrupted sheet write. Other unsettled payments for overlapping
-entries block a second confirmation until reconciliation. Existing fee-bearing
-quotes continue to reconcile, but an unconfirmed old quote cannot charge a fee.
-Test reservations clear after their isolated test import; they never change live
-balances.
-
-The sync reads both Checkout sessions and standalone marked PaymentIntents.
-
 Anonymous donations never create player contacts. Missing/altered basket
 references and unexpected amounts are reviewed, never reclassified as donations.
 
@@ -147,84 +119,13 @@ Official references: [create Checkout Sessions](https://docs.stripe.com/api/chec
 [restricted keys](https://docs.stripe.com/keys/restricted-api-keys).
 
 
-## Funding-aware card payments
 
-`cardProcessing.enabled` selects the Payment Element flow. Keep it false until the
-latest `scripts/registration.gs` is deployed as a new version of the existing web
-app. The publishable key is public browser configuration; secret keys remain in
-Script Properties and GitHub secrets. Sandbox mode permits testing with
-`complianceReady: false`; live mode requires that flag to be explicitly true after
-applicable merchant/acquirer notification and surcharge requirements are met.
-The flag is a deployment gate, not a substitute for those requirements.
+## Hosted checkout
 
-The player selects entries, enters card details directly in Stripe's iframe,
-reviews the exact Card fee and total, then explicitly presses Pay. Opening the
-form and reviewing the fee never confirms a payment. The server retrieves a
-ConfirmationToken and uses Stripe's trusted funding classification. Credit cards
-use the existing `prices.json` 2.5% plus $0.50 calculation, limited to the lesser
-of that amount, a configured processing-cost estimate, and 3% of the entry
-subtotal rounded down to whole cents. Debit, prepaid, and unknown funding have
-no required Card fee. An unchecked optional additional-cost checkbox can add
-estimated uncovered costs, while the total Card fee still cannot exceed 3%.
-Existing `prices.json` fees and TD accounting calculations are unchanged.
-
-The separate `cardProcessing.rateBasisPoints: 290` and `fixedCents: 30` estimate
-standard domestic Stripe card processing; settlement costs can differ. These
-values are not an assertion of the actual settlement fee. The server uses integer
-cents and a rounded estimate, with one fixed component per combined payment.
-At a $17.50 subtotal, the 3% ceiling is $0.52. At $200, the existing formula gives
-$5.50; optional additional coverage can raise the total Card fee to at most $6.
-
-Quotes in **Stripe card quotes** store the immutable allocations, subtotal, Card
-fee, gross total, token identifier, funding classification, and exact confirmation
-request. They contain no card number or client secret. Confirmation uses the same
-token and durable idempotency key; a consumed token recovers the existing intent
-following an interrupted sheet write. Other unsettled payments for overlapping
-entries block a second confirmation until reconciliation. Unused or declined
-quotes do not reserve debt. Test reservations clear after their isolated test
-import; they never change live balances.
-
-The sync reads both Checkout sessions and standalone marked PaymentIntents.
-It verifies the gross charge but credits only entry/rating allocations; the Card
-fee is recorded separately on the first allocation's ledger row. Existing Paid
-summaries retain gross-received semantics. Partial ledger writes resume without
-repeating either debt credit or the fee. Test records use the existing isolated
-test tabs. Refunds and disputes continue to require review.
-
-Official integration references: [server-side finalization](https://docs.stripe.com/payments/finalize-payments-on-the-server?platform=web&type=payment),
-[ConfirmationToken funding preview](https://docs.stripe.com/api/confirmation_tokens/object),
-and [Stripe API schema](https://github.com/stripe/openapi/blob/master/openapi/spec3.json).
-Checkout funding restrictions do not include `unknown`; they cannot provide the
-same fail-closed funding classification for this fee policy.
-
-
-## Pending verification
-
-After a confirmed card submission, every selected entry shows **Payment pending
-verification** and cannot be selected again. For live payments, this state comes
-from the durable confirmation request and survives a reload. It is not a Paid
-credit. Actions must verify a succeeded, captured charge before importing entry
-and rating credit. Processing/authentication/capture-pending intents remain
-pending. Verified declines and cancellations release the reservation without
-writing payment credit. Lifecycle records are authenticated with the same sync
-secret and validated against the stored quote, gross amount, mode, and intent.
-
-If creation succeeded but saving the intent ID was interrupted, the durable
-request still reserves the entries; sync can recover and bind the verified
-intent. An uncertain transport failure can remain pending until the tournament
-director reconciles it. Do not repay merely because confirmation was interrupted.
-A quote that was only reviewed, without a final confirmation request, does not
-reserve entries.
-
-Sandbox submissions show **Test payment pending verification** for their exact
-selected registrations. This server-derived test state survives a refresh while
-the site is in sandbox mode. A verified isolated test import or verified failure
-clears it; it never changes real balances, Paid summaries, or the live ledger.
-Switching the site to live mode excludes sandbox reservations. Test imports remain
-isolated.
-
-Pending verification clears through a scheduled or manually dispatched Stripe
-payment-sync Action. Scheduling is currently disabled unless the repository
-variable `LCCC_STRIPE_SYNC_ENABLED` is explicitly set to `true`; with it unset,
-run the Action manually with `dry_run: false`. A dry run reads Stripe but cannot
-update pending states or credit any ledger.
+Entry payments use Stripe Checkout. The pay page sends the exact selected
+entries to the Apps Script endpoint, which verifies current balances and creates
+a Checkout Session. The payer enters card details on Stripe and returns to
+`/pay/`; returning does not count as confirmation. The payment sync verifies the
+session and keeps the entries pending until the payment is cleared. The club
+absorbs card processing costs, and the Checkout total matches the selected entry
+balances.
