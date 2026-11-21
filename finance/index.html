@@ -699,6 +699,13 @@ section.td-table td { white-space: nowrap; }
 @media (max-width: 600px) {
   #pay-review, #pay-checkout { width: 100%; }
 }
+#balance-sheet { width: 100%; max-width: 40em; border-collapse: collapse; margin-bottom: 12px; }
+#balance-sheet caption { text-align: left; padding-bottom: 12px; color: var(--muted); }
+#balance-sheet th, #balance-sheet td { padding: 5px 8px; text-align: left; }
+#balance-sheet td, #balance-sheet thead th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#balance-sheet th[scope="row"] { font-weight: normal; }
+#balance-sheet th[scope="rowgroup"] { padding-top: 16px; color: var(--accent); }
+#balance-sheet tbody tr:last-child > *, #balance-sheet tfoot tr > * { border-top: 1px solid var(--line); font-weight: 600; }
 .pay-search-row { display: flex; align-items: center; gap: 8px; }
 .pay-search-row .td-combobox { flex: 1; min-width: 0; }
 .pay-search-row .button { white-space: nowrap; }
@@ -735,9 +742,15 @@ section.td-table td { white-space: nowrap; }
   <main id="main" class="wrap" data-view="">
     <h1>Club finances</h1>
     <p><a href="/finance/filing/">Form 1023-EZ filing</a> &middot; <a href="/finance/general/">General fund</a> &middot; <a href="/finance/marketing/">Marketing</a> &middot; <a href="/finance/equipment/">Boards and clocks</a></p>
-    <h2>Ledger</h2>
+    <h2>Balance sheet</h2>
     <p id="totals" role="status">Loading financial records...</p>
-    <div id="journal" class="td-table"></div>
+    <table id="balance-sheet" hidden>
+      <caption></caption>
+      <thead><tr><th scope="col">Account</th><th scope="col">Amount (USD)</th></tr></thead>
+    </table>
+    <p id="statement-note" class="table-note" hidden></p>
+    <h2 id="ledger-heading">Transaction ledger</h2>
+    <section id="journal" class="td-table" aria-labelledby="ledger-heading" tabindex="0"></section>
   </main>
 
   <footer class="wrap">
@@ -749,6 +762,6 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="/register.js?v=c106bec172" defer></script>
-  <script src="/finance.js?v=b9db4d1fca" defer></script>
+  <script src="/finance.js?v=2ab43a7062" defer></script>
 </body>
 </html>

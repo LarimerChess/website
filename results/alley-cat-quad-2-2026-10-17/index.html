@@ -699,6 +699,13 @@ section.td-table td { white-space: nowrap; }
 @media (max-width: 600px) {
   #pay-review, #pay-checkout { width: 100%; }
 }
+#balance-sheet { width: 100%; max-width: 40em; border-collapse: collapse; margin-bottom: 12px; }
+#balance-sheet caption { text-align: left; padding-bottom: 12px; color: var(--muted); }
+#balance-sheet th, #balance-sheet td { padding: 5px 8px; text-align: left; }
+#balance-sheet td, #balance-sheet thead th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#balance-sheet th[scope="row"] { font-weight: normal; }
+#balance-sheet th[scope="rowgroup"] { padding-top: 16px; color: var(--accent); }
+#balance-sheet tbody tr:last-child > *, #balance-sheet tfoot tr > * { border-top: 1px solid var(--line); font-weight: 600; }
 .pay-search-row { display: flex; align-items: center; gap: 8px; }
 .pay-search-row .td-combobox { flex: 1; min-width: 0; }
 .pay-search-row .button { white-space: nowrap; }
