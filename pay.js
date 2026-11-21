@@ -53,13 +53,29 @@ if (typeof document !== "undefined") (async () => {
   const checkout = document.querySelector("#pay-checkout");
   const inputs = [...document.querySelectorAll("[data-fund]")];
   const overflow = document.querySelector("#overflow");
-  const gifts = () => inputs.filter(i => i.valueAsNumber > 0).map(i => ({
+  const gifts = () => inputs.filter(i => !i.disabled && i.valueAsNumber > 0).map(i => ({
     fund:i.dataset.fund, amount:Math.round(i.valueAsNumber * 100),
     ...(i.dataset.fund === "filing" ? {overflow:overflow.checked} : {})
   }));
   const giftTotal = () => gifts().reduce((n,g) => n + g.amount, 0);
   for (const input of [...inputs,overflow]) input.addEventListener("input", () => { resetCheckout(); updateTotal(); });
-  inputs.find(i => i.dataset.fund === returnParams.get("fund"))?.focus();
+  const fundChoices = [...document.querySelectorAll("[data-select-fund]")];
+  function showFund(choice) {
+    const panel = document.getElementById(choice.getAttribute("aria-controls"));
+    const amount = panel.querySelector("[data-fund]");
+    panel.hidden = amount.disabled = !choice.checked;
+    if (!choice.checked) {
+      amount.value = "";
+      if (amount.dataset.fund === "filing") overflow.checked = false;
+    }
+    document.querySelector("#gift-fees").hidden = !fundChoices.some(box => box.checked);
+  }
+  for (const choice of fundChoices) {
+    choice.checked = choice.dataset.selectFund === returnParams.get("fund");
+    showFund(choice);
+    choice.addEventListener("change", () => { showFund(choice); resetCheckout(); updateTotal(); });
+  }
+  inputs.find(i => !i.disabled)?.focus();
   const selectedTotal = document.querySelector("#pay-selected-total");
   const review = document.querySelector("#pay-review");
   const saved = newSavedBox();
@@ -157,7 +173,7 @@ if (typeof document !== "undefined") (async () => {
     const entries = selectedEntries(), amount = entries.reduce((total, entry) => total + entry.balanceCents, giftTotal());
     selectedTotal.textContent = giftTotal() ? `Checkout total: ${money(amount)} including ${money(giftTotal())} in designated gifts before fees.` : `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"}: ${money(amount)}.`;
     const available = config.enabled && config.dynamicCheckout?.enabled;
-    review.disabled = checkoutPending || !available || !amount || inputs.some(i => !i.validity.valid);
+    review.disabled = checkoutPending || !available || !amount || inputs.some(i => !i.disabled && !i.validity.valid);
     review.setAttribute("aria-busy", String(checkoutPending));
     review.textContent = checkoutPending ? "Opening secure checkout..." : amount
       ? `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
@@ -174,7 +190,7 @@ if (typeof document !== "undefined") (async () => {
   }
   review.addEventListener("click", async () => {
     const entries = selectedEntries();
-    if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || (!entries.length && !giftTotal()) || inputs.some(i => !i.validity.valid)) return;
+    if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || (!entries.length && !giftTotal()) || inputs.some(i => !i.disabled && !i.validity.valid)) return;
     const amount = entries.reduce((n, entry) => n + entry.balanceCents, giftTotal());
     checkout.hidden = true;
     checkout.removeAttribute("href");

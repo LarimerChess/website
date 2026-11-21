@@ -102,12 +102,17 @@ JSON.parse(payment.entries)[0].id === "12345678" && JSON.parse(payment.entries)[
 (await page.$eval("#pay-form", form=>{const input=form.querySelector("#pay-id").getBoundingClientRect(),button=form.querySelector("button[type=submit]").getBoundingClientRect();return button.left>=input.right && button.top<input.bottom;}))
   ? pass("Show balances sits beside the player field") : fail("Show balances is not beside the field");
 (!await page.$("#pay-total")) ? pass("Payment page omits the total-owed summary") : fail("Total owed remains");
+(await page.$$eval("[data-fund]", fields=>fields.every(field=>field.disabled && !field.getClientRects().length)))
+  ? pass("Donation amounts start collapsed") : fail("Donation amounts visible before selection");
+await press(page,'[data-select-fund="marketing"]');
 await page.type('input[data-fund="marketing"]',"2.50");
 await press(page,"#pay-review");
 await page.waitForSelector("#pay-checkout:not([hidden])");
 (await totalText()).includes("$20.00") && JSON.parse(calls.filter(c=>c.action==="createPaymentCheckout").at(-1).donations)[0].amount===250
   ? pass("Checkout combines a designated donation with the selected entry") : fail("Mixed checkout amount or designation");
-await page.$eval('input[data-fund="marketing"]',el=>{el.value="";el.dispatchEvent(new Event("input"));});
+await press(page,'[data-select-fund="marketing"]');
+(await totalText()).includes("$17.50") && await page.$eval('[data-fund="marketing"]',el=>el.disabled && !el.value)
+  ? pass("Removing a fund clears its amount from checkout") : fail("Deselected gift retained");
 await axeBoth(page, "Saved player balances");
 await page.setViewport({ width: 390, height: 844 });
 await fitsPhone(page, "Saved player balances");
@@ -273,5 +278,9 @@ await page.waitForFunction(() => !document.querySelector("#pay-balances").textCo
   && !(await page.evaluate(() => document.querySelector(".network-activity")?.matches(":modal")))
   ? pass("Reconciliation silently removes settled rows and leaves other unpaid entries visible")
   : fail("Reconciliation removed other entries or interrupted the form");
+await page.goto(base+"/pay/?fund=filing",{waitUntil:"networkidle0"});
+await page.waitForSelector("#gift-filing:not([hidden])");
+(await page.$eval("#overflow",el=>!!el.getClientRects().length)) && await page.$$eval("[data-fund]:enabled",fields=>fields.length===1 && fields[0].dataset.fund==="filing")
+  ? pass("A filing fund link opens only its amount and overflow option") : fail("Incorrect linked fund selection");
 await page.close();
 await done();

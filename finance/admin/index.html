@@ -1,5 +1,30 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Finance administration | Larimer County Chess Club</title><style>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance administration | Larimer County Chess Club</title>
+  <meta name="description" content="Club accounts, donations, and expenses.">
+  <link rel="canonical" href="https://larimerchess.org/finance/admin/">
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Larimer County Chess Club">
+  <meta property="og:title" content="Finance administration | Larimer County Chess Club">
+  <meta property="og:description" content="Club accounts, donations, and expenses.">
+  <meta property="og:url" content="https://larimerchess.org/finance/admin/">
+  <meta property="og:image" content="https://larimerchess.org/share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Larimer County Chess Club seal beside the club name, Fort Collins, Colorado, and larimerchess.org.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="robots" content="noindex">
+  <link rel="preload" href="../../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../../fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
 /* Fraunces and Inter, served from fonts/ (SIL Open Font License, see fonts/*-OFL.txt)
    rather than Google Fonts, so pages don't wait on another origin. */
 @font-face {
@@ -675,10 +700,47 @@ section.td-table td { white-space: nowrap; }
   .pay-entries { font-size: 14px; }
   .pay-entries th, .pay-entries td { padding: 8px 4px; }
 }
-</style></head>
-<body><a class="skip-link" href="#main">Skip to main content</a><nav class="site-nav" aria-label="Main"><div class="wrap"><a class="brand" href="/">Larimer County Chess Club</a><a href="/finance/">Club finances</a></div></nav>
-<main id="main" class="wrap" data-view="admin"><h1>Finance administration</h1><p><a href="/td/">Tournament director desk and sign-in</a> &middot; <a href="/finance/">Public ledger</a></p>
-<p><button type="button" id="finance-login">Sign in with Google</button></p>
-<form id="finance-entry"><p><label>Date <input type="date" name="date" required></label></p><p><label>Fund <select name="fund"><option value="filing">Form 1023-EZ filing</option><option value="general">General fund</option><option value="marketing">Marketing</option><option value="equipment">Boards and clocks</option><option value="reconciliation">Pending fund allocation</option><option value="tournaments">Tournament operations</option></select></label></p>
-<p><label>Transaction <select name="kind"><option value="donation">Donation</option><option value="income">Other income</option><option value="expense">Expense</option><option value="liability">New amount owed</option><option value="reimbursement">Repayment of amount owed</option><option value="fee">Actual processing fee</option><option value="transfer">Transfer between funds</option><option value="allocateGift">Allocate a reconciled donation</option><option value="refund">Refund paid</option></select></label></p><p id="destination" hidden><label>Destination fund <select name="destination"><option value="filing">Form 1023-EZ filing</option><option value="general">General fund</option><option value="marketing">Marketing</option><option value="equipment">Boards and clocks</option><option value="reconciliation">Pending fund allocation</option><option value="tournaments">Tournament operations</option></select></label></p><p><label>Amount ($) <input type="number" min="0.01" step="0.01" name="amount" required></label></p><p><label>Public description <input type="text" name="purpose" maxlength="240" required></label></p><button type="submit" class="button">Record transaction</button><p id="result" role="status"></p></form><p><button type="button" id="import">Sync historical club records</button></p></main>
-<script src="/register.js?v=c106bec172" defer></script><script src="/finance.js?v=b9db4d1fca" defer></script></body></html>
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" width="20" height="20">Larimer County Chess Club</a>
+      <ul>
+        <li><a href="/events/">Events</a></li>
+        <li><a href="/entries/">Entries</a></li>
+        <li><a href="/pairings/">Pairings</a></li>
+        <li><a href="/standings/">Standings</a></li>
+        <li><a href="/results/">Results</a></li>
+        <li><a href="/scholastic/">Scholastic</a></li>
+        <li><a href="/#join">Join</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main id="main" class="wrap" data-view="admin">
+    <h1>Finance administration</h1>
+    <p><a href="/td/">Tournament director desk and sign-in</a> &middot; <a href="/finance/">Public ledger</a></p>
+<p><button type="button" class="button" id="finance-login">Sign in with Google</button></p>
+<form id="finance-entry"><div class="register-form"><p><label>Date <input type="date" name="date" required></label></p>
+    <p><label>Fund <select name="fund"><option value="filing">Form 1023-EZ filing</option><option value="general">General fund</option><option value="marketing">Marketing</option><option value="equipment">Boards and clocks</option><option value="reconciliation">Pending fund allocation</option><option value="tournaments">Tournament operations</option></select></label></p>
+<p><label>Transaction <select name="kind"><option value="donation">Donation</option><option value="income">Other income</option><option value="expense">Expense</option><option value="liability">New amount owed</option><option value="reimbursement">Repayment of amount owed</option><option value="fee">Actual processing fee</option><option value="transfer">Transfer between funds</option><option value="allocateGift">Allocate a reconciled donation</option><option value="refund">Refund paid</option></select></label></p>
+    <p id="destination" hidden><label>Destination fund <select name="destination"><option value="filing">Form 1023-EZ filing</option><option value="general">General fund</option><option value="marketing">Marketing</option><option value="equipment">Boards and clocks</option><option value="reconciliation">Pending fund allocation</option><option value="tournaments">Tournament operations</option></select></label></p>
+    <p><label>Amount ($) <input type="number" min="0.01" step="0.01" name="amount" required></label></p>
+    <p><label>Public description <input type="text" name="purpose" maxlength="240" required></label></p>
+    <button type="submit" class="button">Record transaction</button><p id="result" role="status"></p>
+    </div></form><p><button type="button" class="td-action" id="import">Sync historical club records</button></p>
+  </main>
+
+  <footer class="wrap">
+    <address>Larimer County Chess Club, 500 Mathews St., Fort Collins, Colorado 80524</address>
+    <p>Call or text <a href="tel:+19702867339">(970)&nbsp;286&#8209;7339</a></p>
+    <p><a href="https://new.uschess.org/club-search-and-affiliate-directory?display_name=larimer" target="_blank" rel="noopener">US Chess affiliate A4003249<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    <p><a href="/minutes/">Board minutes</a></p>
+    <p><a href="/privacy/">Privacy</a></p>
+    <p>© 2026 Larimer County Chess Club</p>
+  </footer>
+  <script src="/register.js?v=c106bec172" defer></script>
+  <script src="/finance.js?v=b9db4d1fca" defer></script>
+</body>
+</html>

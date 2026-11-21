@@ -725,15 +725,51 @@ section.td-table td { white-space: nowrap; }
       <p id="selection-hint">Unpaid entries start selected.</p>
       <p><button id="pay-select-all" type="button" class="td-action">Select all</button> <button id="pay-deselect-all" type="button" class="td-action">Deselect all</button></p>
       <div id="pay-balances" aria-live="polite"></div>
-      <fieldset><legend>Donate to a club fund</legend>
-      <p>Entry fees are paid first. Actual Stripe fees come out of the donation. Any remaining gift is divided in proportion to your selections.</p>
-      <p><label>Form 1023-EZ filing ($) <input type="number" data-fund="filing" min="0" max="999999.99" step="0.01" inputmode="decimal"></label> <a href="/finance/filing/">About this fund</a></p>
-      <p><label>General fund ($) <input type="number" data-fund="general" min="0" max="999999.99" step="0.01" inputmode="decimal"></label> <a href="/finance/general/">About this fund</a></p>
-      <p><label>Marketing ($) <input type="number" data-fund="marketing" min="0" max="999999.99" step="0.01" inputmode="decimal"></label> <a href="/finance/marketing/">About this fund</a></p>
-      <p><label>Boards and clocks ($) <input type="number" data-fund="equipment" min="0" max="999999.99" step="0.01" inputmode="decimal"></label> <a href="/finance/equipment/">About this fund</a></p>
-      <label><input id="overflow" type="checkbox"> Put any net filing donation above the $275 goal into the General Fund.</label>
-      </fieldset>
-      <p><a href="/finance/">View club finances</a></p>
+      <div class="register-form">
+        <fieldset class="td-byes">
+          <legend>Donate to a fund</legend>
+          <div class="td-byes-boxes">
+            <label><input type="checkbox" data-select-fund="filing" aria-controls="gift-filing"> Form 1023-EZ filing</label>
+            <label><input type="checkbox" data-select-fund="general" aria-controls="gift-general"> General fund</label>
+            <label><input type="checkbox" data-select-fund="marketing" aria-controls="gift-marketing"> Marketing</label>
+            <label><input type="checkbox" data-select-fund="equipment" aria-controls="gift-equipment"> Boards and clocks</label>
+          </div>
+        </fieldset>
+        <div id="gift-filing" hidden>
+          <div class="field-row">
+            <label for="amount-filing">Form 1023-EZ filing ($)</label>
+            <input id="amount-filing" type="number" data-fund="filing" min="0.01" max="999999.99" step="0.01" inputmode="decimal" required disabled>
+            <a href="/finance/filing/">Fund details<span class="visually-hidden"> for Form 1023-EZ filing</span></a>
+          </div>
+          <div class="register-remember">
+            <input id="overflow" type="checkbox">
+            <label for="overflow">Give any excess above the $275 goal to the General Fund.</label>
+          </div>
+        </div>
+        <div id="gift-general" hidden>
+          <div class="field-row">
+            <label for="amount-general">General fund ($)</label>
+            <input id="amount-general" type="number" data-fund="general" min="0.01" max="999999.99" step="0.01" inputmode="decimal" required disabled>
+            <a href="/finance/general/">Fund details<span class="visually-hidden"> for General fund</span></a>
+          </div>
+        </div>
+        <div id="gift-marketing" hidden>
+          <div class="field-row">
+            <label for="amount-marketing">Marketing ($)</label>
+            <input id="amount-marketing" type="number" data-fund="marketing" min="0.01" max="999999.99" step="0.01" inputmode="decimal" required disabled>
+            <a href="/finance/marketing/">Fund details<span class="visually-hidden"> for Marketing</span></a>
+          </div>
+        </div>
+        <div id="gift-equipment" hidden>
+          <div class="field-row">
+            <label for="amount-equipment">Boards and clocks ($)</label>
+            <input id="amount-equipment" type="number" data-fund="equipment" min="0.01" max="999999.99" step="0.01" inputmode="decimal" required disabled>
+            <a href="/finance/equipment/">Fund details<span class="visually-hidden"> for Boards and clocks</span></a>
+          </div>
+        </div>
+        <p id="gift-fees" class="register-hint" hidden>Entry fees are paid first. Stripe fees come out of your donation, and the remainder is split in proportion to your selections.</p>
+        <p class="register-hint"><a href="/finance/">View club finances</a></p>
+      </div>
       <p id="pay-selected-total" role="status"></p>
       <p id="pay-cart-status"></p>
       <button id="pay-review" type="button" class="button" disabled>Select entries to pay</button>
@@ -752,6 +788,6 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=c106bec172" defer></script>
-  <script src="../pay.js?v=b89015a583" defer></script>
+  <script src="../pay.js?v=a015b1a3ad" defer></script>
 </body>
 </html>
