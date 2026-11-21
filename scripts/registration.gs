@@ -2595,7 +2595,7 @@ function allEntriesKey() {
   const events = JSON.stringify(Object.entries(clubEvents()).map(([key, e]) => [key, e.label, e.closes, e.closed]));
   let hash = 0;
   for (let i = 0; i < events.length; i++) hash = (hash * 31 + events.charCodeAt(i)) | 0;
-  return entriesKey(`all:paid-status:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
+  return entriesKey(`all:paid-status-v2:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
 }
 
 function clearEntriesCache() {
@@ -3704,8 +3704,8 @@ function paidUpPlayers({ col, rows }, ids) {
   for (const row of rows) {
     const id = row[col["US Chess ID"]];
     if (!paidUp.has(id) || !active(row[col.Status])) continue;
-    const { balanceCents, review } = stripeBalance(row, col, book, payments.get(row[col.Token]) || [], ledger);
-    if (balanceCents !== 0 || review) paidUp.delete(id);
+    const { balanceCents } = stripeBalance(row, col, book, payments.get(row[col.Token]) || [], ledger);
+    if (balanceCents !== 0) paidUp.delete(id);
   }
   return paidUp;
 }

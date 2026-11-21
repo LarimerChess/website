@@ -275,7 +275,7 @@ test("the Entries page marks a player paid up only when every active registratio
   const { gs, cache, db } = load({
     Entries: [["Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Rating fee", "Token"],
       ["classic", "2099-11-07", "11111111", "Ann", "registered", "17.50", "2.50", "ann-upcoming"],
-      ["classic", "2026-10-10", "11111111", "Ann", "registered", "5", "0", "ann-past"],
+      ["classic", "2026-10-10", "11111111", "Ann", "registered", "5", "", "ann-past"],
       ["classic", "2099-11-07", "22222222", "Ben", "registered", "", "", "ben-upcoming"],
       ["classic", "2026-10-10", "11111111", "Ann", "withdrawn", "5", "0", "ann-withdrawn"]],
   }, {}, "firebase");
@@ -291,6 +291,9 @@ test("the Entries page marks a player paid up only when every active registratio
   assert.ok(gs.markPaid("ann-upcoming", "17.50", "cash").ok);
   eq(listed(), [["11111111", undefined], ["22222222", undefined]]);
   assert.ok(gs.markPaid("ann-past", "5", "cash").ok);
+  const historical = gs.paymentBalances({ id: "11111111" }).entries.find(entry => entry.date === "2026-10-10");
+  assert.equal(historical.balanceCents, 0);
+  assert.equal(historical.review, true, "a missing historical rating fee can still need review after the balance is settled");
   eq(published(), [["11111111", true], ["22222222", undefined]]);
   eq(listed(), published());
   assert.ok(gs.markPaid("ann-past", "", "cash").ok);
