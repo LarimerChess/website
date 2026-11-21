@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "livemode": false,
+  "livemode": true,
   "currency": "usd",
   "dynamicCheckout": {
     "enabled": true
