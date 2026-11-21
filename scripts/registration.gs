@@ -791,39 +791,6 @@ function boardLine(t, key, number, board, section) {
   return here.find((r) => section === undefined || r.Section === section) || here.find((r) => !r.Section);
 }
 
-/** Run after deploying the updated registration writers. */
-function buildPaymentLookup() {
-  const activeUser = Session.getActiveUser().getEmail();
-  if (!activeUser || activeUser !== Session.getEffectiveUser().getEmail()) throw new Error("Run this as the registration script owner.");
-  buildPaymentLookup_();
-}
-
-/** Backfill the private lookup from current Firebase rows. */
-function buildPaymentLookup_() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    if (!registrationInFirebase_()) throw new Error("Payment lookup requires Firebase registration");
-    const tables = firebase_("get", REGISTRATION_TABLE_PATH);
-    const index = {};
-    for (const key of ["entries", "payments", "baskets", "quotes", "testPayments"]) {
-      const { headings, rows } = tables[key];
-      const col = Object.fromEntries(JSON.parse(headings).map((heading, i) => [heading, i]));
-      for (const [id, row] of Object.entries(rows || {})) {
-        for (const [group, fields] of paymentLookupRow_(key, row, col)) {
-          const grouped = index[group] || (index[group] = {});
-          const indexedRows = grouped[key] || (grouped[key] = {});
-          indexedRows[id] = fields;
-        }
-      }
-    }
-    firebase_("put", PAYMENT_LOOKUP_PATH, index);
-    PropertiesService.getScriptProperties().setProperty(PAYMENT_LOOKUP_VERSION, "1");
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 /** A Byes cell or request, "2, 4", as a list. */
 function byeList(text) {
   return String(text || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -1444,6 +1411,7 @@ function doGet(e) {
 
 function doPost(e) {
   try {
+    if (registrationMaintenance_()) return json({ error: "Registration and payments are paused for maintenance.", maintenance: true });
     const p = e.parameter;
     if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
@@ -2245,39 +2213,6 @@ function membersOf(def, players) {
     .sort((a, b) => Number(a["No."]) - Number(b["No."])).map((r) => r["US Chess ID"]);
 }
 
-/** Run from the Apps Script editor on the new deployment version during cutover. */
-function migrateRegistrationToFirebase_() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    if (!firebaseUrl()) throw new Error("Registration migration needs Firebase");
-    if (registrationInFirebase_()) {
-      if (firebase_("get", "registrationData/active") === true) return;
-      const saved = firebase_("get", REGISTRATION_TABLE_PATH);
-      if (Object.values(REGISTRATION_TABLES).some(key => !saved?.[key]?.headings)) throw new Error("Registration database table missing");
-      // The verified database was selected before the previous attempt could notify readers.
-      firebase_("patch", "", { "registrationData/active": true, "changes/paymentBalances": Utilities.getUuid() });
-      return;
-    }
-    const tables = registrationMigrationSource_();
-    firebase_("put", REGISTRATION_TABLE_PATH, tables);
-    const saved = firebase_("get", REGISTRATION_TABLE_PATH);
-    for (const [key, expected] of Object.entries(tables)) {
-      const actual = saved?.[key], rows = actual?.rows || {};
-      if (actual?.headings !== expected.headings || Object.keys(rows).length !== Object.keys(expected.rows).length
-          || Object.entries(expected.rows).some(([id, fields]) => !rows[id] || Object.keys(fields).length !== Object.keys(rows[id]).length
-            || Object.entries(fields).some(([field, value]) => rows[id][field] !== value))) {
-        throw new Error("Registration migration readback failed");
-      }
-    }
-    PropertiesService.getScriptProperties().setProperty(REGISTRATION_STORAGE, "firebase");
-    firebase_("patch", "", { "registrationData/active": true, "changes/paymentBalances": Utilities.getUuid() });
-    console.log("Registration database verified and activated.");
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 /** An amount as the Sheet and messages show it: 17, or 16.50. */
 function money(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
@@ -2686,11 +2621,6 @@ function plainPart(part) {
     if (text) return text;
   }
   return "";
-}
-
-function previewRegistrationMigration_() {
-  const tables = registrationMigrationSource_();
-  console.log(Object.fromEntries(Object.entries(tables).map(([key, table]) => [key, Object.keys(table.rows).length])));
 }
 
 /** The fee: the entry fee from the prices.json row for the event and kind whose "applies" is the
@@ -3177,32 +3107,14 @@ function registrationInFirebase_() {
   return PropertiesService.getScriptProperties().getProperty(REGISTRATION_STORAGE) === "firebase";
 }
 
+function registrationMaintenance_() {
+  return PropertiesService.getScriptProperties().getProperty("REGISTRATION_MAINTENANCE") === "1";
+}
+
 /** The calendar default or the TD's saved public limit; null means no limit. */
 function registrationLimit(key, event) {
   const saved = PropertiesService.getScriptProperties().getProperty(`publicLimit:${key}`);
   return saved !== null ? Number(saved) : (event || clubEvents()[key])?.capacity ?? null;
-}
-
-function registrationMigrationSource_() {
-  const review = ["Session", "Reason", "Recorded", "Snapshot", "Resolution"];
-  const definitions = {
-    Entries: HEADER, Payments: PAYMENT_HEADER, "Stripe checkout baskets": STRIPE_BASKET_HEADERS,
-    "Stripe card quotes": STRIPE_CARD_HEADERS, "Stripe test payments": ["Session", "Intent", "Amount", "Reference", "Kind"],
-    "Stripe review": review, "Stripe test review": review,
-  };
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  return Object.fromEntries(Object.entries(definitions).map(([name, required]) => {
-    const tab = book.getSheetByName(name);
-    if (!tab && name === "Entries") throw new Error("Registration Entries tab missing");
-    const [header, ...rows] = tab?.getDataRange().getDisplayValues() ?? [[]];
-    const labels = header.map(heading => heading.trim());
-    if (new Set(labels.filter(Boolean)).size !== labels.filter(Boolean).length) throw new Error("Duplicate registration heading");
-    const headings = [...new Set([...required, ...labels.filter(Boolean)])];
-    const table = { headings: JSON.stringify(headings), rows: Object.fromEntries(rows.map((row, index) => [
-      `r${index + 2}`, registrationRow_(headings.map(heading => row[labels.indexOf(heading)] ?? "")),
-    ])) };
-    return [REGISTRATION_TABLES[name], table];
-  }));
 }
 
 function registrationRow_(values) {
@@ -4950,6 +4862,7 @@ function voiceText(body) {
 }
 
 function withdraw(token) {
+  if (registrationMaintenance_()) return "Registration and payments are paused for maintenance.";
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {

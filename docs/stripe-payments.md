@@ -156,22 +156,28 @@ cash balance, amounts owed and donation totals to reconcile each line.
 
 ## Firebase registration cutover and Stripe webhook
 
-Deploy the updated Registration Apps Script and verify the existing deployment URL
-before cutting over. In the Apps Script editor, run `previewRegistrationMigration_`
-to inspect row counts. Pause direct spreadsheet edits and then run
-`migrateRegistrationToFirebase_`. It imports the Entries, Payments, checkout,
-card quote, test payment, and review tabs, reads back every imported row, and
-switches the app to Firebase. After cutover, use the TD desk for changes and keep
-the old tabs as a historical snapshot. Deploy the updated private Peak reporting
-script before cutover so its next run reads current registration records.
+Run the migration from the website repository with Python, Node, and the club's
+Sheets and Firebase credentials. The default command previews row counts.
+An explicit `--apply` checks that the deployed app is paused, writes the
+Firebase data and payment lookup, and verifies both by reading them back.
 
-After deploying the updated registration web app, select `buildPaymentLookup`
-in the Apps Script editor and click **Run** once. It indexes existing Firebase rows and enables
-the per-player balance lookup. Later registration and payment writes update the
-index with the source rows. The index is private and balances are calculated
-from those rows for each request. If rolling back to a script version without
-index maintenance, clear the `PAYMENT_LOOKUP_VERSION` script property and rebuild
-the index after redeploying the updated web app.
+1. Deploy the updated registration web app at the existing URL. Make sure its
+   `FIREBASE_URL` matches the database targeted by the local command. Deploy
+   the updated private Peak reporting script before the cutover.
+2. Run `python scripts/migrate_registration.py --sheet-id SHEET_ID` using the
+   ID of the registration spreadsheet. Check the row counts.
+3. Set `REGISTRATION_MAINTENANCE=1` in the registration project's script
+   properties. Pause direct spreadsheet edits and let in-flight registration
+   and payment requests finish.
+4. Run the same command with `--apply`. After it verifies the Firebase
+   records, set `REGISTRATION_STORAGE=firebase` and
+   `PAYMENT_LOOKUP_VERSION=1` in the script properties. Remove
+   `REGISTRATION_MAINTENANCE` to resume requests and check the Pay page.
+   Keep the old tabs as a historical snapshot and make changes through the TD desk.
+
+For an existing Firebase registration, use `--rebuild-lookup` in place of
+`--sheet-id SHEET_ID`. Preview first and keep the app paused during `--apply`.
+The live Apps Script keeps the private index current as it writes.
 
 Build the webhook container from the website repository root with
 `docker build -f scripts/stripe-webhook.Dockerfile .`. Deploy it to an HTTPS

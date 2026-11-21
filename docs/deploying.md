@@ -250,6 +250,13 @@ The secrets keep their LCCC names unless you rename them in the workflows too. A
 
 ## Keeping it running
 
+Run data migrations from versioned scripts in `scripts/`. Preview the source
+and destination first. Require an explicit apply flag for writes, pause the
+affected writers during cutover, and read back the destination before
+switching the live app. Keep the source available until the new path is
+verified. The [registration cutover](stripe-payments.md#firebase-registration-cutover-and-stripe-webhook)
+shows the workflow.
+
 - **The script** changes only when you paste and deploy it (step 6). Pushing registration.gs changes nothing live.
 - **Tokens** from an External consent screen left in Testing expire in seven days; publish the app. A token also stops when its account's password changes or its access is removed under Google Account → [Third-party apps & services](https://myaccount.google.com/connections). Make it again and replace the secret.
 - **Scheduled Actions** [stop after 60 days](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule) without a commit to the repo. The Actions' own commits count, but a quiet summer may not have any; GitHub emails before it turns them off.

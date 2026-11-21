@@ -34,12 +34,47 @@ import firebase_db  # noqa: E402
 
 at = load("archive_tournaments")
 migrate = load("migrate_tournaments")
+registration = load("migrate_registration")
 rules = load("firebase_rules")
 FIXTURE = HERE / "fixtures" / "sheets.json"
 SHEETS = at.read_fixture(FIXTURE)
 KEYS = [r["Key"] for r in at.rows(SHEETS, "Tournaments")]
 ARENA = "knightmare-arena-classical/2026-10-31"
 URL = "https://lccc-test.firebaseio.com"
+
+
+class RegistrationMigration(unittest.TestCase):
+    def setUp(self):
+        self.update = registration.prepare({"Entries": [
+            ["Name", "US Chess ID", "Token", "Status"],
+            ["Ada", "01234567", "token", "registered"],
+        ]})
+        self.db = mock.Mock()
+
+    def test_apply_verifies_staged_rows_before_activation(self):
+        self.db.get.side_effect = [{}, self.update]
+        self.assertIn("p01234567", self.update["paymentLookup"])
+        with mock.patch.object(registration, "require_pause") as paused:
+            registration.apply(self.db, self.update, lambda: self.update)
+        self.assertEqual(paused.call_count, 2)
+        self.assertEqual(self.db.patch.call_args_list, [
+            mock.call("registrationData", self.update),
+            mock.call("registrationData", {"active": True}),
+        ])
+
+    def test_verify_mismatch_does_not_activate(self):
+        self.db.get.side_effect = [{}, {"tables": {}}]
+        with mock.patch.object(registration, "require_pause"):
+            with self.assertRaisesRegex(ValueError, "readback failed"):
+                registration.apply(self.db, self.update, lambda: self.update)
+        self.db.patch.assert_called_once_with("registrationData", self.update)
+
+    def test_already_active_firebase_rows_are_preserved(self):
+        self.db.get.return_value = {"active": True}
+        with mock.patch.object(registration, "require_pause"):
+            with self.assertRaisesRegex(ValueError, "already active"):
+                registration.apply(self.db, self.update, lambda: self.update)
+        self.db.patch.assert_not_called()
 
 
 class Creds:

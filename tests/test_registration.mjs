@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const Pairing = createRequire(import.meta.url)("../pairing.js");
+const { registrationTables, paymentLookup } = createRequire(import.meta.url)("../scripts/registration_migration.cjs");
 // Objects from the script are of another realm, so they are compared as JSON.
 const eq = (a, b, message) => assert.deepEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b)), message);
 
@@ -222,6 +223,17 @@ function load(tabs, cache = {}, store = "sheet") {
   return { gs: context, sheets, ratings, cache, props, db, rows, handEdit, queued, store, accounts, lookups };
 }
 
+function seedRegistration({ db, props, sheets }, indexed = true) {
+  const tables = registrationTables(Object.fromEntries(Object.entries(sheets).map(([name, sheet]) => [name, sheet.data])));
+  db.root.registrationData = { tables, active: true };
+  db.root.changes = { ...db.root.changes, paymentBalances: "cutover" };
+  props.REGISTRATION_STORAGE = "firebase";
+  if (indexed) {
+    db.root.registrationData.paymentLookup = paymentLookup(tables);
+    props.PAYMENT_LOOKUP_VERSION = "1";
+  }
+}
+
 test("registration cutover migrates the history and Pay reads new desk payments from Firebase", () => {
   const { gs, db, props, sheets } = load({
     Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
@@ -233,17 +245,9 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   gs.clubEvents = () => ({});
   gs.stripeConfig = () => ({ livemode: true });
   gs.clearEntriesCache = () => {};
-  const owner = { getEmail: () => "owner@example.com" };
-  gs.Session = { getEffectiveUser: () => owner, getActiveUser: () => ({ getEmail: () => "" }) };
   let revision = 0;
   gs.Utilities.getUuid = () => `revision-${++revision}`;
-  gs.migrateRegistrationToFirebase_();
-  assert.equal(props.REGISTRATION_STORAGE, "firebase");
-  assert.equal(db.root.registrationData.active, true);
-  assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
-  assert.throws(() => gs.buildPaymentLookup(), /registration script owner/);
-  gs.Session.getActiveUser = () => owner;
-  gs.buildPaymentLookup();
+  seedRegistration({ db, props, sheets });
   assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
   const initialSignal = db.root.changes.paymentBalances;
   gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
@@ -257,6 +261,13 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   assert.throws(() => gs.paymentBalances({ id: "11111111" }), /Firebase/);
 });
 
+test("registration maintenance pauses both the web app and withdraw form", () => {
+  const { gs, props } = load({});
+  props.REGISTRATION_MAINTENANCE = "1";
+  assert.equal(gs.doPost({ parameter: { action: "paymentBalances" } }).maintenance, true);
+  assert.match(gs.withdraw("private-token"), /paused for maintenance/);
+});
+
 test("Firebase Pay batches requested players and follows live ledger, basket and sandbox changes", () => {
   const basketRef = "test-basket";
   const allocations = JSON.stringify([
@@ -264,7 +275,7 @@ test("Firebase Pay batches requested players and follows live ledger, basket and
     { token: "ben-entry", amount: 1750, party: { Name: "Ben" } },
     { token: "eve-entry", amount: 1750, party: { Name: "Eve" } },
   ]);
-  const { gs, db } = load({
+  const { gs, db, sheets, props } = load({
     Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
       ["Ada", "11111111", "17.50", "2.50", "classic", "2026-12-01", "ada-entry", "registered"],
       ["Ben", "55555555", "17.50", "2.50", "classic", "2026-12-01", "ben-entry", "registered"],
@@ -278,10 +289,11 @@ test("Firebase Pay batches requested players and follows live ledger, basket and
   gs.underLimit = () => true;
   gs.clubEvents = () => ({});
   gs.stripeConfig = () => ({ livemode: false });
-  gs.migrateRegistrationToFirebase_();
+  seedRegistration({ db, props, sheets }, false);
   const ids = "55555555,11111111,99999999,55555555";
   const original = gs.paymentBalances({ ids });
-  gs.buildPaymentLookup_();
+  db.root.registrationData.paymentLookup = paymentLookup(db.root.registrationData.tables);
+  props.PAYMENT_LOOKUP_VERSION = "1";
   db.calls.length = 0;
   const indexed = gs.paymentBalances({ ids });
   eq(indexed, original);
@@ -881,12 +893,12 @@ test("only TDs manage the linked player's Pay page balances and donations", () =
 });
 
 test("Pay page TD actions use the migrated Firebase ledger", () => {
-  const { gs, db, sheets } = load({
+  const { gs, db, sheets, props } = load({
     Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
       ["Ada", "11111111", "17.50", "2.50", "classic", "2026-12-01", "private-token", "registered"]],
   }, {}, "firebase");
   gs.clubEvents = () => ({});
-  gs.migrateRegistrationToFirebase_();
+  seedRegistration({ db, props, sheets });
   gs.readIncidents = () => ({ rows: [] });
   gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
   const post = fields => gs.doPost({ parameter: { action: "tdPlayerPayments", password: "sheet", id: "11111111", ...fields } });
