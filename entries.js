@@ -194,7 +194,7 @@ function eventSection(event) {
     // Players get sections when the tournament starts.
     const sectioned = event.entries.some((e) => e.section);
     for (const label of ["Name", "US Chess ID", "Rating", ...(month ? ["For"] : []), ...(byesColumn ? ["Byes"] : []),
-      ...(sectioned ? ["Section"] : [])]) {
+      "Payment", ...(sectioned ? ["Section"] : [])]) {
       cell(head, label, "th").scope = "col";
     }
     const body = table.createTBody();
@@ -221,6 +221,14 @@ function eventSection(event) {
         cell(row, !night ? entryByesText(e) : tonight(e, "byes") ? "Half-point bye" : tonight(e, "zeroByes") ? "Zero-point bye" : "");
       }
       if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
+      const paymentCell = cell(row, "");
+      if (/^\d{8}$/.test(e.id)) {
+        const payLink = document.createElement("a");
+        payLink.href = `/pay/?uscfid=${encodeURIComponent(e.id)}`;
+        payLink.textContent = "Pay";
+        payLink.setAttribute("aria-label", `Pay for ${e.name}`);
+        paymentCell.append(payLink);
+      }
       if (sectioned) cell(row, e.section || "");
     }
     const wrap = Object.assign(document.createElement("div"), { className: "td-table" });
