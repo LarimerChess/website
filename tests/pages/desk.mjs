@@ -1,6 +1,34 @@
 // The TD desk's results view, editing and pairing drafts, and byes at check-in.
 import { PHONE, axeBoth, deskState, dismissRefusal, done, fail, fitsPhone, fourPlayers, mocked, pass, press, signIn, sixPlayers } from "./common.mjs";
 
+const maintenanceDesk = deskState();
+let paused = true;
+const maintenanceCalls = [];
+const maintenancePage = await mocked("/td/ registration maintenance", (p) => {
+  if (p.action === "login") return { ok: true, maintenance: paused };
+  if (p.action === "registrationMaintenance") {
+    maintenanceCalls.push(p.enabled);
+    paused = p.enabled === "1";
+    return { ok: true, maintenance: paused };
+  }
+  return maintenanceDesk.answer(p);
+});
+await signIn(maintenancePage);
+await maintenancePage.waitForSelector(".td-maintenance", { visible: true });
+const maintenanceToggle = ".td-maintenance-toggle";
+for (const [label, nextLabel] of [["Resume", "Pause"], ["Pause", "Resume"]]) {
+  await maintenancePage.waitForFunction((label) =>
+    document.querySelector(".td-maintenance-toggle").textContent.startsWith(label), {}, label);
+  await press(maintenancePage, maintenanceToggle);
+  await maintenancePage.waitForFunction((nextLabel) =>
+    document.querySelector(".td-maintenance-toggle").textContent.startsWith(nextLabel)
+    && !document.querySelector(".td-maintenance-toggle").disabled, {}, nextLabel);
+}
+maintenanceCalls.join(",") === "0,1"
+  ? pass("A signed-in TD can resume registration from maintenance mode and pause it again")
+  : fail(`TD maintenance actions: ${maintenanceCalls.join(",")}`);
+await maintenancePage.close();
+
 const draftShown = (tab) => tab.evaluate(() => ({
   games: [...document.querySelectorAll(".run-games tbody tr")].map((r) => [r.cells[0].textContent, ...[...r.querySelectorAll("select")].map((s) => s.value)]),
   off: [...document.querySelectorAll(".run-off tbody tr")].map((r) => [r.cells[0].textContent, r.querySelector("select").value]),

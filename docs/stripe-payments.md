@@ -167,12 +167,14 @@ Firebase data and payment lookup, and verifies both by reading them back.
 2. Run `python scripts/migrate_registration.py --sheet-id SHEET_ID` using the
    ID of the registration spreadsheet. Check the row counts.
 3. Set `REGISTRATION_MAINTENANCE=1` in the registration project's script
-   properties. Pause direct spreadsheet edits and let in-flight registration
-   and payment requests finish.
+   properties, or use **Pause registration and payments** at the bottom of
+   the signed-in TD desk. Pause direct spreadsheet edits and let in-flight
+   registration and payment requests finish.
 4. Run the same command with `--apply`. After it verifies the Firebase
    records, set `REGISTRATION_STORAGE=firebase` and
    `PAYMENT_LOOKUP_VERSION=1` in the script properties. Remove
-   `REGISTRATION_MAINTENANCE` to resume requests and check the Pay page.
+   `REGISTRATION_MAINTENANCE` or use **Resume registration and payments** on
+   the TD desk, then check the Pay page.
    Keep the old tabs as a historical snapshot and make changes through the TD desk.
 
 For an existing Firebase registration, use `--rebuild-lookup` in place of

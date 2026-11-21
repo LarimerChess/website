@@ -25,6 +25,10 @@ const incidentForm = incidentDialog.querySelector("form");
 const incidentList = document.querySelector(".td-incidents");
 const incidentsStatus = document.querySelector(".td-incidents-status");
 const ledgerList = document.querySelector(".td-ledger");
+const maintenancePanel = document.querySelector(".td-maintenance");
+const maintenanceToggle = maintenancePanel.querySelector(".td-maintenance-toggle");
+const maintenanceStatus = maintenancePanel.querySelector(".td-maintenance-status");
+let maintenancePaused = false;
 
 // The ? buttons show their explanation on hover or focus. A tap keeps it open until another tap
 // anywhere, and Escape hides any shown until the pointer or focus comes to it again.
@@ -142,6 +146,8 @@ async function call(action, fields = {}) {
     signOut("Check your email for a link to confirm your address, then sign in again.");
   } else if (result.login) {
     signOut(result.error);
+  } else if (result.error && result.maintenance === true && !maintenancePanel.hidden) {
+    showMaintenance(true);
   } else if (result.error && !QUIET.has(action)) {
     refuse(result.error);
   }
@@ -153,6 +159,7 @@ function signOut(message = "") {
   remember("");
   signedIn = false;
   td = null;
+  maintenancePanel.hidden = true;
   if (firebase?.auth.currentUser) networkActivity("Signing out…", () => firebase.signOut(firebase.auth)).catch(() => {});
   desk.hidden = navEvent.hidden = true;
   showLogin(message);
@@ -185,14 +192,43 @@ async function signIn(value = "") {
   who.textContent = td ? `Signed in as ${td.name || td.email}` : "";
   who.hidden = !td;
   login.hidden = true;
-  desk.hidden = navEvent.hidden = false;
+  navEvent.hidden = false;
+  maintenancePanel.hidden = typeof result.maintenance !== "boolean";
+  showMaintenance(result.maintenance === true);
+  if (!maintenancePaused) await loadDesk(early);
+  return true;
+}
+
+async function loadDesk(early) {
   const { choices: list } = await (early || call("choices"));
+  if (!signedIn || maintenancePaused) return;
   fillChoices(list);
   showRegisterByes();
   showDeskEntries();
   loadPeople();
-  return true;
 }
+
+function showMaintenance(paused) {
+  maintenancePaused = paused;
+  if (signedIn) desk.hidden = paused;
+  maintenanceToggle.textContent = paused ? "Resume registration and payments" : "Pause registration and payments";
+  maintenanceStatus.textContent = paused ? "Registration and payments are paused." : "Registration and payments are open.";
+  for (const control of navEvent.querySelectorAll("select, .td-new-event, .td-refresh")) control.disabled = paused;
+}
+
+maintenanceToggle.addEventListener("click", async () => {
+  maintenanceToggle.disabled = true;
+  try {
+    const result = await call("registrationMaintenance", { enabled: maintenancePaused ? "0" : "1" });
+    if (!result.ok || !signedIn) return;
+    showMaintenance(result.maintenance);
+    if (!maintenancePaused) await loadDesk();
+  } catch {
+    // call reports request failures.
+  } finally {
+    maintenanceToggle.disabled = false;
+  }
+});
 
 function fillChoices(list) {
   choices = list || [];
@@ -909,7 +945,11 @@ async function checkChanges() {
   checking = true;
   checked = Date.now();
   try {
-    const { changes } = await call("changes");
+    const { changes, maintenance } = await call("changes");
+    if (signedIn && typeof maintenance === "boolean" && maintenance !== maintenancePaused) {
+      showMaintenance(maintenance);
+      if (!maintenance) await loadDesk();
+    }
     noteChanges(changes);
   } catch {
   } finally {
@@ -918,6 +958,7 @@ async function checkChanges() {
 }
 
 function applyChanges() {
+  if (maintenancePaused) return;
   const field = document.activeElement?.matches("input, select, textarea") ? document.activeElement : null;
   if (pending.delete("people")) loadPeople();
   if (pending.has("entries") && !tdTable.contains(field)) {

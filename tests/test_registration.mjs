@@ -261,11 +261,23 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   assert.throws(() => gs.paymentBalances({ id: "11111111" }), /Firebase/);
 });
 
-test("registration maintenance pauses both the web app and withdraw form", () => {
+test("only a signed-in TD can pause and resume registration and payments", () => {
   const { gs, props } = load({});
-  props.REGISTRATION_MAINTENANCE = "1";
-  assert.equal(gs.doPost({ parameter: { action: "paymentBalances" } }).maintenance, true);
+  const post = (action, fields = {}) => gs.doPost({ parameter: { action, ...fields } });
+  const authenticated = { password: "sheet" };
+  assert.equal(post("registrationMaintenance", { enabled: "1" }).login, true);
+  assert.equal(props.REGISTRATION_MAINTENANCE, undefined);
+  eq(post("registrationMaintenance", { ...authenticated, enabled: "1" }), { ok: true, maintenance: true });
+  assert.equal(props.REGISTRATION_MAINTENANCE, "1");
+  assert.equal(post("paymentBalances").maintenance, true);
   assert.match(gs.withdraw("private-token"), /paused for maintenance/);
+  assert.equal(post("login", authenticated).maintenance, true);
+  assert.equal(post("changes", authenticated).maintenance, true);
+  assert.equal(post("registrationMaintenance", { enabled: "0" }).login, true);
+  assert.equal(post("registrationMaintenance", { ...authenticated, enabled: "invalid" }).error.length > 0, true);
+  eq(post("registrationMaintenance", { ...authenticated, enabled: "0" }), { ok: true, maintenance: false });
+  assert.equal(props.REGISTRATION_MAINTENANCE, undefined);
+  assert.equal(post("login", authenticated).maintenance, false);
 });
 
 test("Firebase Pay batches requested players and follows live ledger, basket and sandbox changes", () => {
@@ -1784,7 +1796,7 @@ const ANN = { email: "Ann@Example.org", name: "Ann Ash", usChessId: "11111111" }
 test("a TD signs in with a Firebase ID token from any of their addresses, and the token is checked once", () => {
   const { post, lookups, cache, gs } = signIn({ TDs: TDS });
   const login = post({ action: "login", idToken: idToken("ann"), password: "wrong" });
-  eq(login, { ok: true, changes: gs.changes(), td: ANN }, "the password is ignored");
+  eq(login, { ok: true, changes: gs.changes(), maintenance: false, td: ANN }, "the password is ignored");
   eq(post({ action: "whoami", idToken: idToken("ann") }), { td: ANN });
   eq(lookups, [idToken("ann")], "one lookup for two requests");
   assert.ok(Object.keys(cache).some((k) => k.startsWith("idToken:")));
@@ -1846,7 +1858,7 @@ test("the signed-in TD is recorded where the desk doesn't name one, and the pass
   assert.equal(post({ action: "register", idToken: idToken("ann"), event: "classic", date: "2026-11-07", id: "44444444" }).ok, true);
   eq(rowsOf(sheets.Entries).map((r) => r["Added by"]), ["TD (Ann Ash)"]);
 
-  eq(post({ action: "login", password: "sheet", device: "device-0000000000" }), { ok: true, changes: gs.changes() });
+  eq(post({ action: "login", password: "sheet", device: "device-0000000000" }), { ok: true, changes: gs.changes(), maintenance: false });
   eq(post({ action: "whoami", password: "sheet", device: "device-0000000000" }), { td: null });
   assert.equal(post({ action: "incident", password: "sheet", ...p }).error, "Say what happened and who you are.");
   eq(post({ action: "login", password: "wrong", device: "device-0000000000" }), { error: "Wrong password.", login: true });

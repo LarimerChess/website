@@ -1411,8 +1411,11 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    if (registrationMaintenance_()) return json({ error: "Registration and payments are paused for maintenance.", maintenance: true });
     const p = e.parameter;
+    const maintenance = registrationMaintenance_();
+    if (maintenance && !["login", "changes", "registrationMaintenance"].includes(p.action)) {
+      return json({ error: "Registration and payments are paused for maintenance.", maintenance: true });
+    }
     if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
     if (p.action === "createPaymentCheckout") return json(createPaymentCheckout(p));
@@ -1445,9 +1448,9 @@ function doPost(e) {
       case "financeAccess": return json({ok:true});
       case "financeHistory": return json(financeHistory());
       case "financePost": return json(financePost(p));
-      case "login": return json(td ? { ok: true, changes: changes(), td } : { ok: true, changes: changes() });
+      case "login": return json(td ? { ok: true, changes: changes(), maintenance, td } : { ok: true, changes: changes(), maintenance });
       case "whoami": return json({ td });
-      case "changes": return json({ changes: changes() });
+      case "changes": return json({ changes: changes(), maintenance });
       case "refresh": return json(refreshCaches());
       case "choices": return json({ choices: choices() });
       case "createEvent": return json(createEvent(p));
@@ -1461,6 +1464,7 @@ function doPost(e) {
       case "messages": return json(voiceMessages());
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true, td));
+      case "registrationMaintenance": return json(setRegistrationMaintenance_(p.enabled));
       case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true), capacity: registrationLimit(`${p.event}/${p.date}`) });
       case "registrationLimit": return json(setRegistrationLimit(p));
       case "remove": return json({ message: withdraw(p.token) });
@@ -3742,6 +3746,15 @@ function setRegistrationLimit(p) {
 /** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Once it has an
  *  extra rated games section or a round robin, every section has its own rounds, and p.section names the
  *  Swiss to change; a round robin's come from its players. */
+function setRegistrationMaintenance_(enabled) {
+  if (enabled !== "0" && enabled !== "1") return { error: "Choose whether to pause registrations and payments." };
+  const properties = PropertiesService.getScriptProperties();
+  const maintenance = enabled === "1";
+  if (maintenance) properties.setProperty("REGISTRATION_MAINTENANCE", "1");
+  else properties.deleteProperty("REGISTRATION_MAINTENANCE");
+  return { ok: true, maintenance };
+}
+
 function setRounds(p) {
   const key = `${p.event}/${p.date}`;
   const rounds = String(p.rounds || "").trim();
