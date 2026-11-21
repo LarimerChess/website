@@ -287,7 +287,7 @@ function register(p, td, signedIn) {
   let byes = [];
   let zeros = [];
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const mine = rows.filter((r) => r[col.Event] === p.event && r[col["US Chess ID"]] === id && active(r[col.Status]));
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
@@ -382,7 +382,7 @@ function entries(key, td, read) {
   const cached = useCache && cache.get(entriesKey(key));
   if (cached) return JSON.parse(cached);
   const [event, date] = String(key).split("/");
-  const { col, rows } = read || readEntries();
+  const { col, rows } = read || readEntries_();
   const logged = read ? read.logged : readIncidents().rows;
   const placed = read ? read.placed : sectionsByKey();
   const sectionOf = placed[key] || (date.length === 10 && placed[`${event}/${date.slice(0, 7)}`]) || {};
@@ -443,7 +443,7 @@ function allEntries() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get(allEntriesKey());
   if (cached) return JSON.parse(cached);
-  const read = { ...readEntries(), logged: readIncidents().rows, placed: sectionsByKey() };
+  const read = { ...readEntries_(), logged: readIncidents().rows, placed: sectionsByKey() };
   read.paymentStatus = entryPaymentStatus(read);
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
   const list = Object.entries(clubEvents())
@@ -462,7 +462,7 @@ function allEntries() {
 function publishEntries(list) {
   if (!firebaseUrl()) return;
   try {
-    firebase("PUT", "public/entries", JSON.stringify(list));
+    firebase_("PUT", "public/entries", JSON.stringify(list));
   } catch (err) {
     console.error(err);
   }
@@ -475,7 +475,7 @@ function choices() {
   const started = new Set(table("Tournaments").rows.map((r) => r.Key));
   const events = { ...clubEvents() };
   const registered = new Set();
-  const { col, rows } = readEntries();
+  const { col, rows } = readEntries_();
   for (const r of rows) {
     const event = r[col.Event], date = r[col.Date];
     if (!event || !/^\d{4}-\d{2}(-\d{2})?$/.test(date) || !active(r[col.Status])) continue;
@@ -518,7 +518,7 @@ function createEvent(p) {
   try {
     CacheService.getScriptCache().remove("clubEvents");
     if (clubEvents()[key]) return { error: "That name is taken today; choose another." };
-    const { sheet, col } = readTab("Closed events", ["Event", "Name", "Start", "Format", "Rounds", "Fee"]);
+    const { sheet, col } = readTab_("Closed events", ["Event", "Name", "Start", "Format", "Rounds", "Fee"]);
     appendText(sheet, col, { Event: slug, Name: name, Start: start, Format: format, Fee: fee });
     CacheService.getScriptCache().remove("clubEvents");
   } finally {
@@ -542,7 +542,7 @@ function history(q) {
  *  phone when the registration has none: the TD desk loads these once and searches them as the TD
  *  types, so most searches never reach US Chess. */
 function people() {
-  const { col, rows } = readEntries();
+  const { col, rows } = readEntries_();
   const latest = new Map();
   for (const r of rows) {
     if (r[col["US Chess ID"]]) latest.set(r[col["US Chess ID"]], r);
@@ -604,7 +604,7 @@ function noteContact(player) {
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+      const { sheet, col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
       const live = rows.map((r, index) => ({ r, index })).filter(({ r }) => r.some(Boolean));
       const email = String(player.email || "").toLowerCase();
       const emailsOf = (r) => [r[col.Email], ...(col["Other emails"] === undefined ? [] : r[col["Other emails"]].split(/[,;]\s*/))]
@@ -676,9 +676,9 @@ function contacts() {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const { sheet, col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
     const headings = Object.keys(col).filter((h) => h && h !== "ID");
-    const gifts = readPayments().rows.filter((x) => cents(x.Donation));
+    const gifts = readPayments_().rows.filter((x) => cents(x.Donation));
     const given = (keep) => money(gifts.filter(keep).reduce((n, x) => n + cents(x.Donation), 0) / 100);
     const list = [];
     rows.forEach((r, i) => {
@@ -717,7 +717,7 @@ function saveContact(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const { sheet, col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
     const index = p.id ? rows.findIndex((r) => r[col.ID] === p.id) : -1;
     if (p.id && index < 0) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
     const row = index >= 0 ? [...rows[index]] : new Array(Object.keys(col).length).fill("");
@@ -740,7 +740,7 @@ function deleteContact(id) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+    const { sheet, col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
     const index = id ? rows.findIndex((r) => r[col.ID] === id) : -1;
     if (index < 0) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
     sheet.deleteRow(index + 2);
@@ -781,7 +781,7 @@ const phoneDigits = (text) => String(text || "").replace(/\D/g, "").replace(/^1(
 
 /** Contacts' names by each of their phones' ten digits. */
 function contactsByPhone() {
-  const { col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+  const { col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
   const names = {};
   for (const r of rows) {
     const others = col["Other phones"] === undefined ? [] : r[col["Other phones"]].split(/[,;]\s*/);
@@ -892,7 +892,7 @@ function withdraw(token) {
     if (!row) return "No registration matches this.";
     if (row.status === MOVED) return `${row.name} moved to the whole month; withdraw from the month instead.`;
     if (row.status === TO_NIGHT) return `${row.name} switched to one night; withdraw from the night instead.`;
-    const { sheet, col } = readEntries();
+    const { sheet, col } = readEntries_();
     sheet.getRange(row.index + 2, col.Status + 1).setValue("withdrawn");
     clearEntriesCache();
     return `${row.name} is withdrawn.`;
@@ -1043,7 +1043,7 @@ function setCells(t, changes) {
     for (const [heading, value] of Object.entries(encodeFields(fields))) paths[`${row}/${heading}`] = value;
   }
   if (!Object.keys(paths).length) return;
-  firebase("PATCH", `tables/${t.name}`, paths);
+  firebase_("PATCH", `tables/${t.name}`, paths);
   for (const [row, fields] of Object.entries(changes)) Object.assign(databaseTables()[t.name][row], fields);
 }
 
@@ -1056,7 +1056,7 @@ function addRows(t, list) {
   if (!list.length) return;
   const added = Object.fromEntries(list.map((fields) => [newRowId(),
     Object.fromEntries(Object.keys(t.col).map((h) => [h, fields[h] === undefined ? "" : String(fields[h])]))]));
-  firebase("PATCH", `tables/${t.name}`, Object.fromEntries(Object.entries(added).map(([id, r]) => [id, encodeFields(r)])));
+  firebase_("PATCH", `tables/${t.name}`, Object.fromEntries(Object.entries(added).map(([id, r]) => [id, encodeFields(r)])));
   const stored = databaseTables();
   stored[t.name] = { ...stored[t.name], ...added };
 }
@@ -1068,7 +1068,7 @@ function deleteRows(t, rows) {
     return;
   }
   if (!rows.length) return;
-  firebase("PATCH", `tables/${t.name}`, Object.fromEntries(rows.map((r) => [r.row, null])));
+  firebase_("PATCH", `tables/${t.name}`, Object.fromEntries(rows.map((r) => [r.row, null])));
   for (const r of rows) delete databaseTables()[t.name][r.row];
 }
 
@@ -1088,7 +1088,7 @@ function firebaseUrl() {
 }
 
 /** Calls the database's REST API at a path ("" for the root) as the account the script runs as. */
-function firebase(method, path, body, query) {
+function firebase_(method, path, body, query) {
   const options = { method: method.toLowerCase(), headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
     muteHttpExceptions: true };
   if (body !== undefined) {
@@ -1114,7 +1114,7 @@ function lockTournaments() {
 
 function databaseTables() {
   if (!databaseCopy) {
-    const stored = firebase("GET", "tables") || {};
+    const stored = firebase_("GET", "tables") || {};
     databaseCopy = Object.fromEntries(Object.entries(stored).map(([name, rows]) => [name,
       Object.fromEntries(Object.entries(rows || {}).map(([id, r]) => [id,
         Object.fromEntries(Object.entries(r || {}).map(([h, v]) => [decodeField(h), String(v)]))]))]));
@@ -2510,7 +2510,7 @@ function arenaCancel(p) {
 function queues() {
   if (firebaseUrl()) {
     if (!databaseQueues) {
-      const stored = firebase("GET", "queues") || {};
+      const stored = firebase_("GET", "queues") || {};
       databaseQueues = {};
       for (const [node, text] of Object.entries(stored)) {
         try {
@@ -2542,7 +2542,7 @@ function setQueue(key, list) {
   }
   const changes = Object.fromEntries(dropped.map((k) => [nodeOf(k), null]));
   if (all[key]) changes[nodeOf(key)] = JSON.stringify(all[key]);
-  if (Object.keys(changes).length) firebase("PATCH", "queues", changes);
+  if (Object.keys(changes).length) firebase_("PATCH", "queues", changes);
   databaseQueues = all;
 }
 
@@ -2560,7 +2560,7 @@ function currentTournaments() {
  *  entry lists, which show each player's section, and rewrites the database's public copy. */
 function clearTournamentCache(key) {
   CacheService.getScriptCache().removeAll(["tournaments", "entriesVersion"]);
-  stampChanges(["tournaments"], firebaseUrl() ? publicCopies([key]) : {});
+  stampChanges_(["tournaments"], firebaseUrl() ? publicCopies([key]) : {});
 }
 
 /** The database's public copies of tournaments, { path: JSON or null for one that's gone }, for stampChanges. */
@@ -2623,19 +2623,19 @@ function clearEntriesCache() {
 const CHANGE_SCOPES = ["entries", "tournaments", "contacts"];
 
 function touch(...scopes) {
-  stampChanges(scopes, {});
+  stampChanges_(scopes, {});
 }
 
 /** New stamps for the scopes. With the database, one write sets them at /changes, which the desks
  *  listen to, along with updates, { path: value }. */
-function stampChanges(scopes, updates) {
+function stampChanges_(scopes, updates) {
   const stamp = Math.random().toString(36).slice(2, 10);
   CacheService.getScriptCache().putAll(Object.fromEntries(scopes.map((s) => [`changed:${s}`, stamp])), PUBLIC_CACHE);
   if (!firebaseUrl()) return;
   // What changed is saved by now; a database that's down mustn't turn a registration or result into an error.
   // The desks then catch up by polling, and Refresh rewrites the public copies.
   try {
-    firebase("PATCH", "", { ...updates, ...Object.fromEntries(scopes.map((s) => [`changes/${s}`, stamp])) });
+    firebase_("PATCH", "", { ...updates, ...Object.fromEntries(scopes.map((s) => [`changes/${s}`, stamp])) });
   } catch (err) {
     console.error(err);
   }
@@ -2652,10 +2652,10 @@ function refreshCaches() {
   CacheService.getScriptCache().removeAll(["clubEvents", "prices", "rated", "tournaments", "entriesVersion", "tds"]);
   let copies = {};
   if (firebaseUrl()) {
-    const listed = Object.keys(firebase("GET", "public/tournaments", undefined, "shallow=true") || {}).map(keyOf);
+    const listed = Object.keys(firebase_("GET", "public/tournaments", undefined, "shallow=true") || {}).map(keyOf);
     copies = publicCopies([...new Set([...listed, ...table("Tournaments").rows.map((r) => r.Key)])]);
   }
-  stampChanges(CHANGE_SCOPES, copies);
+  stampChanges_(CHANGE_SCOPES, copies);
   const lists = allEntries().length;
   const months = Object.entries(clubEvents()).filter(([, e]) => e.kind === "month");
   for (const [key] of months) entries(key, false);
@@ -2674,11 +2674,11 @@ function markPaid(token, amount, by, donate, payPage) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const row = findToken(token, { col, rows });
     if (!row) return { error: "No registration matches this." };
     const r = rows[row.index];
-    const book = readPayments();
+    const book = readPayments_();
     const mine = book.rows.filter((x) => x.Token === token);
     if (payPage) {
       const error = tdPaymentEntryError(payPage, r, col, book);
@@ -2703,12 +2703,12 @@ function markPaid(token, amount, by, donate, payPage) {
         split["Rating fee"] -= donation - fromEntry;
         split.Donation = donation;
       }
-      addPayment(book, token, partyOf(r, col), { Type: "payment", Method: method, Received: cents(amount), ...split,
+      addPayment_(book, token, partyOf(r, col), { Type: "payment", Method: method, Received: cents(amount), ...split,
         Note: fee === null ? "Rating fee unknown, so all of it counted as entry fee." : "" });
     } else {
       const reversed = new Set(mine.map((x) => x.Reverses).filter(Boolean));
       for (const x of mine.filter((x) => (x.Type === "payment" || x.Type === "refund") && !reversed.has(x["No."]))) {
-        addPayment(book, token, partyOf(r, col), { Type: "correction", Method: x.Method, Received: -cents(x.Received),
+        addPayment_(book, token, partyOf(r, col), { Type: "correction", Method: x.Method, Received: -cents(x.Received),
           "Entry fee": -cents(x["Entry fee"]), "Rating fee": -cents(x["Rating fee"]), "Card fee": -cents(x["Card fee"]),
           Donation: -cents(x.Donation), Reverses: x["No."], Note: "Marked unpaid" });
       }
@@ -2755,7 +2755,7 @@ function toNight(p, td) {
   const lock = lockTournaments();
   let row, name, over, due;
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const month = rows.find((r) => r[col.Event] === p.event && r[col.Date] === p.date.slice(0, 7) && active(r[col.Status])
       && (td ? r[col.Token] === p.token : r[col["US Chess ID"]] === id));
     if (!month) return { error: "No whole-month registration matches." };
@@ -2763,7 +2763,7 @@ function toNight(p, td) {
     if (!td && String(month[col.Email]).toLowerCase() !== String(p.email || "").trim().toLowerCase()) {
       return { error: "That email doesn't match the registration." };
     }
-    const book = readPayments();
+    const book = readPayments_();
     const held = ledgerByToken(book)[month[col.Token]] || { received: 0, entry: 0, rating: 0 };
     if (!td && held.received) {
       return { error: `${name} has paid for the month, so the TD switches it at the event and refunds the difference.` };
@@ -2783,9 +2783,9 @@ function toNight(p, td) {
     const run = byeList(month[col.Byes]).length || byeList(month[col["Zero-point byes"]]).length ? runOf(monthKey) : null;
     if (run && run.info && setPlayerByes(monthKey, month[col["US Chess ID"]], [], [], run.info)) clearTournamentCache(monthKey);
     if (held.entry || held.rating) {
-      addPayment(book, month[col.Token], partyOf(month, col), { Type: "credit", "Entry fee": -held.entry, "Rating fee": -held.rating,
+      addPayment_(book, month[col.Token], partyOf(month, col), { Type: "credit", "Entry fee": -held.entry, "Rating fee": -held.rating,
         Note: `To ${nightLabel(p.date)}, ${row.Token}` });
-      addPayment(book, row.Token, row, { Type: "credit", "Entry fee": held.entry, "Rating fee": held.rating,
+      addPayment_(book, row.Token, row, { Type: "credit", "Entry fee": held.entry, "Rating fee": held.rating,
         Note: `From the whole month, ${month[col.Token]}` });
     }
     const kept = held.entry + held.rating;
@@ -2829,7 +2829,7 @@ function setByes(p, td) {
   }
   const lock = lockTournaments();
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const index = rows.findIndex((r) => active(r[col.Status]) && (td ? r[col.Token] === p.token
       : r[col.Event] === p.event && r[col.Date] === p.date && r[col["US Chess ID"]] === id));
     if (index < 0) return { error: "No registration matches." };
@@ -2981,7 +2981,7 @@ function nightRounds(key, info) {
   const dates = roundDates(info);
   if (!dates.length) return {};
   const [event, month] = key.split("/");
-  const { col, rows } = readEntries();
+  const { col, rows } = readEntries_();
   const mine = rows.filter((r) => r[col.Event] === event && active(r[col.Status]) && r[col.Date].startsWith(month));
   const whole = new Set(mine.filter((r) => r[col.Date] === month).map((r) => r[col["US Chess ID"]]));
   const out = {};
@@ -3046,7 +3046,7 @@ function giveDonation(p, td, playerId) {
     let book;
     let token = p.contact || "";
     if (playerId) {
-      book = readPayments();
+      book = readPayments_();
       token = `pay-donation-${p.requestId}`;
       const previous = book.rows.find(row => row.Token === token);
       if (previous) {
@@ -3055,12 +3055,12 @@ function giveDonation(p, td, playerId) {
         }
         return { ok: true, message: `Recorded a $${previous.Donation} donation from ${previous.Name}.` };
       }
-      const { col, rows } = readEntries();
+      const { col, rows } = readEntries_();
       const player = tdPaymentPlayerRows(playerId, col, rows)[0];
       if (!player) return { error: "No registration matches this US Chess ID." };
       party = { ...party, "US Chess ID": playerId, Name: player[col.Name] };
     } else if (p.contact) {
-      const { col, rows } = readTab("Contacts", CONTACT_HEADINGS);
+      const { col, rows } = readTab_("Contacts", CONTACT_HEADINGS);
       const r = rows.find((x) => x[col.ID] === p.contact);
       if (!r) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
       party = { ...party, "US Chess ID": r[col["US Chess ID"]], Name: r[col.Name] };
@@ -3069,7 +3069,7 @@ function giveDonation(p, td, playerId) {
     const split = allocate(Math.abs(received), method, 0, 0, prices().fees.card);
     const sign = Math.sign(received);
     const note = [String(p.note || "").trim(), td && td.name ? `By ${td.name}` : ""].filter(Boolean).join(". ");
-    addPayment(book || readPayments(), token, party, { Type: sign > 0 ? "donation" : "correction", Method: method, Received: received,
+    addPayment_(book || readPayments_(), token, party, { Type: sign > 0 ? "donation" : "correction", Method: method, Received: received,
       "Card fee": sign * split["Card fee"], Donation: sign * split["Entry fee"], Note: note });
     touch("contacts");
     const gift = money(split["Entry fee"] / 100);
@@ -3092,9 +3092,9 @@ function refund(token, amount, by, td) {
   try {
     const found = findToken(token);
     if (!found) return { error: "No registration matches this." };
-    const { col, rows } = readEntries();
+    const { col, rows } = readEntries_();
     const r = rows[found.index];
-    const book = readPayments();
+    const book = readPayments_();
     const held = ledgerByToken(book)[token] || { entry: 0, rating: 0 };
     const back = cents(amount);
     if (back > held.entry + held.rating) {
@@ -3107,7 +3107,7 @@ function refund(token, amount, by, td) {
       rating += entry - held.entry;
       entry = held.entry;
     }
-    addPayment(book, token, partyOf(r, col), { Type: "refund", Method: method, Received: -back, "Entry fee": -entry, "Rating fee": -rating,
+    addPayment_(book, token, partyOf(r, col), { Type: "refund", Method: method, Received: -back, "Entry fee": -entry, "Rating fee": -rating,
       Note: td && td.name ? `By ${td.name}` : "" });
     clearEntriesCache();
     return { ok: true, message: `${found.name} was refunded $${money(back / 100)} by ${method}.` };
@@ -3123,12 +3123,12 @@ function discount(token, amount, note, td, payPage) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const found = findToken(token, { col, rows });
     if (!found) return { error: "No registration matches this." };
     const r = rows[found.index];
     if (payPage) {
-      const error = tdPaymentEntryError(payPage, r, col, readPayments());
+      const error = tdPaymentEntryError(payPage, r, col, readPayments_());
       if (error) return { error };
       if (String(cents(r[col.Discount])) !== payPage.expected) return { error: "The discount changed. Check the current discount before saving." };
     }
@@ -3161,7 +3161,7 @@ function allocate(received, method, ratingDue, ratingPaid, card) {
  *  their entry and rating fees, never a card fee, to the month, up to its amount. Returns the
  *  credit in dollars. */
 function moveToMonth(sheet, col, rows, nights, month, amount) {
-  const book = readPayments();
+  const book = readPayments_();
   const held = ledgerByToken(book);
   let room = amount === null ? Infinity : cents(amount);
   let total = 0;
@@ -3174,9 +3174,9 @@ function moveToMonth(sheet, col, rows, nights, month, amount) {
     const entry = Math.max(0, Math.min(h.entry, room));
     room -= entry;
     if (!rating && !entry) continue;
-    addPayment(book, r[col.Token], partyOf(r, col), { Type: "credit", "Entry fee": -entry, "Rating fee": -rating,
+    addPayment_(book, r[col.Token], partyOf(r, col), { Type: "credit", "Entry fee": -entry, "Rating fee": -rating,
       Note: `To the whole month, ${month.Token}` });
-    addPayment(book, month.Token, month, { Type: "credit", "Entry fee": entry, "Rating fee": rating,
+    addPayment_(book, month.Token, month, { Type: "credit", "Entry fee": entry, "Rating fee": rating,
       Note: `From ${nightLabel(r[col.Date])}, ${r[col.Token]}` });
     total += rating + entry;
   }
@@ -3187,7 +3187,7 @@ function moveToMonth(sheet, col, rows, nights, month, amount) {
  *  (what credits moved in, or out when negative), and refunded. */
 function ledgerByToken(book) {
   const held = {};
-  const rows = (book || readPayments()).rows;
+  const rows = (book || readPayments_()).rows;
   const reversed = new Set(rows.map((x) => x.Reverses).filter(Boolean));
   for (const x of rows) {
     if (!held[x.Token]) held[x.Token] = { received: 0, entry: 0, rating: 0, card: 0, donation: 0, credit: 0, refunded: 0 };
@@ -3208,7 +3208,7 @@ function ledgerByToken(book) {
  *  while the tournament spreadsheet still has them. */
 function ledgerFor(key) {
   const [event, date] = String(key).split("/");
-  const rows = readPayments().rows.filter((x) => x.Event === event
+  const rows = readPayments_().rows.filter((x) => x.Event === event
     && (x.Date === date || (date.length === 7 && x.Date.startsWith(date + "-"))));
   const total = (field, keep) => money(rows.filter(keep || (() => true)).reduce((n, x) => n + cents(x[field]), 0) / 100);
   const received = Object.fromEntries(METHODS.map((m) => [m, total("Received", (x) => x.Method === m)]));
@@ -3230,13 +3230,13 @@ function ratedGames(key) {
 }
 
 /** The Payments tab as rows keyed by heading. */
-function readPayments() {
-  const { sheet, col, rows } = readTab("Payments", PAYMENT_HEADER);
+function readPayments_() {
+  const { sheet, col, rows } = readTab_("Payments", PAYMENT_HEADER);
   return { sheet, col, rows: rows.map((r) => Object.fromEntries(Object.entries(col).map(([h, i]) => [h, r[i]]))) };
 }
 
 /** Adds a ledger row; amounts are in cents. */
-function addPayment(book, token, party, fields) {
+function addPayment_(book, token, party, fields) {
   const row = { "No.": String(book.rows.length + 1), Recorded: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm"), Token: token,
     Event: party.Event, Date: party.Date, "US Chess ID": party["US Chess ID"], Name: party.Name, Method: "", Reverses: "", Note: "" };
   for (const [h, v] of Object.entries(fields)) row[h] = typeof v === "number" ? money(v / 100) : v;
@@ -3245,7 +3245,7 @@ function addPayment(book, token, party, fields) {
   book.rows.push(row);
   const financial = financeDeskEntry(row);
   if (financial && firebaseUrl()) {
-    try { firebase("put","public/finance/desk-"+row["No."],financial); }
+    try { firebase_("put","public/finance/desk-"+row["No."],financial); }
     catch { console.warn("Finance copy pending historical sync for payment row " + row["No."]); }
   }
 }
@@ -3266,7 +3266,7 @@ function active(status) {
   return status !== "withdrawn" && status !== MOVED && status !== TO_NIGHT;
 }
 
-function findToken(token, { col, rows } = readEntries()) {
+function findToken(token, { col, rows } = readEntries_()) {
   const index = token ? rows.findIndex((r) => r[col.Token] === token) : -1;
   if (index < 0) return null;
   const r = rows[index];
@@ -3433,12 +3433,134 @@ function money(n) {
 }
 
 /** The Entries tab, its columns by heading (so TDs can reorder them), and its rows. */
-function readEntries() {
-  return readTab("Entries", HEADER);
+function readEntries_() {
+  return readTab_("Entries", HEADER);
 }
 
-/** A tab of the registration Sheet, made when it's missing and given any missing headings. */
-function readTab(name, headings) {
+const REGISTRATION_TABLES = {
+  Entries: "entries", Payments: "payments", "Stripe checkout baskets": "baskets", "Stripe card quotes": "quotes",
+  "Stripe test payments": "testPayments", "Stripe review": "review", "Stripe test review": "testReview",
+};
+const REGISTRATION_TABLE_PATH = "registrationData/tables";
+const REGISTRATION_STORAGE = "REGISTRATION_STORAGE";
+let paymentReadTables_ = null;
+
+function registrationInFirebase_() {
+  return PropertiesService.getScriptProperties().getProperty(REGISTRATION_STORAGE) === "firebase";
+}
+
+function readTab_(name, headings) {
+  const key = REGISTRATION_TABLES[name];
+  if (key && registrationInFirebase_()) return registrationTable_(key, headings);
+  return readSheetTab_(name, headings);
+}
+
+/** Materializes the row layout used by registration and checkout. Row keys match the imported row numbers. */
+function registrationTable_(key, required) {
+  const path = `${REGISTRATION_TABLE_PATH}/${key}`;
+  const data = paymentReadTables_ ? paymentReadTables_[key] : firebase_("get", path);
+  if (!data?.headings) throw new Error("Registration database table missing");
+  const headings = JSON.parse(data.headings);
+  if (required.some(heading => !headings.includes(heading))) throw new Error("Registration database headings missing");
+  const col = Object.fromEntries(headings.map((heading, index) => [heading, index]));
+  const stored = Object.entries(data.rows || {}).sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)));
+  const rows = stored.map(([id, row], i) => {
+    if (id !== `r${i + 2}`) throw new Error("Registration database row number missing");
+    return headings.map((_, index) => row[`c${index + 1}`] ?? "");
+  });
+  let lastRow = rows.length + 1;
+  function write(relative, value) {
+    firebase_("patch", "", {
+      [`${path}/rows/${relative}`]: value,
+      "changes/paymentBalances": Utilities.getUuid(),
+    });
+  }
+  // These operations are the subset used by existing registration writers under the script lock.
+  const sheet = {
+    getLastRow: () => lastRow,
+    getMaxRows: () => Infinity,
+    getRange(row, column) {
+      const range = {
+        setNumberFormat: () => range,
+        setValues([values]) {
+          if (row !== lastRow + 1 || column !== 1) throw new Error("Expected to append a registration row");
+          write(`r${row}`, registrationRow_(values));
+          lastRow = row;
+        },
+        setValue: value => write(`r${row}/c${column}`, String(value)),
+      };
+      return range;
+    },
+  };
+  return { sheet, col, rows };
+}
+
+function registrationRow_(values) {
+  return Object.fromEntries(values.map((value, index) => [`c${index + 1}`, String(value ?? "")]));
+}
+
+function registrationMigrationSource_() {
+  const review = ["Session", "Reason", "Recorded", "Snapshot", "Resolution"];
+  const definitions = {
+    Entries: HEADER, Payments: PAYMENT_HEADER, "Stripe checkout baskets": STRIPE_BASKET_HEADERS,
+    "Stripe card quotes": STRIPE_CARD_HEADERS, "Stripe test payments": ["Session", "Intent", "Amount", "Reference", "Kind"],
+    "Stripe review": review, "Stripe test review": review,
+  };
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  return Object.fromEntries(Object.entries(definitions).map(([name, required]) => {
+    const tab = book.getSheetByName(name);
+    if (!tab && name === "Entries") throw new Error("Registration Entries tab missing");
+    const [header, ...rows] = tab?.getDataRange().getDisplayValues() ?? [[]];
+    const labels = header.map(heading => heading.trim());
+    if (new Set(labels.filter(Boolean)).size !== labels.filter(Boolean).length) throw new Error("Duplicate registration heading");
+    const headings = [...new Set([...required, ...labels.filter(Boolean)])];
+    const table = { headings: JSON.stringify(headings), rows: Object.fromEntries(rows.map((row, index) => [
+      `r${index + 2}`, registrationRow_(headings.map(heading => row[labels.indexOf(heading)] ?? "")),
+    ])) };
+    return [REGISTRATION_TABLES[name], table];
+  }));
+}
+
+function previewRegistrationMigration_() {
+  const tables = registrationMigrationSource_();
+  console.log(Object.fromEntries(Object.entries(tables).map(([key, table]) => [key, Object.keys(table.rows).length])));
+}
+
+/** Run from the Apps Script editor on the new deployment version during cutover. */
+function migrateRegistrationToFirebase_() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!firebaseUrl()) throw new Error("Registration migration needs Firebase");
+    if (registrationInFirebase_()) {
+      if (firebase_("get", "registrationData/active") === true) return;
+      const saved = firebase_("get", REGISTRATION_TABLE_PATH);
+      if (Object.values(REGISTRATION_TABLES).some(key => !saved?.[key]?.headings)) throw new Error("Registration database table missing");
+      // The verified database was selected before the previous attempt could notify readers.
+      firebase_("patch", "", { "registrationData/active": true, "changes/paymentBalances": Utilities.getUuid() });
+      return;
+    }
+    const tables = registrationMigrationSource_();
+    firebase_("put", REGISTRATION_TABLE_PATH, tables);
+    const saved = firebase_("get", REGISTRATION_TABLE_PATH);
+    for (const [key, expected] of Object.entries(tables)) {
+      const actual = saved?.[key], rows = actual?.rows || {};
+      if (actual?.headings !== expected.headings || Object.keys(rows).length !== Object.keys(expected.rows).length
+          || Object.entries(expected.rows).some(([id, fields]) => !rows[id] || Object.keys(fields).length !== Object.keys(rows[id]).length
+            || Object.entries(fields).some(([field, value]) => rows[id][field] !== value))) {
+        throw new Error("Registration migration readback failed");
+      }
+    }
+    PropertiesService.getScriptProperties().setProperty(REGISTRATION_STORAGE, "firebase");
+    firebase_("patch", "", { "registrationData/active": true, "changes/paymentBalances": Utilities.getUuid() });
+    console.log("Registration database verified and activated.");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** A tab of the registration spreadsheet, made when it's missing and given any missing headings. */
+function readSheetTab_(name, headings) {
   const book = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = book.getSheetByName(name);
   if (!sheet) {
@@ -3645,7 +3767,7 @@ function tdList(fresh) {
   const cache = CacheService.getScriptCache();
   const kept = !fresh && cache.get("tds");
   if (kept) return JSON.parse(kept);
-  const { col, rows } = readTab("TDs", TD_HEADINGS);
+  const { col, rows } = readTab_("TDs", TD_HEADINGS);
   const list = rows.map((r) => ({ emails: r[col.Email].toLowerCase().split(/[\s,;]+/).filter(Boolean), name: r[col.Name].trim(),
     usChessId: r[col["US Chess ID"]].trim(), role: r[col.Role].trim().toLowerCase() || "td" })).filter((t) => t.emails.length);
   cache.put("tds", JSON.stringify(list), 300);
@@ -3700,15 +3822,15 @@ function trustDevice(device) {
   }
 }
 
-function underLimit() {
+function underLimit(bucket = "posts", limit = POSTS_PER_MINUTE) {
   const cache = CacheService.getScriptCache();
-  const key = "posts:" + Math.floor(Date.now() / 60000);
+  const key = `${bucket}:${Math.floor(Date.now() / 60000)}`;
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const count = Number(cache.get(key) || 0) + 1;
     cache.put(key, String(count), 120);
-    return count <= POSTS_PER_MINUTE;
+    return count <= limit;
   } finally {
     lock.releaseLock();
   }
@@ -3734,7 +3856,7 @@ function stripeConfig() {
 }
 
 function entryPaymentStatus({ col, rows }) {
-  const book = readPayments(), ledger = ledgerByToken(book), payments = new Map();
+  const book = readPayments_(), ledger = ledgerByToken(book), payments = new Map();
   for (const row of book.rows) {
     if (!payments.has(row.Token)) payments.set(row.Token, []);
     payments.get(row.Token).push(row);
@@ -3754,7 +3876,7 @@ function tdPaymentPlayerRows(id, col, rows) {
   return rows.filter(row => row[col["US Chess ID"]] === id).sort((a, b) => b[col.Date].localeCompare(a[col.Date]));
 }
 
-function livePendingPayments(book, baskets = stripeBaskets()) {
+function livePendingPayments(book, baskets = stripeBaskets_()) {
   const pending = stripeCardPendingTokens(book);
   for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
   return pending;
@@ -3790,10 +3912,10 @@ function tdPlayerPayments(p, td) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { col, rows } = readEntries();
+    const { col, rows } = readEntries_();
     const playerRows = tdPaymentPlayerRows(p.id, col, rows);
     if (!playerRows.length) return { ok: true, name: "", entries: [] };
-    const book = readPayments(), ledger = ledgerByToken(book), pending = livePendingPayments(book), events = clubEvents();
+    const book = readPayments_(), ledger = ledgerByToken(book), pending = livePendingPayments(book), events = clubEvents();
     const entries = playerRows.filter(row => row[col.Token] && active(row[col.Status])).map(row => {
       const event = row[col.Event], date = row[col.Date], token = row[col.Token];
       const { balanceCents } = stripeBalance(row, col, book, undefined, ledger);
@@ -3827,7 +3949,7 @@ function paymentPlayers(p) {
   if (raw.length > 80) return { error: "Enter a name or US Chess ID using at most 80 characters." };
   const q = raw.trim().toLowerCase();
   if (q.length < 2) return { ok: true, players: [] };
-  const { col, rows } = readEntries(), latest = new Map();
+  const { col, rows } = readEntries_(), latest = new Map();
   for (const r of rows) {
     const id = r[col["US Chess ID"]];
     if (/^\d{8}$/.test(id) && r[col.Name]) latest.set(id, { id, name: r[col.Name] });
@@ -3839,12 +3961,32 @@ function paymentPlayers(p) {
 }
 
 function paymentBalances(p) {
-  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  if (!underLimit("payment-balances", 120)) return { error: "Too many requests. Try again in a minute." };
   const ids = p.ids ? [...new Set(String(p.ids).split(","))] : [String(p.id || "").trim()];
   if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Enter an eight-digit US Chess ID." };
-  const { col, rows } = readEntries();
-  const book = readPayments();
-  const baskets = stripeBaskets();
+  if (registrationInFirebase_()) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      paymentReadTables_ = firebase_("get", REGISTRATION_TABLE_PATH);
+      if (!paymentReadTables_?.entries || !paymentReadTables_?.payments) throw new Error("Registration database missing");
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  try {
+    const players = readPaymentBalanceSnapshot_(new Set(ids));
+    const balances = ids.map(id => players[id] || { ok: true, id, name: "", currency: "usd", entries: [], totalCents: 0, unknownCount: 0 });
+    return p.ids ? { ok: true, balances } : balances[0];
+  } finally {
+    paymentReadTables_ = null;
+  }
+}
+
+function readPaymentBalanceSnapshot_(ids) {
+  const { col, rows } = readEntries_();
+  const book = readPayments_();
+  const baskets = stripeBaskets_();
   const pending = livePendingPayments(book, baskets);
   let testPending = new Set();
   try {
@@ -3853,20 +3995,25 @@ function paymentBalances(p) {
       for (const token of stripeBasketPendingTokens(baskets, book, false)) testPending.add(token);
     }
   } catch {}
-  const events = clubEvents();
-  const balances = ids.map(id => {
-    const matching = rows.filter(r => r[col["US Chess ID"]] === id && active(r[col.Status]));
-    const entries = matching.map(r => {
-      const event = r[col.Event], date = r[col.Date];
-      return { event, date,
-        name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-        ...stripeBalance(r, col, book), pending: pending.has(r[col.Token]), testPending: testPending.has(r[col.Token]) };
-    }).sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
-    return { ok: true, id, name: matching.length ? matching[0][col.Name] : "", currency: "usd", entries,
-      totalCents: entries.reduce((total, entry) => total + (entry.balanceCents || 0), 0),
-      unknownCount: entries.filter(entry => entry.balanceCents === null).length };
-  });
-  return p.ids ? { ok: true, balances } : balances[0];
+  const events = clubEvents(), ledger = ledgerByToken(book), payments = new Map(), players = {};
+  for (const payment of book.rows) {
+    if (!payments.has(payment.Token)) payments.set(payment.Token, []);
+    payments.get(payment.Token).push(payment);
+  }
+  for (const row of rows) {
+    const id = row[col["US Chess ID"]];
+    if (!/^\d{8}$/.test(id) || (ids && !ids.has(id)) || !active(row[col.Status])) continue;
+    const event = row[col.Event], date = row[col.Date], token = row[col.Token];
+    if (!players[id]) players[id] = { ok: true, id, name: row[col.Name], currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
+    const player = players[id];
+    const balance = stripeBalance(row, col, book, payments.get(token) || [], ledger);
+    player.entries.push({ event, date, name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+      ...balance, pending: pending.has(token), testPending: testPending.has(token) });
+    player.totalCents += balance.balanceCents || 0;
+    if (balance.balanceCents === null) player.unknownCount++;
+  }
+  for (const player of Object.values(players)) player.entries.sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
+  return players;
 }
 
 function stripePaymentLink(p) {
@@ -3876,13 +4023,13 @@ function stripePaymentLink(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const { sheet, col, rows } = readEntries();
+    const { sheet, col, rows } = readEntries_();
     const matches = rows.filter((r) => r[col.Event] === p.event && r[col.Date] === p.date
       && r[col["US Chess ID"]] === String(p.id || "") && active(r[col.Status]));
     if (matches.length !== 1) return { error: "Choose one current registration." };
     const r = matches[0];
     if (r[col["Payment review"]]) return { error: "This payment needs the tournament director's review before another payment." };
-    const balance = stripeBalance(r, col, readPayments());
+    const balance = stripeBalance(r, col, readPayments_());
     const due = balance.balanceCents;
     if (balance.review || due !== config.entry.amount) return { error: "Online payment currently supports an unpaid $17.50 entry. Contact the tournament director for other balances." };
     let reference = r[col["Payment reference"]];
@@ -3896,7 +4043,7 @@ function stripePaymentLink(p) {
 }
 
 function stripeReview(record, reason, test) {
-  const tab = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  const tab = readTab_(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
   if (!tab.rows.some((r) => r[tab.col.Session] === record.sessionId && r[tab.col.Reason] === reason && r[tab.col.Snapshot] === snapshot)) {
     appendText(tab.sheet, tab.col, { Session: record.sessionId, Reason: reason, Recorded: new Date().toISOString(), Snapshot: snapshot, Resolution: "" });
@@ -3904,16 +4051,18 @@ function stripeReview(record, reason, test) {
   return { sessionId: record.sessionId, status: "review" };
 }
 
-function stripeRepairEntry(token, book) {
+function stripeRepairEntry_(token, book) {
   if (!token) return;
-  const { sheet, col, rows } = readEntries();
+  const { sheet, col, rows } = readEntries_();
   const index = rows.findIndex((r) => r[col.Token] === token);
   if (index < 0) return;
   const mine = book.rows.filter((r) => r.Token === token);
   const received = sum(mine, "Received");
   const values = { Paid: received > 0 ? money(received / 100) : "", "Paid on": received > 0 ? mine[mine.length - 1].Recorded : "",
     "Paid by": received > 0 ? [...new Set(mine.filter((r) => cents(r.Received) > 0).map((r) => r.Method).filter(Boolean))].join(", ") : "" };
-  for (const [key, value] of Object.entries(values)) sheet.getRange(index + 2, col[key] + 1).setNumberFormat("@").setValue(value);
+  for (const [key, value] of Object.entries(values)) {
+    if (rows[index][col[key]] !== value) sheet.getRange(index + 2, col[key] + 1).setNumberFormat("@").setValue(value);
+  }
 }
 
 function stripeSync(p) {
@@ -3925,19 +4074,19 @@ function stripeSync(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const results = records.map((record) => stripeImport(record, config));
+    const results = records.map((record) => stripeImport_(record, config));
     if (config.livemode) clearEntriesCache();
     return { ok: true, results };
   } finally { lock.releaseLock(); }
 }
 
-function stripeImport(record, config) {
+function stripeImport_(record, config) {
   const test = !config.livemode;
-  if (record?.checkoutType === "payment_intent_status_v1") return stripeImportCardStatus(record, config);
-  if (record?.checkoutType === "payment_intent_v1") return stripeImportCardPayment(record, config);
+  if (record?.checkoutType === "payment_intent_status_v1") return stripeImportCardStatus_(record, config);
+  if (record?.checkoutType === "payment_intent_v1") return stripeImportCardPayment_(record, config);
   if (!record || !/^cs_[A-Za-z0-9_]+$/.test(record.sessionId || "")) throw new Error("Invalid Stripe session identifier.");
   const review = (reason) => stripeReview(record, reason, test);
-  if (record.checkoutType === "basket_v1") return stripeImportBasket(record, config);
+  if (record.checkoutType === "basket_v1") return stripeImportBasket_(record, config);
   const link = config[record.kind];
   if (!["entry", "donation"].includes(record.kind) || !link || !link.paymentLinkId || record.paymentLinkId !== link.paymentLinkId
       || record.currency !== config.currency || record.livemode !== config.livemode
@@ -3947,11 +4096,11 @@ function stripeImport(record, config) {
       || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
       || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
       || typeof record.disputed !== "boolean") return review("Payment validation failed");
-  const book = readPayments();
+  const book = readPayments_();
   const prior = !test && book.rows.find((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
-  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, record.kind === "donation" ? [{fund:"general",amount:record.amountCents}] : [], config);
+  if (Number.isSafeInteger(record.feeCents)) settleFinance_(record, record.kind === "donation" ? [{fund:"general",amount:record.amountCents}] : [], config);
   const reviewReason = "Refund/dispute: reconcile credit and any moved entries manually";
-  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  const history = readTab_(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   const hasReviewHistory = history && history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === reviewReason);
   if (record.refundCents || record.disputed || hasReviewHistory) {
     {
@@ -3962,7 +4111,7 @@ function stripeImport(record, config) {
           && r[tab.col.Resolution] === "resolved")) return { sessionId: record.sessionId, status: "duplicate" };
     }
     if (prior && prior.Token) {
-      const { sheet, col, rows } = readEntries();
+      const { sheet, col, rows } = readEntries_();
       // Credits can have moved between a month and its nights. Flag the player's
       // entries in this event so a moved original cannot hide the warning.
       rows.forEach((r, index) => {
@@ -3974,15 +4123,15 @@ function stripeImport(record, config) {
     return review("Refund/dispute: reconcile credit and any moved entries manually");
   }
   if (prior) {
-    stripeRepairEntry(prior.Token, book);
-    const { col, rows } = readEntries();
+    stripeRepairEntry_(prior.Token, book);
+    const { col, rows } = readEntries_();
     if (rows.some((r) => r[col.Token] === prior.Token && r[col["Payment review"]])) return review("Payment reconciliation remains open");
     return { sessionId: record.sessionId, status: "duplicate" };
   }
   let token = "", party = { Event: "", Date: Utilities.formatDate(new Date(record.created * 1000), TZ, "yyyy-MM-dd"), "US Chess ID": "", Name: "Anonymous" };
   let split = { Donation: record.amountCents };
   if (record.kind === "entry") {
-    const { col, rows } = readEntries();
+    const { col, rows } = readEntries_();
     const matches = rows.filter((r) => r[col["Payment reference"]] && r[col["Payment reference"]] === record.clientReferenceId);
     if (matches.length !== 1 || !active(matches[0][col.Status])) return review("Missing, ambiguous, withdrawn, or moved registration");
     const r = matches[0];
@@ -3997,24 +4146,24 @@ function stripeImport(record, config) {
     split = { "Rating fee": rating, "Entry fee": record.amountCents - rating };
   }
   if (test) {
-    const tab = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    const tab = readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
     if (record.refundCents || record.disputed) return review("Test refund or dispute");
     if (!tab.rows.some((r) => r[tab.col.Session] === record.sessionId)) appendText(tab.sheet, tab.col,
       { Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId || "", Kind: record.kind });
     return { sessionId: record.sessionId, status: "test" };
   }
-  addPayment(book, token, party, { Type: record.kind === "entry" ? "payment" : "donation", Method: "card", Received: record.amountCents,
+  addPayment_(book, token, party, { Type: record.kind === "entry" ? "payment" : "donation", Method: "card", Received: record.amountCents,
     ...split, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe Payment Link; processing fees absorbed by club" });
-  stripeRepairEntry(token, book);
+  stripeRepairEntry_(token, book);
   return { sessionId: record.sessionId, status: "imported" };
 }
 const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request", "Returned paid"];
 
-function stripeBaskets() { return readTab("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
+function stripeBaskets_() { return readTab_("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
 
 function stripeBasketPendingTokens(tab, book, livemode) {
   const { col, rows } = tab, pending = new Set();
-  const sandbox = livemode ? null : readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+  const sandbox = livemode ? null : readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
   for (const row of rows) {
     const session = row[col.Session];
     if (!session || row[col.Mode] !== String(livemode) || row[col["Returned paid"]] !== "yes") continue;
@@ -4036,7 +4185,7 @@ function returnPaymentCheckout(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const config = stripeConfig(), { rows, col, sheet } = stripeBaskets();
+    const config = stripeConfig(), { rows, col, sheet } = stripeBaskets_();
     const index = rows.findIndex(r => r[col.Reference] === reference && r[col.Mode] === String(config.livemode));
     const basket = rows[index], id = basket?.[col.Session];
     if (!/^cs_(live|test)_[A-Za-z0-9]+$/.test(id || "")) return { error: "Checkout reference could not be verified." };
@@ -4102,9 +4251,9 @@ function createPaymentCheckout(p) {
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
       stage = "basket-storage";
-      const tab = stripeBaskets();
+      const tab = stripeBaskets_();
       stage = "balances";
-      const { rows, col } = readEntries(), book = readPayments(), seen = new Set(), pendingTokens = stripeCardPendingTokens(book);
+      const { rows, col } = readEntries_(), book = readPayments_(), seen = new Set(), pendingTokens = stripeCardPendingTokens(book);
       for (const token of stripeBasketPendingTokens(tab, book, config.livemode)) pendingTokens.add(token);
       const allocations = requested.map((item) => {
         const key = JSON.stringify([item.id, item.event, item.date]);
@@ -4163,7 +4312,7 @@ function createPaymentCheckout(p) {
       stage = "stripe-response";
       const http = response.getResponseCode();
       if (http !== 200) {
-        if (filing && http === 400) firebase("put", financePaths(config.livemode).holds + "/" + reference, null);
+        if (filing && http === 400) firebase_("put", financePaths(config.livemode).holds + "/" + reference, null);
         return stripeCheckoutHttpError(response, http);
       }
       const session = JSON.parse(response.getContentText());
@@ -4181,7 +4330,7 @@ function createPaymentCheckout(p) {
 }
 
 
-function stripeImportBasket(record, config) {
+function stripeImportBasket_(record, config) {
   const test = !config.livemode, review = (reason) => stripeReview(record, reason, test);
   if (!config.dynamicCheckout?.enabled || record.kind !== "entry" || record.paymentLinkId || record.currency !== "usd"
       || record.livemode !== config.livemode || record.status !== "complete" || record.paymentStatus !== "paid"
@@ -4190,25 +4339,28 @@ function stripeImportBasket(record, config) {
       || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
       || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
       || typeof record.disputed !== "boolean") return review("Basket payment validation failed");
-  const tab = stripeBaskets(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
+  const tab = stripeBaskets_(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
   if (matches.length !== 1) return review("Unknown checkout basket");
   const basket = matches[0];
   if (basket[tab.col.Mode] !== String(config.livemode) || Number(basket[tab.col.Amount]) !== record.amountCents
       || (basket[tab.col.Session] && basket[tab.col.Session] !== record.sessionId)) return review("Basket session or amount mismatch");
   const items = JSON.parse(basket[tab.col.Allocations]);
-  const allocations = items.filter(a => !a.fund), gifts = items.filter(a => a.fund), book = readPayments(), { rows, col, sheet } = readEntries();
+  const allocations = items.filter(a => !a.fund), gifts = items.filter(a => a.fund), book = readPayments_(), { rows, col, sheet } = readEntries_();
   if (!validGifts(gifts) || !items.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || items.reduce((n,a) => n+a.amount,0) !== record.amountCents) return review("Invalid basket allocation");
   if (gifts.length && !Number.isSafeInteger(record.feeCents)) {
+    const row = tab.rows.indexOf(basket) + 2;
+    if (!basket[tab.col.Session]) tab.sheet.getRange(row, tab.col.Session + 1).setNumberFormat("@").setValue(record.sessionId);
+    if (basket[tab.col["Returned paid"]] !== "yes") tab.sheet.getRange(row, tab.col["Returned paid"] + 1).setNumberFormat("@").setValue("yes");
     const path = financePaths(config.livemode).journal + "/" + financeKey(record);
-    if (!firebase("get",path)) firebase("put",path,{
+    if (!firebase_("get",path)) firebase_("put",path,{
       date:Utilities.formatDate(new Date(record.created*1000),TZ,"yyyy-MM-dd"),purpose:"Paid, awaiting Stripe processing fee",
       pending:true,lines:items.map(a => ({fund:a.fund || "tournaments",pending:a.amount}))
     });
     return {sessionId:record.sessionId,status:"pending"};
   }
-  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, gifts, config);
+  if (Number.isSafeInteger(record.feeCents)) settleFinance_(record, gifts, config);
   const prior = book.rows.filter((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
-  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  const history = readTab_(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
     const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
     if (history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Snapshot] === snapshot && r[history.col.Resolution] === "resolved")) return { sessionId: record.sessionId, status: "duplicate" };
@@ -4230,18 +4382,18 @@ function stripeImportBasket(record, config) {
   }
   if (prior.some((r) => !allocations.some((a) => a.token === r.Token))) return review("Basket ledger allocation mismatch");
   if (test) {
-    const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    const sandbox = readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
     if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
     return { sessionId: record.sessionId, status: "test" };
   }
   // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
-  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe basket; processing fees absorbed by club" });
-  allocations.forEach((a) => stripeRepairEntry(a.token,book));
+  for (const a of pending) addPayment_(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": record.sessionId, "Stripe intent": record.paymentIntentId, Note: "Stripe basket; processing fees absorbed by club" });
+  allocations.forEach((a) => stripeRepairEntry_(a.token,book));
   return { sessionId: record.sessionId, status: pending.length ? "imported" : "duplicate" };
 }
 
 const STRIPE_CARD_HEADERS = ["Reference", "Mode", "Subtotal", "Card fee", "Amount", "Allocations", "Token", "Funding", "Cover", "Created", "Intent", "Request", "State"];
-function stripeCardQuotes() { return readTab("Stripe card quotes", STRIPE_CARD_HEADERS); }
+function stripeCardQuotes_() { return readTab_("Stripe card quotes", STRIPE_CARD_HEADERS); }
 function stripeCardEnabled(config) {
   return config.enabled && config.dynamicCheckout?.enabled && config.cardProcessing?.enabled
     && (!config.livemode || config.cardProcessing.complianceReady === true);
@@ -4259,7 +4411,7 @@ function stripeCardRequest(path, secret, payload, key, apiVersion = "2026-10-28.
 }
 function stripeCardAllocations(entries, excludeReference, livemode = true) {
   if (!Array.isArray(entries) || !entries.length || entries.length > 50) throw Error("Select between one and 50 entries.");
-  const { rows, col } = readEntries(), book = readPayments(), seen = new Set(), pending = stripeCardPendingTokens(book,excludeReference,livemode);
+  const { rows, col } = readEntries_(), book = readPayments_(), seen = new Set(), pending = stripeCardPendingTokens(book,excludeReference,livemode);
   return entries.map(item => {
     const key = JSON.stringify([item.id,item.event,item.date]);
     if (seen.has(key) || !/^\d{8}$/.test(item.id || "")) throw Error("Invalid or duplicate entry selection.");
@@ -4286,7 +4438,7 @@ function quoteCardPayment(p) {
     if (!/^[A-Za-z0-9_-]{16,100}$/.test(reference) || !/^ctoken_[A-Za-z0-9_]{4,150}$/.test(tokenId) || !["true","false"].includes(p.coverCosts)) return {error:"Invalid card payment request."};
     lock = LockService.getScriptLock(); lock.waitLock(20000);
     const allocations = stripeCardAllocations(JSON.parse(p.entries || "[]"),undefined,config.livemode);
-    const subtotal = allocations.reduce((n,a) => n+a.amount,0), tab = stripeCardQuotes();
+    const subtotal = allocations.reduce((n,a) => n+a.amount,0), tab = stripeCardQuotes_();
     const old = tab.rows.find(row => row[tab.col.Reference] === reference);
     if (old) {
       if (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations) || old[tab.col.Token] !== tokenId || old[tab.col.Cover] !== p.coverCosts) return {error:"Payment selection changed. Review it again."};
@@ -4312,7 +4464,7 @@ function confirmCardPayment(p) {
     const secret = stripeCardSecret(config), reference = String(p.quoteId || "");
     if (!/^[A-Za-z0-9_-]{16,100}$/.test(reference)) return {error:"Invalid payment quote."};
     lock = LockService.getScriptLock(); lock.waitLock(20000);
-    const tab = stripeCardQuotes(), matches = tab.rows.filter(r => r[tab.col.Reference] === reference);
+    const tab = stripeCardQuotes_(), matches = tab.rows.filter(r => r[tab.col.Reference] === reference);
     if (matches.length !== 1) return {error:"Payment quote not found. Reload balances and try again."};
     const row = matches[0], c = tab.col, allocations = JSON.parse(row[c.Allocations]);
     if (row[c.Mode] !== String(config.livemode)) return {error:"Payment mode changed. Reload this page."};
@@ -4351,7 +4503,7 @@ function confirmCardPayment(p) {
   finally { if(lock) lock.releaseLock(); }
 }
 
-function stripeImportCardPayment(input, config) {
+function stripeImportCardPayment_(input, config) {
   if (!input || input.sessionId !== "" || !/^pi_[A-Za-z0-9_]+$/.test(input.paymentIntentId || "")) throw Error("Invalid Stripe intent identifier.");
   const record = {...input, sessionId:input.paymentIntentId};
   const ack = result => ({...result,sessionId:"",paymentIntentId:input.paymentIntentId});
@@ -4363,7 +4515,7 @@ function stripeImportCardPayment(input, config) {
       || !Number.isSafeInteger(record.amountCents) || record.amountCents <= 0
       || !Number.isSafeInteger(record.refundCents) || record.refundCents < 0 || record.refundCents > record.amountCents
       || typeof record.disputed !== "boolean") return review("Basket payment validation failed");
-  const tab = stripeCardQuotes(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
+  const tab = stripeCardQuotes_(), matches = tab.rows.filter((r) => r[tab.col.Reference] === record.clientReferenceId);
   if (matches.length !== 1) return review("Unknown checkout basket");
   const basket = matches[0];
   if (basket[tab.col.Mode] !== String(config.livemode) || Number(basket[tab.col.Amount]) !== record.amountCents
@@ -4373,11 +4525,11 @@ function stripeImportCardPayment(input, config) {
   if (!stripeCardDescriptor(descriptor,record.clientReferenceId,record.amountCents,basket[tab.col.Token])) return review("Invalid confirmed payment request");
   const fee = Number(basket[tab.col["Card fee"]]), subtotal = Number(basket[tab.col.Subtotal]);
   if (!Number.isSafeInteger(fee) || fee < 0 || fee > Math.floor(subtotal*3/100) || subtotal + fee !== record.amountCents || (basket[tab.col.Funding] !== "credit" && basket[tab.col.Cover] !== "true" && fee)) return review("Invalid card fee allocation");
-  const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments(), { rows, col, sheet } = readEntries();
+  const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments_(), { rows, col, sheet } = readEntries_();
   if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || allocations.reduce((n,a) => n+a.amount,0) !== subtotal) return review("Invalid basket allocation");
   const prior = book.rows.filter((r) => r["Stripe intent"] === record.paymentIntentId);
-  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, [], config);
-  const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
+  if (Number.isSafeInteger(record.feeCents)) settleFinance_(record, [], config);
+  const history = readTab_(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
     const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
     if (history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Snapshot] === snapshot && r[history.col.Resolution] === "resolved")) return ack({status:"duplicate"});
@@ -4399,13 +4551,13 @@ function stripeImportCardPayment(input, config) {
   }
   if (prior.some((r) => !allocations.some((a) => a.token === r.Token))) return review("Basket ledger allocation mismatch");
   if (test) {
-    const sandbox = readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    const sandbox = readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
     if (!sandbox.rows.some((r) => r[sandbox.col.Session] === record.sessionId || r[sandbox.col.Intent] === record.paymentIntentId)) appendText(sandbox.sheet,sandbox.col,{ Session: record.sessionId, Intent: record.paymentIntentId, Amount: String(record.amountCents), Reference: record.clientReferenceId, Kind: "basket" });
     return ack({status:"test"});
   }
   // Validate every pending allocation before appending any. A retry skips durable rows and repairs summaries.
-  for (const a of pending) addPayment(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: fee ? "Stripe card payment; disclosed Card fee" : "Stripe card payment" });
-  allocations.forEach((a) => stripeRepairEntry(a.token,book));
+  for (const a of pending) addPayment_(book,a.token,a.party,{ Type: "payment", Method: "card", Received: a.amount + (a === allocations[0] ? fee : 0), "Card fee": a === allocations[0] ? fee : 0, "Rating fee": a.rating, "Entry fee": a.amount-a.rating, "Stripe session": "", "Stripe intent": record.paymentIntentId, Note: fee ? "Stripe card payment; disclosed Card fee" : "Stripe card payment" });
+  allocations.forEach((a) => stripeRepairEntry_(a.token,book));
   return ack({status:pending.length ? "imported" : "duplicate"});
 }
 
@@ -4420,7 +4572,7 @@ function stripeCardDescriptor(request,reference,amount,token) {
 }
 
 function stripeCardCheckPending(tab,reference,allocations,secret) {
-  const c=tab.col, tokens=new Set(allocations.map(a=>a.token)), book=readPayments();
+  const c=tab.col, tokens=new Set(allocations.map(a=>a.token)), book=readPayments_();
   for (const row of tab.rows) {
     if (row[c.Reference] === reference || !row[c.Request] || row[c.Mode] !== tab.rows.find(r=>r[c.Reference]===reference)?.[c.Mode]) continue;
     const other=JSON.parse(row[c.Allocations]);
@@ -4428,7 +4580,7 @@ function stripeCardCheckPending(tab,reference,allocations,secret) {
     let id=row[c.Intent];
     if (id && other.every(a=>book.rows.some(r=>r["Stripe intent"]===id && r.Token===a.token))) continue;
     if (id && row[c.Mode] === "false") {
-      const test=readTab("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
+      const test=readTab_("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
       if (test.rows.some(r=>r[test.col.Intent]===id)) continue;
     }
     if (!id) {
@@ -4443,8 +4595,8 @@ function stripeCardCheckPending(tab,reference,allocations,secret) {
 
 /** Confirmed requests reserve their entries until matching-mode reconciliation or a verified decline. */
 function stripeCardPendingTokens(book,excludeReference,livemode = true) {
-  const pending = new Set(), tab = stripeCardQuotes(), c = tab.col;
-  const sandbox = livemode ? null : readTab("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
+  const pending = new Set(), tab = stripeCardQuotes_(), c = tab.col;
+  const sandbox = livemode ? null : readTab_("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
   for (const row of tab.rows) {
     if (row[c.Mode] !== String(livemode) || row[c.Reference] === excludeReference || !row[c.Request]
         || ["requires_payment_method","canceled"].includes(row[c.State])) continue;
@@ -4464,7 +4616,7 @@ function stripeCardPendingTokens(book,excludeReference,livemode = true) {
   return pending;
 }
 
-function stripeImportCardStatus(record,config) {
+function stripeImportCardStatus_(record,config) {
   const ack = status => ({sessionId:"",paymentIntentId:record.paymentIntentId,status});
   const review = reason => {stripeReview({...record,sessionId:record.paymentIntentId},reason,!config.livemode);return ack("review");};
   const states = ["processing","requires_action","requires_confirmation","requires_capture","requires_payment_method","canceled"];
@@ -4472,7 +4624,7 @@ function stripeImportCardStatus(record,config) {
       || !states.includes(record.intentStatus) || record.currency !== "usd" || record.livemode !== config.livemode
       || !Number.isSafeInteger(record.amountCents) || record.amountCents < 50 || !Number.isSafeInteger(record.created)
       || record.created <= 0 || record.created > Math.floor(Date.now()/1000)+300) return review("Invalid payment intent lifecycle record");
-  const tab=stripeCardQuotes(), c=tab.col, matches=tab.rows.filter(r=>r[c.Reference]===record.clientReferenceId);
+  const tab=stripeCardQuotes_(), c=tab.col, matches=tab.rows.filter(r=>r[c.Reference]===record.clientReferenceId);
   if (matches.length !== 1) return review("Unknown card payment quote");
   const row=matches[0];let request;
   try {request=JSON.parse(row[c.Request]);} catch {return review("Missing confirmed payment request");}
@@ -4500,13 +4652,13 @@ function financePaths(live) {
 
 // All journal and reservation writers share the Apps Script lock with checkout.
 function filingAvailable(paths) {
-  const journal = firebase("get", paths.journal) || {}, holds = firebase("get", paths.holds) || {};
+  const journal = firebase_("get", paths.journal) || {}, holds = firebase_("get", paths.holds) || {};
   const raised = Object.values(journal).flatMap(tx => tx.lines).filter(l => l.fund === "filing").reduce((n,l) => n + Math.max(0,l.raised ?? l.donation ?? 0), 0);
   return 27500 - raised - Object.values(holds).reduce((n,h) => n + h.amount, 0);
 }
 
 function reserveFiling(reference, gift, config, tab, reject) {
-  const paths = financePaths(config.livemode), holds = firebase("get", paths.holds) || {};
+  const paths = financePaths(config.livemode), holds = firebase_("get", paths.holds) || {};
   if (holds[reference]) {
     if (Date.now()/1000 - holds[reference].created >= 86400) reject("Checkout expired. Reload the page to start again.");
     return;
@@ -4530,12 +4682,12 @@ function reserveFiling(reference, gift, config, tab, reject) {
       sessionId = found?.id;
     }
     if (!sessionId || stripeCardRequest("checkout/sessions/" + sessionId, secret).status === "expired")
-      firebase("put", paths.holds + "/" + key, null);
+      firebase_("put", paths.holds + "/" + key, null);
   }
   const available = filingAvailable(paths);
   if (available <= 0 || (!gift.overflow && gift.amount > available))
     reject("Filing fund capacity available for checkout: $" + (Math.max(0, available)/100).toFixed(2) + ". Please adjust your donation.");
-  firebase("put", paths.holds + "/" + reference, {amount:Math.min(available, gift.amount),created:Math.floor(Date.now()/1000)});
+  firebase_("put", paths.holds + "/" + reference, {amount:Math.min(available, gift.amount),created:Math.floor(Date.now()/1000)});
 }
 
 function financeLines(gifts, gross, fee, reserved) {
@@ -4560,15 +4712,15 @@ function financeKey(record) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,record.paymentIntentId).map(b => ("0"+(b&255).toString(16)).slice(-2)).join("");
 }
 
-function settleFinance(record,gifts,config) {
+function settleFinance_(record,gifts,config) {
   const paths = financePaths(config.livemode);
   const path = paths.journal + "/" + financeKey(record);
-  let original = firebase("get", path);
+  let original = firebase_("get", path);
   const patch = {};
   if (!original || original.pending) {
     const hold = paths.holds + "/" + record.clientReferenceId;
     const filing = gifts.some(g => g.fund === "filing");
-    const reserved = filing ? firebase("get", hold)?.amount : 0;
+    const reserved = filing ? firebase_("get", hold)?.amount : 0;
     if (filing && !(reserved > 0)) throw Error("Missing filing reservation");
     original = {date:Utilities.formatDate(new Date(record.created * 1000),TZ,"yyyy-MM-dd"), purpose:"Stripe payment", lines:financeLines(gifts,record.amountCents,record.feeCents,reserved)};
     patch[path] = original;
@@ -4584,7 +4736,7 @@ function settleFinance(record,gifts,config) {
     patch[path + "-" + adj.id] = {date:Utilities.formatDate(new Date(adj.created*1000),TZ,"yyyy-MM-dd"),purpose:adj.purpose,lines:[line]};
   }
   if (!Object.keys(patch).length) return;
-  firebase("patch","",patch);
+  firebase_("patch","",patch);
 }
 
 function financePost(p) {
@@ -4611,12 +4763,12 @@ function financePost(p) {
       lines.push(credit);
     }
     const entry = {date:p.date, purpose:p.purpose.trim(), lines};
-    const previous = firebase("get",path);
+    const previous = firebase_("get",path);
     if (previous) return previous.date === entry.date && previous.purpose === entry.purpose && previous.lines.length === lines.length && lines.every((l,i) => Object.keys({...previous.lines[i],...l}).every(k => previous.lines[i][k] === l[k])) ? {ok:true} : {error:"Request already recorded with different details."};
     if (lines.some(l => l.fund === "filing" && (l.gross > 0 || l.transfer > 0) && !l.donation))
       return {error:"Record incoming filing contributions as donations so they count toward the cap."};
     if (lines.some(l => l.fund === "filing" && l.donation) && amount > filingAvailable(paths)) return {error:"Amount exceeds available filing fund capacity."};
-    firebase("put",path,entry);
+    firebase_("put",path,entry);
     return {ok:true};
   } finally { lock.releaseLock(); }
 }
@@ -4641,7 +4793,7 @@ function financeHistory() {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const patch = {};
-    for (const row of readPayments().rows) {
+    for (const row of readPayments_().rows) {
       const entry = financeDeskEntry(row);
       if (entry) patch["desk-"+row["No."]] = entry;
     }
@@ -4660,14 +4812,14 @@ function financeHistory() {
       const day = date instanceof Date ? Utilities.formatDate(date,TZ,"yyyy-MM-dd") : String(date);
       patch["peak-paid-"+index] = {date:day,purpose:"Payment to Peak",lines:[{fund:"tournaments",spent:cents(amount),owed:-cents(amount)}]};
     });
-    const oldKeys = Object.keys(firebase("get","public/finance",undefined,"shallow=true") || {});
+    const oldKeys = Object.keys(firebase_("get","public/finance",undefined,"shallow=true") || {});
     for (const key of oldKeys) if (key.startsWith("peak-") && !(key in patch)) patch[key] = null;
     const obligations = [
       ["2026-10-08","US Chess affiliation",4000],["2026-10-11","Colorado incorporation",5000],
       ["2026-11-01","Google services",311],["2026-11-02","October US Chess rating fees",525]
     ];
     for (const [date,purpose,owed] of obligations) patch["owed-"+date] = {date,purpose:purpose+" paid by Jared Hall",lines:[{fund:"general",owed}]};
-    firebase("patch","public/finance",patch);
+    firebase_("patch","public/finance",patch);
     return {ok:true,count:Object.keys(patch).length};
   } finally { lock.releaseLock(); }
 }

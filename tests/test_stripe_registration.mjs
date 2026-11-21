@@ -11,10 +11,10 @@ function fixture() {
   const col = Object.fromEntries(Object.keys(entry).concat(['Paid on', 'Paid by', 'Payment review']).map((k, i) => [k, i]));
   let failRepair = false;
   const book = { rows: [] }, tabs = {}, sheets = {};
-  ctx.readEntries = () => ({ col, rows: [Object.keys(col).map(k => entry[k] || '')], sheet: { getRange: (_r, c) => { const range = { setNumberFormat: () => range, setValue: v => { if (failRepair) { failRepair = false; throw Error('interrupted'); } entry[Object.keys(col)[c-1]] = v; } }; return range; } } });
-  ctx.readPayments = () => book;
-  ctx.addPayment = (_book, token, party, fields) => book.rows.push({ 'No.': String(book.rows.length+1), Token: token, ...party, Recorded: 'now', ...Object.fromEntries(Object.entries(fields).map(([k,v]) => [k, typeof v === 'number' ? String(v/100) : v])) });
-  ctx.readTab = (name, headers) => {
+  ctx.readEntries_ = () => ({ col, rows: [Object.keys(col).map(k => entry[k] || '')], sheet: { getRange: (_r, c) => { const range = { setNumberFormat: () => range, setValue: v => { if (failRepair) { failRepair = false; throw Error('interrupted'); } entry[Object.keys(col)[c-1]] = v; } }; return range; } } });
+  ctx.readPayments_ = () => book;
+  ctx.addPayment_ = (_book, token, party, fields) => book.rows.push({ 'No.': String(book.rows.length+1), Token: token, ...party, Recorded: 'now', ...Object.fromEntries(Object.entries(fields).map(([k,v]) => [k, typeof v === 'number' ? String(v/100) : v])) });
+  ctx.readTab_ = (name, headers) => {
     tabs[name] ||= [];
     sheets[name] ||= { push: (...rows) => tabs[name].push(...rows), getRange: (r,c) => {
       const range = { setNumberFormat: () => range, setValue: v => { tabs[name][r-2][c-1] = String(v); return range; } };
@@ -27,6 +27,7 @@ function fixture() {
   ctx.underLimit = () => true;
   ctx.Utilities = { formatDate: (date) => date.toISOString().slice(0,10) };
   ctx.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+  ctx.firebaseUrl = () => '';
   ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'a'.repeat(32) }) };
   ctx.clearEntriesCache = () => {};
   const record = { created: 1700000000, sessionId: 'cs_test_123', paymentIntentId: 'pi_123', paymentLinkId: 'plink_entry', clientReferenceId: 'payment-reference', amountCents: 1750, currency: 'usd', livemode: true, kind: 'entry', refundCents: 0, disputed: false, paymentStatus: 'paid', status: 'complete', receiptUrl: 'https://pay.stripe.com/receipts/payment/test_receipt' };
@@ -44,26 +45,26 @@ test('guest link targets payment reference and discloses no withdrawal token or 
 
 test('gross $17.50 credits full entry, rating first, exactly once', () => {
   const f = fixture();
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'imported');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'imported');
   assert.equal(f.book.rows[0]['Entry fee'],'15');
   assert.equal(f.book.rows[0]['Rating fee'],'2.5');
   assert.equal(f.entry.Paid,'17.50');
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'duplicate');
   assert.equal(f.book.rows.length,1);
 });
 
 test('Stripe sync does not send a duplicate president receipt email', () => {
   const f = fixture(), emails = [];
   f.ctx.MailApp = { sendEmail: message => emails.push(message) };
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'imported');
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'imported');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'duplicate');
   assert.equal(emails.length,0);
 });
 test('retry repairs entry after durable ledger append and interrupted summary update', () => {
   const f = fixture(); f.interrupt();
-  assert.throws(() => f.ctx.stripeImport(f.record,f.config), /interrupted/);
+  assert.throws(() => f.ctx.stripeImport_(f.record,f.config), /interrupted/);
   assert.equal(f.book.rows.length,1);
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'duplicate');
   assert.equal(f.entry.Paid,'17.50');
   assert.equal(f.book.rows.length,1);
 });
@@ -71,27 +72,27 @@ test('retry repairs entry after durable ledger append and interrupted summary up
 test('invalid, unpaid, wrong mode/link/reference, and overpaid records never credit', () => {
   for (const patch of [{paymentStatus:'unpaid'}, {livemode:false}, {paymentLinkId:'plink_other'}, {clientReferenceId:'missing'}, {amountCents:1800}, {currency:'eur'}, {disputed:true}]) {
     const f=fixture();
-    assert.equal(f.ctx.stripeImport({...f.record,...patch},f.config).status,'review');
+    assert.equal(f.ctx.stripeImport_({...f.record,...patch},f.config).status,'review');
     assert.equal(f.book.rows.length,0);
   }
   const f=fixture(); f.entry.Discount='5';
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'review');
 });
 
 test('test payments and refunds stay isolated from real ledger', () => {
   const f=fixture(); f.config.livemode=false; f.record.livemode=false;
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'test');
-  f.ctx.stripeImport(f.record,f.config);
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'test');
+  f.ctx.stripeImport_(f.record,f.config);
   assert.equal(f.tabs['Stripe test payments'].length,1);
-  assert.equal(f.ctx.stripeImport({...f.record,refundCents:100},f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_({...f.record,refundCents:100},f.config).status,'review');
   assert.equal(f.book.rows.length,0);
   assert.equal(f.entry.Paid,'');
 });
 
 test('refund after import preserves financial facts and flags reconciliation', () => {
-  const f=fixture(); f.ctx.stripeImport(f.record,f.config);
+  const f=fixture(); f.ctx.stripeImport_(f.record,f.config);
   const refunded={...f.record,refundCents:100};
-  f.ctx.stripeImport(refunded,f.config); f.ctx.stripeImport(refunded,f.config);
+  f.ctx.stripeImport_(refunded,f.config); f.ctx.stripeImport_(refunded,f.config);
   assert.equal(f.book.rows.length,1);
   assert.equal(f.entry.Paid,'17.50');
   assert.match(f.entry['Payment review'], /reconciliation/);
@@ -100,7 +101,7 @@ test('refund after import preserves financial facts and flags reconciliation', (
 
 test('donations do not create named contacts or player credit', () => {
   const f=fixture();
-  f.ctx.stripeImport({...f.record,kind:'donation',paymentLinkId:'plink_donation',clientReferenceId:''},f.config);
+  f.ctx.stripeImport_({...f.record,kind:'donation',paymentLinkId:'plink_donation',clientReferenceId:''},f.config);
   assert.equal(f.book.rows[0].Name,'Anonymous');
   assert.equal(f.book.rows[0].Token,'');
   assert.equal(f.book.rows[0].Donation,'17.5');
@@ -116,39 +117,39 @@ test('dedicated authentication is required before config or ledger access', () =
 test('test mode exercises reference and amount validation without accepting bad fixtures', () => {
   for (const patch of [{clientReferenceId:'unknown'}, {amountCents:2000}]) {
     const f=fixture(); f.config.livemode=false;
-    assert.equal(f.ctx.stripeImport({...f.record,livemode:false,...patch},f.config).status,'review');
+    assert.equal(f.ctx.stripeImport_({...f.record,livemode:false,...patch},f.config).status,'review');
     assert.equal(f.book.rows.length,0);
     assert.equal(f.tabs['Stripe test payments'],undefined);
   }
 });
 
 test('a second payer cannot overcredit the same entry', () => {
-  const f=fixture(); f.ctx.stripeImport(f.record,f.config);
-  assert.equal(f.ctx.stripeImport({...f.record,sessionId:'cs_second',paymentIntentId:'pi_second'},f.config).status,'review');
+  const f=fixture(); f.ctx.stripeImport_(f.record,f.config);
+  assert.equal(f.ctx.stripeImport_({...f.record,sessionId:'cs_second',paymentIntentId:'pi_second'},f.config).status,'review');
   assert.equal(f.book.rows.length,1);
 });
 
 test('resolved refund snapshots stay resolved and changed refunds or disputes reopen review', () => {
-  const f=fixture(); f.ctx.stripeImport(f.record,f.config);
+  const f=fixture(); f.ctx.stripeImport_(f.record,f.config);
   const refunded={...f.record,refundCents:100};
-  f.ctx.stripeImport(refunded,f.config);
+  f.ctx.stripeImport_(refunded,f.config);
   f.tabs['Stripe review'][0][4]='resolved';
   f.entry['Payment review']='';
-  assert.equal(f.ctx.stripeImport(refunded,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(refunded,f.config).status,'duplicate');
   assert.equal(f.entry['Payment review'],'');
-  assert.equal(f.ctx.stripeImport({...refunded,refundCents:200},f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_({...refunded,refundCents:200},f.config).status,'review');
   assert.equal(f.tabs['Stripe review'].length,2);
   f.tabs['Stripe review'][1][4]='resolved';
-  assert.equal(f.ctx.stripeImport({...refunded,refundCents:200,disputed:true},f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_({...refunded,refundCents:200,disputed:true},f.config).status,'review');
   assert.equal(f.tabs['Stripe review'].length,3);
   assert.equal(f.book.rows.length,1);
 });
 
 test('a closed dispute needs its own review even after the open dispute was resolved', () => {
-  const f=fixture(); f.ctx.stripeImport(f.record,f.config);
-  f.ctx.stripeImport({...f.record,disputed:true},f.config);
+  const f=fixture(); f.ctx.stripeImport_(f.record,f.config);
+  f.ctx.stripeImport_({...f.record,disputed:true},f.config);
   f.tabs['Stripe review'][0][4]='resolved'; f.entry['Payment review']='';
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'review');
   assert.equal(f.tabs['Stripe review'].length,2);
 });
 
@@ -156,22 +157,22 @@ test('refunded entries cannot be paid again and delayed donations retain payment
   const f=fixture();
   f.book.rows.push({'No.':'1',Token:f.entry.Token,Type:'refund',Received:'-17.50','Entry fee':'0','Rating fee':'0'});
   assert.ok(f.ctx.stripePaymentLink({event:'chess',date:'2026-12-01',id:'12345678'}).error);
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'review');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'review');
   const donation=fixture();
-  donation.ctx.stripeImport({...donation.record,kind:'donation',paymentLinkId:'plink_donation'},donation.config);
+  donation.ctx.stripeImport_({...donation.record,kind:'donation',paymentLinkId:'plink_donation'},donation.config);
   assert.equal(donation.book.rows[0].Date,'2023-11-14');
-  assert.equal(donation.ctx.stripeImport({...donation.record,created:0},donation.config).status,'review');
+  assert.equal(donation.ctx.stripeImport_({...donation.record,created:0},donation.config).status,'review');
 });
 
 test('resolved reversals before import and in test mode skip without credit', () => {
   for (const live of [true,false]) {
     const f=fixture(); f.config.livemode=live;
     const reversed={...f.record,livemode:live,refundCents:1750};
-    assert.equal(f.ctx.stripeImport(reversed,f.config).status,'review');
+    assert.equal(f.ctx.stripeImport_(reversed,f.config).status,'review');
     f.tabs[live ? 'Stripe review' : 'Stripe test review'][0][4]='resolved';
-    assert.equal(f.ctx.stripeImport(reversed,f.config).status,'duplicate');
+    assert.equal(f.ctx.stripeImport_(reversed,f.config).status,'duplicate');
     assert.equal(f.book.rows.length,0);
-    assert.equal(f.ctx.stripeImport({...reversed,disputed:true},f.config).status,'review');
+    assert.equal(f.ctx.stripeImport_({...reversed,disputed:true},f.config).status,'review');
   }
 });
 
@@ -188,7 +189,7 @@ test('public balance lookup includes all active dates, credits, refunds, unknown
     {...f.entry,Token:'other','US Chess ID':'87654321'},
   ];
   const keys=[...new Set(people.flatMap(Object.keys))];
-  f.ctx.readEntries=()=>({col:Object.fromEntries(keys.map((k,i)=>[k,i])),rows:people.map(p=>keys.map(k=>p[k]||''))});
+  f.ctx.readEntries_=()=>({col:Object.fromEntries(keys.map((k,i)=>[k,i])),rows:people.map(p=>keys.map(k=>p[k]||''))});
   f.ctx.clubEvents=()=>({'month/2027-01':{name:'January Club Nights'}});
   f.ctx.stripeConfig=()=>{throw Error('disabled configuration must not affect lookup');};
   f.book.rows.push(
@@ -213,7 +214,7 @@ test('public balance lookup includes all active dates, credits, refunds, unknown
 });
 
 test('balance lookup rejects malformed IDs and rate limits before reading private sheets', () => {
-  const f=fixture();f.ctx.readEntries=()=>{throw Error('must not read');};
+  const f=fixture();f.ctx.readEntries_=()=>{throw Error('must not read');};
   for(const id of ['123','1234567x','123456789','']) assert.ok(f.ctx.paymentBalances({id}).error);
   f.ctx.underLimit=()=>false;
   assert.ok(f.ctx.paymentBalances({id:'12345678'}).error);
@@ -227,7 +228,7 @@ test('legacy paid totals without ledger and nonfinite amounts cannot become fres
     assert.equal(result.entries[0].review,true);
     assert.equal(result.totalCents,0);
     assert.ok(f.ctx.stripePaymentLink({event:'chess',date:'2026-12-01',id:'12345678'}).error);
-    assert.equal(f.ctx.stripeImport(f.record,f.config).status,'review');
+    assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'review');
     assert.equal(f.book.rows.length,0);
   }
   const f=fixture();f.ctx.clubEvents=()=>({});
@@ -240,8 +241,8 @@ function basketFixture(testMode = false) {
   f.config.livemode = !testMode;
   const second = { ...f.entry, Token: 'second-token', Name: 'Second', 'US Chess ID': '87654321', Amount: '12.50', 'Rating fee': '0' };
   const entries = [f.entry, second];
-  const keys = Object.keys(f.ctx.readEntries().col), col = Object.fromEntries(keys.map((k,i) => [k,i]));
-  f.ctx.readEntries = () => ({ col, rows: entries.map(e => keys.map(k => e[k] || '')), sheet: { getRange: (r,c) => { const range = { setNumberFormat: () => range, setValue: v => { entries[r-2][keys[c-1]] = v; } }; return range; } } });
+  const keys = Object.keys(f.ctx.readEntries_().col), col = Object.fromEntries(keys.map((k,i) => [k,i]));
+  f.ctx.readEntries_ = () => ({ col, rows: entries.map(e => keys.map(k => e[k] || '')), sheet: { getRange: (r,c) => { const range = { setNumberFormat: () => range, setValue: v => { entries[r-2][keys[c-1]] = v; } }; return range; } } });
   const allocations = entries.map(e => ({ token: e.Token, party: Object.fromEntries(['Event','Date','US Chess ID','Name'].map(k => [k,e[k]])), amount: Math.round(Number(e.Amount)*100), rating: Math.round(Number(e['Rating fee'])*100) }));
   f.tabs['Stripe checkout baskets'] = [['basket-ref',String(!testMode),'3000',JSON.stringify(allocations),'cs_test_123','']];
   f.record = { ...f.record, checkoutType: 'basket_v1', paymentLinkId: '', clientReferenceId: 'basket-ref', amountCents: 3000, livemode: !testMode };
@@ -250,9 +251,9 @@ function basketFixture(testMode = false) {
 
 test('one basket payment credits exact separate player allocations once', () => {
   const f = basketFixture();
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'imported');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'imported');
   assert.deepEqual(f.book.rows.map(r => r.Received),['17.5','12.5']);
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'duplicate');
   assert.equal(f.book.rows.length,2);
   assert.equal(f.second.Paid,'12.50');
 });
@@ -285,41 +286,41 @@ test('hosted return verifies the exact basket and holds its entries until sync p
     assert.ok(balances().every(entry => entry[pending]));
     assert.equal(f.book.rows.length, 0);
     assert.match(f.ctx.createPaymentCheckout({ requestId: 'other_abcdefghijklmnop', entries: JSON.stringify([{ id: '12345678', event: 'chess', date: '2026-12-01' }]) }).error, /pending verification/);
-    assert.equal(f.ctx.stripeImport(f.record, f.config).status, livemode ? 'imported' : 'test');
+    assert.equal(f.ctx.stripeImport_(f.record, f.config).status, livemode ? 'imported' : 'test');
     assert.ok(balances().every(entry => !entry[pending] && (entry.balanceCents === 0) === livemode));
   }
 });
 
 test('basket validates every balance before any credit and rejects wrong amounts or sessions', () => {
   for (const patch of [{amountCents:2999}, {sessionId:'cs_other'}, {clientReferenceId:'unknown'}, {livemode:false}, {refundCents:100}]) {
-    const f=basketFixture(); assert.equal(f.ctx.stripeImport({...f.record,...patch},f.config).status,'review'); assert.equal(f.book.rows.length,0);
+    const f=basketFixture(); assert.equal(f.ctx.stripeImport_({...f.record,...patch},f.config).status,'review'); assert.equal(f.book.rows.length,0);
   }
   const f=basketFixture(); f.second.Discount='1';
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'review'); assert.equal(f.book.rows.length,0);
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'review'); assert.equal(f.book.rows.length,0);
 });
 
 test('basket resumes after first durable allocation without duplicating it', () => {
-  const f=basketFixture(), append=f.ctx.addPayment; let count=0;
-  f.ctx.addPayment=(...args) => { if (++count===2) throw Error('interrupted append'); return append(...args); };
-  assert.throws(() => f.ctx.stripeImport(f.record,f.config),/interrupted append/);
+  const f=basketFixture(), append=f.ctx.addPayment_; let count=0;
+  f.ctx.addPayment_=(...args) => { if (++count===2) throw Error('interrupted append'); return append(...args); };
+  assert.throws(() => f.ctx.stripeImport_(f.record,f.config),/interrupted append/);
   assert.equal(f.book.rows.length,1);
-  f.ctx.addPayment=append;
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'imported');
+  f.ctx.addPayment_=append;
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'imported');
   assert.equal(f.book.rows.length,2);
   assert.equal(f.entry.Paid,'17.50'); assert.equal(f.second.Paid,'12.50');
 });
 
 test('sandbox combined payment is isolated and repeated sync is idempotent', () => {
   const f=basketFixture(true);
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'test');
-  assert.equal(f.ctx.stripeImport(f.record,f.config).status,'test');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'test');
+  assert.equal(f.ctx.stripeImport_(f.record,f.config).status,'test');
   assert.equal(f.tabs['Stripe test payments'].length,1);
   assert.equal(f.book.rows.length,0); assert.equal(f.entry.Paid,''); assert.equal(f.second.Paid,'');
 });
 
 test('basket refund flags every affected player without changing ledger credit', () => {
-  const f=basketFixture(); f.ctx.stripeImport(f.record,f.config);
-  assert.equal(f.ctx.stripeImport({...f.record,refundCents:100},f.config).status,'review');
+  const f=basketFixture(); f.ctx.stripeImport_(f.record,f.config);
+  assert.equal(f.ctx.stripeImport_({...f.record,refundCents:100},f.config).status,'review');
   assert.match(f.entry['Payment review'],/reconciliation/); assert.match(f.second['Payment review'],/reconciliation/);
   assert.equal(f.book.rows.length,2);
 });
@@ -328,7 +329,7 @@ test('basket creation recalculates fees, sends only opaque reference and reuses 
   const f=basketFixture(true), rows=[]; let calls=0, sent;
   const headers=['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'], col=Object.fromEntries(headers.map((h,i)=>[h,i]));
   const sheet={getRange:(r,c)=>{const range={setNumberFormat:()=>range,setValue:v=>{rows[r-2][c-1]=v;}};return range;}};
-  f.ctx.stripeBaskets=()=>({sheet,col,rows:rows.map(r=>[...r])});
+  f.ctx.stripeBaskets_=()=>({sheet,col,rows:rows.map(r=>[...r])});
   const append=f.ctx.appendText;
   f.ctx.appendText=(target,cols,row)=>target===sheet?rows.push(headers.map(h=>row[h]||'')):append(target,cols,row);
   f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=> 'sk_test_fixture'})};
@@ -356,9 +357,9 @@ test('basket creation refuses mode mismatch and duplicate selections before crea
 function paymentSearchFixture(people) {
   const f = fixture();
   const keys = [...new Set(people.flatMap(Object.keys))];
-  f.ctx.readEntries = () => ({ col: Object.fromEntries(keys.map((key, i) => [key, i])),
+  f.ctx.readEntries_ = () => ({ col: Object.fromEntries(keys.map((key, i) => [key, i])),
     rows: people.map(person => keys.map(key => person[key] || '')) });
-  for (const helper of ['search', 'lookup', 'contactFor', 'knownPlayer', 'readPayments']) {
+  for (const helper of ['search', 'lookup', 'contactFor', 'knownPlayer', 'readPayments_']) {
     f.ctx[helper] = () => { throw Error('public player search must not call ' + helper); };
   }
   f.ctx.UrlFetchApp = { fetch() { throw Error('public player search must not call US Chess'); },
@@ -397,7 +398,7 @@ test('payment player search uses literal name words and numeric ID prefixes', ()
 
 test('payment player search validates query and rate limit before reading registration rows', () => {
   const f = fixture();
-  f.ctx.readEntries = () => { throw Error('must reject before reading'); };
+  f.ctx.readEntries_ = () => { throw Error('must reject before reading'); };
   for (const q of ['', 'a', '  a  ']) assert.deepEqual(plain(f.ctx.paymentPlayers({ q })), { ok: true, players: [] });
   assert.ok(f.ctx.paymentPlayers({ q: 'a'.repeat(81) }).error);
   f.ctx.underLimit = () => false;
@@ -421,7 +422,7 @@ test('checkout returns safe diagnostics for Stripe permission, HTTP and transpor
     f.ctx.console = { log: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) };
     f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_test_PRIVATEKEY' }) };
     const headers = ['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'];
-    f.ctx.stripeBaskets = () => {
+    f.ctx.stripeBaskets_ = () => {
       if (failure === 'storage') throw Error('private storage player name');
       return { sheet: [], col: Object.fromEntries(headers.map((h,i) => [h,i])), rows: [] };
     };
@@ -480,7 +481,7 @@ test('unknown rating allocation flags authoritative balances and refuses checkou
   f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'sk_live_fixture' }) };
   const headers = ['Reference','Mode','Amount','Allocations','Session','URL','Checkout request'];
   const sheet = { getRange: () => { const range = { setNumberFormat: () => range, setValue() {} }; return range; } };
-  f.ctx.stripeBaskets = () => ({ sheet, rows: [], col: Object.fromEntries(headers.map((h,i) => [h,i])) });
+  f.ctx.stripeBaskets_ = () => ({ sheet, rows: [], col: Object.fromEntries(headers.map((h,i) => [h,i])) });
   f.ctx.appendText = () => {};
   let requests = 0;
   f.ctx.UrlFetchApp = { fetch: () => { requests++; return { getResponseCode: () => 200, getContentText: () => JSON.stringify({id:'cs_live_fixture',url:'https://checkout.stripe.com/c/pay/cs_live_fixture',livemode:true,amount_total:1750,client_reference_id:'request_abcdefghijklmnop'}) }; } };
@@ -512,7 +513,7 @@ function checkoutAttemptFixture() {
     if(failUrl && c===col.URL+1){failUrl=false;throw Error('interrupted save');}
     rows[r-2][c-1]=value;
   }};return range;}};
-  f.ctx.stripeBaskets=()=>({sheet,col,rows:rows.map(r=>[...r])});
+  f.ctx.stripeBaskets_=()=>({sheet,col,rows:rows.map(r=>[...r])});
   const append=f.ctx.appendText;
   f.ctx.appendText=(target,cols,row)=>target===sheet?rows.push(headers.map(h=>row[h]||'')):append(target,cols,row);
   f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=> 'sk_test_fixture'})};
@@ -588,15 +589,15 @@ function cardFixture(funding='credit',testMode=true) {
   f.config.cardProcessing={enabled:true,complianceReady:!testMode,rateBasisPoints:290,fixedCents:30};
   f.ctx.prices=()=>({fees:{card:{percent:2.5,fixed:0.5}}});
   f.ctx.PropertiesService={getScriptProperties:()=>({getProperty:()=>testMode?'sk_test_fixture':'sk_live_fixture'})};
-  const read=f.ctx.readTab;
-  f.ctx.readTab=(...args)=>{const t=read(...args);t.sheet.getRange=(row,col)=>{const r={setNumberFormat:()=>r,setValue:v=>{t.rows[row-2][col-1]=v;}};return r;};return t;};
+  const read=f.ctx.readTab_;
+  f.ctx.readTab_=(...args)=>{const t=read(...args);t.sheet.getRange=(row,col)=>{const r={setNumberFormat:()=>r,setValue:v=>{t.rows[row-2][col-1]=v;}};return r;};return t;};
   const calls=[];let failSave=false;
   f.ctx.UrlFetchApp={fetch:(url,options)=>{
     calls.push({url,options});
     let object;
     if(url.includes('/confirmation_tokens/')) object={id:'ctoken_fixture',livemode:!testMode,payment_intent:calls.some(c=>c.options.method==='post')?'pi_card_fixture':null,expires_at:Math.floor(Date.now()/1000)+3600,payment_method_preview:{type:'card',card:{funding}}};
     else {
-      const tab=f.ctx.stripeCardQuotes(),r=tab.rows[0],p=options.payload;
+      const tab=f.ctx.stripeCardQuotes_(),r=tab.rows[0],p=options.payload;
       object={id:'pi_card_fixture',livemode:!testMode,amount:p?Number(p.amount):Number(r[tab.col.Amount]),currency:'usd',metadata:{lccc_checkout:'payment_intent_v1',lccc_reference:r[tab.col.Reference]},status:'succeeded'};
       if(failSave){const original=tab.sheet.getRange;tab.sheet.getRange=(row,col)=>{if(col===tab.col.Intent+1)throw Error('interrupted');return original(row,col);};failSave=false;}
     }
@@ -625,34 +626,34 @@ test('changed balance, invalid option, stale quote and live compliance gate cann
   const f=cardFixture();assert.ok(f.ctx.quoteCardPayment({...f.params,coverCosts:'1'}).error);assert.equal(f.calls.length,0);
   const q=f.ctx.quoteCardPayment(f.params);f.entry.Discount='1';assert.match(f.ctx.confirmCardPayment({quoteId:q.quoteId}).error,/Balances changed/);assert.equal(f.calls.filter(c=>c.options.method==='post').length,0);
   const live=cardFixture('credit',false);live.config.cardProcessing.complianceReady=false;assert.ok(live.ctx.quoteCardPayment(live.params).error);assert.equal(live.calls.length,0);
-  const stale=cardFixture(),sq=stale.ctx.quoteCardPayment(stale.params),tab=stale.ctx.stripeCardQuotes();tab.rows[0][tab.col.Created]='1';assert.match(stale.ctx.confirmCardPayment({quoteId:sq.quoteId}).error,/expired/);
+  const stale=cardFixture(),sq=stale.ctx.quoteCardPayment(stale.params),tab=stale.ctx.stripeCardQuotes_();tab.rows[0][tab.col.Created]='1';assert.match(stale.ctx.confirmCardPayment({quoteId:sq.quoteId}).error,/expired/);
 });
 test('standalone gross credits entry allocations with no separate Card fee, idempotently',()=>{
   const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
   const r={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
-  assert.equal(f.ctx.stripeImport(r,f.config).status,'imported');assert.deepEqual(f.book.rows.map(x=>x.Received),['17.5','12.5']);assert.equal(f.book.rows[0]['Card fee'],'0');assert.equal(f.entry.Paid,'17.50');assert.equal(f.second.Paid,'12.50');assert.equal(f.ctx.stripeBalance(f.ctx.readEntries().rows[0],f.ctx.readEntries().col,f.book).balanceCents,0);
-  assert.equal(f.ctx.stripeImport(r,f.config).status,'duplicate');assert.equal(f.book.rows.length,2);
+  assert.equal(f.ctx.stripeImport_(r,f.config).status,'imported');assert.deepEqual(f.book.rows.map(x=>x.Received),['17.5','12.5']);assert.equal(f.book.rows[0]['Card fee'],'0');assert.equal(f.entry.Paid,'17.50');assert.equal(f.second.Paid,'12.50');assert.equal(f.ctx.stripeBalance(f.ctx.readEntries_().rows[0],f.ctx.readEntries_().col,f.book).balanceCents,0);
+  assert.equal(f.ctx.stripeImport_(r,f.config).status,'duplicate');assert.equal(f.book.rows.length,2);
 });
 test('sandbox intent imports stay isolated and wrong gross or unpaid records never credit',()=>{
   const f=cardFixture(),q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
   const r={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
-  assert.equal(f.ctx.stripeImport({...r,amountCents:q.amount+1},f.config).status,'review');assert.equal(f.ctx.stripeImport(r,f.config).status,'test');assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+  assert.equal(f.ctx.stripeImport_({...r,amountCents:q.amount+1},f.config).status,'review');assert.equal(f.ctx.stripeImport_(r,f.config).status,'test');assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
 });
 
 test('successful intent with interrupted ID save is recovered by token without another charge and imported safely',()=>{
  const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);f.failSave();assert.match(f.ctx.confirmCardPayment({quoteId:q.quoteId}).error,/CARD_CONFIRM/);
- const tab=f.ctx.stripeCardQuotes();assert.equal(tab.rows[0][tab.col.Intent],'');assert.ok(tab.rows[0][tab.col.Request]);
+ const tab=f.ctx.stripeCardQuotes_();assert.equal(tab.rows[0][tab.col.Intent],'');assert.ok(tab.rows[0][tab.col.Request]);
  assert.equal(f.ctx.confirmCardPayment({quoteId:q.quoteId}).status,'succeeded');assert.equal(f.calls.filter(c=>c.options.method==='post').length,1);
  const record={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
- assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);
+ assert.equal(f.ctx.stripeImport_(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);
 });
 test('unconfirmed quotes cannot be credited and partial intent ledger appends recover without fees',()=>{
  const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);
  const record={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
- assert.equal(f.ctx.stripeImport(record,f.config).status,'review');assert.equal(f.book.rows.length,0);
- f.ctx.confirmCardPayment({quoteId:q.quoteId});const original=f.ctx.addPayment;let writes=0;f.ctx.addPayment=(...args)=>{if(++writes===2)throw Error('interrupted');return original(...args);};
- assert.throws(()=>f.ctx.stripeImport(record,f.config),/interrupted/);assert.equal(f.book.rows.length,1);f.ctx.addPayment=original;
- assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);assert.equal(f.book.rows.reduce((n,r)=>n+Number(r['Card fee']||0),0),0);
+ assert.equal(f.ctx.stripeImport_(record,f.config).status,'review');assert.equal(f.book.rows.length,0);
+ f.ctx.confirmCardPayment({quoteId:q.quoteId});const original=f.ctx.addPayment_;let writes=0;f.ctx.addPayment_=(...args)=>{if(++writes===2)throw Error('interrupted');return original(...args);};
+ assert.throws(()=>f.ctx.stripeImport_(record,f.config),/interrupted/);assert.equal(f.book.rows.length,1);f.ctx.addPayment_=original;
+ assert.equal(f.ctx.stripeImport_(record,f.config).status,'imported');assert.equal(f.book.rows.length,2);assert.equal(f.book.rows.reduce((n,r)=>n+Number(r['Card fee']||0),0),0);
 });
 
 test('overlapping pending quotes cannot charge the same entries again before sync',()=>{
@@ -661,8 +662,8 @@ test('overlapping pending quotes cannot charge the same entries again before syn
  assert.match(f.ctx.confirmCardPayment({quoteId:second.quoteId}).error,/pending verification|already in progress/);assert.equal(f.calls.filter(c=>c.options.method==='post').length,1);
 });
 test('quote response follows actual sheet column order',()=>{
- const f=cardFixture(),read=f.ctx.readTab;
- f.ctx.readTab=(name,headers)=>{if(name==='Stripe card quotes'){headers=[...headers];[headers[0],headers[1]]=[headers[1],headers[0]];}return read(name,headers);};
+ const f=cardFixture(),read=f.ctx.readTab_;
+ f.ctx.readTab_=(name,headers)=>{if(name==='Stripe card quotes'){headers=[...headers];[headers[0],headers[1]]=[headers[1],headers[0]];}return read(name,headers);};
  const q=f.ctx.quoteCardPayment(f.params);assert.equal(q.ok,true);assert.equal(q.quoteId,f.params.requestId);assert.equal(q.subtotal,3000);
 });
 
@@ -673,35 +674,35 @@ test('live confirmed entries remain pending without credit until verified succes
  const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
  let view=f.ctx.paymentBalances({id:'12345678'});assert.equal(view.entries[0].pending,true);assert.equal(view.entries[0].balanceCents,1750);assert.equal(f.book.rows.length,0);
  for(const state of ['processing','requires_action','requires_capture','requires_confirmation']) {
-  assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,state),f.config).status,'pending');assert.equal(f.book.rows.length,0);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
+  assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,state),f.config).status,'pending');assert.equal(f.book.rows.length,0);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
  }
  assert.match(f.ctx.quoteCardPayment({...f.params,requestId:'new_request_abcdefghijklmnop'}).error,/pending verification/);
  const paid={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
- assert.equal(f.ctx.stripeImport(paid,f.config).status,'imported');view=f.ctx.paymentBalances({id:'12345678'});assert.equal(view.entries[0].pending,false);assert.equal(view.entries[0].balanceCents,0);
+ assert.equal(f.ctx.stripeImport_(paid,f.config).status,'imported');view=f.ctx.paymentBalances({id:'12345678'});assert.equal(view.entries[0].pending,false);assert.equal(view.entries[0].balanceCents,0);
  // A delayed lifecycle response cannot erase verified financial facts or recreate debt.
- assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,2);
+ assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,2);
 });
 test('verified decline or cancellation releases pending without a payment ledger entry',()=>{
  for(const state of ['requires_payment_method','canceled']) {
   const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
   assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
-  assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,state),f.config).status,'failed');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+  assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,state),f.config).status,'failed');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
  }
 });
 test('sandbox lifecycle cannot mark live entries pending or paid',()=>{
  const f=cardFixture();f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
- assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');const entry=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(entry.pending,false);assert.equal(entry.balanceCents,1750);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
+ assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,'processing'),f.config).status,'pending');const entry=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(entry.pending,false);assert.equal(entry.balanceCents,1750);assert.equal(f.book.rows.length,0);assert.equal(f.entry.Paid,'');
 });
 test('lifecycle updates require a matching confirmed request and fail closed on mode, amount and identifiers',()=>{
  for(const patch of [{amountCents:1},{livemode:false},{currency:'eur'},{paymentIntentId:'pi_other'},{intentStatus:'succeeded'},{clientReferenceId:'unknown'}]) {
   const f=cardFixture('credit',false);const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
-  assert.equal(f.ctx.stripeImport({...lifecycleRecord(f,q,'canceled'),...patch},f.config).status,'review');const t=f.ctx.stripeCardQuotes();assert.equal(t.rows[0][t.col.State],'succeeded');assert.equal(f.book.rows.length,0);
+  assert.equal(f.ctx.stripeImport_({...lifecycleRecord(f,q,'canceled'),...patch},f.config).status,'review');const t=f.ctx.stripeCardQuotes_();assert.equal(t.rows[0][t.col.State],'succeeded');assert.equal(f.book.rows.length,0);
  }
- const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'review');assert.equal(f.book.rows.length,0);
+ const f=cardFixture('credit',false),q=f.ctx.quoteCardPayment(f.params);assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,'processing'),f.config).status,'review');assert.equal(f.book.rows.length,0);
 });
 test('sync status recovers a missing intent ID after interrupted confirmation storage',()=>{
  const f=cardFixture('credit',false);f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.failSave();f.ctx.confirmCardPayment({quoteId:q.quoteId});
- const t=f.ctx.stripeCardQuotes();assert.equal(t.rows[0][t.col.Intent],'');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(t.rows[0][t.col.Intent],'pi_card_fixture');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.book.rows.length,0);
+ const t=f.ctx.stripeCardQuotes_();assert.equal(t.rows[0][t.col.Intent],'');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.ctx.stripeImport_(lifecycleRecord(f,q,'processing'),f.config).status,'pending');assert.equal(t.rows[0][t.col.Intent],'pi_card_fixture');assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);assert.equal(f.book.rows.length,0);
 });
 
 test('sandbox pending is durable across fresh balance reads and clears only after isolated verification',()=>{
@@ -709,14 +710,14 @@ test('sandbox pending is durable across fresh balance reads and clears only afte
  for(let reload=0;reload<2;reload++) {const e=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(e.testPending,true);assert.equal(e.pending,false);assert.equal(e.balanceCents,1750);}
  assert.equal(f.ctx.paymentBalances({id:'87654321'}).entries[0].testPending,true);
  assert.match(f.ctx.quoteCardPayment({...f.params,requestId:'retry_request_abcdefghijklmnop'}).error,/pending verification/);
- f.ctx.stripeImport(lifecycleRecord(f,q,'processing'),f.config);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].testPending,true);
+ f.ctx.stripeImport_(lifecycleRecord(f,q,'processing'),f.config);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].testPending,true);
  const paid={...f.record,sessionId:'',paymentIntentId:'pi_card_fixture',clientReferenceId:q.quoteId,amountCents:q.amount,checkoutType:'payment_intent_v1',kind:'basket_intent'};
- assert.equal(f.ctx.stripeImport(paid,f.config).status,'test');const e=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(e.testPending,false);assert.equal(e.pending,false);assert.equal(e.balanceCents,1750);assert.equal(f.entry.Paid,'');assert.equal(f.book.rows.length,0);
+ assert.equal(f.ctx.stripeImport_(paid,f.config).status,'test');const e=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(e.testPending,false);assert.equal(e.pending,false);assert.equal(e.balanceCents,1750);assert.equal(f.entry.Paid,'');assert.equal(f.book.rows.length,0);
 });
 test('sandbox pending stays event-specific, releases on verified failure and cannot reserve live checkout',()=>{
  for(const status of ['requires_payment_method','canceled']) {
   const f=cardFixture();f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});
-  f.ctx.stripeImport(lifecycleRecord(f,q,status),f.config);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].testPending,false);
+  f.ctx.stripeImport_(lifecycleRecord(f,q,status),f.config);assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].testPending,false);
  }
  const f=cardFixture();f.ctx.clubEvents=()=>({});const q=f.ctx.quoteCardPayment(f.params);f.ctx.confirmCardPayment({quoteId:q.quoteId});f.config.livemode=true;
  const e=f.ctx.paymentBalances({id:'12345678'}).entries[0];assert.equal(e.testPending,false);assert.equal(e.pending,false);assert.equal(e.balanceCents,1750);
@@ -724,8 +725,8 @@ test('sandbox pending stays event-specific, releases on verified failure and can
 });
 
 test('pending belongs to the exact selected event and player, not every registration',()=>{
- const f=cardFixture();f.ctx.clubEvents=()=>({});const read=f.ctx.readEntries;
- f.ctx.readEntries=()=>{const t=read(),extra=[...t.rows[0]];extra[t.col.Token]='other-date-token';extra[t.col.Date]='2026-12-08';return {...t,rows:[...t.rows,extra]};};
+ const f=cardFixture();f.ctx.clubEvents=()=>({});const read=f.ctx.readEntries_;
+ f.ctx.readEntries_=()=>{const t=read(),extra=[...t.rows[0]];extra[t.col.Token]='other-date-token';extra[t.col.Date]='2026-12-08';return {...t,rows:[...t.rows,extra]};};
  const params={...f.params,entries:JSON.stringify([{id:'12345678',event:'chess',date:'2026-12-01'}])};
  const q=f.ctx.quoteCardPayment(params);assert.equal(q.ok,true);f.ctx.confirmCardPayment({quoteId:q.quoteId});
  const entries=f.ctx.paymentBalances({id:'12345678'}).entries;assert.equal(entries.find(e=>e.date==='2026-12-01').testPending,true);assert.equal(entries.find(e=>e.date==='2026-12-08').testPending,false);
@@ -734,12 +735,13 @@ test('pending belongs to the exact selected event and player, not every registra
 
 test('mixed basket posts full entry credit and exact net gifts once, including consented overflow', () => {
   const f = basketFixture();
+  f.ctx.clubEvents = () => ({});
   const row = f.tabs['Stripe checkout baskets'][0];
   const gifts = [{fund:'filing', amount:1500, overflow:true}, {fund:'marketing',amount:500}];
   row[2] = '5000';
   row[3] = JSON.stringify([...f.allocations,...gifts]);
   const data = new Map([['financeHolds/basket-ref',{amount:1000}]]);
-  f.ctx.firebase = (method,path,body) => {
+  f.ctx.firebase_ = (method,path,body) => {
     if (method === 'get') return data.get(path);
     if (method === 'put') return data.set(path,body);
     assert.equal(method,'patch');
@@ -748,10 +750,13 @@ test('mixed basket posts full entry credit and exact net gifts once, including c
   f.ctx.Utilities.computeDigest = () => [11,12];
   f.ctx.Utilities.DigestAlgorithm = {SHA_256:1};
   const record = {...f.record,amountCents:5000};
-  assert.equal(f.ctx.stripeImport(record,f.config).status,'pending');
+  assert.equal(f.ctx.stripeImport_(record,f.config).status,'pending');
+  assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,true);
+  assert.equal(f.book.rows.length,0);
   record.feeCents = 175;
-  assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');
-  assert.equal(f.ctx.stripeImport(record,f.config).status,'duplicate');
+  assert.equal(f.ctx.stripeImport_(record,f.config).status,'imported');
+  assert.equal(f.ctx.paymentBalances({id:'12345678'}).entries[0].pending,false);
+  assert.equal(f.ctx.stripeImport_(record,f.config).status,'duplicate');
   assert.equal(data.size,1);
   const lines = [...data.values()][0].lines;
   assert.equal(lines.reduce((n,l)=>n+l.gross-(l.fee||0),0),4825);
@@ -763,7 +768,7 @@ test('mixed basket posts full entry credit and exact net gifts once, including c
 
 test('filing reservations account for open checkouts and never reopen when the club spends the money', () => {
   const f = fixture(), holds = {}, journal = {raised:{lines:[{fund:'filing',donation:27000}]},spent:{lines:[{fund:'filing',spent:25000}]}};
-  f.ctx.firebase = (method,path,value) => {
+  f.ctx.firebase_ = (method,path,value) => {
     if (method === 'get') return path === 'public/finance' ? journal : holds;
     holds[path.split('/')[1]] = value;
   };

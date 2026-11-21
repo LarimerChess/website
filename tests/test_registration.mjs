@@ -222,6 +222,35 @@ function load(tabs, cache = {}, store = "sheet") {
   return { gs: context, sheets, ratings, cache, props, db, rows, handEdit, queued, store, accounts, lookups };
 }
 
+test("registration cutover migrates the history and Pay reads new desk payments from Firebase", () => {
+  const { gs, db, props, sheets } = load({
+    Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
+      ["Ada", "11111111", "17.50", "2.50", "classic", "2026-12-01", "private-token", "registered"]],
+    Payments: [["No.", "Token", "Received", "Entry fee", "Rating fee", "Type"],
+      ["1", "private-token", "5.00", "2.50", "2.50", "payment"]],
+  }, {}, "firebase");
+  gs.underLimit = () => true;
+  gs.clubEvents = () => ({});
+  gs.stripeConfig = () => ({ livemode: true });
+  gs.clearEntriesCache = () => {};
+  let revision = 0;
+  gs.Utilities.getUuid = () => `revision-${++revision}`;
+  gs.migrateRegistrationToFirebase_();
+  assert.equal(props.REGISTRATION_STORAGE, "firebase");
+  assert.equal(db.root.registrationData.active, true);
+  assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
+  const initialSignal = db.root.changes.paymentBalances;
+  gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
+  assert.ok(gs.markPaid("private-token", "12.50", "cash", false).ok);
+  assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 0);
+  assert.notEqual(db.root.changes.paymentBalances, initialSignal);
+  assert.equal(sheets.Payments.data.length, 2);
+  assert.equal(gs.readPayments_().rows.length, 2);
+  assert.equal(JSON.stringify(db.root.changes).includes("private-token"), false);
+  db.failing = true;
+  assert.throws(() => gs.paymentBalances({ id: "11111111" }), /Firebase/);
+});
+
 const heading = (sheet) => sheet.data[0];
 const rowsOf = (sheet) => sheet.data.slice(1).map((r) => Object.fromEntries(heading(sheet).map((h, i) => [h, r[i] || ""])));
 
@@ -780,6 +809,26 @@ test("only TDs manage the linked player's Pay page balances and donations", () =
   eq(desk({}).entries.map(entry => [entry.balanceCents, entry.discountCents]), [[0, 250]]);
 });
 
+test("Pay page TD actions use the migrated Firebase ledger", () => {
+  const { gs, db, sheets } = load({
+    Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
+      ["Ada", "11111111", "17.50", "2.50", "classic", "2026-12-01", "private-token", "registered"]],
+  }, {}, "firebase");
+  gs.clubEvents = () => ({});
+  gs.migrateRegistrationToFirebase_();
+  gs.readIncidents = () => ({ rows: [] });
+  gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
+  const post = fields => gs.doPost({ parameter: { action: "tdPlayerPayments", password: "sheet", id: "11111111", ...fields } });
+  const { event, date, token } = post({ operation: "list" }).entries[0];
+  assert.equal(post({ operation: "discount", event, date, token, amount: "2.50", expected: "0" }).ok, true);
+  assert.equal(post({ operation: "settle", event, date, token, by: "cash", expected: "1500" }).ok, true);
+  assert.equal(post({ operation: "donate", by: "check", amount: "10", requestId: "00000000-0000-4000-8000-000000000002" }).ok, true);
+  eq(gs.readPayments_().rows.map(row => [row.Type, row.Method, row.Received]), [["payment", "cash", "15"], ["donation", "check", "10"]]);
+  eq(post({ operation: "list" }).entries.map(entry => [entry.balanceCents, entry.discountCents]), [[0, 250]]);
+  assert.equal(sheets.Payments, undefined);
+  assert.equal(db.root.public.finance["desk-2"].lines[0].donation, 1000);
+});
+
 test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {
   const { gs, sheets, ledger } = monthOfAsh();
   const due = () => gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.due, e.discount, e.discountNote, e.over]);
@@ -1322,8 +1371,8 @@ test("the public 50-player cap counts active entrants per date under the write l
     first: date, closes: `${date}T10:00:00-07:00`, capacity: 50, rounds: "3", format: "swiss" } });
   let locked = false, mails = 0;
   gs.lockTournaments = () => { locked = true; return { releaseLock() { locked = false; } }; };
-  const read = gs.readEntries;
-  gs.readEntries = () => { assert.equal(locked, true, "capacity reads the current sheet under the lock"); return read(); };
+  const read = gs.readEntries_;
+  gs.readEntries_ = () => { assert.equal(locked, true, "capacity reads the current sheet under the lock"); return read(); };
   gs.noteContact = () => {};
   gs.ageCategory = () => "Adult";
   gs.MailApp = { sendEmail: () => { mails++; } };

@@ -299,15 +299,20 @@ if (typeof document !== "undefined") (async () => {
     const previous = people.get(playerId);
     if (JSON.stringify(data) === JSON.stringify(previous)) return false;
     const previousKeys = new Set(previous?.entries.map(entry => entryKey(playerId, entry)) || []);
+    const awaiting = new Set(previous?.entries.filter(entry => entry.pending).map(entry => entryKey(playerId, entry)) || []);
     for (const entry of data.entries) {
       const key = entryKey(playerId, entry);
       if (!eligible(entry)) selected.delete(key);
       else if (!previousKeys.has(key) && defaultSelected) selected.add(key);
+      if (awaiting.has(key) && entry.balanceCents === 0 && !entry.review) {
+        returned.hidden = false;
+        returned.textContent = "Payment confirmed.";
+      }
     }
     people.set(playerId, data);
     return true;
   }
-  async function loadBalanceBatch(ids, quiet = false) {
+  async function loadBalanceBatch(ids, quiet = false, errorStatus = returned) {
     if (!quiet) for (const id of ids) requests.set(id, Symbol());
     const tokens = ids.map(id => requests.get(id));
     let changed = false;
@@ -320,7 +325,7 @@ if (typeof document !== "undefined") (async () => {
       });
       return true;
     } catch (error) {
-      if (!quiet) returned.textContent = error.message;
+      if (!quiet && ids.some((id, index) => requests.get(id) === tokens[index])) errorStatus.textContent = error.message;
       return false;
     } finally {
       if (changed) { resetCheckout(); renderBalances(); }
@@ -462,6 +467,39 @@ if (typeof document !== "undefined") (async () => {
       });
     }
   }
+  function followPaymentChanges() {
+    if (!LIVE_DB || typeof listenLive !== "function") return;
+    let stamp, timer, refreshing = false, changed = false, retries = 0;
+    const refresh = async () => {
+      if (!changed || document.hidden || refreshing) return;
+      if (checkoutPending) { timer = setTimeout(refresh, 250); return; }
+      changed = false;
+      refreshing = true;
+      let succeeded = true;
+      try {
+        const ids = [...people.keys()];
+        for (let start = 0; start < ids.length; start += 50) {
+          succeeded = await loadBalanceBatch(ids.slice(start, start + 50), true) && succeeded;
+        }
+      } finally {
+        refreshing = false;
+        if (changed) timer = setTimeout(refresh, 250);
+        else if (!succeeded && retries++ < 2) {
+          changed = true;
+          timer = setTimeout(refresh, 2000);
+        }
+      }
+    };
+    listenLive("/changes/paymentBalances", value => {
+      if (typeof value !== "string" || value === stamp) return;
+      stamp = value;
+      retries = 0;
+      changed = true;
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 250);
+    }, () => { stamp = undefined; });
+    document.addEventListener("visibilitychange", refresh);
+  }
   async function loadBalances(playerId, keep) {
     closePlayerSearch();
     resetCheckout();
@@ -546,10 +584,20 @@ if (typeof document !== "undefined") (async () => {
     } catch (error) { returned.textContent = error.message; }
   }
   if (ids.length || returnedIds.length) {
-    const initialLoads = ids.filter(id => !returnedIds.includes(id)).map(id => loadBalances(id, false));
-    if (returnedIds.length) initialLoads.push(loadBalanceBatch(returnedIds));
-    await Promise.all(initialLoads);
+    const initialIds = [...new Set([...ids, ...returnedIds])];
+    if (initialIds.length === 1 && !returnedIds.length) await loadBalances(initialIds[0], false);
+    else {
+      const loading = "Loading balances for all registered events…";
+      status.textContent = loading;
+      const batches = [];
+      for (let start = 0; start < initialIds.length; start += 50) {
+        batches.push(loadBalanceBatch(initialIds.slice(start, start + 50), false, status));
+      }
+      await Promise.all(batches);
+      if (status.textContent === loading) status.textContent = "";
+    }
     id.value = requestedId || returnedIds[0] || ids[0];
   } else { renderBalances(); status.textContent = "Find a player by name or US Chess ID to start."; }
   if (requestedId && ENDPOINT) startTdPayments().catch(() => {});
+  followPaymentChanges();
 })();

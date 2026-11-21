@@ -222,6 +222,17 @@ def send_records(endpoint, secret, records):
     return results
 
 
+def backend_sender():
+    endpoint = os.environ.get("LCCC_STRIPE_SYNC_URL", "")
+    secret = os.environ.get("LCCC_STRIPE_SYNC_SECRET", "")
+    parsed = urlparse(endpoint)
+    if (parsed.scheme != "https" or parsed.netloc != "script.google.com"
+            or not re.fullmatch(r"/macros/s/[A-Za-z0-9_-]+/exec", parsed.path)
+            or parsed.query or parsed.fragment or len(secret) < 32):
+        raise SyncError("Configure Apps Script deployment URL and a sync secret of at least 32 characters.")
+    return lambda records: send_records(endpoint, secret, records)
+
+
 def sync(stripe, config, sender=None):
     counts = {"verified": 0, "skipped": 0, "imported": 0, "duplicate": 0, "review": 0, "test": 0,
               "pending": 0, "failed": 0}
@@ -292,20 +303,11 @@ def main():
         config = json.loads((ROOT / "stripe-payment-links.json").read_text(encoding="utf-8"))
         key = os.environ.get("LCCC_STRIPE_SECRET_KEY", "")
         validate_config(config, key)
-        sender = None
-        if not args.dry_run:
-            endpoint = os.environ.get("LCCC_STRIPE_SYNC_URL", "")
-            secret = os.environ.get("LCCC_STRIPE_SYNC_SECRET", "")
-            parsed = urlparse(endpoint)
-            if (parsed.scheme != "https" or parsed.netloc != "script.google.com"
-                    or not re.fullmatch(r"/macros/s/[A-Za-z0-9_-]+/exec", parsed.path)
-                    or parsed.query or parsed.fragment or len(secret) < 32):
-                raise SyncError("Configure Apps Script deployment URL and a sync secret of at least 32 characters.")
-            sender = lambda records: send_records(endpoint, secret, records)
+        sender = None if args.dry_run else backend_sender()
         counts = sync(Stripe(key), config, sender)
         print(("Dry run: " if args.dry_run else "Sync: ") + json.dumps(counts, sort_keys=True))
         if counts["review"]:
-            print("Payments need review in the private Stripe review sheet.", file=sys.stderr)
+            print("Payments need review in the private Stripe review records.", file=sys.stderr)
             return 2
         return 0
     except SyncError as error:

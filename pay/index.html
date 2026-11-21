@@ -727,7 +727,7 @@ section.td-table td { white-space: nowrap; }
     <h1>Pay an entry or donate</h1>
     <p>Pay for yourself or another player. No login needed.</p>
     <p id="pay-test" role="status" hidden><strong>Test mode:</strong> No real money is collected. Test payments do not pay tournament entry fees.</p>
-    <p id="pay-returned" role="status" hidden>Returning from checkout does not confirm payment. We verify payments periodically; your entry may take longer than 15 minutes to update. Check your Stripe receipt before trying again. Test payments never change your entry balance.</p>
+    <p id="pay-returned" role="status" hidden>Your entry may show a pending payment while we verify it with Stripe. Check your receipt before trying again. Test payments never change your entry balance.</p>
     <section aria-labelledby="entry-heading">
       <h2 id="entry-heading">Pay entry fees</h2>
       <p id="pay-status" role="status">Loading payment options…</p>
@@ -810,6 +810,7 @@ section.td-table td { white-space: nowrap; }
     <p>© 2026 Larimer County Chess Club</p>
   </footer>
   <script src="../register.js?v=c106bec172" defer></script>
-  <script src="../pay.js?v=21f8bdda0a" defer></script>
+  <script src="../live.js?v=d1a40ee2c6" defer></script>
+  <script src="../pay.js?v=e3ba53fbe7" defer></script>
 </body>
 </html>

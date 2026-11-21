@@ -47,6 +47,29 @@ def decode_row(row):
     return {decode_field(k): v for k, v in row.items()}
 
 
+def read_registration_book(db):
+    """Entries and Payments in read_book format, or None before registration cutover."""
+    registration = db.get("registrationData") or {}
+    if registration.get("active") is not True:
+        return None
+    book = {}
+    for title, key in (("Entries", "entries"), ("Payments", "payments")):
+        table = registration.get("tables", {}).get(key)
+        if not isinstance(table, dict):
+            raise ValueError("Missing active registration table")
+        headings = json.loads(table["headings"])
+        records = table.get("rows", {})
+        if set(records) != {f"r{row}" for row in range(2, len(records) + 2)}:
+            raise ValueError("Registration table has missing row numbers")
+        rows = []
+        for row in range(2, len(records) + 2):
+            stored = records[f"r{row}"]
+            values = {heading: stored.get(f"c{column}", "") for column, heading in enumerate(headings, 1)}
+            rows.append(dict(values, _row=row))
+        book[title] = (None, rows)
+    return book
+
+
 class Database:
     def __init__(self, url, creds):
         self.url, self.creds = url, creds

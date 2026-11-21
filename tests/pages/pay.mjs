@@ -22,6 +22,7 @@ let holdCheckout = false;
 let releaseCheckout;
 let checkoutFailure = false;
 let balanceVariant = "";
+let liveBalanceChanges = false;
 let tdAuth = false;
 let deskDiscount = 0;
 const deskPaid = new Set();
@@ -51,7 +52,8 @@ page.on("request", async (request) => {
   if (url.pathname === "/register.js") {
     let source = offline(await (await fetch(base + "/register.js")).text());
     if (tdAuth) source = source.replace("const FIREBASE = null;", "const FIREBASE = {};");
-    request.respond({ contentType: "text/javascript", body: source });
+    request.respond({ contentType: "text/javascript", body: liveBalanceChanges
+      ? source.replace('const LIVE_DB = "";', 'const LIVE_DB = "https://firebase.test";') : source });
   } else if (url.hostname === "www.gstatic.com" && url.pathname.endsWith("/firebase-app.js")) {
     request.respond({ contentType: "text/javascript", headers: { "Access-Control-Allow-Origin": "*" },
       body: "export const initializeApp = config => config;" });
@@ -101,11 +103,12 @@ page.on("request", async (request) => {
       : fields.action === "paymentBalances" ? playerBalance(fields.id)
       : { ok: true, checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_fixture", count: JSON.parse(fields.entries).length + JSON.parse(fields.donations || "[]").length,
         amount: JSON.parse(fields.entries).reduce((n,e) => n + (e.event === "club-night" ? 1750 : 750),JSON.parse(fields.donations || "[]").reduce((n,g) => n+g.amount,0)), currency: "usd", livemode: false };
-    if (fields.action === "paymentBalances" && fields.id === "00000000") Object.assign(body,{name:"",entries:[],totalCents:0,unknownCount:0});
     if (fields.action === "createPaymentCheckout" && checkoutFailure) Object.assign(body,{ok:false,error:"Test checkout service unavailable."});
-    if (fields.action === "paymentBalances" && balanceVariant === "unknown") Object.assign(body,{entries:[{event:"unknown",date:"2027-06-01",name:"Unknown Fee",balanceCents:null,review:false}],totalCents:0,unknownCount:1});
-    if (fields.action === "paymentBalances" && balanceVariant === "pending") body.entries.forEach(entry => { entry.pending = entry.balanceCents > 0; });
-    if (fields.action === "paymentBalances" && balanceVariant === "verified") body.entries = body.entries.filter(entry => entry.balanceCents > 0).map(entry => ({...entry,balanceCents:0,pending:false}));
+    if (fields.action === "paymentBalances") for (const player of body.balances || [body]) {
+      if (balanceVariant === "unknown") Object.assign(player,{entries:[{event:"unknown",date:"2027-06-01",name:"Unknown Fee",balanceCents:null,review:false}],totalCents:0,unknownCount:1});
+      if (balanceVariant === "pending") player.entries.forEach(entry => { entry.pending = entry.balanceCents > 0; });
+      if (balanceVariant === "verified") player.entries = player.entries.filter(entry => entry.balanceCents > 0).map(entry => ({...entry,balanceCents:0,pending:false}));
+    }
     request.respond({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(body) });
   } else request.continue();
 });
@@ -114,7 +117,7 @@ await page.waitForFunction(() => document.querySelectorAll("#pay-balances sectio
 const balanceText = await page.$eval("#pay-balances", (el) => el.textContent);
 const checkedCount = () => page.$$eval(".pay-entry input:checked", (els) => els.length);
 const totalText = () => page.$eval("#pay-selected-total", (el) => el.textContent);
-calls.some((call) => call.id === "12345678") && calls.some((call) => call.id === "22222222")
+calls.filter((call) => call.action === "paymentBalances").length === 1 && calls[0].ids === "12345678,22222222"
   && !balanceText.includes("Total owed") && balanceText.includes("2025-05-01")
   && !balanceText.includes("Paid Event") && balanceText.includes("Not set") && await checkedCount() === 4
   && (await totalText()).includes("$50.00")
@@ -319,6 +322,7 @@ JSON.stringify(processing) === JSON.stringify([["12345678", "Club Night", false]
 balanceVariant = "return-reconciled";
 await page.waitForFunction(() => !document.querySelector("#pay-balances").textContent.includes("Club Night"));
 (await page.$eval("#pay-balances", el => el.textContent.includes("Past Classic")))
+  && await page.$eval("#pay-returned", el => el.textContent === "Payment confirmed.")
   && !(await page.evaluate(() => document.querySelector(".network-activity")?.matches(":modal")))
   ? pass("Reconciliation silently removes settled rows and leaves other unpaid entries visible")
   : fail("Reconciliation removed other entries or interrupted the form");
@@ -326,7 +330,25 @@ await page.goto(base+"/pay/?fund=filing",{waitUntil:"networkidle0"});
 await page.waitForSelector("#gift-filing:not([hidden])");
 (await page.$eval("#overflow",el=>!!el.getClientRects().length)) && await page.$$eval("[data-fund]:enabled",fields=>fields.length===1 && fields[0].dataset.fund==="filing")
   ? pass("A filing fund link opens only its amount and overflow option") : fail("Incorrect linked fund selection");
+liveBalanceChanges = true;
+balanceVariant = "";
+await page.evaluateOnNewDocument(() => {
+  window.EventSource = class extends EventTarget {
+    constructor(url) { super(); window.paymentEvents = this; window.paymentEventUrl = url; }
+    close() {}
+  };
+});
+await page.goto(base + "/pay/?id=12345678", { waitUntil: "networkidle0" });
+await page.waitForSelector("#pay-balances .pay-entry");
+balanceVariant = "verified";
+await page.evaluate(() => window.paymentEvents.dispatchEvent(new MessageEvent("put", {
+  data: JSON.stringify({ path: "/", data: "registration-change" }),
+})));
+await page.waitForFunction(() => document.querySelector("#pay-balances").textContent.includes("No unpaid entries"));
+await page.evaluate(() => window.paymentEventUrl.endsWith("/changes/paymentBalances.json"))
+  ? pass("A Firebase change refreshes a visible balance without a reload") : fail("Pay followed the wrong Firebase path");
 
+liveBalanceChanges = false;
 balanceVariant = "";
 tdAuth = true;
 await page.evaluate(saved => localStorage.setItem("lccc-register-players", JSON.stringify(saved)), saved);

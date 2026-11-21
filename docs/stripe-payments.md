@@ -153,3 +153,30 @@ Live transactions reside under public/finance. Filing reservations are private.
 Sandbox payments and holds use financeTest. Payment credentials and player contact
 details stay in the existing private payment system. Use the fund's gross, fees,
 cash balance, amounts owed and donation totals to reconcile each line.
+
+## Firebase registration cutover and Stripe webhook
+
+Deploy the updated Registration Apps Script and verify the existing deployment URL
+before cutting over. In the Apps Script editor, run `previewRegistrationMigration_`
+to inspect row counts. Pause direct spreadsheet edits and then run
+`migrateRegistrationToFirebase_`. It imports the Entries, Payments, checkout,
+card quote, test payment, and review tabs, reads back every imported row, and
+switches the app to Firebase. After cutover, use the TD desk for changes and keep
+the old tabs as a historical snapshot. Deploy the updated private Peak reporting
+script before cutover so its next run reads current registration records.
+
+Build the webhook container from the website repository root with
+`docker build -f scripts/stripe-webhook.Dockerfile .`. Deploy it to an HTTPS
+service that forwards the original request body and `Stripe-Signature` header.
+Set `LCCC_STRIPE_WEBHOOK_SECRET` to the endpoint's signing secret in the service's
+secret store. Also provide `LCCC_STRIPE_SECRET_KEY`, `LCCC_STRIPE_SYNC_URL`, and
+`LCCC_STRIPE_SYNC_SECRET`, as used by the scheduled reconciler, for the same mode.
+
+In Stripe, subscribe to `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`, `payment_intent.succeeded`,
+`payment_intent.processing`, `payment_intent.payment_failed`, and
+`payment_intent.canceled`. Send a sandbox event through the deployed endpoint
+before registering the live endpoint. Verify that a hosted checkout returns to
+Pay in the pending state while its ledger import is outstanding and an open Pay
+page updates when settlement is acknowledged. Keep the scheduled reconciliation
+enabled for missed deliveries and later adjustments.
