@@ -217,7 +217,7 @@ byesPage.on("request", async (request) => {
         { key: "club-night/2099-10-26", name: "Club Night", label: "Monday, October 26, 2099", page: "/events/club-night/", start: "2099-10-26T18:30:00-06:00",
           entries: [ann("club-night", { for: "Whole month" })] },
         { key: "classic/2099-11-07", name: "Classic", label: "Saturday, November 7, 2099", page: "/events/classic/", start: "2099-11-07T10:00:00-07:00",
-          entries: [ann("classic", { for: "Saturday, November 7" }), { name: "Cal Example", id: "32345678", rating: "1400", for: "Saturday, November 7" }] },
+          entries: [ann("classic", { for: "Saturday, November 7", entryPaid: true }), { name: "Cal Example", id: "32345678", rating: "1400", for: "Saturday, November 7" }] },
         { key: "quads/2099-11-14", name: "Quads", label: "Saturday, November 14, 2099", page: "/events/quads/", start: "2099-11-14T10:00:00-07:00",
           entries: [ann("quads", { for: "Saturday, November 14" })] }] };
     }
@@ -281,6 +281,9 @@ cancelled.byes[0] === "" && cancelled.focused === "Change byes for Ann Example" 
   ? pass("Entries page's Cancel puts the byes back as they were") : fail(`Entries page Cancel: ${JSON.stringify({ cancelled, byesCalls })}`);
 await byesPage.select("#entries-event", "classic/2099-11-07");
 const swissByes = await byesShown();
+swissByes.payments[0] === null && monthByes.payments[0]?.href === "/pay/?uscfid=12345678"
+  ? pass("Entries shows Pay only on the unsettled registration for the same player")
+  : fail(`Entries payment links for the same player: ${JSON.stringify([swissByes.payments[0], monthByes.payments[0]])}`);
 await press(byesPage, ".entries-change-byes");
 const swissEditor = await byesEditor();
 await byesPage.select("#entries-bye-12345678-4", "half");

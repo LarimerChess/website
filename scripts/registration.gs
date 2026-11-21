@@ -163,6 +163,7 @@ function doPost(e) {
     if (p.action === "toNight" && !p.idToken && !p.password) return json(toNight(p, null));
     if (p.action === "byes" && !p.idToken && !p.password) return json(setByes(p, null));
     if (["arenaAvailable", "arenaChallenge", "arenaReport"].includes(p.action) && !p.idToken && !p.password) return json(arenaByPlayer(p));
+    if (p.action === "tdPlayerPayments" && !p.idToken && !p.password) return json({ login: true });
     let td = null;
     if (p.idToken) {
       const finance = ["financePost","financeHistory","financeAccess"].includes(p.action);
@@ -187,6 +188,7 @@ function doPost(e) {
       case "choices": return json({ choices: choices() });
       case "createEvent": return json(createEvent(p));
       case "history": return json({ players: history(p.q) });
+      case "tdPlayerPayments": return json(tdPlayerPayments(p, td));
       case "people": return json({ players: people() });
       case "contacts": return json(contacts());
       case "donation": return json(giveDonation(p, td));
@@ -376,7 +378,8 @@ function register(p, td, signedIn) {
  *  includes each night's. The TD desk also gets what only the Sheet should show. */
 function entries(key, td, read) {
   const cache = CacheService.getScriptCache();
-  const cached = !td && cache.get(entriesKey(key));
+  const useCache = !td && !read;
+  const cached = useCache && cache.get(entriesKey(key));
   if (cached) return JSON.parse(cached);
   const [event, date] = String(key).split("/");
   const { col, rows } = read || readEntries();
@@ -401,6 +404,10 @@ function entries(key, td, read) {
     .map(({ r, out }) => {
       const entry = { name: r[col.Name], id: r[col["US Chess ID"]], rating: r[col["Regular rating"]],
         for: r[col.Date].length === 7 ? "Whole month" : nightLabel(r[col.Date]) };
+      if (read?.paymentStatus.settled.has(r)) {
+        entry.entryPaid = true;
+        if (!read.paymentStatus.unsettledPlayers.has(entry.id)) entry.paidUp = true;
+      }
       if (sectionOf[entry.id]) entry.section = sectionOf[entry.id];
       const byes = byeList(r[col.Byes]);
       if (byes.length) entry.byes = byes;
@@ -427,7 +434,7 @@ function entries(key, td, read) {
       return entry;
     })
     .sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0) || a.name.localeCompare(b.name));
-  if (!td) cachePut(entriesKey(key), JSON.stringify(list));
+  if (useCache) cachePut(entriesKey(key), JSON.stringify(list));
   return list;
 }
 
@@ -437,17 +444,13 @@ function allEntries() {
   const cached = cache.get(allEntriesKey());
   if (cached) return JSON.parse(cached);
   const read = { ...readEntries(), logged: readIncidents().rows, placed: sectionsByKey() };
+  read.paymentStatus = entryPaymentStatus(read);
   const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
   const list = Object.entries(clubEvents())
     .filter(([, e]) => e.kind !== "month" && e.first >= today)
     .sort(([, a], [, b]) => a.closes.localeCompare(b.closes))
     .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, closed: Boolean(e.closed), start: e.closes,
       entries: entries(key, false, read) }));
-  const listed = list.flatMap(event => event.entries);
-  if (listed.length) {
-    const paidUp = paidUpPlayers(read, new Set(listed.map(entry => entry.id)));
-    for (const entry of listed) if (paidUp.has(entry.id)) entry.paidUp = true;
-  }
   cachePut(allEntriesKey(), JSON.stringify(list));
   publishEntries(list);
   return list;
@@ -2599,7 +2602,7 @@ function allEntriesKey() {
   const events = JSON.stringify(Object.entries(clubEvents()).map(([key, e]) => [key, e.label, e.closes, e.closed]));
   let hash = 0;
   for (let i = 0; i < events.length; i++) hash = (hash * 31 + events.charCodeAt(i)) | 0;
-  return entriesKey(`all:paid-status-v2:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
+  return entriesKey(`all:paid-status-v3:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
 }
 
 function clearEntriesCache() {
@@ -2662,7 +2665,7 @@ function refreshCaches() {
 
 /** Records what a player paid at the door and how, or, when amount is empty, marks them unpaid with
  *  corrections that cancel their payments. Paid is the total of their payments, and Paid by each way they paid. */
-function markPaid(token, amount, by, donate) {
+function markPaid(token, amount, by, donate, payPage) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !DOLLARS.test(amount)) return { error: "Enter the amount paid, such as 15." };
   // The desk before payment methods sent nothing for a payment that wasn't by card.
@@ -2671,12 +2674,19 @@ function markPaid(token, amount, by, donate) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const row = findToken(token);
-    if (!row) return { error: "No registration matches this." };
     const { sheet, col, rows } = readEntries();
+    const row = findToken(token, { col, rows });
+    if (!row) return { error: "No registration matches this." };
     const r = rows[row.index];
     const book = readPayments();
     const mine = book.rows.filter((x) => x.Token === token);
+    if (payPage) {
+      const error = tdPaymentEntryError(payPage, r, col, book);
+      if (error) return { error };
+      if (stripeBalance(r, col, book, mine).balanceCents !== cents(amount)) {
+        return { error: "The balance changed. Check the current balance before recording a payment." };
+      }
+    }
     let donation = 0;
     if (amount) {
       const event = clubEvents()[`${row.event}/${row.date}`];
@@ -3024,7 +3034,7 @@ function entriesLink(key, event) {
 /** Records a donation to the club apart from any entry, from the contact p.contact or, with none,
  *  anonymous: the ledger row's Token is the contact's ID and its Event blank. A negative amount
  *  corrects a mistake. By card, the card fee comes out of what was given. */
-function giveDonation(p, td) {
+function giveDonation(p, td, playerId) {
   const amount = String(p.amount || "").trim().replace(/^\$/, "");
   if (!DOLLARS.test(amount.replace(/^-/, "")) || !cents(amount)) return { error: "Enter the amount given, such as 20." };
   const method = p.by || "cash";
@@ -3033,7 +3043,23 @@ function giveDonation(p, td) {
   lock.waitLock(20000);
   try {
     let party = { Event: "", Date: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd"), "US Chess ID": "", Name: "Anonymous" };
-    if (p.contact) {
+    let book;
+    let token = p.contact || "";
+    if (playerId) {
+      book = readPayments();
+      token = `pay-donation-${p.requestId}`;
+      const previous = book.rows.find(row => row.Token === token);
+      if (previous) {
+        if (previous["US Chess ID"] !== playerId || cents(previous.Received) !== cents(amount) || previous.Method !== method) {
+          return { error: "That donation request was already used." };
+        }
+        return { ok: true, message: `Recorded a $${previous.Donation} donation from ${previous.Name}.` };
+      }
+      const { col, rows } = readEntries();
+      const player = tdPaymentPlayerRows(playerId, col, rows)[0];
+      if (!player) return { error: "No registration matches this US Chess ID." };
+      party = { ...party, "US Chess ID": playerId, Name: player[col.Name] };
+    } else if (p.contact) {
       const { col, rows } = readTab("Contacts", CONTACT_HEADINGS);
       const r = rows.find((x) => x[col.ID] === p.contact);
       if (!r) return { error: "That contact is no longer in the Sheet. Reload the contacts." };
@@ -3043,7 +3069,7 @@ function giveDonation(p, td) {
     const split = allocate(Math.abs(received), method, 0, 0, prices().fees.card);
     const sign = Math.sign(received);
     const note = [String(p.note || "").trim(), td && td.name ? `By ${td.name}` : ""].filter(Boolean).join(". ");
-    addPayment(readPayments(), p.contact || "", party, { Type: sign > 0 ? "donation" : "correction", Method: method, Received: received,
+    addPayment(book || readPayments(), token, party, { Type: sign > 0 ? "donation" : "correction", Method: method, Received: received,
       "Card fee": sign * split["Card fee"], Donation: sign * split["Entry fee"], Note: note });
     touch("contacts");
     const gift = money(split["Entry fee"] / 100);
@@ -3091,16 +3117,21 @@ function refund(token, amount, by, td) {
 }
 
 /** Sets what's taken off an entry's fee, up to all of it; an empty amount or 0 removes it. */
-function discount(token, amount, note, td) {
+function discount(token, amount, note, td, payPage) {
   amount = String(amount || "").trim().replace(/^\$/, "");
   if (amount && !DOLLARS.test(amount)) return { error: "Enter the discount in dollars, such as 5." };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const found = findToken(token);
-    if (!found) return { error: "No registration matches this." };
     const { sheet, col, rows } = readEntries();
+    const found = findToken(token, { col, rows });
+    if (!found) return { error: "No registration matches this." };
     const r = rows[found.index];
+    if (payPage) {
+      const error = tdPaymentEntryError(payPage, r, col, readPayments());
+      if (error) return { error };
+      if (String(cents(r[col.Discount])) !== payPage.expected) return { error: "The discount changed. Check the current discount before saving." };
+    }
     const off = cents(amount);
     if (r[col.Amount] !== "" && off > cents(r[col.Amount])) return { error: `A discount can't be more than the fee, $${r[col.Amount]}.` };
     const why = [String(note || "").trim(), td && td.name ? `by ${td.name}` : ""].filter(Boolean).join(", ");
@@ -3235,8 +3266,7 @@ function active(status) {
   return status !== "withdrawn" && status !== MOVED && status !== TO_NIGHT;
 }
 
-function findToken(token) {
-  const { col, rows } = readEntries();
+function findToken(token, { col, rows } = readEntries()) {
   const index = token ? rows.findIndex((r) => r[col.Token] === token) : -1;
   if (index < 0) return null;
   const r = rows[index];
@@ -3703,20 +3733,77 @@ function stripeConfig() {
   return config;
 }
 
-function paidUpPlayers({ col, rows }, ids) {
+function entryPaymentStatus({ col, rows }) {
   const book = readPayments(), ledger = ledgerByToken(book), payments = new Map();
   for (const row of book.rows) {
     if (!payments.has(row.Token)) payments.set(row.Token, []);
     payments.get(row.Token).push(row);
   }
-  const paidUp = new Set(ids);
+  const settled = new Set();
+  const unsettledPlayers = new Set();
   for (const row of rows) {
-    const id = row[col["US Chess ID"]];
-    if (!paidUp.has(id) || !active(row[col.Status])) continue;
+    if (!active(row[col.Status])) continue;
     const { balanceCents } = stripeBalance(row, col, book, payments.get(row[col.Token]) || [], ledger);
-    if (balanceCents !== 0) paidUp.delete(id);
+    if (balanceCents === 0) settled.add(row);
+    else unsettledPlayers.add(row[col["US Chess ID"]]);
   }
-  return paidUp;
+  return { settled, unsettledPlayers };
+}
+
+function tdPaymentPlayerRows(id, col, rows) {
+  return rows.filter(row => row[col["US Chess ID"]] === id).sort((a, b) => b[col.Date].localeCompare(a[col.Date]));
+}
+
+function livePendingPayments(book, baskets = stripeBaskets()) {
+  const pending = stripeCardPendingTokens(book);
+  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
+  return pending;
+}
+
+function tdPaymentEntryError(p, row, col, book) {
+  if (row[col["US Chess ID"]] !== p.id || row[col.Event] !== p.event || row[col.Date] !== p.date || !active(row[col.Status])) {
+    return "This registration changed. Check the current entries before trying again.";
+  }
+  if (livePendingPayments(book).has(p.token)) return "An online payment is pending verification for this entry.";
+  return "";
+}
+
+/** Behind the same authorization as the TD desk. */
+function tdPlayerPayments(p, td) {
+  if (!/^\d{8}$/.test(p.id || "")) return { error: "Enter an eight-digit US Chess ID." };
+  if (p.operation === "settle" || p.operation === "donate") {
+    if (p.by !== "cash" && p.by !== "check") return { error: "Choose cash or check." };
+    if (p.operation === "settle") {
+      const balance = Number(p.expected);
+      if (!/^\d+$/.test(p.expected || "") || !Number.isSafeInteger(balance) || balance <= 0) return { error: "This entry has no known balance to pay." };
+      return markPaid(p.token, money(balance / 100), p.by, false, p);
+    }
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(p.requestId || "") || !DOLLARS.test(p.amount || "")
+        || !Number.isSafeInteger(cents(p.amount)) || cents(p.amount) <= 0) return { error: "Enter a positive donation amount in dollars." };
+    return giveDonation(p, td, p.id);
+  }
+  if (p.operation === "discount") {
+    if (!DOLLARS.test(p.amount || "") || !Number.isSafeInteger(cents(p.amount))) return { error: "Enter a discount in dollars, or 0 to remove it." };
+    return discount(p.token, p.amount, p.note, td, p);
+  }
+  if (p.operation !== "list") return { error: "Unknown payment operation." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const { col, rows } = readEntries();
+    const playerRows = tdPaymentPlayerRows(p.id, col, rows);
+    if (!playerRows.length) return { ok: true, name: "", entries: [] };
+    const book = readPayments(), ledger = ledgerByToken(book), pending = livePendingPayments(book), events = clubEvents();
+    const entries = playerRows.filter(row => row[col.Token] && active(row[col.Status])).map(row => {
+      const event = row[col.Event], date = row[col.Date], token = row[col.Token];
+      const { balanceCents } = stripeBalance(row, col, book, undefined, ledger);
+      return { event, date, token, balanceCents, discountCents: cents(row[col.Discount]), pending: pending.has(token),
+        name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) };
+    }).filter(entry => entry.balanceCents !== 0 || entry.discountCents > 0);
+    return { ok: true, name: playerRows[0][col.Name], entries };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Public balance lookup deliberately returns no registration-changing credentials or contacts. */
@@ -3757,9 +3844,8 @@ function paymentBalances(p) {
   if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Enter an eight-digit US Chess ID." };
   const { col, rows } = readEntries();
   const book = readPayments();
-  const pending = stripeCardPendingTokens(book);
   const baskets = stripeBaskets();
-  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
+  const pending = livePendingPayments(book, baskets);
   let testPending = new Set();
   try {
     if (stripeConfig().livemode === false) {

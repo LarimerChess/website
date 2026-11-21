@@ -271,7 +271,7 @@ test("the script avoids syntax Apps Script can't parse, though node can", () => 
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
 });
 
-test("the Entries page marks a player paid up only when every active registration is settled", () => {
+test("the Entries page marks each registration settled independently of the player's other balances", () => {
   const { gs, cache, db } = load({
     Entries: [["Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Rating fee", "Token"],
       ["classic", "2099-11-07", "11111111", "Ann", "registered", "17.50", "2.50", "ann-upcoming"],
@@ -285,19 +285,21 @@ test("the Entries page marks a player paid up only when every active registratio
   gs.Utilities.getUuid = () => `version${++version}`;
   const store = gs.CacheService.getScriptCache();
   gs.CacheService.getScriptCache = () => ({ ...store, remove: k => delete cache[k] });
-  const flags = (entries) => entries.map(e => [e.id, e.paidUp]);
+  const flags = (entries) => entries.map(e => [e.id, e.entryPaid, e.paidUp]);
   const listed = () => flags(gs.allEntries()[0].entries);
   const published = () => flags(JSON.parse(db.root.public.entries)[0].entries);
   assert.ok(gs.markPaid("ann-upcoming", "17.50", "cash").ok);
-  eq(listed(), [["11111111", undefined], ["22222222", undefined]]);
+  eq(listed(), [["11111111", true, undefined], ["22222222", undefined, undefined]]);
   assert.ok(gs.markPaid("ann-past", "5", "cash").ok);
   const historical = gs.paymentBalances({ id: "11111111" }).entries.find(entry => entry.date === "2026-10-10");
   assert.equal(historical.balanceCents, 0);
   assert.equal(historical.review, true, "a missing historical rating fee can still need review after the balance is settled");
-  eq(published(), [["11111111", true], ["22222222", undefined]]);
+  eq(published(), [["11111111", true, true], ["22222222", undefined, undefined]]);
   eq(listed(), published());
   assert.ok(gs.markPaid("ann-past", "", "cash").ok);
-  eq(published(), [["11111111", undefined], ["22222222", undefined]]);
+  eq(published(), [["11111111", true, undefined], ["22222222", undefined, undefined]]);
+  assert.ok(gs.markPaid("ann-upcoming", "", "cash").ok);
+  eq(published(), [["11111111", undefined, undefined], ["22222222", undefined, undefined]]);
 });
 
 test("the public copies last six hours, every change clears them, and Refresh rebuilds them", () => {
@@ -318,6 +320,7 @@ test("the public copies last six hours, every change clears them, and Refresh re
   const names = () => gs.allEntries()[0].entries.map((e) => e.name);
   eq(names(), ["Ann"]);
   assert.equal(ttl[gs.allEntriesKey()], 21600);
+  eq(gs.entries("classic/2026-11-07", false).map((e) => e.name), ["Ann"]);
   assert.equal(ttl[gs.entriesKey("classic/2026-11-07")], 21600);
   const before = gs.allEntriesKey();
   gs.withdraw("t1");
@@ -726,6 +729,55 @@ test("a donation apart from any entry, from a contact or anonymous, and each con
   assert.match(gs.giveDonation({ amount: "0" }, null).error, /Enter the amount/);
   assert.match(gs.giveDonation({ contact: "gone", amount: "5" }, null).error, /no longer in the Sheet/);
   assert.equal(gs.doPost({ parameter: { action: "donation", password: "sheet", amount: "1" } }).ok, true, "the desk's action");
+});
+
+test("only TDs manage the linked player's Pay page balances and donations", () => {
+  const { gs, sheets } = monthOfAsh();
+  gs.firebaseUser = token => ({ email: `${token}@example.com`, emailVerified: token !== "unverified" });
+  gs.tdList = () => [
+    { emails: ["desk@example.com"], name: "Ben Bishop", role: "td" },
+    { emails: ["finance@example.com"], role: "finance" },
+  ];
+  const post = fields => gs.doPost({ parameter: { action: "tdPlayerPayments", id: "66666666", operation: "list", ...fields } });
+  const desk = fields => post({ idToken: "desk", ...fields });
+  const balance = () => gs.doPost({ parameter: { action: "paymentBalances", id: "66666666" } });
+  assert.equal(post({}).login, true);
+  assert.equal(post({ idToken: "finance" }).login, true);
+  assert.equal(post({ idToken: "unverified" }).login, true);
+  assert.equal(post({ id: "bad", idToken: "desk" }).ok, undefined);
+  assert.equal(post({ password: "sheet" }).ok, true);
+  assert.equal(gs.markPaid("token1", "5", "cash").ok, true);
+  const { token, event, date, balanceCents } = desk({}).entries[0];
+  const target = { token, event, date };
+  assert.equal(balanceCents, 1200);
+  assert.equal(balance().entries[0].token, undefined);
+  assert.equal(post({ ...target, operation: "settle", by: "cash", expected: "1200" }).login, true);
+  assert.equal(post({ ...target, operation: "discount", amount: "1", expected: "0", idToken: "finance" }).login, true);
+  assert.match(desk({ ...target, operation: "settle", by: "cash", expected: "1200", id: "77777777" }).error, /registration changed/);
+  assert.match(desk({ ...target, operation: "settle", by: "card", expected: "1200" }).error, /cash or check/);
+  assert.equal(desk({ ...target, operation: "discount", amount: "2.50", note: "Hardship", expected: "0" }).ok, true);
+  assert.match(desk({ ...target, operation: "discount", amount: "3", expected: "0" }).error, /discount changed/);
+  assert.match(desk({ ...target, operation: "settle", by: "cash", expected: "1200" }).error, /balance changed/);
+  gs.stripeCardPendingTokens = () => new Set([token]);
+  assert.equal(desk({}).entries[0].pending, true);
+  assert.match(desk({ ...target, operation: "settle", by: "check", expected: "950" }).error, /pending/);
+  gs.stripeCardPendingTokens = () => new Set();
+  const payment = { ...target, operation: "settle", by: "check", expected: "950" };
+  assert.equal(desk(payment).ok, true);
+  assert.match(desk(payment).error, /balance changed/);
+  assert.equal(balance().totalCents, 0);
+  const gift = { operation: "donate", amount: "8.50", note: "Club gift", by: "cash", requestId: "00000000-0000-4000-8000-000000000001" };
+  assert.equal(post({ ...gift, idToken: "finance" }).login, true);
+  assert.match(desk({ ...gift, id: "77777777" }).error, /No registration/);
+  assert.equal(desk(gift).message, "Recorded a $8.50 donation from Ann Ash.");
+  assert.equal(desk(gift).ok, true);
+  assert.match(desk({ ...gift, amount: "9" }).error, /already used/);
+  eq(rowsOf(sheets.Payments).map(row => [row.Type, row.Method, row.Received, row.Event, row["US Chess ID"]]), [
+    ["payment", "cash", "5", event, "66666666"], ["payment", "check", "9.50", event, "66666666"], ["donation", "cash", "8.50", "", "66666666"],
+  ]);
+  assert.equal(gs.contacts().anonymous, "0");
+  assert.equal(balance().totalCents, 0);
+  eq(desk({}).entries.map(entry => [entry.balanceCents, entry.discountCents]), [[0, 250]]);
 });
 
 test("a discount lowers what's due, up to the whole fee, and a refund after one can be undone by marking unpaid", () => {

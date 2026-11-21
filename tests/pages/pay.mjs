@@ -22,22 +22,49 @@ let holdCheckout = false;
 let releaseCheckout;
 let checkoutFailure = false;
 let balanceVariant = "";
+let tdAuth = false;
+let deskDiscount = 0;
+const deskPaid = new Set();
 const searchRoster = [{id:"12345678",name:"Latest Player"},{id:"22222222",name:"Second Player"}];
 const uscfRequests = [];
 function playerBalance(id) {
-  return { ok: true, id, name: id === "12345678" ? "Latest Player" : "Second Player", currency: "usd",
+  if (id === "00000000") return { ok: true, id, name: "", currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
+  const data = { ok: true, id, name: id === "12345678" ? "Latest Player" : "Second Player", currency: "usd",
     entries: [{ event: "club-night", date: "2026-11", name: "Club Night", balanceCents: 1750, review: false },
       { event: "classic", date: "2025-05-01", name: "Past Classic", balanceCents: 750, review: false },
       { event: "paid", date: "2027-05-01", name: "Paid Event", balanceCents: 0, review: false },
       { event: "unknown", date: "2027-06-01", name: "Unknown Fee", balanceCents: null, review: false },
       { event: "review", date: "2027-07-01", name: "Review Event", balanceCents: 1750, review: true }], totalCents: 4250, unknownCount: 1 };
+  if (tdAuth && id === "12345678") {
+    for (const entry of data.entries) {
+      if (deskPaid.has(entry.event)) entry.balanceCents = 0;
+      else if (entry.event === "classic") entry.balanceCents -= deskDiscount;
+    }
+    data.totalCents = data.entries.reduce((total, entry) => total + entry.balanceCents, 0);
+  }
+  return data;
 }
 await page.setRequestInterception(true);
 page.on("request", async (request) => {
   const url = new URL(request.url());
   if (url.hostname.endsWith("uschess.org")) uscfRequests.push(request.url());
   if (url.pathname === "/register.js") {
-    request.respond({ contentType: "text/javascript", body: offline(await (await fetch(base + "/register.js")).text()) });
+    let source = offline(await (await fetch(base + "/register.js")).text());
+    if (tdAuth) source = source.replace("const FIREBASE = null;", "const FIREBASE = {};");
+    request.respond({ contentType: "text/javascript", body: source });
+  } else if (url.hostname === "www.gstatic.com" && url.pathname.endsWith("/firebase-app.js")) {
+    request.respond({ contentType: "text/javascript", headers: { "Access-Control-Allow-Origin": "*" },
+      body: "export const initializeApp = config => config;" });
+  } else if (url.hostname === "www.gstatic.com" && url.pathname.endsWith("/firebase-auth.js")) {
+    request.respond({ contentType: "text/javascript", headers: { "Access-Control-Allow-Origin": "*" }, body: `
+      export const getAuth = () => ({ currentUser: null });
+      export function onAuthStateChanged(auth, callback) {
+        window.testAuth = token => {
+          auth.currentUser = token ? { getIdToken: async () => token } : null;
+          callback(auth.currentUser);
+        };
+        callback(auth.currentUser);
+      }` });
   } else if (url.pathname === "/stripe-payment-links.json") {
     request.respond({ contentType: "application/json", body: JSON.stringify(config) });
   } else if (url.host === "registration.test") {
@@ -46,12 +73,29 @@ page.on("request", async (request) => {
     if (fields.action === "paymentBalances" && fields.id === holdId) await new Promise((resolve) => { release = resolve; });
     if (fields.action === "paymentPlayers" && fields.q === holdSearch) await new Promise(resolve => { releaseSearch = resolve; });
     if (fields.action === "createPaymentCheckout" && holdCheckout) await new Promise(resolve=>{releaseCheckout=resolve;});
-    const body = fields.action === "paymentPlayers" ? {ok:true,players:searchRoster.filter(p => /^\d+$/.test(fields.q) ? p.id.startsWith(fields.q) : fields.q.toLowerCase().split(/\s+/).every(w => p.name.toLowerCase().includes(w)))}
+    let body;
+    if (fields.action === "tdPlayerPayments") {
+      if (fields.idToken !== "td-token") body = { login: true };
+      else if (fields.operation === "list") {
+        const player = playerBalance(fields.id);
+        body = { ok: true, name: player.name, entries: player.entries
+          .map(entry => ({ ...entry, token: entry.event,
+            discountCents: entry.event === "classic" ? deskDiscount : 0, pending: entry.event === "review" }))
+          .filter(entry => entry.balanceCents !== 0 || entry.discountCents) };
+      } else {
+        if (fields.operation === "settle") deskPaid.add(fields.event);
+        if (fields.operation === "discount") deskDiscount = Math.round(Number(fields.amount) * 100);
+        body = { ok: true, message: `Saved ${fields.operation}.` };
+      }
+    } else body = fields.action === "paymentPlayers" ? {ok:true,players:searchRoster.filter(p => /^\d+$/.test(fields.q) ? p.id.startsWith(fields.q) : fields.q.toLowerCase().split(/\s+/).every(w => p.name.toLowerCase().includes(w)))}
       : fields.action === "returnPaymentCheckout" ? { ok: true, ids: ["12345678", "22222222"] }
       : fields.action === "paymentBalances" && fields.ids ? { ok: true, balances: fields.ids.split(",").map(id => {
-        const player = playerBalance(id), entry = player.entries[0];
-        entry.pending = balanceVariant === "return-pending";
-        if (!entry.pending) entry.balanceCents = 0;
+        const player = playerBalance(id);
+        if (balanceVariant.startsWith("return-") && player.entries.length) {
+          const entry = player.entries[0];
+          entry.pending = balanceVariant === "return-pending";
+          if (!entry.pending) entry.balanceCents = 0;
+        }
         return player;
       }) }
       : fields.action === "paymentBalances" ? playerBalance(fields.id)
@@ -282,5 +326,59 @@ await page.goto(base+"/pay/?fund=filing",{waitUntil:"networkidle0"});
 await page.waitForSelector("#gift-filing:not([hidden])");
 (await page.$eval("#overflow",el=>!!el.getClientRects().length)) && await page.$$eval("[data-fund]:enabled",fields=>fields.length===1 && fields[0].dataset.fund==="filing")
   ? pass("A filing fund link opens only its amount and overflow option") : fail("Incorrect linked fund selection");
+
+balanceVariant = "";
+tdAuth = true;
+await page.evaluate(saved => localStorage.setItem("lccc-register-players", JSON.stringify(saved)), saved);
+const tdRequests = () => calls.filter(call => call.action === "tdPlayerPayments");
+const publicBalanceMarkup = () => page.$eval("#pay-balances", node => node.innerHTML);
+await page.goto(base + "/pay/?uscfid=12345678", { waitUntil: "networkidle0" });
+await page.waitForFunction(() => typeof window.testAuth === "function");
+const guestMarkup = await publicBalanceMarkup();
+!await page.$("#pay-td-heading") && tdRequests().length === 0 && await page.$eval("#pay-balances", node => node.nextElementSibling.className === "register-form")
+  ? pass("A guest opening a player's link has no TD controls or layout placeholder") : fail("Pay disclosed TD controls to a guest");
+await page.evaluate(() => window.testAuth("finance-token"));
+await page.waitForNetworkIdle();
+!await page.$("#pay-td-heading") && guestMarkup === await publicBalanceMarkup()
+  ? pass("Firebase users without TD access see the same Pay page") : fail("Unauthorized Firebase session changed Pay");
+await page.evaluate(() => window.testAuth("td-token"));
+await page.waitForSelector("#pay-td-heading");
+const panel = '[aria-labelledby="pay-td-heading"]';
+const tdStatus = `${panel} [role=status]`;
+const expectSave = (operation) => page.waitForFunction((selector, text) => document.querySelector(selector)?.textContent === text
+  && !document.querySelector("#pay-td-method").disabled, {}, tdStatus, `Saved ${operation}.`);
+const dialogAnswers = [];
+const respondToDialog = dialog => dialog.accept(dialogAnswers.shift());
+page.on("dialog", respondToDialog);
+await page.select("#pay-td-method", "check");
+dialogAnswers.push("2.50", "Hardship");
+await press(page, `${panel} button[aria-label="Discount for Past Classic, 2025-05-01"]`);
+await expectSave("discount");
+await page.waitForFunction(() => [...document.querySelectorAll('[data-player="12345678"] tr')].some(row => row.textContent.includes("Past Classic") && row.textContent.includes("$5.00")));
+await press(page, `${panel} button[aria-label="Mark paid for Past Classic, 2025-05-01"]`);
+await expectSave("settle");
+await page.waitForFunction(() => !document.querySelector('[data-player="12345678"]').textContent.includes("Past Classic"));
+await page.select("#pay-td-method", "cash");
+await press(page, `${panel} button[aria-label="Mark paid for Club Night, 2026-11"]`);
+await expectSave("settle");
+dialogAnswers.push("10.00", "Club donation");
+await press(page, `${panel} .field-row button`);
+await expectSave("donate");
+page.off("dialog", respondToDialog);
+const writes = tdRequests().filter(request => request.operation !== "list");
+JSON.stringify(writes.map(({ id, operation, by, expected, amount }) => [id, operation, by, expected, amount])) === JSON.stringify([
+  ["12345678", "discount", undefined, "0", "2.50"], ["12345678", "settle", "check", "500", undefined],
+  ["12345678", "settle", "cash", "1750", undefined], ["12345678", "donate", "cash", undefined, "10.00"],
+]) && !await page.$(`${panel} button[aria-label="Mark paid for Review Event, 2027-07-01"]`)
+  && (await page.$eval('[data-player="22222222"]', node => node.textContent.includes("Past Classic")))
+  ? pass("TD records discounts, cash, checks and donations for the linked player while other balances stay separate")
+  : fail(`Unexpected TD payment operations ${JSON.stringify(writes)}`);
+await axeBoth(page, "TD payments on Pay");
+await fitsPhone(page, "TD payments on Pay");
+await page.evaluate(() => window.testAuth(null));
+await page.waitForSelector("#pay-td-heading", { hidden: true });
+await page.goto(base + "/pay/", { waitUntil: "networkidle0" });
+!await page.$("#pay-td-heading") && !await page.evaluate(() => Boolean(window.testAuth))
+  ? pass("TD controls require a signed-in session and an ID in the link") : fail("TD controls remained without the link or session");
 await page.close();
 await done();

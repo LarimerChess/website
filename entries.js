@@ -226,7 +226,7 @@ function eventSection(event) {
       }
       if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
       const paymentCell = cell(row, "");
-      if (e.paidUp !== true && /^\d{8}$/.test(e.id)) {
+      if (e.entryPaid !== true && e.paidUp !== true && /^\d{8}$/.test(e.id)) {
         const payLink = document.createElement("a");
         payLink.href = `/pay/?uscfid=${encodeURIComponent(e.id)}`;
         payLink.textContent = "Pay";

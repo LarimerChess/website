@@ -313,15 +313,153 @@ if (typeof document !== "undefined") (async () => {
     let changed = false;
     try {
       const result = await post({ action: "paymentBalances", ids: ids.join(",") }, quiet);
-      if (quiet && checkoutPending) return;
+      if (quiet && checkoutPending) return false;
       if (!Array.isArray(result.balances) || result.balances.length !== ids.length) throw new Error("Balances could not be verified.");
       ids.forEach((id, index) => {
         if (requests.get(id) === tokens[index]) changed = applyBalances(result.balances[index], id) || changed;
       });
+      return true;
     } catch (error) {
       if (!quiet) returned.textContent = error.message;
+      return false;
     } finally {
       if (changed) { resetCheckout(); renderBalances(); }
+    }
+  }
+  async function startTdPayments() {
+    let panel;
+    let session;
+
+    async function open(getCredentials) {
+      const current = Symbol();
+      session = current;
+      panel?.remove();
+      if (!getCredentials) return;
+      const ask = async (operation, fields = {}) => {
+        if (session !== current) return { login: true };
+        const credentials = await getCredentials();
+        if (!credentials || session !== current) return { login: true };
+        return postRegistration(new URLSearchParams({
+          action: "tdPlayerPayments", operation, id: requestedId, ...fields, ...credentials,
+        }), null);
+      };
+      const data = await ask("list");
+      if (!data.ok || !data.name || session !== current) return;
+
+      const box = document.createElement("section");
+      box.setAttribute("aria-labelledby", "pay-td-heading");
+      const title = Object.assign(document.createElement("h3"), { id: "pay-td-heading", textContent: `TD payments for ${data.name}` });
+      const feedback = document.createElement("p");
+      feedback.setAttribute("role", "status");
+      feedback.tabIndex = -1;
+      const list = document.createElement("ul");
+      const method = document.createElement("select");
+      method.id = "pay-td-method";
+      method.add(new Option("Cash", "cash"));
+      method.add(new Option("Check", "check"));
+      const label = Object.assign(document.createElement("label"), { htmlFor: method.id, textContent: "Payment method" });
+      const tools = Object.assign(document.createElement("div"), { className: "field-row" });
+      let giftDraft;
+      const button = (text, handle, entry = "") => {
+        const control = Object.assign(document.createElement("button"), { type: "button", className: "td-action", textContent: text });
+        if (entry) control.setAttribute("aria-label", `${text} for ${entry}`);
+        control.addEventListener("click", handle);
+        return control;
+      };
+      const mutate = async (operation, fields) => {
+        for (const input of box.querySelectorAll("button, select")) input.disabled = true;
+        feedback.textContent = "Saving…";
+        let savedMessage = "";
+        try {
+          const result = await ask(operation, fields);
+          if (session !== current) return;
+          if (result.login) { box.remove(); return; }
+          if (!result.ok) {
+            feedback.textContent = result.error || "Could not save the change.";
+          } else {
+            if (operation === "donate") giftDraft = null;
+            feedback.textContent = savedMessage = result.message;
+            if (operation !== "donate") {
+              resetCheckout();
+              if (!await loadBalanceBatch([requestedId], true)) feedback.textContent += " Reload the page to see the updated balance.";
+            }
+          }
+          if (operation !== "donate") {
+            const latest = await ask("list");
+            if (latest.login) { box.remove(); return; }
+            if (latest.ok) showEntries(latest.entries);
+            else feedback.textContent += " Reload the page to refresh the TD balances.";
+          }
+        } catch {
+          feedback.textContent = savedMessage ? `${savedMessage} Reload the page to refresh the TD balances.`
+            : operation === "donate" ? "Could not confirm the donation. Retry with the same amount, method and note."
+              : "Could not confirm the change. Reload the page to check the balance.";
+        } finally {
+          for (const input of box.querySelectorAll("button, select")) input.disabled = false;
+          if (box.isConnected && (document.activeElement === document.body || box.contains(document.activeElement))) feedback.focus();
+        }
+      };
+      const donation = button("Record donation", () => {
+        const by = method.value;
+        const amount = prompt(`Amount ${data.name} donated by ${by}`, "")?.trim();
+        if (!amount) return;
+        const note = prompt("Donation note (optional)", "");
+        if (note === null) return;
+        const key = JSON.stringify([amount, by, note]);
+        if (giftDraft?.key !== key) giftDraft = { key, id: crypto.randomUUID() };
+        mutate("donate", { amount, by, note, requestId: giftDraft.id });
+      });
+      tools.append(label, method, donation);
+      const empty = Object.assign(document.createElement("p"), { textContent: "No balances or discounts to manage." });
+      function showEntries(entries) {
+        list.replaceChildren();
+        list.hidden = entries.length === 0;
+        empty.hidden = entries.length > 0;
+        for (const entry of entries) {
+          const forEntry = `${entry.name}, ${entry.date}`;
+          const details = Object.assign(document.createElement("li"), { textContent: `${forEntry} · ${entry.balanceCents === null
+            ? "Fee needs review" : `${money(entry.balanceCents)} due`}${entry.discountCents ? ` · ${money(entry.discountCents)} discount` : ""}` });
+          list.append(details);
+          if (entry.pending) {
+            details.append(" · Online payment pending verification");
+            continue;
+          }
+          const fields = { token: entry.token, event: entry.event, date: entry.date };
+          const actions = Object.assign(document.createElement("div"), { className: "field-row" });
+          if (entry.balanceCents > 0) actions.append(button("Mark paid", () => {
+            const by = method.value;
+            if (confirm(`Record ${money(entry.balanceCents)} paid by ${by} for ${data.name}'s ${forEntry} entry?`)) {
+              mutate("settle", { ...fields, by, expected: entry.balanceCents });
+            }
+          }, forEntry));
+          actions.append(button("Discount", () => {
+            const suggested = entry.discountCents || entry.balanceCents;
+            const amount = prompt(`Discount for ${forEntry} in dollars (0 removes it)`, suggested == null ? "" : (suggested / 100).toFixed(2))?.trim();
+            if (!amount) return;
+            const note = Number(amount) ? prompt("Reason for the discount (optional)", "") : "";
+            if (note !== null) mutate("discount", { ...fields, amount, note, expected: entry.discountCents });
+          }, forEntry));
+          details.append(actions);
+        }
+      }
+      showEntries(data.entries);
+      box.append(title, tools, feedback, empty, list);
+      panel = box;
+      balances.after(box);
+    }
+
+    if (FIREBASE) {
+      const sdk = "https://www.gstatic.com/firebasejs/12.19.0";
+      const [app, authSdk] = await Promise.all([import(`${sdk}/firebase-app.js`), import(`${sdk}/firebase-auth.js`)]);
+      const auth = authSdk.getAuth(app.initializeApp(FIREBASE));
+      authSdk.onAuthStateChanged(auth, user => {
+        open(user && (async () => auth.currentUser === user ? { idToken: await user.getIdToken() } : null)).catch(() => {});
+      });
+    } else {
+      await open(() => {
+        const password = sessionStorage.getItem("tdPassword");
+        return password ? { password, device: localStorage.getItem("lccc-td-device") || "" } : null;
+      });
     }
   }
   async function loadBalances(playerId, keep) {
@@ -413,4 +551,5 @@ if (typeof document !== "undefined") (async () => {
     await Promise.all(initialLoads);
     id.value = requestedId || returnedIds[0] || ids[0];
   } else { renderBalances(); status.textContent = "Find a player by name or US Chess ID to start."; }
+  if (requestedId && ENDPOINT) startTdPayments().catch(() => {});
 })();
