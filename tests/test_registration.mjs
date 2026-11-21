@@ -187,7 +187,7 @@ function load(tabs, cache = {}, store = "sheet") {
     Utilities: { formatDate: (d, tz, f) => (f === "yyyy-MM-dd" ? d.toISOString().slice(0, 10) : "2026-10-10 10:00"), getUuid: () => "uuid",
       computeDigest: (_, s) => [...s].map((c) => c.charCodeAt(0)), DigestAlgorithm: {},
       base64DecodeWebSafe: (s) => [...Buffer.from(s, "base64url")], base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString("base64url"),
-      newBlob: (bytes) => ({ getDataAsString: () => Buffer.from(bytes).toString("utf8") }) },
+      newBlob: (bytes) => ({ getBytes: () => [...Buffer.from(bytes)], getDataAsString: () => Buffer.from(bytes).toString("utf8") }) },
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(`${ROOT}scripts/registration.gs`, "utf8"), context);
@@ -239,6 +239,8 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   assert.equal(props.REGISTRATION_STORAGE, "firebase");
   assert.equal(db.root.registrationData.active, true);
   assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
+  gs.buildPaymentLookup_();
+  assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
   const initialSignal = db.root.changes.paymentBalances;
   gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
   assert.ok(gs.markPaid("private-token", "12.50", "cash", false).ok);
@@ -249,6 +251,71 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   assert.equal(JSON.stringify(db.root.changes).includes("private-token"), false);
   db.failing = true;
   assert.throws(() => gs.paymentBalances({ id: "11111111" }), /Firebase/);
+});
+
+test("Firebase Pay batches requested players and follows live ledger, basket and sandbox changes", () => {
+  const basketRef = "test-basket";
+  const allocations = JSON.stringify([
+    { token: "ada-entry", amount: 1750, party: { Name: "Ada" } },
+    { token: "ben-entry", amount: 1750, party: { Name: "Ben" } },
+    { token: "eve-entry", amount: 1750, party: { Name: "Eve" } },
+  ]);
+  const { gs, db } = load({
+    Entries: [["Name", "US Chess ID", "Amount", "Rating fee", "Event", "Date", "Token", "Status"],
+      ["Ada", "11111111", "17.50", "2.50", "classic", "2026-12-01", "ada-entry", "registered"],
+      ["Ben", "55555555", "17.50", "2.50", "classic", "2026-12-01", "ben-entry", "registered"],
+      ["Eve", "66666666", "17.50", "2.50", "classic", "2026-12-01", "eve-entry", "registered"]],
+    Payments: [["No.", "Token", "Received", "Entry fee", "Rating fee", "Type"],
+      ["1", "ada-entry", "5.00", "2.50", "2.50", "payment"],
+      ["2", "eve-entry", "5.00", "2.50", "2.50", "payment"]],
+    "Stripe checkout baskets": [["Reference", "Mode", "Session", "Allocations", "Returned paid"],
+      [basketRef, "false", "cs_test_one", allocations, "yes"]],
+  }, {}, "firebase");
+  gs.underLimit = () => true;
+  gs.clubEvents = () => ({});
+  gs.stripeConfig = () => ({ livemode: false });
+  gs.migrateRegistrationToFirebase_();
+  const ids = "55555555,11111111,99999999,55555555";
+  const original = gs.paymentBalances({ ids });
+  gs.buildPaymentLookup_();
+  db.calls.length = 0;
+  const indexed = gs.paymentBalances({ ids });
+  eq(indexed, original);
+  const index = "registrationData/paymentLookup";
+  const key = (prefix, value) => prefix + Buffer.from(value).toString("base64url");
+  eq(db.calls.map(({ method, path }) => [method, path]), [
+    ["GET", `${index}/p55555555`], ["GET", `${index}/p11111111`], ["GET", `${index}/p99999999`],
+    ["GET", `${index}/${key("t", "ada-entry")}`], ["GET", `${index}/${key("t", "ben-entry")}`],
+    ["GET", `${index}/${key("s", basketRef)}`],
+  ]);
+  assert.equal(JSON.stringify(db.root.registrationData.paymentLookup[key("t", "ada-entry")]).includes("eve-entry"), false);
+
+  const sandbox = gs.readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+  gs.appendText(sandbox.sheet, sandbox.col, { Session: "cs_test_one", Reference: basketRef, Kind: "basket" });
+  eq(gs.paymentBalances({ ids }).balances.slice(0, 2).map(player => player.entries[0].testPending), [false, false]);
+
+  const quotes = gs.stripeCardQuotes_();
+  const reference = "card-one";
+  const token = "ctoken_fixture";
+  const request = {
+    contract: "card-intent-v1", apiVersion: "2026-10-28.endive", key: `lccc-card-intent-v1-${reference}`,
+    payload: { amount: "1750", currency: "usd", confirmation_token: token, confirm: "true",
+      "allowed_payment_method_types[0]": "card", "metadata[lccc_checkout]": "payment_intent_v1",
+      "metadata[lccc_reference]": reference, return_url: "https://larimerchess.org/pay/?returned=1" },
+  };
+  gs.appendText(quotes.sheet, quotes.col, { Reference: reference, Mode: "true", Amount: "1750",
+    Allocations: allocations, Token: token, Request: JSON.stringify(request), State: "processing" });
+  eq(gs.paymentBalances({ ids }).balances.slice(0, 2).map(player => player.entries[0].pending), [true, true]);
+  quotes.sheet.getRange(2, quotes.col.State + 1).setValue("canceled");
+  eq(gs.paymentBalances({ ids }).balances.slice(0, 2).map(player => player.entries[0].pending), [false, false]);
+
+  const entries = gs.readEntries_();
+  entries.sheet.getRange(2, entries.col["US Chess ID"] + 1).setValue("55555555");
+  entries.sheet.getRange(2, entries.col.Discount + 1).setValue("2.50");
+  const moved = gs.paymentBalances({ ids }).balances;
+  eq(moved.map(player => player.totalCents), [2750, 0, 0]);
+  entries.sheet.getRange(2, entries.col.Status + 1).setValue("withdrawn");
+  eq(gs.paymentBalances({ ids }).balances.map(player => player.totalCents), [1750, 0, 0]);
 });
 
 const heading = (sheet) => sheet.data[0];

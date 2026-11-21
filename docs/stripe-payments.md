@@ -165,6 +165,14 @@ switches the app to Firebase. After cutover, use the TD desk for changes and kee
 the old tabs as a historical snapshot. Deploy the updated private Peak reporting
 script before cutover so its next run reads current registration records.
 
+After deploying the updated registration web app, run `buildPaymentLookup_`
+once in the Apps Script editor. It indexes existing Firebase rows and enables
+the per-player balance lookup. Later registration and payment writes update the
+index with the source rows. The index is private and balances are calculated
+from those rows for each request. If rolling back to a script version without
+index maintenance, clear the `PAYMENT_LOOKUP_VERSION` script property and rebuild
+the index after redeploying the updated web app.
+
 Build the webhook container from the website repository root with
 `docker build -f scripts/stripe-webhook.Dockerfile .`. Deploy it to an HTTPS
 service that forwards the original request body and `Stripe-Signature` header.

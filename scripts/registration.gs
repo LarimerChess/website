@@ -3231,7 +3231,10 @@ function ratedGames(key) {
 
 /** The Payments tab as rows keyed by heading. */
 function readPayments_() {
-  const { sheet, col, rows } = readTab_("Payments", PAYMENT_HEADER);
+  return paymentBook_(readTab_("Payments", PAYMENT_HEADER));
+}
+
+function paymentBook_({ sheet, col, rows }) {
   return { sheet, col, rows: rows.map((r) => Object.fromEntries(Object.entries(col).map(([h, i]) => [h, r[i]]))) };
 }
 
@@ -3443,6 +3446,8 @@ const REGISTRATION_TABLES = {
 };
 const REGISTRATION_TABLE_PATH = "registrationData/tables";
 const REGISTRATION_STORAGE = "REGISTRATION_STORAGE";
+const PAYMENT_LOOKUP_PATH = "registrationData/paymentLookup";
+const PAYMENT_LOOKUP_VERSION = "PAYMENT_LOOKUP_VERSION";
 let paymentReadTables_ = null;
 
 function registrationInFirebase_() {
@@ -3469,10 +3474,18 @@ function registrationTable_(key, required) {
     return headings.map((_, index) => row[`c${index + 1}`] ?? "");
   });
   let lastRow = rows.length + 1;
-  function write(relative, value) {
+  const lookupFields = paymentLookupFields_(key);
+  const indexed = lookupFields && paymentLookupReady_();
+  function write(id, before, after, relative, value, updateIndex) {
+    const changes = {};
+    if (indexed && updateIndex) {
+      for (const [group] of paymentLookupMemberships_(key, before, col)) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = null;
+      for (const [group, fields] of paymentLookupRow_(key, after, col)) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = fields;
+    }
     firebase_("patch", "", {
       [`${path}/rows/${relative}`]: value,
       "changes/paymentBalances": Utilities.getUuid(),
+      ...changes,
     });
   }
   // These operations are the subset used by existing registration writers under the script lock.
@@ -3484,10 +3497,18 @@ function registrationTable_(key, required) {
         setNumberFormat: () => range,
         setValues([values]) {
           if (row !== lastRow + 1 || column !== 1) throw new Error("Expected to append a registration row");
-          write(`r${row}`, registrationRow_(values));
+          const id = `r${row}`, saved = registrationRow_(values);
+          write(id, null, saved, id, saved, true);
+          stored.push([id, saved]);
           lastRow = row;
         },
-        setValue: value => write(`r${row}/c${column}`, String(value)),
+        setValue(value) {
+          const [id, before] = stored[row - 2];
+          const field = `c${column}`, saved = String(value);
+          const after = { ...before, [field]: saved };
+          write(id, before, after, `${id}/${field}`, saved, lookupFields?.includes(headings[column - 1]));
+          stored[row - 2][1] = after;
+        },
       };
       return range;
     },
@@ -3497,6 +3518,85 @@ function registrationTable_(key, required) {
 
 function registrationRow_(values) {
   return Object.fromEntries(values.map((value, index) => [`c${index + 1}`, String(value ?? "")]));
+}
+
+function paymentLookupReady_() {
+  return PropertiesService.getScriptProperties().getProperty(PAYMENT_LOOKUP_VERSION) === "1";
+}
+
+function paymentLookupFields_(key) {
+  switch (key) {
+    case "entries": return ["US Chess ID", "Name", "Status", "Event", "Date", "Token", "Amount", "Discount", "Paid", "Rating fee", "Payment review"];
+    case "payments": return ["No.", "Token", "Reverses", "Type", "Received", "Entry fee", "Rating fee", "Card fee", "Donation", "Stripe session", "Stripe intent"];
+    case "baskets": return ["Session", "Mode", "Returned paid", "Reference", "Allocations"];
+    case "quotes": return ["Mode", "Reference", "Request", "State", "Allocations", "Amount", "Token", "Intent"];
+    case "testPayments": return ["Reference", "Session", "Intent", "Amount"];
+  }
+}
+
+function paymentLookupKey_(prefix, value) {
+  return prefix + Utilities.base64EncodeWebSafe(Utilities.newBlob(String(value)).getBytes()).replace(/=+$/, "");
+}
+
+function paymentLookupMemberships_(key, row, col) {
+  if (!row) return [];
+  const value = heading => row[`c${col[heading] + 1}`] || "";
+  if (key === "entries") {
+    const id = value("US Chess ID");
+    return /^\d{8}$/.test(id) && active(value("Status")) ? [[`p${id}`]] : [];
+  }
+  if (key === "payments") return [[paymentLookupKey_("t", value("Token"))]];
+  if (key === "testPayments") return [[paymentLookupKey_("s", value("Reference"))]];
+  if (key === "baskets" && (!value("Session") || value("Returned paid") !== "yes")) return [];
+  if (key === "quotes" && (!value("Request") || ["requires_payment_method", "canceled"].includes(value("State")))) return [];
+  let allocations;
+  try { allocations = JSON.parse(value("Allocations")); } catch { return []; }
+  if (!Array.isArray(allocations)) return [];
+  const byToken = new Map();
+  for (const allocation of allocations) {
+    if (!allocation?.token) continue;
+    const group = paymentLookupKey_("t", allocation.token);
+    if (!byToken.has(group)) byToken.set(group, []);
+    byToken.get(group).push({ token: allocation.token, amount: allocation.amount });
+  }
+  return [...byToken];
+}
+
+function paymentLookupRow_(key, row, col) {
+  const memberships = paymentLookupMemberships_(key, row, col);
+  if (!memberships.length) return [];
+  const headings = paymentLookupFields_(key);
+  return memberships.map(([group, allocations]) => [
+    group, registrationRow_(headings.map(heading => heading === "Allocations"
+      ? JSON.stringify(allocations)
+      : row[`c${col[heading] + 1}`] || "")),
+  ]);
+}
+
+/** Backfill the private lookup from current Firebase rows after deploying the updated writers. */
+function buildPaymentLookup_() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!registrationInFirebase_()) throw new Error("Payment lookup requires Firebase registration");
+    const tables = firebase_("get", REGISTRATION_TABLE_PATH);
+    const index = {};
+    for (const key of ["entries", "payments", "baskets", "quotes", "testPayments"]) {
+      const { headings, rows } = tables[key];
+      const col = Object.fromEntries(JSON.parse(headings).map((heading, i) => [heading, i]));
+      for (const [id, row] of Object.entries(rows || {})) {
+        for (const [group, fields] of paymentLookupRow_(key, row, col)) {
+          const grouped = index[group] || (index[group] = {});
+          const indexedRows = grouped[key] || (grouped[key] = {});
+          indexedRows[id] = fields;
+        }
+      }
+    }
+    firebase_("put", PAYMENT_LOOKUP_PATH, index);
+    PropertiesService.getScriptProperties().setProperty(PAYMENT_LOOKUP_VERSION, "1");
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function registrationMigrationSource_() {
@@ -3964,18 +4064,26 @@ function paymentBalances(p) {
   if (!underLimit("payment-balances", 120)) return { error: "Too many requests. Try again in a minute." };
   const ids = p.ids ? [...new Set(String(p.ids).split(","))] : [String(p.id || "").trim()];
   if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Enter an eight-digit US Chess ID." };
-  if (registrationInFirebase_()) {
+  const inFirebase = registrationInFirebase_();
+  const indexed = inFirebase && paymentLookupReady_();
+  const testMode = testBalanceMode_();
+  let snapshot;
+  if (inFirebase) {
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      paymentReadTables_ = firebase_("get", REGISTRATION_TABLE_PATH);
-      if (!paymentReadTables_?.entries || !paymentReadTables_?.payments) throw new Error("Registration database missing");
+      if (indexed) {
+        snapshot = readIndexedPaymentRows_(ids, testMode);
+      } else {
+        paymentReadTables_ = firebase_("get", REGISTRATION_TABLE_PATH);
+        if (!paymentReadTables_?.entries || !paymentReadTables_?.payments) throw new Error("Registration database missing");
+      }
     } finally {
       lock.releaseLock();
     }
   }
   try {
-    const players = readPaymentBalanceSnapshot_(new Set(ids));
+    const players = readPaymentBalanceSnapshot_(new Set(ids), testMode, snapshot);
     const balances = ids.map(id => players[id] || { ok: true, id, name: "", currency: "usd", entries: [], totalCents: 0, unknownCount: 0 });
     return p.ids ? { ok: true, balances } : balances[0];
   } finally {
@@ -3983,18 +4091,66 @@ function paymentBalances(p) {
   }
 }
 
-function readPaymentBalanceSnapshot_(ids) {
-  const { col, rows } = readEntries_();
-  const book = readPayments_();
-  const baskets = stripeBaskets_();
-  const pending = livePendingPayments(book, baskets);
-  let testPending = new Set();
-  try {
-    if (stripeConfig().livemode === false) {
-      testPending = stripeCardPendingTokens(book, undefined, false);
-      for (const token of stripeBasketPendingTokens(baskets, book, false)) testPending.add(token);
+function testBalanceMode_() {
+  try { return stripeConfig().livemode === false; } catch { return false; }
+}
+
+function fetchPaymentLookupGroups_(keys) {
+  if (!keys.length) return [];
+  const headers = { Authorization: "Bearer " + ScriptApp.getOAuthToken() };
+  const requests = keys.map(key => ({
+    url: `${firebaseUrl()}/${PAYMENT_LOOKUP_PATH}/${key}.json`, headers, muteHttpExceptions: true,
+  }));
+  const groups = [];
+  for (let start = 0; start < requests.length; start += 50) {
+    for (const response of UrlFetchApp.fetchAll(requests.slice(start, start + 50))) {
+      if (response.getResponseCode() !== 200) throw new Error("Firebase payment lookup failed");
+      groups.push(JSON.parse(response.getContentText()));
     }
-  } catch {}
+  }
+  return groups;
+}
+
+function indexedPaymentTab_(key, groups) {
+  const headings = paymentLookupFields_(key);
+  const col = Object.fromEntries(headings.map((heading, index) => [heading, index]));
+  const rows = groups.flatMap(group => Object.entries(group?.[key] || {}))
+    .sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)))
+    .map(([, fields]) => headings.map((_, index) => fields[`c${index + 1}`] ?? ""));
+  return { col, rows };
+}
+
+function readIndexedPaymentRows_(ids, testMode) {
+  const entries = indexedPaymentTab_("entries", fetchPaymentLookupGroups_(ids.map(id => `p${id}`)));
+  const tokens = [...new Set(entries.rows.map(row => paymentLookupKey_("t", row[entries.col.Token])))];
+  const groups = fetchPaymentLookupGroups_(tokens);
+  const baskets = indexedPaymentTab_("baskets", groups);
+  const quotes = indexedPaymentTab_("quotes", groups);
+  let sandbox;
+  if (testMode) {
+    const references = new Set();
+    for (const { col, rows } of [baskets, quotes]) {
+      for (const row of rows) if (row[col.Mode] === "false") references.add(paymentLookupKey_("s", row[col.Reference]));
+    }
+    sandbox = indexedPaymentTab_("testPayments", fetchPaymentLookupGroups_([...references]));
+  }
+  return { entries, book: paymentBook_(indexedPaymentTab_("payments", groups)), baskets, quotes, sandbox };
+}
+
+function readPaymentBalanceSnapshot_(ids, testMode, snapshot) {
+  const { col, rows } = snapshot?.entries ?? readEntries_();
+  if (!rows.length) return {};
+  const book = snapshot?.book ?? readPayments_();
+  const baskets = snapshot?.baskets ?? stripeBaskets_();
+  const quotes = snapshot?.quotes ?? stripeCardQuotes_();
+  const pending = stripeCardPendingTokens(book, undefined, true, quotes);
+  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
+  let testPending = new Set();
+  if (testMode) {
+    const sandbox = snapshot?.sandbox ?? readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+    testPending = stripeCardPendingTokens(book, undefined, false, quotes, sandbox);
+    for (const token of stripeBasketPendingTokens(baskets, book, false, sandbox)) testPending.add(token);
+  }
   const events = clubEvents(), ledger = ledgerByToken(book), payments = new Map(), players = {};
   for (const payment of book.rows) {
     if (!payments.has(payment.Token)) payments.set(payment.Token, []);
@@ -4161,9 +4317,9 @@ const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Se
 
 function stripeBaskets_() { return readTab_("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
 
-function stripeBasketPendingTokens(tab, book, livemode) {
+function stripeBasketPendingTokens(tab, book, livemode, sandbox) {
   const { col, rows } = tab, pending = new Set();
-  const sandbox = livemode ? null : readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+  if (!livemode && !sandbox) sandbox = readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
   for (const row of rows) {
     const session = row[col.Session];
     if (!session || row[col.Mode] !== String(livemode) || row[col["Returned paid"]] !== "yes") continue;
@@ -4594,9 +4750,9 @@ function stripeCardCheckPending(tab,reference,allocations,secret) {
 }
 
 /** Confirmed requests reserve their entries until matching-mode reconciliation or a verified decline. */
-function stripeCardPendingTokens(book,excludeReference,livemode = true) {
-  const pending = new Set(), tab = stripeCardQuotes_(), c = tab.col;
-  const sandbox = livemode ? null : readTab_("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
+function stripeCardPendingTokens(book,excludeReference,livemode = true,tab = stripeCardQuotes_(),sandbox) {
+  const pending = new Set(), c = tab.col;
+  if (!livemode && !sandbox) sandbox = readTab_("Stripe test payments",["Session","Intent","Amount","Reference","Kind"]);
   for (const row of tab.rows) {
     if (row[c.Mode] !== String(livemode) || row[c.Reference] === excludeReference || !row[c.Request]
         || ["requires_payment_method","canceled"].includes(row[c.State])) continue;
