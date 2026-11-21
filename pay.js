@@ -51,7 +51,15 @@ if (typeof document !== "undefined") (async () => {
   const playerList = document.querySelector("#pay-players");
   const summary = document.querySelector("#pay-summary");
   const checkout = document.querySelector("#pay-checkout");
-  const donation = document.querySelector("#donation-link");
+  const inputs = [...document.querySelectorAll("[data-fund]")];
+  const overflow = document.querySelector("#overflow");
+  const gifts = () => inputs.filter(i => i.valueAsNumber > 0).map(i => ({
+    fund:i.dataset.fund, amount:Math.round(i.valueAsNumber * 100),
+    ...(i.dataset.fund === "filing" ? {overflow:overflow.checked} : {})
+  }));
+  const giftTotal = () => gifts().reduce((n,g) => n + g.amount, 0);
+  for (const input of [...inputs,overflow]) input.addEventListener("input", () => { resetCheckout(); updateTotal(); });
+  inputs.find(i => i.dataset.fund === returnParams.get("fund"))?.focus();
   const selectedTotal = document.querySelector("#pay-selected-total");
   const review = document.querySelector("#pay-review");
   const saved = newSavedBox();
@@ -62,7 +70,8 @@ if (typeof document !== "undefined") (async () => {
   let revision = 0;
   let checkoutPending = false;
   let checkoutRequestId = crypto.randomUUID();
-  let defaultSelected = true;
+  let defaultSelected = !inputs.some(i => i.dataset.fund === returnParams.get("fund"));
+  if (!defaultSelected) document.querySelector("#selection-hint").textContent = "Select any entry fees to add to your donation.";
   const people = new Map();
   const selected = new Set();
   const requests = new Map();
@@ -145,17 +154,17 @@ if (typeof document !== "undefined") (async () => {
       .map((entry) => ({ ...entry, id: person.id, playerName: person.name })));
   }
   function updateTotal() {
-    const entries = selectedEntries(), amount = entries.reduce((total, entry) => total + entry.balanceCents, 0);
-    selectedTotal.textContent = `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"}: ${money(amount)}.`;
+    const entries = selectedEntries(), amount = entries.reduce((total, entry) => total + entry.balanceCents, giftTotal());
+    selectedTotal.textContent = giftTotal() ? `Checkout total: ${money(amount)} including ${money(giftTotal())} in designated gifts before fees.` : `${entries.length} selected ${entries.length === 1 ? "entry" : "entries"}: ${money(amount)}.`;
     const available = config.enabled && config.dynamicCheckout?.enabled;
-    review.disabled = checkoutPending || !available || !entries.length;
+    review.disabled = checkoutPending || !available || !amount || inputs.some(i => !i.validity.valid);
     review.setAttribute("aria-busy", String(checkoutPending));
-    review.textContent = checkoutPending ? "Opening secure checkout..." : entries.length
+    review.textContent = checkoutPending ? "Opening secure checkout..." : amount
       ? `${config.livemode ? "Pay" : "Test pay"} ${money(amount)} on Stripe` : "Select entries to pay";
     const allEntries = [...people.values()].flatMap(person => person.entries);
     document.querySelector("#pay-cart-status").textContent = !available
       ? "Online checkout is unavailable. You can still view balances; please arrange payment with the tournament director."
-      : !people.size ? "Find a player above to load unpaid entries."
+      : giftTotal() ? "" : !people.size ? "Find a player above to load unpaid entries."
       : entries.length ? ""
       : allEntries.some(eligible) ? "Select at least one entry to pay."
       : allEntries.some(entry => entry.pending || entry.testPending) ? "Payment pending verification. Do not pay again; contact the tournament director if it remains pending."
@@ -165,8 +174,8 @@ if (typeof document !== "undefined") (async () => {
   }
   review.addEventListener("click", async () => {
     const entries = selectedEntries();
-    if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || !entries.length) return;
-    const amount = entries.reduce((n, entry) => n + entry.balanceCents, 0);
+    if (checkoutPending || !config.enabled || !config.dynamicCheckout?.enabled || (!entries.length && !giftTotal()) || inputs.some(i => !i.validity.valid)) return;
+    const amount = entries.reduce((n, entry) => n + entry.balanceCents, giftTotal());
     checkout.hidden = true;
     checkout.removeAttribute("href");
     const version = revision;
@@ -175,8 +184,8 @@ if (typeof document !== "undefined") (async () => {
     summary.textContent = `Preparing secure ${config.livemode ? "payment" : "test checkout"} for ${money(amount)}...`;
     status.textContent = "Checking the selected entry balance…";
     try {
-      const result = await post({ action: "createPaymentCheckout", requestId: checkoutRequestId, entries: JSON.stringify(entries.map(({ id, event, date }) => ({ id, event, date }))) });
-      const url = ClubPayments.verifiedCheckout(result, config, amount, entries.length);
+      const result = await post({ action: "createPaymentCheckout", requestId: checkoutRequestId, ...(giftTotal() ? {donations:JSON.stringify(gifts())} : {}), entries: JSON.stringify(entries.map(({ id, event, date }) => ({ id, event, date }))) });
+      const url = ClubPayments.verifiedCheckout(result, config, amount, entries.length + gifts().length);
       if (version !== revision) return;
       summary.textContent = `Opening ${config.livemode ? "secure" : "test"} checkout for ${money(amount)}.`;
       checkout.href = url;
@@ -363,13 +372,6 @@ if (typeof document !== "undefined") (async () => {
     if (!response.ok) throw new Error();
     config = await response.json();
     if (config.enabled && !config.livemode) document.querySelector("#pay-test").hidden = false;
-    const donationURL = config.enabled && ClubPayments.stripeURL(config.donation?.url);
-    if (donationURL) {
-      donation.href = donationURL.href;
-      donation.textContent = config.livemode ? "Donate through Stripe" : "Try a test donation";
-      donation.hidden = false;
-      document.querySelector("#donation-status").textContent = "";
-    }
   } catch { config = { enabled: false }; }
   form.hidden = false;
   showSavedPlayers();
@@ -382,7 +384,7 @@ if (typeof document !== "undefined") (async () => {
     returned.textContent = "Checking your Stripe checkout…";
     try {
       const result = await post({ action: "returnPaymentCheckout", reference }, true);
-      if (!Array.isArray(result.ids) || !result.ids.length || result.ids.length > 50 || result.ids.some(id => !/^\d{8}$/.test(id))) {
+      if (!Array.isArray(result.ids) || result.ids.length > 50 || result.ids.some(id => !/^\d{8}$/.test(id))) {
         throw new Error("Checkout entries could not be verified. Refresh the page to try again.");
       }
       returnedIds = [...new Set(result.ids)];

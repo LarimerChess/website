@@ -165,7 +165,8 @@ function doPost(e) {
     if (["arenaAvailable", "arenaChallenge", "arenaReport"].includes(p.action) && !p.idToken && !p.password) return json(arenaByPlayer(p));
     let td = null;
     if (p.idToken) {
-      const signedIn = signedInTd(p.idToken);
+      const finance = ["financePost","financeHistory","financeAccess"].includes(p.action);
+      const signedIn = signedInTd(p.idToken, finance ? ["td","finance"] : DESK_ROLES);
       if (signedIn.error) return json(signedIn);
       td = signedIn.td;
     } else {
@@ -176,6 +177,9 @@ function doPost(e) {
       return json({ error: "US Chess has rated this tournament, so it can't change on the desk." });
     }
     switch (p.action) {
+      case "financeAccess": return json({ok:true});
+      case "financeHistory": return json(financeHistory());
+      case "financePost": return json(financePost(p));
       case "login": return json(td ? { ok: true, changes: changes(), td } : { ok: true, changes: changes() });
       case "whoami": return json({ td });
       case "changes": return json({ changes: changes() });
@@ -3208,6 +3212,11 @@ function addPayment(book, token, party, fields) {
   for (const h of ["Received", "Entry fee", "Rating fee", "Card fee", "Donation"]) if (row[h] === undefined) row[h] = "0";
   appendText(book.sheet, book.col, row);
   book.rows.push(row);
+  const financial = financeDeskEntry(row);
+  if (financial && firebaseUrl()) {
+    try { firebase("put","public/finance/desk-"+row["No."],financial); }
+    catch { console.warn("Finance copy pending historical sync for payment row " + row["No."]); }
+  }
 }
 
 function partyOf(r, col) {
@@ -3547,19 +3556,19 @@ function nightLabel(date) {
 
 /** The TD a Firebase ID token signs in, { td: { email, name, usChessId } }, or why not, { error, login, verify }.
  *  Only a verified address counts, since anyone can make a Firebase account with any address. */
-function signedInTd(idToken) {
+function signedInTd(idToken, allowedRoles = DESK_ROLES) {
   const user = firebaseUser(idToken);
   if (user.error) return user;
   if (!user.emailVerified) return { error: "Confirm your email address first; we've sent you a link.", login: true, verify: true };
   const email = user.email.toLowerCase();
   const pick = (list) => {
     const mine = list.filter((t) => t.emails.includes(email));
-    return mine.find((t) => DESK_ROLES.includes(t.role)) || mine[0];
+    return mine.find((t) => allowedRoles.includes(t.role)) || mine[0];
   };
   let listed = pick(tdList(false));
-  if (!listed || !DESK_ROLES.includes(listed.role)) listed = pick(tdList(true));
+  if (!listed || !allowedRoles.includes(listed.role)) listed = pick(tdList(true));
   if (!listed) return { error: `${user.email} isn't on the club's list of TDs. Ask the president to add you.`, login: true };
-  if (!DESK_ROLES.includes(listed.role)) {
+  if (!allowedRoles.includes(listed.role)) {
     return { error: `${user.email} is on the club's list, but not as a TD. Ask the president to add you as one.`, login: true };
   }
   return { td: { email: user.email, name: listed.name || user.name || user.email, usChessId: listed.usChessId } };
@@ -3854,6 +3863,7 @@ function stripeImport(record, config) {
       || typeof record.disputed !== "boolean") return review("Payment validation failed");
   const book = readPayments();
   const prior = !test && book.rows.find((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
+  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, record.kind === "donation" ? [{fund:"general",amount:record.amountCents}] : [], config);
   const reviewReason = "Refund/dispute: reconcile credit and any moved entries manually";
   const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   const hasReviewHistory = history && history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === reviewReason);
@@ -3944,8 +3954,8 @@ function returnPaymentCheckout(p) {
     const index = rows.findIndex(r => r[col.Reference] === reference && r[col.Mode] === String(config.livemode));
     const basket = rows[index], id = basket?.[col.Session];
     if (!/^cs_(live|test)_[A-Za-z0-9]+$/.test(id || "")) return { error: "Checkout reference could not be verified." };
-    const ids = [...new Set(JSON.parse(basket[col.Allocations]).map(a => a.party["US Chess ID"]))];
-    if (!ids.length || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Checkout reference could not be verified." };
+    const ids = [...new Set(JSON.parse(basket[col.Allocations]).filter(a => !a.fund).map(a => a.party["US Chess ID"]))];
+    if (ids.some(id => !/^\d{8}$/.test(id))) return { error: "Checkout reference could not be verified." };
     if (basket[col["Returned paid"]] !== "yes") {
       const session = stripeCardRequest(`checkout/sessions/${id}`, stripeCardSecret(config));
       if (session.id !== id || session.client_reference_id !== reference || session.livemode !== config.livemode
@@ -3999,7 +4009,9 @@ function createPaymentCheckout(p) {
     let requested;
     try { requested = JSON.parse(p.entries || "[]"); }
     catch { return { error: "Select valid entries and try again." }; }
-    if (!Array.isArray(requested) || !requested.length || requested.length > 50) return { error: "Select between one and 50 entries." };
+    const gifts = JSON.parse(p.donations || "[]");
+    if (!validGifts(gifts)) return { error: "Check your donation amounts." };
+    if (!Array.isArray(requested) || (!requested.length && !gifts.length) || requested.length > 50) return { error: "Select between one and 50 entries." };
     stage = "lock";
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
@@ -4021,6 +4033,7 @@ function createPaymentCheckout(p) {
         return { token: r[col.Token], party: partyOf(r, col), amount: balance.balanceCents,
           rating: Math.min(balance.balanceCents, Math.max(0, cents(r[col["Rating fee"]]) - held.rating)) };
       });
+      allocations.push(...gifts);
       const amount = allocations.reduce((n, a) => n + a.amount, 0);
       if (!Number.isSafeInteger(amount) || amount < 50 || amount > 99999999) reject("The selected total is outside the supported checkout range.");
       const reference = String(p.requestId || "");
@@ -4030,13 +4043,15 @@ function createPaymentCheckout(p) {
       if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) reject("Balances changed. Reload the page before checkout.");
       if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
       if (old && !old[tab.col["Checkout request"]]) reject("This checkout started before an update. Reload this page and try again.");
+      const product = gifts.length ? "LCCC donations and selected entry fees" : "LCCC selected entry fees";
       const payload = { mode: "payment", client_reference_id: reference, "metadata[lccc_checkout]": "basket_v1",
         "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
-        "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
+        "line_items[0][price_data][product_data][name]": product, "line_items[0][quantity]": "1",
         "allowed_payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
         success_url: SITE + "/pay/?returned=1&checkout=" + reference, cancel_url: SITE + "/pay/" };
       const request = old ? JSON.parse(old[tab.col["Checkout request"]]) : { contract: "entry-usd-card-v3",
-        apiVersion: "2026-10-28.endive", key: "lccc-entry-usd-card-v3-" + reference, payload };
+        apiVersion: "2026-10-28.endive", key: "lccc-entry-usd-card-v3-" + reference, payload, created:Date.now() };
+      if (gifts.length && old && (!request.created || Date.now()-request.created >= 86400000)) reject("Checkout expired. Reload to start again.");
       const requestPayload = request.payload;
       const previousContract = request.contract === "entry-usd-card-v2";
       if ((!previousContract && request.contract !== "entry-usd-card-v3") || request.apiVersion !== "2026-10-28.endive"
@@ -4046,24 +4061,29 @@ function createPaymentCheckout(p) {
           || requestPayload["line_items[0][price_data][currency]"] !== "usd" || requestPayload["line_items[0][quantity]"] !== "1"
           || requestPayload["metadata[lccc_checkout]"] !== "basket_v1"
           || requestPayload["allowed_payment_method_types[0]"] !== "card"
-          || requestPayload["line_items[0][price_data][product_data][name]"] !== "LCCC selected entry fees"
+          || requestPayload["line_items[0][price_data][product_data][name]"] !== product
           || requestPayload["automatic_tax[enabled]"] !== "false" || requestPayload["adaptive_pricing[enabled]"] !== "false"
           || requestPayload.success_url !== (previousContract ? SITE + "/pay/?returned=1" : payload.success_url) || requestPayload.cancel_url !== payload.cancel_url
           || Object.keys(requestPayload).length !== Object.keys(payload).length) reject("Stored checkout could not be verified. Contact the tournament director.");
+      const index = old ? tab.rows.indexOf(old) + 2 : tab.rows.length + 2;
       // Persist the exact nonsecret request before Stripe; retries replay it unchanged.
       if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount),
         Allocations: JSON.stringify(allocations), Session: "", URL: "", "Checkout request": JSON.stringify(request) });
+      const filing = gifts.find(g => g.fund === "filing");
+      if (filing) reserveFiling(reference, filing, config, tab, reject);
       stage = "stripe-request";
       const response = UrlFetchApp.fetch("https://api.stripe.com/v1/checkout/sessions", { method: "post", payload: request.payload,
         headers: { Authorization: "Bearer " + secret, "Idempotency-Key": request.key, "Stripe-Version": request.apiVersion }, muteHttpExceptions: true });
       stage = "stripe-response";
       const http = response.getResponseCode();
-      if (http !== 200) return stripeCheckoutHttpError(response, http);
+      if (http !== 200) {
+        if (filing && http === 400) firebase("put", financePaths(config.livemode).holds + "/" + reference, null);
+        return stripeCheckoutHttpError(response, http);
+      }
       const session = JSON.parse(response.getContentText());
       if (session.livemode !== config.livemode || session.amount_total !== amount || session.client_reference_id !== reference
           || !/^https:\/\/checkout\.stripe\.com\//.test(session.url || "")) reject("Stripe checkout could not be verified.");
       stage = "basket-save";
-      const index = old ? tab.rows.indexOf(old) + 2 : tab.rows.length + 2;
       tab.sheet.getRange(index, tab.col.Session + 1).setNumberFormat("@").setValue(session.id);
       tab.sheet.getRange(index, tab.col.URL + 1).setNumberFormat("@").setValue(session.url);
       return { ok: true, checkoutUrl: session.url, amount, currency: "usd", livemode: config.livemode, count: allocations.length };
@@ -4089,8 +4109,18 @@ function stripeImportBasket(record, config) {
   const basket = matches[0];
   if (basket[tab.col.Mode] !== String(config.livemode) || Number(basket[tab.col.Amount]) !== record.amountCents
       || (basket[tab.col.Session] && basket[tab.col.Session] !== record.sessionId)) return review("Basket session or amount mismatch");
-  const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments(), { rows, col, sheet } = readEntries();
-  if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || allocations.reduce((n,a) => n+a.amount,0) !== record.amountCents) return review("Invalid basket allocation");
+  const items = JSON.parse(basket[tab.col.Allocations]);
+  const allocations = items.filter(a => !a.fund), gifts = items.filter(a => a.fund), book = readPayments(), { rows, col, sheet } = readEntries();
+  if (!validGifts(gifts) || !items.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || items.reduce((n,a) => n+a.amount,0) !== record.amountCents) return review("Invalid basket allocation");
+  if (gifts.length && !Number.isSafeInteger(record.feeCents)) {
+    const path = financePaths(config.livemode).journal + "/" + financeKey(record);
+    if (!firebase("get",path)) firebase("put",path,{
+      date:Utilities.formatDate(new Date(record.created*1000),TZ,"yyyy-MM-dd"),purpose:"Paid, awaiting Stripe processing fee",
+      pending:true,lines:items.map(a => ({fund:a.fund || "tournaments",pending:a.amount}))
+    });
+    return {sessionId:record.sessionId,status:"pending"};
+  }
+  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, gifts, config);
   const prior = book.rows.filter((r) => r["Stripe session"] === record.sessionId || r["Stripe intent"] === record.paymentIntentId);
   const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
@@ -4260,6 +4290,7 @@ function stripeImportCardPayment(input, config) {
   const allocations = JSON.parse(basket[tab.col.Allocations]), book = readPayments(), { rows, col, sheet } = readEntries();
   if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.token)).size !== allocations.length || allocations.some(a => !a.token || !a.party || !Number.isSafeInteger(a.amount) || a.amount <= 0 || !Number.isSafeInteger(a.rating) || a.rating < 0 || a.rating > a.amount) || allocations.reduce((n,a) => n+a.amount,0) !== subtotal) return review("Invalid basket allocation");
   const prior = book.rows.filter((r) => r["Stripe intent"] === record.paymentIntentId);
+  if (Number.isSafeInteger(record.feeCents)) settleFinance(record, [], config);
   const history = readTab(test ? "Stripe test review" : "Stripe review", ["Session", "Reason", "Recorded", "Snapshot", "Resolution"]);
   if (record.refundCents || record.disputed || history.rows.some((r) => r[history.col.Session] === record.sessionId && r[history.col.Reason] === "Basket refund/dispute requires reconciliation")) {
     const snapshot = JSON.stringify({ refundCents: record.refundCents, disputed: record.disputed });
@@ -4367,4 +4398,190 @@ function stripeImportCardStatus(record,config) {
   tab.sheet.getRange(index,c.Intent+1).setNumberFormat("@").setValue(record.paymentIntentId);
   tab.sheet.getRange(index,c.State+1).setNumberFormat("@").setValue(record.intentStatus);
   return ack(["requires_payment_method","canceled"].includes(record.intentStatus)?"failed":"pending");
+}
+
+const FINANCE_FUNDS = ["filing", "general", "marketing", "equipment"];
+function validGifts(gifts) {
+  return Array.isArray(gifts) && gifts.length <= 4 && new Set(gifts.map(g => g?.fund)).size === gifts.length &&
+    gifts.every(g => g && FINANCE_FUNDS.includes(g.fund) && Number.isSafeInteger(g.amount) && g.amount > 0 && g.amount <= 99999999 &&
+      Object.keys(g).every(k => ["fund","amount","overflow"].includes(k)) &&
+      (g.overflow === undefined || (g.fund === "filing" && typeof g.overflow === "boolean")));
+}
+
+function financePaths(live) {
+  return { journal: live ? "public/finance" : "financeTest/journal", holds: live ? "financeHolds" : "financeTest/holds" };
+}
+
+// All journal and reservation writers share the Apps Script lock with checkout.
+function filingAvailable(paths) {
+  const journal = firebase("get", paths.journal) || {}, holds = firebase("get", paths.holds) || {};
+  const raised = Object.values(journal).flatMap(tx => tx.lines).filter(l => l.fund === "filing").reduce((n,l) => n + Math.max(0,l.raised ?? l.donation ?? 0), 0);
+  return 27500 - raised - Object.values(holds).reduce((n,h) => n + h.amount, 0);
+}
+
+function reserveFiling(reference, gift, config, tab, reject) {
+  const paths = financePaths(config.livemode), holds = firebase("get", paths.holds) || {};
+  if (holds[reference]) {
+    if (Date.now()/1000 - holds[reference].created >= 86400) reject("Checkout expired. Reload the page to start again.");
+    return;
+  }
+  for (const key of Object.keys(holds)) {
+    const row = tab.rows.find(r => r[tab.col.Reference] === key);
+    const hold = holds[key];
+    // Hosted card sessions normally expire after 24 hours. A crash between creation
+    // and saving the session ID requires looking it up before releasing capacity.
+    if (Date.now()/1000 - hold.created < 86400) continue;
+    let sessionId = row?.[tab.col.Session];
+    const secret = stripeCardSecret(config);
+    if (!sessionId) {
+      let cursor = "", found;
+      do {
+        const page = stripeCardRequest("checkout/sessions?limit=100&created[gte]=" + (hold.created-60) +
+          "&created[lte]=" + (hold.created+86400) + cursor,secret);
+        found = page.data.find(session => session.client_reference_id === key);
+        cursor = !found && page.has_more ? "&starting_after=" + page.data[page.data.length-1].id : "";
+      } while (cursor);
+      sessionId = found?.id;
+    }
+    if (!sessionId || stripeCardRequest("checkout/sessions/" + sessionId, secret).status === "expired")
+      firebase("put", paths.holds + "/" + key, null);
+  }
+  const available = filingAvailable(paths);
+  if (available <= 0 || (!gift.overflow && gift.amount > available))
+    reject("Filing fund capacity available for checkout: $" + (Math.max(0, available)/100).toFixed(2) + ". Please adjust your donation.");
+  firebase("put", paths.holds + "/" + reference, {amount:Math.min(available, gift.amount),created:Math.floor(Date.now()/1000)});
+}
+
+function financeLines(gifts, gross, fee, reserved) {
+  const giftTotal = gifts.reduce((n,g) => n + g.amount, 0);
+  const giftFee = Math.min(fee, giftTotal);
+  const shares = gifts.map(g => ({...g, fee: Math.floor(g.amount * giftFee / giftTotal), remainder: g.amount * giftFee % giftTotal}));
+  let pennies = giftFee - shares.reduce((n,g) => n + g.fee, 0);
+  for (const g of shares.slice().sort((a,b) => b.remainder - a.remainder)) if (pennies-- > 0) g.fee++;
+  const lines = [];
+  if (gross > giftTotal || fee > giftFee) lines.push({fund:"tournaments", gross:gross-giftTotal, fee:fee-giftFee});
+  for (const g of shares) {
+    const net = g.amount - g.fee;
+    const excess = g.fund === "filing" ? Math.max(0, net - reserved) : 0;
+    if (excess && !g.overflow) throw Error("Filing allocation exceeds reservation");
+    lines.push({fund:g.fund, gross:g.amount-excess, fee:g.fee, donation:net-excess});
+    if (excess) lines.push({fund:"general", gross:excess, donation:excess});
+  }
+  return lines;
+}
+
+function financeKey(record) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,record.paymentIntentId).map(b => ("0"+(b&255).toString(16)).slice(-2)).join("");
+}
+
+function settleFinance(record,gifts,config) {
+  const paths = financePaths(config.livemode);
+  const path = paths.journal + "/" + financeKey(record);
+  let original = firebase("get", path);
+  const patch = {};
+  if (!original || original.pending) {
+    const hold = paths.holds + "/" + record.clientReferenceId;
+    const filing = gifts.some(g => g.fund === "filing");
+    const reserved = filing ? firebase("get", hold)?.amount : 0;
+    if (filing && !(reserved > 0)) throw Error("Missing filing reservation");
+    original = {date:Utilities.formatDate(new Date(record.created * 1000),TZ,"yyyy-MM-dd"), purpose:"Stripe payment", lines:financeLines(gifts,record.amountCents,record.feeCents,reserved)};
+    patch[path] = original;
+    if (filing) patch[hold] = null;
+  }
+  for (const adj of record.adjustments || []) {
+    if (!/^txn_[a-zA-Z0-9]+$/.test(adj.id) || !Number.isSafeInteger(adj.amount) || !Number.isSafeInteger(adj.fee) || !Number.isSafeInteger(adj.created)) throw Error("Invalid Stripe adjustment");
+    // Stripe identifies the charge. A TD assigns a mixed-payment reversal after reviewing which items were refunded.
+    const funds = [...new Set(original.lines.map(l => l.fund))];
+    const fund = funds.length === 1 ? funds[0] : "reconciliation";
+    const line = {fund,gross:Math.max(0,adj.amount),spent:Math.max(0,-adj.amount),fee:adj.fee};
+    if (fund !== "tournaments" && fund !== "reconciliation") { line.donation = adj.amount - adj.fee; line.raised = 0; }
+    patch[path + "-" + adj.id] = {date:Utilities.formatDate(new Date(adj.created*1000),TZ,"yyyy-MM-dd"),purpose:adj.purpose,lines:[line]};
+  }
+  if (!Object.keys(patch).length) return;
+  firebase("patch","",patch);
+}
+
+function financePost(p) {
+  const amount = Number(p.cents);
+  if (![...FINANCE_FUNDS,"tournaments","reconciliation"].includes(p.fund) || !["expense","donation","income","liability","reimbursement","refund","transfer","allocateGift","fee"].includes(p.kind) ||
+      !Number.isSafeInteger(amount) || amount <= 0 || amount > 99999999 || !/^\d{4}-\d\d-\d\d$/.test(p.date) ||
+      !String(p.purpose || "").trim() || p.purpose.length > 240 || !/^[a-z0-9-]{36}$/.test(p.requestId)) return {error:"Check the entry details."};
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const paths = financePaths(true), path = paths.journal + "/" + p.requestId;
+    const line = {fund:p.fund};
+    const lines = [line];
+    if (["donation","income"].includes(p.kind)) line.gross = amount;
+    if (["refund","expense","reimbursement"].includes(p.kind)) line.spent = amount;
+    if (p.kind === "liability") line.owed = amount;
+    if (p.kind === "reimbursement") line.owed = -amount;
+    if (p.kind === "donation") line.donation = amount;
+    if (p.kind === "fee") line.fee = amount;
+    if (["transfer","allocateGift"].includes(p.kind)) {
+      if (![...FINANCE_FUNDS,"tournaments","reconciliation"].includes(p.destination) || p.destination === p.fund) return {error:"Choose a different destination fund."};
+      line.transfer = -amount;
+      const credit = {fund:p.destination,transfer:amount};
+      if (p.kind === "allocateGift") credit.donation = amount;
+      lines.push(credit);
+    }
+    const entry = {date:p.date, purpose:p.purpose.trim(), lines};
+    const previous = firebase("get",path);
+    if (previous) return previous.date === entry.date && previous.purpose === entry.purpose && previous.lines.length === lines.length && lines.every((l,i) => Object.keys({...previous.lines[i],...l}).every(k => previous.lines[i][k] === l[k])) ? {ok:true} : {error:"Request already recorded with different details."};
+    if (lines.some(l => l.fund === "filing" && (l.gross > 0 || l.transfer > 0) && !l.donation))
+      return {error:"Record incoming filing contributions as donations so they count toward the cap."};
+    if (lines.some(l => l.fund === "filing" && l.donation) && amount > filingAvailable(paths)) return {error:"Amount exceeds available filing fund capacity."};
+    firebase("put",path,entry);
+    return {ok:true};
+  } finally { lock.releaseLock(); }
+}
+
+function financeDeskEntry(row) {
+  if (row["Stripe intent"] || row["Stripe session"]) return null;
+  const gross = cents(row.Received), gift = cents(row.Donation);
+  if (!gross && !gift) return null;
+  const lines = [];
+  let purpose = [row.Event,row.Method,row.Type].filter(Boolean).join(" ");
+  if (row.Method === "card") {
+    lines.push({fund:"reconciliation",gross});
+    purpose += " (historical card receipt awaiting actual fee and allocation)";
+  } else {
+    if (gift) lines.push({fund:"general",gross:gift,donation:gift});
+    if (gross !== gift) lines.push({fund:"tournaments",gross:gross-gift});
+  }
+  return {date:row.Recorded.slice(0,10),purpose,lines};
+}
+
+function financeHistory() {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const patch = {};
+    for (const row of readPayments().rows) {
+      const entry = financeDeskEntry(row);
+      if (entry) patch["desk-"+row["No."]] = entry;
+    }
+    const sheets = SpreadsheetApp.getActiveSpreadsheet();
+    const summary = sheets.getSheetByName("Peak summary")?.getDataRange().getValues() || [];
+    const payments = sheets.getSheetByName("Peak payments")?.getDataRange().getValues() || [];
+    for (const [period,status,due] of summary.slice(2)) {
+      if (!due) continue;
+      const month = period instanceof Date ? Utilities.formatDate(period,TZ,"yyyy-MM") : String(period);
+      if (!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(Number(due))) throw Error("Check the Peak summary before importing.");
+      patch["peak-due-"+month] = {date:month, purpose:"Peak venue charges ("+status+")", lines:[{fund:"tournaments",owed:cents(due)}]};
+    }
+    payments.slice(1).forEach(([period,date,amount],index) => {
+      if (!amount) return;
+      if (!Number.isFinite(Number(amount))) throw Error("Check the Peak payment amount.");
+      const day = date instanceof Date ? Utilities.formatDate(date,TZ,"yyyy-MM-dd") : String(date);
+      patch["peak-paid-"+index] = {date:day,purpose:"Payment to Peak",lines:[{fund:"tournaments",spent:cents(amount),owed:-cents(amount)}]};
+    });
+    const oldKeys = Object.keys(firebase("get","public/finance",undefined,"shallow=true") || {});
+    for (const key of oldKeys) if (key.startsWith("peak-") && !(key in patch)) patch[key] = null;
+    const obligations = [
+      ["2026-10-08","US Chess affiliation",4000],["2026-10-11","Colorado incorporation",5000],
+      ["2026-11-01","Google services",311],["2026-11-02","October US Chess rating fees",525]
+    ];
+    for (const [date,purpose,owed] of obligations) patch["owed-"+date] = {date,purpose:purpose+" paid by Jared Hall",lines:[{fund:"general",owed}]};
+    firebase("patch","public/finance",patch);
+    return {ok:true,count:Object.keys(patch).length};
+  } finally { lock.releaseLock(); }
 }

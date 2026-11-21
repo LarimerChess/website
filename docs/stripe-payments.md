@@ -8,9 +8,10 @@ even if they have no current balance. The existing registration Apps Script reca
 all balances, stores a private basket allocation, and creates one Stripe Checkout
 Session for the exact total in USD. After selecting entries, the Pay on Stripe
 button opens secure Checkout directly; a visible checkout link remains available
-if navigation is blocked. Client amounts are never trusted. The club absorbs
-processing costs for online payments. Donations remain a separate anonymous
-Payment Link.
+if navigation is blocked. Client amounts are never trusted. Donors can select one or more designated gifts alongside entry fees or donate alone.
+Entry fees receive their full credit. The payment sync reads the captured charge's
+USD balance transaction for the actual processing fee. The fee consumes the gift
+portion first. Any fee above that amount is charged to tournament operations.
 
 ## Configure sandbox deployment
 
@@ -127,6 +128,28 @@ entries to the Apps Script endpoint, which verifies current balances and creates
 a Checkout Session. The payer enters card details on Stripe and returns to
 `/pay/`. The registration script checks the returned checkout against Stripe and
 shows the selected entries as pending. The Pay page refreshes pending balances
-and removes each fully paid entry after GitHub Actions credits it in the ledger. The club
-absorbs card processing costs, and the Checkout total matches the selected entry
-balances.
+and removes each fully paid entry after GitHub Actions credits it in the ledger. The checkout total includes selected entry balances and designated gifts.
+For entry-only payments, tournament operations absorb the actual processing fee.
+
+## Finance rollout and reconciliation
+
+Deploy the updated registration script to the existing web app before publishing
+the checkout page. The sync key needs read access to balance transactions, refunds
+and disputes. The checkout script needs its existing authenticated Firebase access.
+Run the payment sync in its configured mode. Its full-history scan imports earlier
+Stripe receipts when their actual fee is available.
+
+At /finance/admin/ use an existing TD sign-in or sign in with Google. A verified
+account listed with the finance role can use this page independently of the TD desk. Use **Sync historical club records**
+to copy the Payments tab, the four documented October/November 2026 advances, and
+the current Peak summary and payment records. Refresh the Peak report before importing.
+Review imported balances against bank and processor statements. Estimated costs in
+the budget workbook do not create liabilities. Historical card receipts without a
+Stripe reference enter the pending-allocation account. Record the verified fee,
+then allocate the remainder to its fund. A transfer changes fund balances without
+changing total cash. Mixed-payment reversals also use this account until assigned.
+
+Live transactions reside under public/finance. Filing reservations are private.
+Sandbox payments and holds use financeTest. Payment credentials and player contact
+details stay in the existing private payment system. Use the fund's gross, fees,
+cash balance, amounts owed and donation totals to reconcile each line.

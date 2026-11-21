@@ -29,6 +29,16 @@ class SyncTests(unittest.TestCase):
         self.intents.start()
         self.addCleanup(self.intents.stop)
 
+    def test_actual_settlement_fee_and_missing_settlement(self):
+        intent = copy.deepcopy(INTENT)
+        self.assertNotIn("feeCents", sync.payment_record(SESSION, intent, CONFIG, "entry"))
+        settlement = {"amount": 1750, "fee": 83, "net": 1667, "currency": "usd"}
+        intent["latest_charge"]["balance_transaction"] = settlement
+        self.assertEqual(sync.payment_record(SESSION, intent, CONFIG, "entry")["feeCents"], 83)
+        settlement["net"] += 1
+        with self.assertRaises(sync.SyncError):
+            sync.payment_record(SESSION, intent, CONFIG, "entry")
+
     def standalone(self):
         intent = {**copy.deepcopy(INTENT), "id": "pi_standalone", "amount": 1750, "created": 1,
                 "metadata": {"lccc_checkout": "payment_intent_v1", "lccc_reference": "basket_ref",
@@ -146,7 +156,7 @@ class SyncTests(unittest.TestCase):
         with patch.object(stripe, "get", side_effect=[{"data": [{"id": "pi_new"}], "has_more": True},
                                                      {"data": [{"id": "pi_old"}], "has_more": False}]) as get:
             self.assertEqual([i["id"] for i in stripe.intents()], ["pi_new", "pi_old"])
-            self.assertEqual(get.call_args.args, ("payment_intents", {"limit": 100, "expand[]": "data.latest_charge", "starting_after": "pi_new"}))
+            self.assertEqual(get.call_args.args, ("payment_intents", {"limit": 100, "expand[]": "data.latest_charge.balance_transaction", "starting_after": "pi_new"}))
 
     def test_dynamic_basket_amount_and_reference_reach_backend(self):
         session = {**SESSION, "payment_link": None, "metadata": {"lccc_checkout": "basket_v1"},

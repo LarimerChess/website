@@ -75,7 +75,28 @@ class Stripe:
         return self.pages("checkout/sessions", params)
 
     def intents(self):
-        return self.pages("payment_intents", {"limit": 100, "expand[]": "data.latest_charge"})
+        return self.pages("payment_intents", {"limit": 100, "expand[]": "data.latest_charge.balance_transaction"})
+
+    def reversals(self, charge):
+        transactions = []
+        def add(balance, purpose):
+            if not isinstance(balance, dict):
+                return
+            if (balance.get("currency") != "usd" or type(balance.get("amount")) is not int
+                    or type(balance.get("fee")) is not int or balance.get("net") != balance["amount"] - balance["fee"]
+                    or not re.fullmatch(r"txn_[A-Za-z0-9]+", balance.get("id", ""))):
+                raise SyncError("Invalid Stripe adjustment.")
+            transactions.append({k: balance[k] for k in ("id", "created", "amount", "fee")} | {"purpose": purpose})
+        if charge["amount_refunded"] or charge.get("refunded"):
+            for refund in self.pages("refunds", {"charge": charge["id"], "limit": 100,
+                    "expand[]": ["data.balance_transaction", "data.failure_balance_transaction"]}):
+                add(refund.get("balance_transaction"), "Stripe refund")
+                add(refund.get("failure_balance_transaction"), "Failed refund reversal")
+        if charge["disputed"]:
+            for dispute in self.pages("disputes", {"charge": charge["id"], "limit": 100}):
+                for balance in dispute["balance_transactions"]:
+                    add(balance, "Stripe dispute adjustment")
+        return transactions
 
     def pages(self, path, params):
         seen = set()
@@ -167,7 +188,15 @@ def payment_record(session, intent, config, kind, checkout_type=""):
         raise SyncError("A charge has an invalid receipt URL.")
     # Wrong amounts and missing references are retained for backend review, never
     # silently dropped. Backend also checks the registration's current balance.
-    return {"sessionId": session["id"], "paymentIntentId": intent["id"],
+    settlement = charge.get("balance_transaction")
+    fee = {}
+    if isinstance(settlement, dict):
+        if (settlement.get("currency") != "usd" or settlement.get("amount") != amount
+                or type(settlement.get("fee")) is not int or settlement["fee"] < 0
+                or settlement.get("net") != amount - settlement["fee"]):
+            raise SyncError("Invalid Stripe settlement amounts.")
+        fee["feeCents"] = settlement["fee"]
+    return {**fee, "sessionId": session["id"], "paymentIntentId": intent["id"],
             "paymentLinkId": session.get("payment_link") or "", "clientReferenceId": session.get("client_reference_id") or "",
             **({"checkoutType": "basket_v1"} if basket else {}),
             "amountCents": amount, "currency": session["currency"], "livemode": session["livemode"],
@@ -228,8 +257,11 @@ def sync(stripe, config, sender=None):
             intent_id = session.get("payment_intent", "")
             if not isinstance(intent_id, str) or not re.fullmatch(r"pi_[A-Za-z0-9]+", intent_id):
                 raise SyncError("Paid session has no valid PaymentIntent.")
-            intent = stripe.get("payment_intents/" + intent_id, {"expand[]": "latest_charge"})
-            batch.append(payment_record(session, intent, config, kind, checkout_type))
+            intent = stripe.get("payment_intents/" + intent_id, {"expand[]": "latest_charge.balance_transaction"})
+            record = payment_record(session, intent, config, kind, checkout_type)
+            if "feeCents" in record and (record["refundCents"] or record["disputed"]):
+                record["adjustments"] = stripe.reversals(intent["latest_charge"])
+            batch.append(record)
             counts["verified"] += 1
             if len(batch) == 50:
                 flush()
@@ -242,6 +274,8 @@ def sync(stripe, config, sender=None):
         if record is None:
             counts["skipped"] += 1
             continue
+        if "feeCents" in record and (record["refundCents"] or record["disputed"]):
+            record["adjustments"] = stripe.reversals(intent["latest_charge"])
         batch.append(record)
         counts["verified"] += 1
         if len(batch) == 50:

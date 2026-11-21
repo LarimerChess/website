@@ -731,3 +731,67 @@ test('pending belongs to the exact selected event and player, not every registra
  const entries=f.ctx.paymentBalances({id:'12345678'}).entries;assert.equal(entries.find(e=>e.date==='2026-12-01').testPending,true);assert.equal(entries.find(e=>e.date==='2026-12-08').testPending,false);
  assert.equal(f.ctx.paymentBalances({id:'87654321'}).entries[0].testPending,false);assert.equal(f.book.rows.length,0);
 });
+
+test('mixed basket posts full entry credit and exact net gifts once, including consented overflow', () => {
+  const f = basketFixture();
+  const row = f.tabs['Stripe checkout baskets'][0];
+  const gifts = [{fund:'filing', amount:1500, overflow:true}, {fund:'marketing',amount:500}];
+  row[2] = '5000';
+  row[3] = JSON.stringify([...f.allocations,...gifts]);
+  const data = new Map([['financeHolds/basket-ref',{amount:1000}]]);
+  f.ctx.firebase = (method,path,body) => {
+    if (method === 'get') return data.get(path);
+    if (method === 'put') return data.set(path,body);
+    assert.equal(method,'patch');
+    for (const [k,v] of Object.entries(body)) v === null ? data.delete(k) : data.set(k,v);
+  };
+  f.ctx.Utilities.computeDigest = () => [11,12];
+  f.ctx.Utilities.DigestAlgorithm = {SHA_256:1};
+  const record = {...f.record,amountCents:5000};
+  assert.equal(f.ctx.stripeImport(record,f.config).status,'pending');
+  record.feeCents = 175;
+  assert.equal(f.ctx.stripeImport(record,f.config).status,'imported');
+  assert.equal(f.ctx.stripeImport(record,f.config).status,'duplicate');
+  assert.equal(data.size,1);
+  const lines = [...data.values()][0].lines;
+  assert.equal(lines.reduce((n,l)=>n+l.gross-(l.fee||0),0),4825);
+  assert.equal(lines.find(l=>l.fund==='filing').donation,1000);
+  assert.equal(lines.find(l=>l.fund==='marketing').donation,456);
+  assert.equal(lines.find(l=>l.fund==='general').donation,369);
+  assert.equal(f.book.rows.length,2);
+});
+
+test('filing reservations account for open checkouts and never reopen when the club spends the money', () => {
+  const f = fixture(), holds = {}, journal = {raised:{lines:[{fund:'filing',donation:27000}]},spent:{lines:[{fund:'filing',spent:25000}]}};
+  f.ctx.firebase = (method,path,value) => {
+    if (method === 'get') return path === 'public/finance' ? journal : holds;
+    holds[path.split('/')[1]] = value;
+  };
+  const tab = {rows:[],col:{}}, reserve = (id,amount,overflow=false) => f.ctx.reserveFiling(id,{amount,overflow},f.config,tab,msg=>{throw Error(msg);});
+  reserve('first',300);
+  assert.throws(()=>reserve('second',201),/2.00/);
+  reserve('second',500,true);
+  assert.deepEqual([holds.first.amount,holds.second.amount],[300,200]);
+  assert.throws(()=>reserve('third',1,true),/0.00/);
+});
+
+test('donation-only checkout succeeds without a player and returns an empty player list', () => {
+  const f = basketFixture(true), reference = 'donation_only_abcdefghijklmnop';
+  f.ctx.PropertiesService = {getScriptProperties:()=>({getProperty:()=> 'sk_test_fixture'})};
+  const paid = {id:'cs_test_donation',url:'https://checkout.stripe.com/c/pay/cs_test_donation',livemode:false,
+    amount_total:1000,client_reference_id:reference,metadata:{lccc_checkout:'basket_v1'},mode:'payment',currency:'usd',status:'complete',payment_status:'paid'};
+  f.ctx.UrlFetchApp = {fetch:()=>({getResponseCode:()=>200,getContentText:()=>JSON.stringify(paid)})};
+  const result = f.ctx.createPaymentCheckout({requestId:reference,entries:'[]',donations:JSON.stringify([{fund:'equipment',amount:1000}])});
+  assert.equal(result.ok,true,result.error);
+  assert.equal(result.amount,1000);
+  assert.equal(result.count,1);
+  assert.equal(f.ctx.returnPaymentCheckout({reference}).ids.length,0);
+});
+
+test('finance-only role cannot sign in to the tournament desk', () => {
+  const f = fixture();
+  f.ctx.firebaseUser = () => ({email:'finance@example.com',emailVerified:true});
+  f.ctx.tdList = () => [{emails:['finance@example.com'],role:'finance'}];
+  assert.ok(f.ctx.signedInTd('token').error);
+  assert.equal(f.ctx.signedInTd('token',['td','finance']).td.email,'finance@example.com');
+});

@@ -55,8 +55,8 @@ page.on("request", async (request) => {
         return player;
       }) }
       : fields.action === "paymentBalances" ? playerBalance(fields.id)
-      : { ok: true, checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_fixture", count: JSON.parse(fields.entries).length,
-        amount: JSON.parse(fields.entries).reduce((n,e) => n + (e.event === "club-night" ? 1750 : 750),0), currency: "usd", livemode: false };
+      : { ok: true, checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_fixture", count: JSON.parse(fields.entries).length + JSON.parse(fields.donations || "[]").length,
+        amount: JSON.parse(fields.entries).reduce((n,e) => n + (e.event === "club-night" ? 1750 : 750),JSON.parse(fields.donations || "[]").reduce((n,g) => n+g.amount,0)), currency: "usd", livemode: false };
     if (fields.action === "paymentBalances" && fields.id === "00000000") Object.assign(body,{name:"",entries:[],totalCents:0,unknownCount:0});
     if (fields.action === "createPaymentCheckout" && checkoutFailure) Object.assign(body,{ok:false,error:"Test checkout service unavailable."});
     if (fields.action === "paymentBalances" && balanceVariant === "unknown") Object.assign(body,{entries:[{event:"unknown",date:"2027-06-01",name:"Unknown Fee",balanceCents:null,review:false}],totalCents:0,unknownCount:1});
@@ -102,6 +102,12 @@ JSON.parse(payment.entries)[0].id === "12345678" && JSON.parse(payment.entries)[
 (await page.$eval("#pay-form", form=>{const input=form.querySelector("#pay-id").getBoundingClientRect(),button=form.querySelector("button[type=submit]").getBoundingClientRect();return button.left>=input.right && button.top<input.bottom;}))
   ? pass("Show balances sits beside the player field") : fail("Show balances is not beside the field");
 (!await page.$("#pay-total")) ? pass("Payment page omits the total-owed summary") : fail("Total owed remains");
+await page.type('input[data-fund="marketing"]',"2.50");
+await press(page,"#pay-review");
+await page.waitForSelector("#pay-checkout:not([hidden])");
+(await totalText()).includes("$20.00") && JSON.parse(calls.filter(c=>c.action==="createPaymentCheckout").at(-1).donations)[0].amount===250
+  ? pass("Checkout combines a designated donation with the selected entry") : fail("Mixed checkout amount or designation");
+await page.$eval('input[data-fund="marketing"]',el=>{el.value="";el.dispatchEvent(new Event("input"));});
 await axeBoth(page, "Saved player balances");
 await page.setViewport({ width: 390, height: 844 });
 await fitsPhone(page, "Saved player balances");
@@ -195,7 +201,7 @@ config.enabled = false;
 await page.reload({ waitUntil: "networkidle0" });
 await page.waitForSelector("#pay-balances section");
 (await page.$$(".pay-entry input")).length === 4 && (await page.$eval("#pay-review", (el) => el.disabled))
-  && (await page.$eval("#donation-link", (el) => el.hidden))
+  && (await page.$eval("#pay-checkout", (el) => el.hidden))
   ? pass("All balances and selection remain available when Stripe checkout is disabled") : fail("Disabled Stripe prevented lookup or enabled checkout");
 await page.goto(base + "/pay/?id=33333333", { waitUntil: "networkidle0" });
 const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("lccc-register-players")));
