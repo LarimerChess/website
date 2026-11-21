@@ -165,8 +165,8 @@ switches the app to Firebase. After cutover, use the TD desk for changes and kee
 the old tabs as a historical snapshot. Deploy the updated private Peak reporting
 script before cutover so its next run reads current registration records.
 
-After deploying the updated registration web app, run `buildPaymentLookup_`
-once in the Apps Script editor. It indexes existing Firebase rows and enables
+After deploying the updated registration web app, select `buildPaymentLookup`
+in the Apps Script editor and click **Run** once. It indexes existing Firebase rows and enables
 the per-player balance lookup. Later registration and payment writes update the
 index with the source rows. The index is private and balances are calculated
 from those rows for each request. If rolling back to a script version without

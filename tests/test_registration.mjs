@@ -233,13 +233,17 @@ test("registration cutover migrates the history and Pay reads new desk payments 
   gs.clubEvents = () => ({});
   gs.stripeConfig = () => ({ livemode: true });
   gs.clearEntriesCache = () => {};
+  const owner = { getEmail: () => "owner@example.com" };
+  gs.Session = { getEffectiveUser: () => owner, getActiveUser: () => ({ getEmail: () => "" }) };
   let revision = 0;
   gs.Utilities.getUuid = () => `revision-${++revision}`;
   gs.migrateRegistrationToFirebase_();
   assert.equal(props.REGISTRATION_STORAGE, "firebase");
   assert.equal(db.root.registrationData.active, true);
   assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
-  gs.buildPaymentLookup_();
+  assert.throws(() => gs.buildPaymentLookup(), /registration script owner/);
+  gs.Session.getActiveUser = () => owner;
+  gs.buildPaymentLookup();
   assert.equal(gs.paymentBalances({ id: "11111111" }).totalCents, 1250);
   const initialSignal = db.root.changes.paymentBalances;
   gs.SpreadsheetApp.getActiveSpreadsheet = () => { throw Error("No Sheets access after cutover"); };
