@@ -589,7 +589,7 @@ test("a night paid by card, then the whole month: the night moves to the month a
   assert.equal(register("2026-10-05").ok, true);
   assert.equal(gs.markPaid("token1", "8.19", "card").message, " paid $8.19 by card.");
   const month = register("2026-10");
-  assert.match(month.message, /Due when you arrive: \$9\.50 \(adult after \$7\.50 already paid for its nights\)/);
+  assert.match(month.message, /Entry fee due: \$9\.50 \(adult after \$7\.50 already paid for its nights\)/);
   eq(rowsOf(sheets.Entries).map((r) => [r.Date, r.Amount, r["Rating fee"], r.Status]),
     [["2026-10-05", "7.50", "0.50", "moved to month"], ["2026-10", "17", "2", "registered"]]);
   eq(gs.entries("monday-club-night-at-peak/2026-10", true).map((e) => [e.for, e.due, e.credit, e.card]), [["Whole month", "9.50", "7.50", "10.24"]]);
@@ -1733,6 +1733,7 @@ test("byes asked for when registering: one, online or on the desk, a month's by 
     + " The TD will confirm the fee when you arrive. A confirmation is on its way to ann@example.com.");
   assert.equal(mail[0].body.split("\n\n")[1], "Byes asked for: round 3. To change them, go to"
     + " https://larimerchess.org/entries/?event=classic/2026-11-07 on the device you registered from, or email president@larimerchess.org.");
+  assert.match(mail[0].body, /View balances and pay online: https:\/\/larimerchess\.org\/pay\/\?uscfid=66666666\n/);
   const desk = gs.register({ event: "classic", date: "2026-11-07", id: "77777777", category: "Adult", email: "ben@example.com", byes: "4, 4" }, true);
   assert.match(desk.message, /^Ben Birch is registered for Saturday, November 7, 2026\. Byes asked for: round 4\. /);
   assert.equal(mail[1].body.split("\n\n")[1], "Byes asked for: round 4. To change them, email president@larimerchess.org.",

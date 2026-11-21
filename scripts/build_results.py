@@ -394,7 +394,8 @@ def results_page(t, seeded=(), days=None):
 
     {rated}{body}{performance}
 
-    {about}<p><a href="/results/">All tournament results</a></p>"""
+    {about}<p><a href="/results/">All tournament results</a></p>
+    <p><a href="/pay/">Pay tournament entry fees</a></p>"""
     return page_html(f"{name} results", description, f"{SITE}/results/{slug(t['key'])}/", main,
                      main_attributes=f' data-results="{fingerprint(t)}"', generated=GENERATED)
 
@@ -427,6 +428,7 @@ def index_page():
       </table>
       <nav class="results-pages" aria-label="Pages of results" hidden></nav>""" if pages else "<p>Results are posted here once US Chess has rated each tournament.</p>"
     main = f"""<h1>Results</h1>
+    <p><a href="/pay/">Pay tournament entry fees</a></p>
     <section id="all-results">
       <h2 class="visually-hidden">Tournaments</h2>
       {body}

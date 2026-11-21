@@ -5,6 +5,10 @@ import { axeBoth, axeSource, base, browser, clubEvents, done, fail, mocked, offl
 // ENDPOINT pointed at it, whatever the real one is.
 const registration = await browser.newPage();
 registration.on("pageerror", (error) => fail(`JavaScript error on ${registration.url()}: ${error.message}`));
+const submitRegistration = async (tab) => {
+  await Promise.all([tab.waitForNavigation(), tab.click(".register-form button[type=submit]")]);
+  return new URL(tab.url());
+};
 const posted = [];
 await registration.setRequestInterception(true);
 registration.on("request", async (request) => {
@@ -17,6 +21,12 @@ registration.on("request", async (request) => {
     const headers = { "Access-Control-Allow-Origin": "*" };
     if (request.method() === "POST") {
       const sent = Object.fromEntries(new URLSearchParams(request.postData()));
+      if (sent.action === "paymentBalances") {
+        request.respond({ headers, contentType: "application/json", body: JSON.stringify({
+          ok: true, id: sent.id, name: "Test Player", currency: "usd", entries: [], totalCents: 0, unknownCount: 0,
+        }) });
+        return;
+      }
       posted.push(sent);
       // Kid's answer is in the wording of the script deployed before 2026-10-10, which has no " for …".
       const message = sent.last === "Kid" ? `Test ${sent.last} is registered. A confirmation is on its way to ${sent.email}.`
@@ -42,21 +52,23 @@ if (registerPath) {
   await registration.type("#register-last", "Player");
   await registration.type("#register-email", "test@example.com");
   await registration.type("#register-phone", "970 555 0123");
-  await registration.click(".register-form button[type=submit]");
-  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  const payment = await submitRegistration(registration);
   const sent = posted[0] || {};
   sent.event === registerPath.split("/").filter(Boolean).pop() && /^\d{4}-\d\d(-\d\d)?$/.test(sent.date)
     && sent.id === "12345678" && sent.last === "Player" && sent.email === "test@example.com" && sent.phone === "970 555 0123" && !sent.website
     && !("uschess-id" in sent) ? pass(`${registerPath} sends the registration`) : fail(`${registerPath} sent ${JSON.stringify(sent)}`);
+  payment.pathname === "/pay/" && payment.searchParams.get("uscfid") === sent.id
+    && payment.searchParams.get("event") === `${sent.event}/${sent.date}`
+    ? pass(`${registerPath} takes the player to their Pay page after registration`) : fail(`${registerPath} redirected to ${payment}`);
 
   // Remembered players: a second registration goes first in the list, and after a reload
   // each fills the form in one tap and can be forgotten.
-  await registration.type("#register-id", "87654321");
-  await registration.type("#register-last", "Kid");
+  await registration.goto(base + registerPath, { waitUntil: "networkidle0" });
+  await registration.$eval("#register-id", (field) => { field.value = "87654321"; });
+  await registration.$eval("#register-last", (field) => { field.value = "Kid"; });
   await registration.$eval("#register-phone", (p) => { p.value = ""; });
-  await registration.click(".register-form button[type=submit]");
-  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.startsWith("Test Kid"));
-  await registration.reload({ waitUntil: "networkidle0" });
+  await submitRegistration(registration);
+  await registration.goto(base + registerPath, { waitUntil: "networkidle0" });
   const saved = () => registration.$$eval(".register-saved:not([hidden]) .register-pick", (b) => b.map((x) => x.textContent));
   const shown = await saved();
   JSON.stringify(shown) === JSON.stringify(["Test Kid (87654321)", "Test Player (12345678)"])
@@ -95,12 +107,12 @@ if (registerPath) {
     ? pass(`${registerPath} hides the list when the last saved player is forgotten`) : fail(`${registerPath} after the last Forget: ${JSON.stringify(empty)}`);
   // The fields still hold the player filled in above.
   await registration.click("#register-remember");
-  await registration.click(".register-form button[type=submit]");
-  await registration.waitForFunction(() => document.querySelector(".register-status").textContent.startsWith("Test Player is registered"));
-  await registration.reload({ waitUntil: "networkidle0" });
+  const guestPayment = await submitRegistration(registration);
+  await registration.goto(base + registerPath, { waitUntil: "networkidle0" });
   const unremembered = await registration.evaluate(() => ({ hidden: document.querySelector(".register-saved").hidden,
     stored: localStorage.getItem("lccc-register-players"), checked: document.querySelector("#register-remember").checked }));
-  posted.length === 3 && unremembered.hidden && unremembered.stored === null && unremembered.checked
+  guestPayment.pathname === "/pay/" && guestPayment.searchParams.get("uscfid") === "12345678"
+    && posted.length === 3 && unremembered.hidden && unremembered.stored === null && unremembered.checked
     ? pass(`${registerPath} doesn't save a player when Remember is unchecked`) : fail(`${registerPath} unchecked Remember: ${JSON.stringify(unremembered)}`);
   // A player already registered is saved too: the script has accepted their ID and last name.
   for (const [field, value] of [["#register-id", "11223344"], ["#register-last", "Twin"], ["#register-email", "twin@example.com"]]) {
@@ -131,6 +143,7 @@ if (swissDates) {
   const sentSwiss = [];
   const swissPage = await mocked(`${swiss.page} with byes`, (p) => {
     if (p.entries) return { entries: [{ name: "Ann Example", id: "12345678", rating: "1500", byes: ["2", "4"] }, { name: "Ben Example", id: "22345678", rating: "1200" }] };
+    if (p.action === "paymentBalances") return { ok: true, id: p.id, currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
     sentSwiss.push(p);
     return { ok: true, name: "Test Player", message: "Test Player is registered for Saturday, November 7, 2026, with a half-point bye." };
   });
@@ -142,13 +155,11 @@ if (swissDates) {
   const picked = [...new Set(["1", swiss.rounds])];
   await fillPlayer(swissPage);
   for (const round of picked) await press(swissPage, `#register-bye-${round}`);
-  await press(swissPage, ".register-form button[type=submit]");
-  await swissPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
-  const left = await swissPage.$$eval("[name=byes]:checked", (boxes) => boxes.length);
+  const swissPayment = await submitRegistration(swissPage);
   JSON.stringify(offered) === JSON.stringify(rounds) && JSON.stringify(listed) === JSON.stringify(["Byes", "Rounds 2 and 4", ""])
-    && sentSwiss.length === 1 && sentSwiss[0].byes === picked.join(", ") && left === 0
+    && sentSwiss.length === 1 && sentSwiss[0].byes === picked.join(", ") && swissPayment.pathname === "/pay/"
     ? pass(`${swiss.page} offers the rounds to miss (${offered.join("; ")}), sends those checked, and lists each player's byes`)
-    : fail(`${swiss.page} byes: ${JSON.stringify({ offered, rounds, listed, sent: sentSwiss, left })}`);
+    : fail(`${swiss.page} byes: ${JSON.stringify({ offered, rounds, listed, sent: sentSwiss })}`);
   await swissPage.evaluate(() => localStorage.clear());
   await swissPage.close();
 }
@@ -160,6 +171,7 @@ if (nightDates) {
   const sentNights = [];
   const nightPage = await mocked(`${nightPath} with byes`, (p) => {
     if (p.entries) return { entries: [] };
+    if (p.action === "paymentBalances") return { ok: true, id: p.id, currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
     sentNights.push(p);
     return { ok: true, name: "Test Player", message: "Test Player is registered." };
   });
@@ -176,12 +188,10 @@ if (nightDates) {
   // Checked for the month, then a night chosen instead: the night is registered without them.
   await nightPage.select("#register-date", nights[0]);
   const forNight = await offeredNights();
-  await press(nightPage, ".register-form button[type=submit]");
-  await nightPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
-  await nightPage.select("#register-date", month);
+  await submitRegistration(nightPage);
+  await nightPage.goto(`${base}${nightPath}?date=${month}`, { waitUntil: "networkidle0" });
   await checkNights();
-  await press(nightPage, ".register-form button[type=submit]");
-  await nightPage.waitForFunction(() => document.querySelector(".register-status").textContent.includes("registered"));
+  await submitRegistration(nightPage);
   JSON.stringify(forMonth) === JSON.stringify([nights]) && JSON.stringify(forNight) === "[]" && sentNights.length === 2
     && sentNights[0].date === nights[0] && !("byes" in sentNights[0]) && sentNights[1].date === month && sentNights[1].byes === nights.join(", ")
     ? pass(`${nightPath} offers the nights to miss only for a whole month, and sends their dates (${sentNights[1].byes})`)

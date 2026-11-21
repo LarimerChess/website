@@ -167,13 +167,15 @@ function eventSection(event) {
   section.append(heading, when);
   const payer = yourId();
   const paymentId = payer && !lists.some(list => list.entries.some(entry => entry.id === payer && entry.paidUp === true)) ? payer : "";
-  const payment = Object.assign(document.createElement("a"), {
-    href: `/pay/?event=${encodeURIComponent(event.key)}${paymentId ? `&id=${encodeURIComponent(paymentId)}` : ""}`,
-    textContent: paymentId ? "View balances and pay" : "Pay for a registered player",
-  });
-  const paymentParagraph = document.createElement("p");
-  paymentParagraph.append(payment);
-  section.append(paymentParagraph);
+  if (paymentId) {
+    const payment = Object.assign(document.createElement("a"), {
+      href: `/pay/?event=${encodeURIComponent(event.key)}&id=${encodeURIComponent(paymentId)}`,
+      textContent: "View balances and pay",
+    });
+    const paymentParagraph = document.createElement("p");
+    paymentParagraph.append(payment);
+    section.append(paymentParagraph);
+  }
   // Saved players on this list, who can change their entry.
   const editors = !event.closed && event.page ? players().filter((p) => event.entries.some((e) => e.id === p.id)) : [];
   const switchers = nights.has(event.key) ? editors : [];

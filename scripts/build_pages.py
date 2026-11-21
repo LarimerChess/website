@@ -359,14 +359,13 @@ def register_html(events, prices):
         date = f'<label for="register-date">{label}</label>\n        <select id="register-date" name="date">{options}</select>'
     for_column = "" if tournament else '<th scope="col">For</th>'
     invitational = "invitational" in events[0]["tags"]
-    card = f'{prices["fees"]["card"]["percent"]:g}% + {money(prices["fees"]["card"]["fixed"])}'
     return f"""<section id="register">
       <h2>Register</h2>
       <p class="register-invitational"{"" if invitational else " hidden"}>This is an invitational: registration is closed, and the tournament director registers the players. The entries below are public.</p>
       <p class="register-closed" hidden>Online registration isn't open yet. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p>
       <noscript><p>Online registration needs JavaScript. To register, email <a href="mailto:president@larimerchess.org">president@larimerchess.org</a>.</p></noscript>
       <form class="register-form"{' data-invitational="yes"' if invitational else ""} hidden>
-        <p>Register online, then pay when you arrive. Your confirmation email says how much. Paying by card adds {card}.</p>
+        <p>After you register, the Pay page opens with your entry balance. Your confirmation email includes the payment link.</p>
         <fieldset class="register-saved" hidden>
           <legend>Players saved on this device</legend>
           <ul></ul>

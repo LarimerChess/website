@@ -324,12 +324,6 @@ if (!dateField) {
       if (byes.length) body.set("byes", byes.join(", "));
       const result = await postRegistration(body);
       status.textContent = result.message || result.error;
-      if (result.ok) {
-        status.append(" ", Object.assign(document.createElement("a"), {
-          href: `/pay/?event=${encodeURIComponent(`${body.get("event")}/${body.get("date")}`)}&id=${encodeURIComponent(body.get("id").trim())}`,
-          textContent: "View balances and pay",
-        }));
-      }
       // What's saved is what the player typed, once the script has accepted it: a registration,
       // or a player already registered. US Chess's spelling of the name only labels the saved player.
       const already = result.error?.match(/^(.+?) is already registered\b/);
@@ -339,10 +333,9 @@ if (!dateField) {
           phone: body.get("phone")?.trim() || "", name });
       }
       if (result.ok) {
-        idField.value = "";
-        form.elements.last.value = "";
-        for (const bye of form.querySelectorAll("[name=byes]")) bye.checked = false;
-        await showEntries();
+        const payment = new URLSearchParams({ uscfid: body.get("id").trim(), event: `${body.get("event")}/${body.get("date")}` });
+        location.assign(`/pay/?${payment}`);
+        return;
       }
     } catch {
       status.textContent = "Registration didn't go through. Try again, or email president@larimerchess.org.";

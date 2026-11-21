@@ -330,8 +330,8 @@ function register(p, td, signedIn) {
   const due = owed === null ? "The TD will confirm the fee when you arrive."
     : amount === 0 ? `No fee (${category.toLowerCase()}).`
     : owed === 0 ? `Nothing more is due: what was paid for its nights covers it.`
-    : `Due when you arrive: $${money(owed)} (${category.toLowerCase()}${credit})`
-      + `. Paying by card adds ${card.percent}% + $${money(card.fixed)}.`;
+    : `Entry fee due: $${money(owed)} (${category.toLowerCase()}${credit}).`
+      + ` Paying by card at the door adds ${card.percent}% + $${money(card.fixed)}.`;
   const lapsed = member.expirationDate && member.expirationDate < event.first
     ? `The US Chess membership expires ${member.expirationDate}, before this event. Renew it before you play.`
     : "";
@@ -340,24 +340,31 @@ function register(p, td, signedIn) {
   // Only a device that registered online keeps the player for the Entries page.
   const change = td ? "To change them, email president@larimerchess.org."
     : `To change them, go to ${entriesLink(key, event)} on the device you registered from, or email president@larimerchess.org.`;
+  let sent = "";
   if (email) {
-    MailApp.sendEmail({
-      to: email,
-      replyTo: "president@larimerchess.org",
-      name: "Larimer County Chess Club",
-      subject: `Registered: ${event.name}, ${event.label}`,
-      body: [
-        `${name} (US Chess ID ${id}) is registered for ${event.name}, ${event.label}.`,
-        asking && `${asking} ${change}`,
-        due,
-        lapsed && lapsed + " https://new.uschess.org/join-us-chess",
-        event.page ? `Details and entries: ${SITE}${event.page}` : "",
-        `Can't come? Withdraw here: ${ScriptApp.getService().getUrl()}?withdraw=${token}`,
-        "Questions: president@larimerchess.org",
-      ].filter(Boolean).join("\n\n"),
-    });
+    try {
+      MailApp.sendEmail({
+        to: email,
+        replyTo: "president@larimerchess.org",
+        name: "Larimer County Chess Club",
+        subject: `Registered: ${event.name}, ${event.label}`,
+        body: [
+          `${name} (US Chess ID ${id}) is registered for ${event.name}, ${event.label}.`,
+          asking && `${asking} ${change}`,
+          due,
+          `View balances and pay online: ${SITE}/pay/?uscfid=${encodeURIComponent(id)}`,
+          lapsed && lapsed + " https://new.uschess.org/join-us-chess",
+          event.page ? `Details and entries: ${SITE}${event.page}` : "",
+          `Can't come? Withdraw here: ${ScriptApp.getService().getUrl()}?withdraw=${token}`,
+          "Questions: president@larimerchess.org",
+        ].filter(Boolean).join("\n\n"),
+      });
+      sent = ` A confirmation is on its way to ${email}.`;
+    } catch {
+      console.error("Registration was saved, but the confirmation email could not be sent.");
+      sent = " The confirmation email could not be sent.";
+    }
   }
-  const sent = email ? ` A confirmation is on its way to ${email}.` : "";
   return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}` };
 }
 
