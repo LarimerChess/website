@@ -1,5 +1,5 @@
 // Signing in to the TD desk with Firebase Authentication, against stand-ins for the SDK and the script.
-import { axeBoth, base, browser, done, fail, fitsPhone, offline, pass } from "./common.mjs";
+import { axeBoth, base, browser, done, fail, fitsPhone, offline, pass, twoSections } from "./common.mjs";
 
 // With FIREBASE set, TDs sign in with Firebase Authentication. The SDK's modules are served by
 // stand-ins with the same functions: an account signs in by the provider or emailed link that
@@ -65,7 +65,7 @@ const deskTDs = {
 };
 async function firebaseDesk(label, fake, viewport) {
   // held: a promise by action that its answer waits for.
-  const state = { calls: [], gstatic: [], held: {} };
+  const state = { calls: [], gstatic: [], held: {}, tournaments: twoSections() };
   const tab = await browser.newPage();
   tab.on("pageerror", (error) => fail(`JavaScript error on ${label}: ${error.message}`));
   if (viewport) await tab.setViewport(viewport);
@@ -88,11 +88,11 @@ async function firebaseDesk(label, fake, viewport) {
       request.respond({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "text/javascript",
         body: name === "firebase-app" ? "export const initializeApp = (options) => ({ options });" : name ? fakeAuthModule({ ...fake, label }) : "" });
     } else if (url.host === "registration.test") {
-      const p = Object.fromEntries(new URLSearchParams(request.postData() || ""));
+      const p = Object.fromEntries(new URLSearchParams(request.postData() || url.search));
       state.calls.push(p);
       await state.held[p.action];
       const who = deskTDs[p.idToken] || { login: true, error: "Sign in first." };
-      const body = !who.ok ? who : {
+      const body = p.tournaments === "current" ? { tournaments: state.tournaments } : !who.ok ? who : {
         login: { ...who, changes: null },
         choices: { choices: [{ key: "club-night/2026-10", name: "Club Night", label: "all Mondays in October 2026", kind: "month", first: "2026-10-12" }] },
         people: { players: [] }, contacts: { headings: ["Name"], contacts: [] },
@@ -170,6 +170,44 @@ await google.tab.evaluate(() => import(performance.getEntriesByType("resource").
 (await google.signedOut("Your sign-in has ended.")) ? pass("TD desk signs out when Firebase ends the session, as when another tab signs out")
   : fail(`TD desk kept the desk open after Firebase ended the session: "${await google.status()}"`);
 await google.tab.close();
+
+const pairings = await firebaseDesk("/pairings/ with a TD session", { accounts: {
+  "google.com": { uid: "ada", token: "token-ada" }, outsider: { uid: "x", token: "token-unlisted" } } });
+const resultMenu = '.td-pairings-result[aria-label="Result for Under 1400, board 1"]';
+await pairings.tab.goto(base + "/pairings/", { waitUntil: "networkidle0" });
+const publicMarkup = await pairings.tab.$eval(".pairings-all", (el) => el.innerHTML);
+await pairings.tab.evaluate(async () => {
+  const sdk = await import(performance.getEntriesByType("resource").find((r) => r.name.endsWith("/firebase-auth.js")).name);
+  await sdk.signInWithPopup(sdk.auth, { providerId: "outsider" });
+});
+await pairings.tab.reload({ waitUntil: "networkidle0" });
+if (pairings.calls.some((p) => p.action === "login" && p.idToken === "token-unlisted")
+    && publicMarkup === await pairings.tab.$eval(".pairings-all", (el) => el.innerHTML)
+    && !publicMarkup.includes("td-pairings-result")) {
+  pass("Pairings shows the same layout to signed-out visitors and signed-in accounts without TD access");
+} else fail("Pairings changed the public layout or did not check the account's TD access");
+await pairings.tab.evaluate(async () => {
+  const sdk = await import(performance.getEntriesByType("resource").find((r) => r.name.endsWith("/firebase-auth.js")).name);
+  await sdk.signInWithPopup(sdk.auth, new sdk.GoogleAuthProvider());
+});
+await pairings.tab.waitForSelector(resultMenu);
+await pairings.tab.select(resultMenu, "0F-1F");
+await pairings.tab.waitForFunction((menu) => {
+  const el = document.querySelector(menu);
+  return el && !el.disabled && el.value === "0F-1F";
+}, {}, resultMenu);
+const saved = pairings.calls.find((p) => p.action === "result");
+saved?.idToken === "token-ada" && saved.event === "classic" && saved.date === "2026-11-07"
+  && saved.number === "2" && saved.board === "1" && saved.section === "Under 1400" && saved.result === "0F-1F"
+  ? pass("Pairings saves a TD's result for the selected section, round, and board")
+  : fail(`Pairings TD result: ${JSON.stringify(saved)}`);
+await pairings.tab.evaluate(() => import(performance.getEntriesByType("resource").find((r) => r.name.endsWith("/firebase-auth.js")).name)
+  .then((sdk) => sdk.signOut()));
+await pairings.tab.waitForFunction(() => !document.querySelector(".td-pairings-result"));
+const shownResult = await pairings.tab.$eval(".round-shown:last-child tbody td:last-child", (el) => el.textContent);
+shownResult === "0F–1F" ? pass("Pairings removes TD controls on sign-out and shows the saved result as text")
+  : fail(`Pairings public result after sign-out: ${shownResult}`);
+await pairings.tab.close();
 
 // The desk asks for the event list while the sign-in is being checked, and for the ledger, incidents,
 // and tournament while the entries are, since each call to the script takes a second or more.

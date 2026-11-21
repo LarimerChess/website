@@ -130,7 +130,7 @@ function partsOf(t) {
 // Players report their own games' results on the Pairings page, for the boards of the players
 // saved on this device: those the Register form saved (register.js), and any found here by US
 // Chess ID, which are saved the same way. Nothing proves who is reporting, so a report counts
-// only once the TD confirms it on the desk; an arena's counts until the TD changes it, since its
+// only once the TD confirms it; an arena's counts until the TD changes it, since its
 // players start their own games from here too.
 const found = new Set();
 const mine = () => new Set([...savedPlayers().map((p) => p.id), ...found]);
@@ -141,6 +141,38 @@ const claimed = new Map();
 const whereOf = (t, number, g) => `${t.key}|${number}|${g.section || ""}|${g.board}`;
 // Redraws every tournament, for a change made here; set once the tournaments load.
 let redrawAll = () => {};
+
+let tdResultCredentials = null;
+const tdResultSaves = new Map();
+
+function setTdResultAccess(credentials) {
+  if (tdResultCredentials === credentials) return;
+  tdResultCredentials = credentials;
+  tdResultSaves.clear();
+  if (loaded) redrawAll();
+}
+
+async function watchTdResultAccess() {
+  let latest;
+  async function check(credentials) {
+    latest = credentials;
+    setTdResultAccess(null);
+    if (!credentials) return;
+    const result = await postRegistration(new URLSearchParams({ action: "login", ...(await credentials()) }), null);
+    if (latest === credentials && result.ok) setTdResultAccess(credentials);
+  }
+
+  if (!FIREBASE) {
+    const password = sessionStorage.getItem("tdPassword");
+    if (password) await check(() => ({ password, device: localStorage.getItem("lccc-td-device") || "" }));
+    return;
+  }
+  const sdk = "https://www.gstatic.com/firebasejs/12.19.0";
+  const [app, { getAuth, onAuthStateChanged }] = await Promise.all([import(`${sdk}/firebase-app.js`), import(`${sdk}/firebase-auth.js`)]);
+  onAuthStateChanged(getAuth(app.initializeApp(FIREBASE)), (user) => {
+    check(user ? async () => ({ idToken: await user.getIdToken() }) : null).catch(() => {});
+  });
+}
 
 function withClaim(t, number, g) {
   const where = whereOf(t, number, g);
@@ -159,6 +191,54 @@ function shownResult(g) {
   const sent = [g.reports?.white, g.reports?.black].filter(Boolean);
   if (!sent.length) return "";
   return sent.every((r) => r === sent[0]) ? `${SHOWN[sent[0]]}, reported, awaiting the TD` : "Reports differ, awaiting the TD";
+}
+
+function tdResultMenu(t, number, g, section) {
+  const where = whereOf(t, number, g);
+  const save = tdResultSaves.get(where);
+  const select = Object.assign(document.createElement("select"), { id: `td-result-${where}`, className: "td-pairings-result" });
+  select.setAttribute("aria-label", `Result for ${section ? `${section}, ` : ""}board ${g.board}`);
+  for (const [value, label] of [["", "No result"], ...Object.entries(SHOWN)]) {
+    select.append(new Option(label, value, false, value === (save?.pending ? save.value : g.result || "")));
+  }
+  select.disabled = Boolean(save?.pending);
+  const status = document.createElement("span");
+  status.setAttribute("role", "status");
+  status.textContent = save?.pending ? " Saving…" : save?.error ? ` ${save.error}` : "";
+  select.addEventListener("change", async () => {
+    const credentials = tdResultCredentials;
+    if (!credentials) return;
+    const attempt = { value: select.value, pending: true };
+    tdResultSaves.set(where, attempt);
+    select.disabled = true;
+    status.textContent = " Saving…";
+    const [event, date] = t.key.split("/");
+    try {
+      const auth = await credentials();
+      if (tdResultCredentials !== credentials) return;
+      const result = await postRegistration(new URLSearchParams({ action: "result", ...auth, event, date, number,
+        board: g.board, section: g.section || "", result: attempt.value }), null);
+      const board = current.find((entry) => entry.key === t.key)?.rounds[number - 1]?.games.find((entry) =>
+        entry.board === g.board && (entry.section || "") === (g.section || "") && entry.white === g.white && entry.black === g.black);
+      // A live update can arrive before the save response. Keep any result the stream has already updated.
+      if (result.ok && board && board.result === g.result) board.result = attempt.value;
+      if (tdResultCredentials !== credentials) {
+        if (result.ok) drawTournaments();
+        return;
+      }
+      if (result.login || result.verify) {
+        setTdResultAccess(null);
+        return;
+      }
+      if (result.ok) tdResultSaves.delete(where);
+      else attempt.error = result.error || "Couldn't save the result.";
+    } catch {
+      attempt.error = "Couldn't save the result. Try again.";
+    }
+    attempt.pending = false;
+    if (tdResultCredentials === credentials) redrawAll();
+  });
+  return [select, status];
 }
 
 /** One-tap buttons that report a board's result for the player saved here. */
@@ -521,8 +601,18 @@ function pairingsSection(t, ti) {
       const round = s.rounds[n - 1];
       const number = s.first + n - 1;
       const games = round.games.map((g) => withClaim(t, number, g));
-      const shown = [tableOf(["Board", "White", "Black", "Result"],
-        games.map((g) => [g.board, name(g.white), name(g.black), shownResult(g)]))];
+      const table = tableOf(["Board", "White", "Black", "Result"],
+        games.map((g) => [g.board, name(g.white), name(g.black), shownResult(g)]));
+      const shown = [table];
+      if (tdResultCredentials && t.status === "running") {
+        const rows = table.querySelector("tbody").rows;
+        games.forEach((g, i) => {
+          const result = rows[i].cells[3];
+          const report = g.result ? "" : result.textContent;
+          result.replaceChildren(...tdResultMenu(t, number, g, several ? s.name : ""));
+          if (report) result.append(paragraph(report));
+        });
+      }
       if (round.byes.length) shown.push(paragraph(`Without a game: ${round.byes.map((b) => `${name(b.id)}, ${kind(b)}`).join("; ")}.`));
       if (t.status === "running") {
         const ids = mine();
@@ -709,6 +799,7 @@ function loadOnce() {
 }
 
 redrawAll = () => drawTournaments(true);
+if (ENDPOINT && pairingsAll) watchTdResultAccess().catch(() => {});
 if (!ENDPOINT) {
   pairingsStatus.textContent = `${onStandings ? "Standings" : "Pairings"} will be posted here once tournaments are run online.`;
 } else if (!LIVE_DB) {
