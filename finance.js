@@ -130,13 +130,18 @@
     const response = await fetch(LIVE_DB + "/public/finance.json",{cache:"no-store"});
     if (!response.ok) throw Error();
     const entries = Object.values(await response.json() || {}).sort((a,b) => b.date.localeCompare(a.date));
+    const names = {filing:"Form 1023-EZ",general:"General",marketing:"Marketing",equipment:"Boards and clocks",tournaments:"Tournament operations",reconciliation:"Pending fund allocation"};
+    if (!view) {
+      showBalanceSheet(entries, names);
+      return;
+    }
     const table = document.createElement("table");
     table.createCaption().textContent = "Recorded transactions in US dollars";
     const header = table.createTHead().insertRow();
     for (const label of ["Date","Purpose","Fund","Gross in","Processing fees","Paid out","Transfers","Net change","Change in amount owed"]) {
       const th = document.createElement("th"); th.scope = "col"; th.textContent = label; header.append(th);
     }
-    const names = {filing:"Form 1023-EZ",general:"General",marketing:"Marketing",equipment:"Boards and clocks",tournaments:"Tournament operations",reconciliation:"Pending fund allocation"};
+
     const body = table.createTBody();
     let credited = 0, raised = 0, balance = 0, owed = 0;
     for (const entry of entries) for (const line of entry.lines) {
@@ -147,7 +152,6 @@
       for (const value of [entry.date,line.pending ? entry.purpose + " (" + money(line.pending) + " paid)" : entry.purpose,names[line.fund],money(line.gross||0),money(line.fee||0),money(line.spent||0),money(line.transfer||0),money(net),money(line.owed||0)]) row.insertCell().textContent = value;
     }
     totals.textContent = body.rows.length ? `Net donations ${money(raised)}${view === "filing" ? " of $275.00" : ""}. Cash balance ${money(balance)}. Owed ${money(owed)}.` : "No transactions recorded yet.";
-    if (!view) showBalanceSheet(entries, names);
     if (view === "filing" && credited >= 27500) {
       document.querySelector('a.button').hidden = true;
       totals.textContent += " Fundraising complete.";

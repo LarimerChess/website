@@ -30,6 +30,7 @@ journal.transfer = {date:"2020-11-22",purpose:"Fund transfer",lines:[{fund:"gene
 journal.future = {date:"2099-01-01",purpose:"Future payment",lines:[{fund:"general",gross:50000}]};
 await page.goto(base+"/finance/");
 await page.waitForSelector("#balance-sheet:not([hidden])");
+(await page.$("#journal")) ? fail("Overview includes transaction ledger") : pass("Finance overview shows only the statement");
 const accounts = await page.$$eval("#balance-sheet tr",rows => Object.fromEntries(rows.filter(r=>r.querySelector("td")).map(r=>[r.cells[0].textContent,r.cells[1].textContent])));
 const expected = {"Total assets":"$42.25","Total liabilities":"$6.00","General":"-$2.00","Marketing":"$13.25","Tournament operations":"$25.00","Total net assets":"$36.25","Total liabilities and net assets":"$42.25"};
 Object.entries(expected).every(([label,amount])=>accounts[label]===amount)
