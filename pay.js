@@ -45,6 +45,8 @@ if (typeof document !== "undefined") (async () => {
   const form = document.querySelector("#pay-form");
   const id = document.querySelector("#pay-id");
   const requestedId = ClubPayments.requestedPlayerId(location.search);
+  const returned = document.querySelector("#pay-returned");
+  const returnParams = new URLSearchParams(location.search);
   const balances = document.querySelector("#pay-balances");
   const playerList = document.querySelector("#pay-players");
   const summary = document.querySelector("#pay-summary");
@@ -67,6 +69,7 @@ if (typeof document !== "undefined") (async () => {
   let searchSequence = 0;
   let searchTimer;
   let activePlayer = -1;
+  let refreshTimer;
   const money = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
   const entryKey = (playerId, entry) => JSON.stringify([playerId, entry.event, entry.date]);
   const eligible = (entry) => Number.isSafeInteger(entry.balanceCents) && entry.balanceCents > 0 && !entry.review && !entry.pending && !entry.testPending;
@@ -77,7 +80,7 @@ if (typeof document !== "undefined") (async () => {
     checkout.removeAttribute("href");
     summary.textContent = "";
   };
-  const post = async (fields) => networkActivity(fields.action === "paymentPlayers" ? null
+  const post = async (fields, quiet = false) => networkActivity(quiet || fields.action === "paymentPlayers" ? null
     : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout"
     : "Loading entry balances", async () => {
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
@@ -251,6 +254,50 @@ if (typeof document !== "undefined") (async () => {
       balances.append(group);
     }
     updateTotal();
+    schedulePendingRefresh();
+  }
+  function schedulePendingRefresh() {
+    clearTimeout(refreshTimer);
+    const pending = [...people.values()].filter(person => person.entries.some(entry =>
+      entry.balanceCents !== 0 && (entry.pending || entry.testPending)));
+    if (!pending.length) return;
+    refreshTimer = setTimeout(async () => {
+      if (!document.hidden && !checkoutPending) await loadBalanceBatch(pending.map(person => person.id), true);
+      schedulePendingRefresh();
+    }, 30000);
+  }
+  function applyBalances(data, playerId) {
+    if (data?.id !== playerId || data.currency !== "usd" || !Array.isArray(data.entries)
+        || !Number.isSafeInteger(data.totalCents) || !Number.isSafeInteger(data.unknownCount)) {
+      throw new Error("Balances could not be verified. Please ask the tournament director.");
+    }
+    const previous = people.get(playerId);
+    if (JSON.stringify(data) === JSON.stringify(previous)) return false;
+    const previousKeys = new Set(previous?.entries.map(entry => entryKey(playerId, entry)) || []);
+    for (const entry of data.entries) {
+      const key = entryKey(playerId, entry);
+      if (!eligible(entry)) selected.delete(key);
+      else if (!previousKeys.has(key) && defaultSelected) selected.add(key);
+    }
+    people.set(playerId, data);
+    return true;
+  }
+  async function loadBalanceBatch(ids, quiet = false) {
+    if (!quiet) for (const id of ids) requests.set(id, Symbol());
+    const tokens = ids.map(id => requests.get(id));
+    let changed = false;
+    try {
+      const result = await post({ action: "paymentBalances", ids: ids.join(",") }, quiet);
+      if (quiet && checkoutPending) return;
+      if (!Array.isArray(result.balances) || result.balances.length !== ids.length) throw new Error("Balances could not be verified.");
+      ids.forEach((id, index) => {
+        if (requests.get(id) === tokens[index]) changed = applyBalances(result.balances[index], id) || changed;
+      });
+    } catch (error) {
+      if (!quiet) returned.textContent = error.message;
+    } finally {
+      if (changed) { resetCheckout(); renderBalances(); }
+    }
   }
   async function loadBalances(playerId, keep) {
     closePlayerSearch();
@@ -262,16 +309,7 @@ if (typeof document !== "undefined") (async () => {
     try {
       const data = await post({ action: "paymentBalances", id: playerId });
       if (requests.get(playerId) !== token) return;
-      if (data.id !== playerId || data.currency !== "usd" || !Array.isArray(data.entries)
-          || !Number.isSafeInteger(data.totalCents) || !Number.isSafeInteger(data.unknownCount)) throw new Error("Balances could not be verified. Please ask the tournament director.");
-      const previous = people.get(playerId);
-      const previousKeys = new Set(previous?.entries.map((entry) => entryKey(playerId, entry)) || []);
-      for (const entry of data.entries) {
-        const key = entryKey(playerId, entry);
-        if (!eligible(entry)) selected.delete(key);
-        else if (!previousKeys.has(key) && defaultSelected) selected.add(key);
-      }
-      people.set(playerId, data);
+      applyBalances(data, playerId);
       if (keep) {
         const known = savedPlayers().find((player) => player.id === playerId);
         storePlayers([{ last: "", email: "", ...known, id: playerId, name: data.name || known?.name || playerId },
@@ -319,7 +357,7 @@ if (typeof document !== "undefined") (async () => {
     if (/^\d{8}$/.test(playerId)) loadBalances(playerId, remember.querySelector("input").checked);
     else searchPlayers();
   });
-  if (new URLSearchParams(location.search).has("returned")) document.querySelector("#pay-returned").hidden = false;
+  if (returnParams.has("returned")) returned.hidden = false;
   try {
     const response = await fetch("/stripe-payment-links.json", { cache: "no-store" });
     if (!response.ok) throw new Error();
@@ -337,8 +375,24 @@ if (typeof document !== "undefined") (async () => {
   showSavedPlayers();
   const ids = savedPlayers().map((player) => player.id);
   if (/^\d{8}$/.test(requestedId || "") && !ids.includes(requestedId)) ids.unshift(requestedId);
-  if (ids.length) {
-    await Promise.all(ids.map((playerId) => loadBalances(playerId, false)));
-    id.value = /^\d{8}$/.test(requestedId || "") ? requestedId : ids[0];
+  const reference = returnParams.get("checkout");
+  let returnedIds = [];
+  if (returnParams.has("returned") && /^[a-zA-Z0-9_-]{16,100}$/.test(reference || "")) {
+    const instructions = returned.textContent;
+    returned.textContent = "Checking your Stripe checkout…";
+    try {
+      const result = await post({ action: "returnPaymentCheckout", reference }, true);
+      if (!Array.isArray(result.ids) || !result.ids.length || result.ids.length > 50 || result.ids.some(id => !/^\d{8}$/.test(id))) {
+        throw new Error("Checkout entries could not be verified. Refresh the page to try again.");
+      }
+      returnedIds = [...new Set(result.ids)];
+      returned.textContent = instructions;
+    } catch (error) { returned.textContent = error.message; }
+  }
+  if (ids.length || returnedIds.length) {
+    const initialLoads = ids.filter(id => !returnedIds.includes(id)).map(id => loadBalances(id, false));
+    if (returnedIds.length) initialLoads.push(loadBalanceBatch(returnedIds));
+    await Promise.all(initialLoads);
+    id.value = requestedId || returnedIds[0] || ids[0];
   } else { renderBalances(); status.textContent = "Find a player by name or US Chess ID to start."; }
 })();

@@ -152,6 +152,7 @@ function doPost(e) {
     if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
     if (p.action === "createPaymentCheckout") return json(createPaymentCheckout(p));
+    if (p.action === "returnPaymentCheckout") return json(returnPaymentCheckout(p));
     if (p.action === "quoteCardPayment") return json(quoteCardPayment(p));
     if (p.action === "confirmCardPayment") return json(confirmCardPayment(p));
     if (p.action === "paymentLink") return json(stripePaymentLink(p));
@@ -3715,24 +3716,34 @@ function paymentPlayers(p) {
 
 function paymentBalances(p) {
   if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
-  const id = String(p.id || "").trim();
-  if (!/^\d{8}$/.test(id)) return { error: "Enter an eight-digit US Chess ID." };
+  const ids = p.ids ? [...new Set(String(p.ids).split(","))] : [String(p.id || "").trim()];
+  if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Enter an eight-digit US Chess ID." };
   const { col, rows } = readEntries();
-  const matching = rows.filter((r) => r[col["US Chess ID"]] === id && active(r[col.Status]));
   const book = readPayments();
   const pending = stripeCardPendingTokens(book);
+  const baskets = stripeBaskets();
+  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
   let testPending = new Set();
-  try { if (stripeConfig().livemode === false) testPending = stripeCardPendingTokens(book,undefined,false); } catch {}
+  try {
+    if (stripeConfig().livemode === false) {
+      testPending = stripeCardPendingTokens(book, undefined, false);
+      for (const token of stripeBasketPendingTokens(baskets, book, false)) testPending.add(token);
+    }
+  } catch {}
   const events = clubEvents();
-  const entries = matching.map((r) => {
-    const event = r[col.Event], date = r[col.Date];
-    return { event, date,
-      name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      ...stripeBalance(r, col, book), pending: pending.has(r[col.Token]), testPending: testPending.has(r[col.Token]) };
-  }).sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
-  return { ok: true, id, name: matching.length ? matching[0][col.Name] : "", currency: "usd", entries,
-    totalCents: entries.reduce((total, entry) => total + (entry.balanceCents || 0), 0),
-    unknownCount: entries.filter((entry) => entry.balanceCents === null).length };
+  const balances = ids.map(id => {
+    const matching = rows.filter(r => r[col["US Chess ID"]] === id && active(r[col.Status]));
+    const entries = matching.map(r => {
+      const event = r[col.Event], date = r[col.Date];
+      return { event, date,
+        name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+        ...stripeBalance(r, col, book), pending: pending.has(r[col.Token]), testPending: testPending.has(r[col.Token]) };
+    }).sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
+    return { ok: true, id, name: matching.length ? matching[0][col.Name] : "", currency: "usd", entries,
+      totalCents: entries.reduce((total, entry) => total + (entry.balanceCents || 0), 0),
+      unknownCount: entries.filter(entry => entry.balanceCents === null).length };
+  });
+  return p.ids ? { ok: true, balances } : balances[0];
 }
 
 function stripePaymentLink(p) {
@@ -3873,9 +3884,53 @@ function stripeImport(record, config) {
   stripeRepairEntry(token, book);
   return { sessionId: record.sessionId, status: "imported" };
 }
-const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request"];
+const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request", "Returned paid"];
 
 function stripeBaskets() { return readTab("Stripe checkout baskets", STRIPE_BASKET_HEADERS); }
+
+function stripeBasketPendingTokens(tab, book, livemode) {
+  const { col, rows } = tab, pending = new Set();
+  const sandbox = livemode ? null : readTab("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
+  for (const row of rows) {
+    const session = row[col.Session];
+    if (!session || row[col.Mode] !== String(livemode) || row[col["Returned paid"]] !== "yes") continue;
+    if (sandbox?.rows.some(r => r[sandbox.col.Session] === session && r[sandbox.col.Reference] === row[col.Reference])) continue;
+    let allocations;
+    try { allocations = JSON.parse(row[col.Allocations]); } catch { continue; }
+    if (!Array.isArray(allocations)) continue;
+    for (const a of allocations) {
+      if (a?.token && !book.rows.some(r => r.Token === a.token && r["Stripe session"] === session)) pending.add(a.token);
+    }
+  }
+  return pending;
+}
+
+function returnPaymentCheckout(p) {
+  if (!underLimit()) return { error: "Too many requests. Try again in a minute." };
+  const reference = String(p.reference || "");
+  if (!/^[a-zA-Z0-9_-]{16,100}$/.test(reference)) return { error: "Checkout reference could not be verified." };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const config = stripeConfig(), { rows, col, sheet } = stripeBaskets();
+    const index = rows.findIndex(r => r[col.Reference] === reference && r[col.Mode] === String(config.livemode));
+    const basket = rows[index], id = basket?.[col.Session];
+    if (!/^cs_(live|test)_[A-Za-z0-9]+$/.test(id || "")) return { error: "Checkout reference could not be verified." };
+    const ids = [...new Set(JSON.parse(basket[col.Allocations]).map(a => a.party["US Chess ID"]))];
+    if (!ids.length || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Checkout reference could not be verified." };
+    if (basket[col["Returned paid"]] !== "yes") {
+      const session = stripeCardRequest(`checkout/sessions/${id}`, stripeCardSecret(config));
+      if (session.id !== id || session.client_reference_id !== reference || session.livemode !== config.livemode
+          || session.metadata?.lccc_checkout !== "basket_v1" || session.mode !== "payment" || session.currency !== "usd"
+          || session.amount_total !== Number(basket[col.Amount]) || session.status !== "complete" || session.payment_status !== "paid") {
+        return { error: "Stripe has not confirmed this checkout. Check your receipt before trying again." };
+      }
+      sheet.getRange(index + 2, col["Returned paid"] + 1).setNumberFormat("@").setValue("yes");
+    }
+    return { ok: true, ids };
+  } catch { return { error: "Checkout status is unavailable. Check your Stripe receipt and refresh this page." }; }
+  finally { lock.releaseLock(); }
+}
 
 function stripeCheckoutHttpError(response, http) {
   const status = Number.isInteger(http) && http >= 100 && http <= 599 ? String(http) : "UNKNOWN";
@@ -3920,8 +3975,11 @@ function createPaymentCheckout(p) {
     stage = "lock";
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
+      stage = "basket-storage";
+      const tab = stripeBaskets();
       stage = "balances";
       const { rows, col } = readEntries(), book = readPayments(), seen = new Set(), pendingTokens = stripeCardPendingTokens(book);
+      for (const token of stripeBasketPendingTokens(tab, book, config.livemode)) pendingTokens.add(token);
       const allocations = requested.map((item) => {
         const key = JSON.stringify([item.id, item.event, item.date]);
         if (seen.has(key) || !/^\d{8}$/.test(String(item.id || ""))) reject("Invalid or duplicate entry selection.");
@@ -3940,7 +3998,7 @@ function createPaymentCheckout(p) {
       const reference = String(p.requestId || "");
       if (!/^[a-zA-Z0-9_-]{16,100}$/.test(reference)) reject("Invalid checkout request. Reload the page.");
       stage = "basket-storage";
-      const tab = stripeBaskets(), old = tab.rows.find((r) => r[tab.col.Reference] === reference);
+      const old = tab.rows.find((r) => r[tab.col.Reference] === reference);
       if (old && (old[tab.col.Mode] !== String(config.livemode) || old[tab.col.Allocations] !== JSON.stringify(allocations))) reject("Balances changed. Reload the page before checkout.");
       if (old && old[tab.col.URL]) return { ok: true, checkoutUrl: old[tab.col.URL], amount, currency: "usd", livemode: config.livemode, count: allocations.length };
       if (old && !old[tab.col["Checkout request"]]) reject("This checkout started before an update. Reload this page and try again.");
@@ -3948,12 +4006,13 @@ function createPaymentCheckout(p) {
         "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(amount),
         "line_items[0][price_data][product_data][name]": "LCCC selected entry fees", "line_items[0][quantity]": "1",
         "allowed_payment_method_types[0]": "card", "automatic_tax[enabled]": "false", "adaptive_pricing[enabled]": "false",
-        success_url: SITE + "/pay/?returned=1", cancel_url: SITE + "/pay/" };
-      const request = old ? JSON.parse(old[tab.col["Checkout request"]]) : { contract: "entry-usd-card-v2",
-        apiVersion: "2026-10-28.endive", key: "lccc-entry-usd-card-v2-" + reference, payload };
+        success_url: SITE + "/pay/?returned=1&checkout=" + reference, cancel_url: SITE + "/pay/" };
+      const request = old ? JSON.parse(old[tab.col["Checkout request"]]) : { contract: "entry-usd-card-v3",
+        apiVersion: "2026-10-28.endive", key: "lccc-entry-usd-card-v3-" + reference, payload };
       const requestPayload = request.payload;
-      if (request.contract !== "entry-usd-card-v2" || request.apiVersion !== "2026-10-28.endive"
-          || request.key !== "lccc-entry-usd-card-v2-" + reference || !requestPayload
+      const previousContract = request.contract === "entry-usd-card-v2";
+      if ((!previousContract && request.contract !== "entry-usd-card-v3") || request.apiVersion !== "2026-10-28.endive"
+          || request.key !== "lccc-" + request.contract + "-" + reference || !requestPayload
           || requestPayload.mode !== "payment" || requestPayload.client_reference_id !== reference
           || requestPayload["line_items[0][price_data][unit_amount]"] !== String(amount)
           || requestPayload["line_items[0][price_data][currency]"] !== "usd" || requestPayload["line_items[0][quantity]"] !== "1"
@@ -3961,7 +4020,7 @@ function createPaymentCheckout(p) {
           || requestPayload["allowed_payment_method_types[0]"] !== "card"
           || requestPayload["line_items[0][price_data][product_data][name]"] !== "LCCC selected entry fees"
           || requestPayload["automatic_tax[enabled]"] !== "false" || requestPayload["adaptive_pricing[enabled]"] !== "false"
-          || requestPayload.success_url !== "https://larimerchess.org/pay/?returned=1" || requestPayload.cancel_url !== "https://larimerchess.org/pay/"
+          || requestPayload.success_url !== (previousContract ? SITE + "/pay/?returned=1" : payload.success_url) || requestPayload.cancel_url !== payload.cancel_url
           || Object.keys(requestPayload).length !== Object.keys(payload).length) reject("Stored checkout could not be verified. Contact the tournament director.");
       // Persist the exact nonsecret request before Stripe; retries replay it unchanged.
       if (!old) appendText(tab.sheet, tab.col, { Reference: reference, Mode: String(config.livemode), Amount: String(amount),

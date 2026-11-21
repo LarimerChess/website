@@ -24,6 +24,14 @@ let checkoutFailure = false;
 let balanceVariant = "";
 const searchRoster = [{id:"12345678",name:"Latest Player"},{id:"22222222",name:"Second Player"}];
 const uscfRequests = [];
+function playerBalance(id) {
+  return { ok: true, id, name: id === "12345678" ? "Latest Player" : "Second Player", currency: "usd",
+    entries: [{ event: "club-night", date: "2026-11", name: "Club Night", balanceCents: 1750, review: false },
+      { event: "classic", date: "2025-05-01", name: "Past Classic", balanceCents: 750, review: false },
+      { event: "paid", date: "2027-05-01", name: "Paid Event", balanceCents: 0, review: false },
+      { event: "unknown", date: "2027-06-01", name: "Unknown Fee", balanceCents: null, review: false },
+      { event: "review", date: "2027-07-01", name: "Review Event", balanceCents: 1750, review: true }], totalCents: 4250, unknownCount: 1 };
+}
 await page.setRequestInterception(true);
 page.on("request", async (request) => {
   const url = new URL(request.url());
@@ -38,12 +46,15 @@ page.on("request", async (request) => {
     if (fields.action === "paymentBalances" && fields.id === holdId) await new Promise((resolve) => { release = resolve; });
     if (fields.action === "paymentPlayers" && fields.q === holdSearch) await new Promise(resolve => { releaseSearch = resolve; });
     if (fields.action === "createPaymentCheckout" && holdCheckout) await new Promise(resolve=>{releaseCheckout=resolve;});
-    const body = fields.action === "paymentPlayers" ? {ok:true,players:searchRoster.filter(p => /^\d+$/.test(fields.q) ? p.id.startsWith(fields.q) : fields.q.toLowerCase().split(/\s+/).every(w => p.name.toLowerCase().includes(w)))} : fields.action === "paymentBalances" ? { ok: true, id: fields.id, name: fields.id === "12345678" ? "Latest Player" : "Second Player", currency: "usd",
-      entries: [{ event: "club-night", date: "2026-11", name: "Club Night", balanceCents: 1750, review: false },
-        { event: "classic", date: "2025-05-01", name: "Past Classic", balanceCents: 750, review: false },
-        { event: "paid", date: "2027-05-01", name: "Paid Event", balanceCents: 0, review: false },
-        { event: "unknown", date: "2027-06-01", name: "Unknown Fee", balanceCents: null, review: false },
-        { event: "review", date: "2027-07-01", name: "Review Event", balanceCents: 1750, review: true }], totalCents: 4250, unknownCount: 1 }
+    const body = fields.action === "paymentPlayers" ? {ok:true,players:searchRoster.filter(p => /^\d+$/.test(fields.q) ? p.id.startsWith(fields.q) : fields.q.toLowerCase().split(/\s+/).every(w => p.name.toLowerCase().includes(w)))}
+      : fields.action === "returnPaymentCheckout" ? { ok: true, ids: ["12345678", "22222222"] }
+      : fields.action === "paymentBalances" && fields.ids ? { ok: true, balances: fields.ids.split(",").map(id => {
+        const player = playerBalance(id), entry = player.entries[0];
+        entry.pending = balanceVariant === "return-pending";
+        if (!entry.pending) entry.balanceCents = 0;
+        return player;
+      }) }
+      : fields.action === "paymentBalances" ? playerBalance(fields.id)
       : { ok: true, checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_fixture", count: JSON.parse(fields.entries).length,
         amount: JSON.parse(fields.entries).reduce((n,e) => n + (e.event === "club-night" ? 1750 : 750),0), currency: "usd", livemode: false };
     if (fields.action === "paymentBalances" && fields.id === "00000000") Object.assign(body,{name:"",entries:[],totalCents:0,unknownCount:0});
@@ -235,5 +246,26 @@ await page.waitForSelector('#pay-checkout:not([hidden])');
   ? pass('Card payments use hosted Stripe Checkout and return to the pay page') : fail('Inline card form remained active instead of hosted Checkout');
 await axeBoth(page,'Hosted Stripe checkout');
 await fitsPhone(page,'Hosted Stripe checkout');
+await page.evaluate(() => localStorage.removeItem("lccc-register-players"));
+await page.evaluateOnNewDocument(() => {
+  const schedule = window.setTimeout;
+  window.setTimeout = (callback, ms, ...args) => schedule(callback, ms === 30000 ? 1200 : ms, ...args);
+});
+config.livemode = true;
+balanceVariant = "return-pending";
+await page.goto(base + "/pay/?returned=1&checkout=reference_abcdefghijklmnop", { waitUntil: "networkidle0" });
+const processing = await page.$$eval("#pay-balances .pay-entry", rows => rows
+  .filter(row => row.textContent.includes("Payment pending verification"))
+  .map(row => [row.closest("section").dataset.player, row.cells[1].childNodes[0].textContent, Boolean(row.querySelector("input"))]));
+JSON.stringify(processing) === JSON.stringify([["12345678", "Club Night", false], ["22222222", "Club Night", false]])
+  && calls.some(call => call.action === "returnPaymentCheckout" && call.reference === "reference_abcdefghijklmnop")
+  ? pass("Returning from hosted Checkout restores unsaved players and shows each pending line without a Pay checkbox")
+  : fail(`Returning from hosted Checkout showed ${JSON.stringify(processing)}`);
+balanceVariant = "return-reconciled";
+await page.waitForFunction(() => !document.querySelector("#pay-balances").textContent.includes("Club Night"));
+(await page.$eval("#pay-balances", el => el.textContent.includes("Past Classic")))
+  && !(await page.evaluate(() => document.querySelector(".network-activity")?.matches(":modal")))
+  ? pass("Reconciliation silently removes settled rows and leaves other unpaid entries visible")
+  : fail("Reconciliation removed other entries or interrupted the form");
 await page.close();
 await done();

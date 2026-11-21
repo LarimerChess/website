@@ -257,6 +257,39 @@ test('one basket payment credits exact separate player allocations once', () => 
   assert.equal(f.second.Paid,'12.50');
 });
 
+test('hosted return verifies the exact basket and holds its entries until sync posts each allocation', () => {
+  for (const livemode of [true, false]) {
+    const f = basketFixture(!livemode);
+    f.ctx.clubEvents = () => ({});
+    const reference = 'reference_abcdefghijklmnop', sessionId = livemode ? 'cs_live_fixture' : 'cs_test_fixture';
+    f.record = { ...f.record, clientReferenceId: reference, sessionId };
+    const basket = f.tabs['Stripe checkout baskets'][0];
+    basket[0] = reference;
+    basket[4] = sessionId;
+    let payment_status = 'unpaid', lookups = 0;
+    f.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => livemode ? 'sk_live_fixture' : 'sk_test_fixture' }) };
+    f.ctx.stripeCardRequest = (path) => {
+      assert.equal(path, `checkout/sessions/${sessionId}`);
+      lookups++;
+      return { id: sessionId, client_reference_id: reference, livemode, metadata: { lccc_checkout: 'basket_v1' },
+        mode: 'payment', currency: 'usd', amount_total: 3000, status: 'complete', payment_status };
+    };
+    const balances = () => plain(f.ctx.paymentBalances({ ids: '12345678,87654321' })).balances.map(player => player.entries[0]);
+    const pending = livemode ? 'pending' : 'testPending';
+    assert.match(f.ctx.returnPaymentCheckout({ reference }).error, /has not confirmed/);
+    assert.ok(balances().every(entry => !entry[pending]));
+    payment_status = 'paid';
+    assert.deepEqual(plain(f.ctx.returnPaymentCheckout({ reference })), { ok: true, ids: ['12345678', '87654321'] });
+    assert.ok(f.ctx.returnPaymentCheckout({ reference }).ok);
+    assert.equal(lookups, 2);
+    assert.ok(balances().every(entry => entry[pending]));
+    assert.equal(f.book.rows.length, 0);
+    assert.match(f.ctx.createPaymentCheckout({ requestId: 'other_abcdefghijklmnop', entries: JSON.stringify([{ id: '12345678', event: 'chess', date: '2026-12-01' }]) }).error, /pending verification/);
+    assert.equal(f.ctx.stripeImport(f.record, f.config).status, livemode ? 'imported' : 'test');
+    assert.ok(balances().every(entry => !entry[pending] && (entry.balanceCents === 0) === livemode));
+  }
+});
+
 test('basket validates every balance before any credit and rejects wrong amounts or sessions', () => {
   for (const patch of [{amountCents:2999}, {sessionId:'cs_other'}, {clientReferenceId:'unknown'}, {livemode:false}, {refundCents:100}]) {
     const f=basketFixture(); assert.equal(f.ctx.stripeImport({...f.record,...patch},f.config).status,'review'); assert.equal(f.book.rows.length,0);
@@ -499,9 +532,10 @@ test('checkout persists its versioned immutable request and retries a post-Strip
   const f=checkoutAttemptFixture();f.failSave();
   assert.match(f.ctx.createPaymentCheckout(f.params).error,/CHECKOUT_BASKET_SAVE/);
   const descriptor=JSON.parse(f.rows[0][f.col['Checkout request']]);
-  assert.equal(descriptor.contract,'entry-usd-card-v2');
+  assert.equal(descriptor.contract,'entry-usd-card-v3');
   assert.equal(descriptor.apiVersion,'2026-10-28.endive');
-  assert.equal(descriptor.key,'lccc-entry-usd-card-v2-'+f.params.requestId);
+  assert.equal(descriptor.key,'lccc-entry-usd-card-v3-'+f.params.requestId);
+  assert.equal(descriptor.payload.success_url, 'https://larimerchess.org/pay/?returned=1&checkout='+f.params.requestId);
   assert.ok(!JSON.stringify(descriptor).includes('sk_test'));
   assert.equal(f.ctx.createPaymentCheckout(f.params).ok,true);
   assert.deepEqual(f.calls[1],f.calls[0]);assert.equal(f.sessions(),1);
@@ -517,7 +551,23 @@ test('legacy pending attempts fail closed with reload guidance while saved legac
   assert.equal(f.ctx.createPaymentCheckout(f.params).checkoutUrl,f.rows[0][f.col.URL]);assert.equal(f.calls.length,0);
   const next={...f.params,requestId:'fresh_abcdefghijklmnop'};
   assert.equal(f.ctx.createPaymentCheckout(next).ok,true);
-  assert.equal(f.calls[0].headers['Idempotency-Key'],'lccc-entry-usd-card-v2-'+next.requestId);
+  assert.equal(f.calls[0].headers['Idempotency-Key'],'lccc-entry-usd-card-v3-'+next.requestId);
+});
+
+test('an unfinished pre-return checkout keeps its original Stripe request on retry', () => {
+  const f = checkoutAttemptFixture();
+  f.failSave();
+  assert.match(f.ctx.createPaymentCheckout(f.params).error, /CHECKOUT_BASKET_SAVE/);
+  const row = f.rows[0], descriptor = JSON.parse(row[f.col['Checkout request']]);
+  descriptor.contract = 'entry-usd-card-v2';
+  descriptor.key = `lccc-entry-usd-card-v2-${f.params.requestId}`;
+  descriptor.payload.success_url = 'https://larimerchess.org/pay/?returned=1';
+  row[f.col['Checkout request']] = JSON.stringify(descriptor);
+  f.cache.set(descriptor.key, { payload: JSON.stringify(descriptor.payload), id: row[f.col.Session] });
+  assert.ok(f.ctx.createPaymentCheckout(f.params).ok);
+  assert.equal(f.calls[1].headers['Idempotency-Key'], descriptor.key);
+  assert.deepEqual(f.calls[1].payload, descriptor.payload);
+  assert.equal(f.sessions(), 1);
 });
 
 test('corrupt durable request bindings cannot issue another Stripe request',()=>{

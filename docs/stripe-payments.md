@@ -16,7 +16,7 @@ Payment Link.
 
 1. Deploy `scripts/registration.gs` to the existing registration web app. Add
    `LCCC_STRIPE_SECRET_KEY` to its Script Properties using a Stripe **test** key
-   with permission to create Checkout Sessions (and inline prices/products).
+   with permission to create and retrieve Checkout Sessions (and create inline prices/products).
    The key stays server-side. GitHub secrets cannot be retrieved to populate this
    property. The publishable key is unused.
 2. Add a random secret of at least 32 characters as Script Property and GitHub
@@ -125,7 +125,8 @@ Official references: [create Checkout Sessions](https://docs.stripe.com/api/chec
 Entry payments use Stripe Checkout. The pay page sends the exact selected
 entries to the Apps Script endpoint, which verifies current balances and creates
 a Checkout Session. The payer enters card details on Stripe and returns to
-`/pay/`; returning does not count as confirmation. The payment sync verifies the
-session and keeps the entries pending until the payment is cleared. The club
+`/pay/`. The registration script checks the returned checkout against Stripe and
+shows the selected entries as pending. The Pay page refreshes pending balances
+and removes each fully paid entry after GitHub Actions credits it in the ledger. The club
 absorbs card processing costs, and the Checkout total matches the selected entry
 balances.
