@@ -83,16 +83,18 @@ class Standings(unittest.TestCase):
 
     def test_page(self):
         page = br.results_page(CLUB_NIGHT)
+        main = page.split("<main", 1)[1].split("</main>", 1)[0]
         self.assertIn('<link rel="canonical" href="https://larimerchess.org/results/monday-club-night-at-peak-2026-10/">', page)
         self.assertIn("Sam Spruce withdrew from round 3.", page)
         self.assertIn('<th scope="col">Round 3</th><th scope="col">Score</th><th scope="col">Median</th>', page)
         self.assertIn('<th scope="col">Opp. cumulative</th><th scope="col">Performance</th>', page)
-        # The withdrawal, what performance means, the event's page, and the link to all results.
-        self.assertEqual(page.split("<main")[1].split("</main>")[0].count("<p>"), 4)
-        self.assertIn('<a href="/events/monday-club-night-at-peak/">About this event</a>', page)
+        self.assertIn("Performance is the rating that Elo's formula expects", main)
+        self.assertIn('<a href="/events/monday-club-night-at-peak/">About this event</a>', main)
+        self.assertIn('<a href="/results/">All tournament results</a>', main)
+        self.assertIn('<a href="/pay/">Pay tournament entry fees</a>', main)
         self.assertIn(f'data-results="{br.fingerprint(CLUB_NIGHT)}"', page)
         self.assertIn('<h1>Results</h1>', br.index_page())
-        self.assertNotIn("@", page.split("<main")[1].split("</main>")[0])
+        self.assertNotIn("@", main)
         self.assertNotIn("ratings.uschess.org", page)
 
     def test_dated_by_us_chess(self):
