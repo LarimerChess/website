@@ -271,6 +271,32 @@ test("the script avoids syntax Apps Script can't parse, though node can", () => 
   assert.doesNotMatch(source, /(\|\||&&|\?\?)=/, "logical assignment, such as ||=");
 });
 
+test("the Entries page marks a player paid up only when every active registration is settled", () => {
+  const { gs, cache, db } = load({
+    Entries: [["Event", "Date", "US Chess ID", "Name", "Status", "Amount", "Rating fee", "Token"],
+      ["classic", "2099-11-07", "11111111", "Ann", "registered", "17.50", "2.50", "ann-upcoming"],
+      ["classic", "2026-10-10", "11111111", "Ann", "registered", "5", "0", "ann-past"],
+      ["classic", "2099-11-07", "22222222", "Ben", "registered", "", "", "ben-upcoming"],
+      ["classic", "2026-10-10", "11111111", "Ann", "withdrawn", "5", "0", "ann-withdrawn"]],
+  }, {}, "firebase");
+  gs.clubEvents = () => ({ "classic/2099-11-07": { name: "Classic", kind: "entry", label: "Saturday", first: "2099-11-07",
+    closes: "2099-11-07T10:00:00-07:00" } });
+  let version = 0;
+  gs.Utilities.getUuid = () => `version${++version}`;
+  const store = gs.CacheService.getScriptCache();
+  gs.CacheService.getScriptCache = () => ({ ...store, remove: k => delete cache[k] });
+  const flags = (entries) => entries.map(e => [e.id, e.paidUp]);
+  const listed = () => flags(gs.allEntries()[0].entries);
+  const published = () => flags(JSON.parse(db.root.public.entries)[0].entries);
+  assert.ok(gs.markPaid("ann-upcoming", "17.50", "cash").ok);
+  eq(listed(), [["11111111", undefined], ["22222222", undefined]]);
+  assert.ok(gs.markPaid("ann-past", "5", "cash").ok);
+  eq(published(), [["11111111", true], ["22222222", undefined]]);
+  eq(listed(), published());
+  assert.ok(gs.markPaid("ann-past", "", "cash").ok);
+  eq(published(), [["11111111", undefined], ["22222222", undefined]]);
+});
+
 test("the public copies last six hours, every change clears them, and Refresh rebuilds them", () => {
   const { gs, sheets, cache } = load({
     Entries: [["Registered", "Event", "Date", "US Chess ID", "Name", "Status", "Regular rating", "Token"],
@@ -1489,7 +1515,11 @@ test("change stamps go to the database's /changes too, and the sheet store never
       ["", "classic", "2026-11-07", "11111111", "Ann", "registered", "15", "", "", "t1"]],
     Contacts: [["Name", "Email", "Phone", "Notes"]],
   });
-  const { gs, db } = load(tabs(), {}, "firebase");
+  const { gs, cache, db } = load(tabs(), {}, "firebase");
+  const store = gs.CacheService.getScriptCache();
+  gs.CacheService.getScriptCache = () => ({ ...store, removeAll: keys => keys.forEach(k => delete cache[k]) });
+  let version = 0;
+  gs.Utilities.getUuid = () => `version${++version}`;
   gs.clubEvents = () => ({});
   gs.markPaid("t1", "15", "cash");
   eq(db.root.changes, { entries: gs.changes().entries });

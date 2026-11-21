@@ -213,7 +213,7 @@ byesPage.on("request", async (request) => {
         ...(annZero[event]?.length ? { zeroByes: annZero[event] } : {}) });
       body = { events: [
         { key: "club-night/2099-10-12", name: "Club Night", label: "Monday, October 12, 2099", page: "/events/club-night/", start: "2099-10-12T18:30:00-06:00",
-          entries: [ann("club-night", { for: "Whole month" }), { name: "Ben Example", id: "22345678", rating: "1200", for: "Monday, October 12" }] },
+          entries: [ann("club-night", { for: "Whole month" }), { name: "Ben Example", id: "22345678", rating: "1200", for: "Monday, October 12", paidUp: true }] },
         { key: "club-night/2099-10-26", name: "Club Night", label: "Monday, October 26, 2099", page: "/events/club-night/", start: "2099-10-26T18:30:00-06:00",
           entries: [ann("club-night", { for: "Whole month" })] },
         { key: "classic/2099-11-07", name: "Classic", label: "Saturday, November 7, 2099", page: "/events/classic/", start: "2099-11-07T10:00:00-07:00",
@@ -234,8 +234,7 @@ const byesShown = () => byesPage.evaluate(() => {
   changers: [...document.querySelectorAll(".entries-all .entries-change-byes")].map((b) => b.closest("tr").cells[0].textContent),
   payments: [...document.querySelectorAll(".entries-all tbody tr")].map((r) => {
     const link = r.cells[head.indexOf("Payment")]?.querySelector("a");
-    return link?.getAttribute("href") === `/pay/?uscfid=${r.dataset.id}`
-      && link.getAttribute("aria-label") === `Pay for ${r.cells[0].textContent}`;
+    return link ? { href: link.getAttribute("href"), label: link.getAttribute("aria-label") } : null;
   }),
   status: document.querySelector(".entries-all-status").textContent, focused: document.activeElement?.textContent };
 });
@@ -272,8 +271,8 @@ JSON.stringify(monthByes.head) === JSON.stringify(["Name", "US Chess ID", "Ratin
   && monthSaved.byes[0] === "" && JSON.stringify(otherNight.byes) === '["Zero-point bye"]' && monthSaved.status === "Ann Example's byes are saved." && monthSaved.focused === "Change byes for Ann Example"
   ? pass("Entries page shows each of a month's byes on its own night's list, and a saved player changes them, half-point or zero-point, keeping the nights already played")
   : fail(`Entries page month's byes: ${JSON.stringify({ monthByes, monthEditor, call: byesCalls[0], monthSaved, otherNight })}`);
-monthByes.payments.length === 2 && monthByes.payments.every(Boolean)
-  ? pass("Entries page links to the Pay page for every listed player, including unsaved players")
+JSON.stringify(monthByes.payments) === JSON.stringify([{ href: "/pay/?uscfid=12345678", label: "Pay for Ann Example" }, null])
+  ? pass("Entries page hides the Pay link for a paid-up player and keeps it for a player with a balance")
   : fail(`Entries page player payment links: ${JSON.stringify(monthByes.payments)}`);
 await press(byesPage, ".entries-change-byes");
 await press(byesPage, ".entries-all [role=group] + p button:last-child");

@@ -165,9 +165,11 @@ function eventSection(event) {
   hint.textContent = ` for ${event.name}, ${night ? `all of ${monthFormat.format(new Date(event.start))}` : dateFormat.format(new Date(event.start))}`;
   register.append(hint);
   section.append(heading, when);
+  const payer = yourId();
+  const paymentId = payer && !lists.some(list => list.entries.some(entry => entry.id === payer && entry.paidUp === true)) ? payer : "";
   const payment = Object.assign(document.createElement("a"), {
-    href: `/pay/?event=${encodeURIComponent(event.key)}${yourId() ? `&id=${encodeURIComponent(yourId())}` : ""}`,
-    textContent: yourId() ? "View balances and pay" : "Pay for a registered player",
+    href: `/pay/?event=${encodeURIComponent(event.key)}${paymentId ? `&id=${encodeURIComponent(paymentId)}` : ""}`,
+    textContent: paymentId ? "View balances and pay" : "Pay for a registered player",
   });
   const paymentParagraph = document.createElement("p");
   paymentParagraph.append(payment);
@@ -222,7 +224,7 @@ function eventSection(event) {
       }
       if (changer) row.lastChild.append(" ", byesButton(row.lastChild, event, e, { ...changer, name: e.name }));
       const paymentCell = cell(row, "");
-      if (/^\d{8}$/.test(e.id)) {
+      if (e.paidUp !== true && /^\d{8}$/.test(e.id)) {
         const payLink = document.createElement("a");
         payLink.href = `/pay/?uscfid=${encodeURIComponent(e.id)}`;
         payLink.textContent = "Pay";

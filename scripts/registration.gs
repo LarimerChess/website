@@ -432,6 +432,11 @@ function allEntries() {
     .sort(([, a], [, b]) => a.closes.localeCompare(b.closes))
     .map(([key, e]) => ({ key, name: e.name, label: e.label, page: e.page, closed: Boolean(e.closed), start: e.closes,
       entries: entries(key, false, read) }));
+  const listed = list.flatMap(event => event.entries);
+  if (listed.length) {
+    const paidUp = paidUpPlayers(read, new Set(listed.map(entry => entry.id)));
+    for (const entry of listed) if (paidUp.has(entry.id)) entry.paidUp = true;
+  }
   cachePut(allEntriesKey(), JSON.stringify(list));
   publishEntries(list);
   return list;
@@ -2583,7 +2588,7 @@ function allEntriesKey() {
   const events = JSON.stringify(Object.entries(clubEvents()).map(([key, e]) => [key, e.label, e.closes, e.closed]));
   let hash = 0;
   for (let i = 0; i < events.length; i++) hash = (hash * 31 + events.charCodeAt(i)) | 0;
-  return entriesKey(`all:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
+  return entriesKey(`all:paid-status:${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")}:${(hash >>> 0).toString(36)}`);
 }
 
 function clearEntriesCache() {
@@ -2695,7 +2700,8 @@ function markPaid(token, amount, by, donate) {
     sheet.getRange(row.index + 2, col["Paid on"] + 1).setNumberFormat("@").setValue(when);
     sheet.getRange(row.index + 2, col["Paid by"] + 1).setNumberFormat("@").setValue(by);
     // A contact's Donated total counts donations made with entries too.
-    touch("entries", ...(donation || mine.some((x) => cents(x.Donation)) ? ["contacts"] : []));
+    if (donation || mine.some(x => cents(x.Donation))) touch("contacts");
+    clearEntriesCache();
     if (!amount) return { ok: true, message: `${row.name} is marked unpaid.` };
     const gift = donation ? `, with a $${money(donation / 100)} donation` : "";
     const held = ledgerByToken(book)[token];
@@ -3066,7 +3072,7 @@ function refund(token, amount, by, td) {
     }
     addPayment(book, token, partyOf(r, col), { Type: "refund", Method: method, Received: -back, "Entry fee": -entry, "Rating fee": -rating,
       Note: td && td.name ? `By ${td.name}` : "" });
-    touch("entries");
+    clearEntriesCache();
     return { ok: true, message: `${found.name} was refunded $${money(back / 100)} by ${method}.` };
   } finally {
     lock.releaseLock();
@@ -3089,7 +3095,7 @@ function discount(token, amount, note, td) {
     const why = [String(note || "").trim(), td && td.name ? `by ${td.name}` : ""].filter(Boolean).join(", ");
     sheet.getRange(found.index + 2, col.Discount + 1).setNumberFormat("@").setValue(off ? money(off / 100) : "");
     sheet.getRange(found.index + 2, col["Discount note"] + 1).setNumberFormat("@").setValue(off ? why : "");
-    touch("entries");
+    clearEntriesCache();
     return { ok: true, message: off ? `${found.name} has a $${money(off / 100)} discount.` : `${found.name}'s discount is removed.` };
   } finally {
     lock.releaseLock();
@@ -3681,9 +3687,24 @@ function stripeConfig() {
   return config;
 }
 
+function paidUpPlayers({ col, rows }, ids) {
+  const book = readPayments(), ledger = ledgerByToken(book), payments = new Map();
+  for (const row of book.rows) {
+    if (!payments.has(row.Token)) payments.set(row.Token, []);
+    payments.get(row.Token).push(row);
+  }
+  const paidUp = new Set(ids);
+  for (const row of rows) {
+    const id = row[col["US Chess ID"]];
+    if (!paidUp.has(id) || !active(row[col.Status])) continue;
+    const { balanceCents, review } = stripeBalance(row, col, book, payments.get(row[col.Token]) || [], ledger);
+    if (balanceCents !== 0 || review) paidUp.delete(id);
+  }
+  return paidUp;
+}
+
 /** Public balance lookup deliberately returns no registration-changing credentials or contacts. */
-function stripeBalance(r, col, book) {
-  const mine = book.rows.filter((payment) => payment.Token === r[col.Token]);
+function stripeBalance(r, col, book, mine = book.rows.filter(payment => payment.Token === r[col.Token]), ledger = ledgerByToken(book)) {
   const rating = r[col["Rating fee"]];
   const review = rating == null || String(rating).trim() === "" || Boolean(r[col["Payment review"]]);
   const numeric = [r[col.Amount], r[col.Discount], r[col.Paid], r[col["Rating fee"]], ...mine.flatMap((payment) =>
@@ -3691,7 +3712,7 @@ function stripeBalance(r, col, book) {
   const unresolved = numeric.some((value) => !Number.isFinite(Number(value || 0)))
     || (cents(r[col.Paid]) !== 0 && mine.length === 0);
   if (unresolved || r[col.Amount] === "") return { balanceCents: null, review: unresolved || review };
-  const held = ledgerByToken(book)[r[col.Token]] || { entry: 0, rating: 0, refunded: 0 };
+  const held = ledger[r[col.Token]] || { entry: 0, rating: 0, refunded: 0 };
   const balance = cents(r[col.Amount]) - cents(r[col.Discount]) - held.entry - held.rating - held.refunded;
   return Number.isSafeInteger(balance) ? { balanceCents: Math.max(0, balance), review } : { balanceCents: null, review: true };
 }
