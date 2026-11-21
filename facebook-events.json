@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "calendarId": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
- "generatedAt": "2026-11-21T11:15:48.987426-07:00",
+ "generatedAt": "2026-11-21T12:26:29.785301-07:00",
  "events": [
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20261124T003000Z",
@@ -143,14 +143,9 @@
   },
   {
    "id": "3clq7u8gubio3ae7hinops7ro0_20270102T170000Z",
-   "status": "active",
-   "title": "First Saturday Classic",
-   "description": "Cost: $17, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $2. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/30;+30 (30 minutes per player, plus 30 seconds added after each move). Dual rated, regular and quick.\n\nA monthly US Chess rated tournament at classical speed in Old Town Fort Collins.\n\nWe skip weekends with major Colorado tournaments. Check the event page at https://larimerchess.org/events/first-saturday-classic/ for available dates.\n\nFormat: 4-round Swiss.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 12:15 PM\n• Round 3: 2:30 PM\n• Round 4: 4:45 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
-   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+   "status": "cancelled",
    "start": "2027-01-02T10:00:00-07:00",
-   "end": "2027-01-02T19:00:00-07:00",
-   "marker": "LCCC-d535d46bcb5b6b844eb8d2a6",
-   "fingerprint": "b8c5f3d10c3b0ef2abbdc7bc41c46825567724a173c8f831af1974d6a044346e"
+   "end": "2027-01-02T19:00:00-07:00"
   },
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20270105T003000Z",
