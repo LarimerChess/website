@@ -24,7 +24,6 @@ The Update calendar Action runs this after scripts/update_calendar.py, and the D
 Action after every push to main.
 """
 
-import hashlib
 import html
 import json
 import re
@@ -33,8 +32,12 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from asset_stamp import asset_stamp
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = "https://larimerchess.org"
@@ -454,7 +457,7 @@ def series_page(events, prices):
     </section>
 
     <p><a href="/events/">All chess events in Fort Collins and Larimer County</a></p>"""
-    stamp = hashlib.sha256((ROOT / "register.js").read_bytes()).hexdigest()[:10]
+    stamp = asset_stamp(ROOT / "register.js")
     return page_html(title, description, url, main, head=data_script(events),
                      scripts=f'<script src="../../register.js?v={stamp}" defer></script>' if rated else "")
 

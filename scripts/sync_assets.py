@@ -9,14 +9,15 @@ minutes, so a browser can pair a new page with an old script. The stamp changes
 whenever the script does, so pages always load the one they were written for.
 """
 
-import hashlib
 import re
 import sys
 from pathlib import Path
 
+from asset_stamp import asset_stamp
+
 ROOT = Path(__file__).resolve().parent.parent
 
-stamps = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()[:10] for name in ("calendar.js", "register.js", "td.js", "entries.js", "pairing.js", "td-run.js", "pairings.js", "arena.js", "td-arena.js", "td-contacts.js", "results.js", "ratingreport.js", "live.js", "finance.js", "pay.js")}
+stamps = {name: asset_stamp(ROOT / name) for name in ("calendar.js", "register.js", "td.js", "entries.js", "pairing.js", "td-run.js", "pairings.js", "arena.js", "td-arena.js", "td-contacts.js", "results.js", "ratingreport.js", "live.js", "finance.js", "pay.js")}
 script = re.compile(r"((?:\.\./)*(calendar\.js|register\.js|td\.js|entries\.js|pairing\.js|td-run\.js|pairings\.js|arena\.js|td-arena\.js|td-contacts\.js|results\.js|ratingreport\.js|live\.js|finance\.js|pay\.js))(?:\?v=[0-9a-f]+)?\"")
 css = (ROOT / "style.css").read_text(encoding="utf-8")
 styles = re.compile(r'<link rel="stylesheet" href="(?:\.\./)*style\.css[^"]*">|<style>.*?</style>', re.S)

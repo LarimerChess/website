@@ -40,6 +40,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from asset_stamp import asset_stamp
 from build_pages import (CLUB, ROOT, SITE, TZ, archived_page, day_text, days_html, days_text, escaped, page_html,  # noqa: E402
                          rated_dates, results_pages)
 
@@ -436,7 +437,7 @@ def index_page():
     return page_html(f"Results · {CLUB}",
                      "Final standings of Larimer County Chess Club tournaments in Fort Collins, Colorado.",
                      f"{SITE}/results/", main, depth=1, current="/results/", generated=GENERATED,
-                     scripts=(f'<script src="../results.js?v={hashlib.sha256((ROOT / "results.js").read_bytes()).hexdigest()[:10]}" '
+                     scripts=(f'<script src="../results.js?v={asset_stamp(ROOT / "results.js")}" '
                               'defer></script>') if pages else "")
 
 
