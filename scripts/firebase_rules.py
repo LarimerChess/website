@@ -3,8 +3,8 @@
 
     LCCC_FIREBASE_URL=https://<database>.firebaseio.com ~/.local/share/lccc/venv/bin/python scripts/firebase_rules.py [--dry-run | --check]
 
-The rules let anyone read /public and /changes, and nobody read or write anything else; the
-registration script and these scripts sign in as the president, which the rules don't limit.
+The rules let anyone read /public, /changes, and individual published payment views when ready.
+The registration script and these scripts sign in as the president, which the rules don't limit.
 Without LCCC_FIREBASE_URL the URL is LIVE_DB in register.js. The token is google_auth.py
 --firebase's.
 

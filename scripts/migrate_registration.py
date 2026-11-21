@@ -8,6 +8,7 @@ import subprocess
 import sys
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import firebase_db
 
@@ -35,15 +36,18 @@ def read_tabs(service, sheet_id):
     return {name: block.get("values", []) for name, block in zip(names, data["valueRanges"], strict=True)}
 
 
-def require_pause():
+def require_pause(published_views=False):
     script = (firebase_db.ROOT / "register.js").read_text(encoding="utf-8")
     match = re.search(r'^const ENDPOINT = "([^"]+)";', script, re.M)
     if not match:
         raise ValueError("The registration endpoint is missing from register.js")
     request = Request(match[1], data=urlencode({"action": "paymentBalances", "id": "x"}).encode("ascii"))
     with urlopen(request, timeout=30) as response:
-        if json.load(response).get("maintenance") is not True:
+        state = json.load(response)
+        if state.get("maintenance") is not True:
             raise ValueError("Set REGISTRATION_MAINTENANCE=1 on the deployed registration script before applying")
+        if published_views and state.get("publishedPaymentViews") is not True:
+            raise ValueError("Deploy the payment view writer and set PAYMENT_PUBLIC_VIEWS=1 before publishing")
 
 
 def apply(db, update, read_source, rebuild=False):
@@ -73,13 +77,34 @@ def apply(db, update, read_source, rebuild=False):
     db.patch("registrationData", {"active": True})
 
 
+def publish_views(db, update, views, revision):
+    require_pause(published_views=True)
+    current = db.get("registrationData") or {}
+    if current.get("active") is not True or current.get("tables") != update["tables"]:
+        raise ValueError("Active Firebase source changed or is missing. Preview and retry.")
+    db.patch("", {
+        "registrationData/paymentLookup": update["paymentLookup"],
+        "registrationData/paymentViewState": {"ready": False, "dirty": False, "maintenance": True},
+        "paymentBalances": views,
+    })
+    if (db.get("registrationData/paymentLookup") or {}) != update["paymentLookup"] or (db.get("paymentBalances") or {}) != views:
+        raise ValueError("Published payment view readback failed")
+    require_pause(published_views=True)
+    if db.get("registrationData/tables") != update["tables"]:
+        raise ValueError("Firebase registration changed while copying. Keep writes paused and retry.")
+    db.patch("", {"registrationData/paymentViewState/ready": True, "changes/paymentBalances": revision})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--sheet-id", help="ID of the spreadsheet bound to the registration web app")
     source.add_argument("--rebuild-lookup", action="store_true", help="rebuild from the active Firebase tables")
+    parser.add_argument("--publish-balances", action="store_true", help="build public payment views during a lookup rebuild")
     parser.add_argument("--apply", action="store_true", help="write and verify the migration. The default is a preview.")
     args = parser.parse_args()
+    if args.publish_balances and not args.rebuild_lookup:
+        parser.error("--publish-balances requires --rebuild-lookup")
 
     try:
         db = firebase_db.connect() if args.apply or args.rebuild_lookup else None
@@ -101,10 +126,18 @@ def main():
         for key, table in update["tables"].items():
             print(f"{key}: {len(table.get('rows', {}))} rows")
         print(f"{len(update['paymentLookup'])} payment lookup groups")
-        if args.apply:
+        if args.publish_balances:
+            revision = uuid4().hex
+            events = json.loads((firebase_db.ROOT / "events.json").read_text(encoding="utf-8"))
+            views = prepare({"tables": update["tables"], "events": events, "revision": revision}, "--publish-balances")
+            print(f"{len(views)} public player balance views")
+            if args.apply:
+                publish_views(db, update, views, revision)
+                print("Payment views verified. Resume registration and payments from the TD desk.")
+        elif args.apply:
             apply(db, update, read_source, args.rebuild_lookup)
             print("Firebase data verified. Set REGISTRATION_STORAGE=firebase and PAYMENT_LOOKUP_VERSION=1 before resuming writes.")
-        else:
+        if not args.apply:
             print("Preview only. No data written.")
     except subprocess.CalledProcessError:
         sys.exit("Could not prepare the local migration from the registration source.")

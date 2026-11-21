@@ -105,9 +105,37 @@ if (typeof document !== "undefined") (async () => {
     checkout.removeAttribute("href");
     summary.textContent = "";
   };
+  async function readPublishedBalances(fields) {
+    if (!LIVE_DB || fields.action !== "paymentBalances") return null;
+    const ids = fields.ids ? [...new Set(fields.ids.split(","))] : [fields.id];
+    if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return null;
+    try {
+      const signal = AbortSignal.timeout(1200);
+      const balances = await Promise.all(ids.map(async id => {
+        const response = await fetch(`${LIVE_DB}/paymentBalances/p${id}.json`, { cache: "no-store", signal });
+        if (!response.ok) throw Error("Published balance unavailable");
+        const record = await response.json();
+        if (typeof record !== "string") throw Error("Published balance missing");
+        const { revision, ...data } = JSON.parse(record);
+        if (typeof revision !== "string" || data.ok !== true || data.id !== id || !Array.isArray(data.entries)) {
+          throw Error("Published balance could not be verified");
+        }
+        if (!config.enabled || config.livemode !== false) {
+          data.entries = data.entries.map(entry => ({ ...entry, testPending: false }));
+        }
+        return { revision, data };
+      }));
+      if (balances.some(balance => balance.revision !== balances[0].revision)) return null;
+      return fields.ids ? { ok: true, balances: balances.map(balance => balance.data) } : balances[0].data;
+    } catch {
+      return null;
+    }
+  }
   const post = async (fields, quiet = false) => networkActivity(quiet || fields.action === "paymentPlayers" ? null
     : fields.action === "createPaymentCheckout" ? "Opening Stripe checkout"
     : "Loading entry balances", async () => {
+    const published = await readPublishedBalances(fields);
+    if (published) return published;
     const response = await fetch(ENDPOINT, { method: "POST", body: new URLSearchParams(fields) });
     if (!response.ok) throw new Error("The payment service could not be reached. Please try again.");
     const data = await response.json();

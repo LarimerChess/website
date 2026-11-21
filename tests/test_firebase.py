@@ -76,6 +76,24 @@ class RegistrationMigration(unittest.TestCase):
                 registration.apply(self.db, self.update, lambda: self.update)
         self.db.patch.assert_not_called()
 
+    def test_public_views_are_verified_before_enabling_reads(self):
+        data = {"tables": self.update["tables"], "events": [], "revision": "one"}
+        views = registration.prepare(data, "--publish-balances")
+        player = json.loads(views["p01234567"])
+        self.assertEqual(player["revision"], "one")
+        self.assertEqual(player["id"], "01234567")
+        self.assertIsNone(player["entries"][0]["balanceCents"])
+        self.assertNotIn("token", views["p01234567"])
+        self.db.get.side_effect = [
+            {"active": True, "tables": self.update["tables"]},
+            self.update["paymentLookup"], views, self.update["tables"],
+        ]
+        with mock.patch.object(registration, "require_pause") as paused:
+            registration.publish_views(self.db, self.update, views, "one")
+        self.assertEqual(paused.call_args_list, [mock.call(published_views=True)] * 2)
+        self.assertFalse(self.db.patch.call_args_list[0].args[1]["registrationData/paymentViewState"]["ready"])
+        self.assertTrue(self.db.patch.call_args_list[1].args[1]["registrationData/paymentViewState/ready"])
+
 
 class Creds:
     valid, token = True, "test-token"
@@ -154,9 +172,18 @@ def quiet(function, *args, argv=None, **kwargs):
 class Rules(unittest.TestCase):
     FILE = json.loads((HERE.parent / "database.rules.json").read_text(encoding="utf-8"))
 
-    def test_only_public_and_changes_are_readable_and_nothing_writable(self):
-        self.assertEqual(self.FILE, {"rules": {".read": False, ".write": False,
-                                               "public": {".read": True}, "changes": {".read": True}}})
+    def test_only_public_metadata_and_individual_ready_balances_are_readable(self):
+        ruleset = self.FILE["rules"]
+        self.assertEqual(set(ruleset), {".read", ".write", "public", "changes", "paymentBalances"})
+        self.assertFalse(ruleset[".read"])
+        self.assertFalse(ruleset[".write"])
+        self.assertEqual(ruleset["public"], {".read": True})
+        self.assertEqual(ruleset["changes"], {".read": True})
+        self.assertEqual(set(ruleset["paymentBalances"]), {"$player"})
+        player = ruleset["paymentBalances"]["$player"]
+        self.assertEqual(set(player), {".read"})
+        for condition in ["^p[0-9]{8}$", "ready').val() === true", "dirty').val() === false", "maintenance').val() === false"]:
+            self.assertIn(condition, player[".read"])
 
     def test_applies_then_checks(self):
         fake = FakeFirebase()

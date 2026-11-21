@@ -256,6 +256,8 @@ const REGISTRATION_TABLE_PATH = "registrationData/tables";
 const REGISTRATION_STORAGE = "REGISTRATION_STORAGE";
 const PAYMENT_LOOKUP_PATH = "registrationData/paymentLookup";
 const PAYMENT_LOOKUP_VERSION = "PAYMENT_LOOKUP_VERSION";
+const PAYMENT_VIEW_STATE = "registrationData/paymentViewState";
+let paymentViewDirty_ = false;
 let paymentReadTables_ = null;
 
 const STRIPE_BASKET_HEADERS = ["Reference", "Mode", "Amount", "Allocations", "Session", "URL", "Checkout request", "Returned paid"];
@@ -844,6 +846,35 @@ function cachePut(key, value) {
   }
 }
 
+function calculatePaymentBalances_(ids, { entries: { col, rows }, book, baskets, quotes, sandbox }, events) {
+  const pending = stripeCardPendingTokens(book, undefined, true, quotes);
+  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
+  let testPending = new Set();
+  if (sandbox) {
+    testPending = stripeCardPendingTokens(book, undefined, false, quotes, sandbox);
+    for (const token of stripeBasketPendingTokens(baskets, book, false, sandbox)) testPending.add(token);
+  }
+  const ledger = ledgerByToken(book), payments = new Map(), players = {};
+  for (const payment of book.rows) {
+    if (!payments.has(payment.Token)) payments.set(payment.Token, []);
+    payments.get(payment.Token).push(payment);
+  }
+  for (const row of rows) {
+    const id = row[col["US Chess ID"]];
+    if (!/^\d{8}$/.test(id) || (ids && !ids.has(id)) || !active(row[col.Status])) continue;
+    const event = row[col.Event], date = row[col.Date], token = row[col.Token];
+    if (!players[id]) players[id] = { ok: true, id, name: row[col.Name], currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
+    const player = players[id];
+    const balance = stripeBalance(row, col, book, payments.get(token) || [], ledger);
+    player.entries.push({ event, date, name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+      ...balance, pending: pending.has(token), testPending: testPending.has(token) });
+    player.totalCents += balance.balanceCents || 0;
+    if (balance.balanceCents === null) player.unknownCount++;
+  }
+  for (const player of Object.values(players)) player.entries.sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
+  return players;
+}
+
 /** What paying an amount by card comes to, with the processor's percentage and fixed fee, rounded up to
  *  the cent so the club never comes out short. It works in cents, since 15 * 1.025 is 15.374999… in
  *  floating point. */
@@ -1414,7 +1445,8 @@ function doPost(e) {
     const p = e.parameter;
     const maintenance = registrationMaintenance_();
     if (maintenance && !["login", "changes", "registrationMaintenance"].includes(p.action)) {
-      return json({ error: "Registration and payments are paused for maintenance.", maintenance: true });
+      return json({ error: "Registration and payments are paused for maintenance.", maintenance: true,
+        publishedPaymentViews: paymentViewsEnabled_() && registrationInFirebase_() && paymentLookupReady_() });
     }
     if (p.action === "paymentPlayers") return json(paymentPlayers(p));
     if (p.action === "paymentBalances") return json(paymentBalances(p));
@@ -1506,6 +1538,8 @@ function doPost(e) {
   } catch (err) {
     console.error(err);
     return json({ error: "Something went wrong. Try again later, or email president@larimerchess.org." });
+  } finally {
+    publishPaymentViews_();
   }
 }
 
@@ -2481,14 +2515,13 @@ function paymentBalances(p) {
   if (ids.length > 50 || ids.some(id => !/^\d{8}$/.test(id))) return { error: "Enter an eight-digit US Chess ID." };
   const inFirebase = registrationInFirebase_();
   const indexed = inFirebase && paymentLookupReady_();
-  const testMode = testBalanceMode_();
   let snapshot;
   if (inFirebase) {
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
       if (indexed) {
-        snapshot = readIndexedPaymentRows_(ids, testMode);
+        snapshot = readIndexedPaymentRows_(ids);
       } else {
         paymentReadTables_ = firebase_("get", REGISTRATION_TABLE_PATH);
         if (!paymentReadTables_?.entries || !paymentReadTables_?.payments) throw new Error("Registration database missing");
@@ -2498,6 +2531,7 @@ function paymentBalances(p) {
     }
   }
   try {
+    const testMode = snapshot ? Boolean(snapshot.sandbox) : testBalanceMode_();
     const players = readPaymentBalanceSnapshot_(new Set(ids), testMode, snapshot);
     const balances = ids.map(id => players[id] || { ok: true, id, name: "", currency: "usd", entries: [], totalCents: 0, unknownCount: 0 });
     return p.ids ? { ok: true, balances } : balances[0];
@@ -2579,6 +2613,22 @@ function paymentPlayers(p) {
   const players = [...latest.values()].filter((player) => numeric ? player.id.startsWith(q)
     : words.every((word) => player.name.toLowerCase().includes(word))).slice(0, 12);
   return { ok: true, players };
+}
+
+function paymentViewsEnabled_() {
+  return PropertiesService.getScriptProperties().getProperty("PAYMENT_PUBLIC_VIEWS") === "1";
+}
+
+function paymentViewsFromLookup_(lookup, events, revision) {
+  const groups = Object.values(lookup);
+  const entries = indexedPaymentTab_("entries", groups);
+  const book = paymentBook_(indexedPaymentTab_("payments", groups));
+  const baskets = indexedPaymentTab_("baskets", groups);
+  const quotes = indexedPaymentTab_("quotes", groups);
+  const sandbox = indexedPaymentTab_("testPayments", groups);
+  const players = calculatePaymentBalances_(null, { entries, book, baskets, quotes, sandbox }, events);
+  // JSON strings preserve null balances and empty arrays in Realtime Database.
+  return Object.fromEntries(Object.entries(players).map(([id, player]) => [`p${id}`, JSON.stringify({ revision, ...player })]));
 }
 
 /** Everyone who has registered, each as of their latest registration, with their contact's email and
@@ -2714,6 +2764,30 @@ function publishEntries(list) {
   }
 }
 
+function publishPaymentViews_() {
+  if (!paymentViewDirty_) return;
+  paymentViewDirty_ = false;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    try {
+      const lookup = firebase_("get", PAYMENT_LOOKUP_PATH) || {};
+      const revision = Utilities.getUuid();
+      const views = paymentViewsFromLookup_(lookup, clubEvents(), revision);
+      firebase_("patch", "", {
+        paymentBalances: views,
+        [`${PAYMENT_VIEW_STATE}/dirty`]: false,
+        "changes/paymentBalances": revision,
+      });
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    // The dirty flag keeps the previous view private until a later publication succeeds.
+    console.error(err);
+  }
+}
+
 /** Each running arena's queue, [{ id, since, sections }] by tournament key, from the script property
  *  arenaQueues, or the database's /queues: the script alone uses them, and only while the arena runs. */
 function queues() {
@@ -2838,56 +2912,33 @@ function readIncidents() {
   return { sheet, col, rows: rows.map((r) => Object.fromEntries(header.map((h, i) => [h.trim().toLowerCase(), r[i] || ""]))) };
 }
 
-function readIndexedPaymentRows_(ids, testMode) {
+function readIndexedPaymentRows_(ids) {
   const entries = indexedPaymentTab_("entries", fetchPaymentLookupGroups_(ids.map(id => `p${id}`)));
   const tokens = [...new Set(entries.rows.map(row => paymentLookupKey_("t", row[entries.col.Token])))];
   const groups = fetchPaymentLookupGroups_(tokens);
   const baskets = indexedPaymentTab_("baskets", groups);
   const quotes = indexedPaymentTab_("quotes", groups);
+  const references = new Set();
+  for (const { col, rows } of [baskets, quotes]) {
+    for (const row of rows) if (row[col.Mode] === "false") references.add(paymentLookupKey_("s", row[col.Reference]));
+  }
   let sandbox;
-  if (testMode) {
-    const references = new Set();
-    for (const { col, rows } of [baskets, quotes]) {
-      for (const row of rows) if (row[col.Mode] === "false") references.add(paymentLookupKey_("s", row[col.Reference]));
-    }
+  if (references.size && testBalanceMode_()) {
     sandbox = indexedPaymentTab_("testPayments", fetchPaymentLookupGroups_([...references]));
   }
   return { entries, book: paymentBook_(indexedPaymentTab_("payments", groups)), baskets, quotes, sandbox };
 }
 
 function readPaymentBalanceSnapshot_(ids, testMode, snapshot) {
-  const { col, rows } = snapshot?.entries ?? readEntries_();
-  if (!rows.length) return {};
+  const entries = snapshot?.entries ?? readEntries_();
+  if (!entries.rows.length) return {};
   const book = snapshot?.book ?? readPayments_();
   const baskets = snapshot?.baskets ?? stripeBaskets_();
   const quotes = snapshot?.quotes ?? stripeCardQuotes_();
-  const pending = stripeCardPendingTokens(book, undefined, true, quotes);
-  for (const token of stripeBasketPendingTokens(baskets, book, true)) pending.add(token);
-  let testPending = new Set();
-  if (testMode) {
-    const sandbox = snapshot?.sandbox ?? readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"]);
-    testPending = stripeCardPendingTokens(book, undefined, false, quotes, sandbox);
-    for (const token of stripeBasketPendingTokens(baskets, book, false, sandbox)) testPending.add(token);
-  }
-  const events = clubEvents(), ledger = ledgerByToken(book), payments = new Map(), players = {};
-  for (const payment of book.rows) {
-    if (!payments.has(payment.Token)) payments.set(payment.Token, []);
-    payments.get(payment.Token).push(payment);
-  }
-  for (const row of rows) {
-    const id = row[col["US Chess ID"]];
-    if (!/^\d{8}$/.test(id) || (ids && !ids.has(id)) || !active(row[col.Status])) continue;
-    const event = row[col.Event], date = row[col.Date], token = row[col.Token];
-    if (!players[id]) players[id] = { ok: true, id, name: row[col.Name], currency: "usd", entries: [], totalCents: 0, unknownCount: 0 };
-    const player = players[id];
-    const balance = stripeBalance(row, col, book, payments.get(token) || [], ledger);
-    player.entries.push({ event, date, name: events[`${event}/${date}`]?.name || event.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-      ...balance, pending: pending.has(token), testPending: testPending.has(token) });
-    player.totalCents += balance.balanceCents || 0;
-    if (balance.balanceCents === null) player.unknownCount++;
-  }
-  for (const player of Object.values(players)) player.entries.sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));
-  return players;
+  const sandbox = testMode
+    ? snapshot?.sandbox ?? readTab_("Stripe test payments", ["Session", "Intent", "Amount", "Reference", "Kind"])
+    : undefined;
+  return calculatePaymentBalances_(ids, { entries, book, baskets, quotes, sandbox }, clubEvents());
 }
 
 /** The Payments tab as rows keyed by heading. */
@@ -3141,11 +3192,18 @@ function registrationTable_(key, required) {
   let lastRow = rows.length + 1;
   const lookupFields = paymentLookupFields_(key);
   const indexed = lookupFields && paymentLookupReady_();
+  const publicViews = indexed && paymentViewsEnabled_();
   function write(id, before, after, relative, value, updateIndex) {
     const changes = {};
     if (indexed && updateIndex) {
-      for (const [group] of paymentLookupMemberships_(key, before, col)) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = null;
-      for (const [group, fields] of paymentLookupRow_(key, after, col)) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = fields;
+      const removed = paymentLookupMemberships_(key, before, col);
+      const added = paymentLookupRow_(key, after, col);
+      for (const [group] of removed) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = null;
+      for (const [group, fields] of added) changes[`${PAYMENT_LOOKUP_PATH}/${group}/${key}/${id}`] = fields;
+      if (publicViews && (removed.length || added.length)) {
+        paymentViewDirty_ = true;
+        changes[`${PAYMENT_VIEW_STATE}/dirty`] = true;
+      }
     }
     firebase_("patch", "", {
       [`${path}/rows/${relative}`]: value,
@@ -3750,9 +3808,18 @@ function setRegistrationMaintenance_(enabled) {
   if (enabled !== "0" && enabled !== "1") return { error: "Choose whether to pause registrations and payments." };
   const properties = PropertiesService.getScriptProperties();
   const maintenance = enabled === "1";
-  if (maintenance) properties.setProperty("REGISTRATION_MAINTENANCE", "1");
-  else properties.deleteProperty("REGISTRATION_MAINTENANCE");
-  return { ok: true, maintenance };
+  const publicViews = paymentViewsEnabled_();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (maintenance && publicViews) firebase_("patch", PAYMENT_VIEW_STATE, { maintenance });
+    if (maintenance) properties.setProperty("REGISTRATION_MAINTENANCE", "1");
+    else properties.deleteProperty("REGISTRATION_MAINTENANCE");
+    if (!maintenance && publicViews) firebase_("patch", PAYMENT_VIEW_STATE, { maintenance });
+    return { ok: true, maintenance };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function setRounds(p) {
@@ -4889,6 +4956,7 @@ function withdraw(token) {
     return `${row.name} is withdrawn.`;
   } finally {
     lock.releaseLock();
+    publishPaymentViews_();
   }
 }
 

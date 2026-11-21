@@ -53,13 +53,29 @@ function paymentLookup(tables) {
   return index;
 }
 
-module.exports = { registrationTables, paymentLookup };
+function paymentViews(tables, events, revision) {
+  const labels = {};
+  for (const event of [...events].sort((a, b) => a.start.localeCompare(b.start))) {
+    if (!event.page || !event.tags.includes("rated")) continue;
+    const slug = event.page.split("/").filter(Boolean).at(-1);
+    const label = { name: event.title.replace(/^Larimer County Chess Club\s*/, "") };
+    labels[`${slug}/${event.start.slice(0, 10)}`] = label;
+    if (!event.tags.includes("tournament")) labels[`${slug}/${event.start.slice(0, 7)}`] = label;
+  }
+  return context.paymentViewsFromLookup_(paymentLookup(tables), labels, revision);
+}
+
+module.exports = { registrationTables, paymentLookup, paymentViews };
 if (require.main === module) {
   if (process.argv[2] === "--tabs") {
     console.log(JSON.stringify(Object.keys(definitions)));
   } else {
     const source = JSON.parse(fs.readFileSync(0, "utf8"));
-    const tables = process.argv[2] === "--rebuild-lookup" ? source : registrationTables(source);
-    console.log(JSON.stringify({ tables, paymentLookup: paymentLookup(tables) }));
+    if (process.argv[2] === "--publish-balances") {
+      console.log(JSON.stringify(paymentViews(source.tables, source.events, source.revision)));
+    } else {
+      const tables = process.argv[2] === "--rebuild-lookup" ? source : registrationTables(source);
+      console.log(JSON.stringify({ tables, paymentLookup: paymentLookup(tables) }));
+    }
   }
 }

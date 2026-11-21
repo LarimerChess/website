@@ -23,6 +23,8 @@ let releaseCheckout;
 let checkoutFailure = false;
 let balanceVariant = "";
 let liveBalanceChanges = false;
+let publishedBalanceMode = "";
+const publishedReads = [];
 let tdAuth = false;
 let deskDiscount = 0;
 const deskPaid = new Set();
@@ -69,6 +71,13 @@ page.on("request", async (request) => {
       }` });
   } else if (url.pathname === "/stripe-payment-links.json") {
     request.respond({ contentType: "application/json", body: JSON.stringify(config) });
+  } else if (url.host === "firebase.test" && url.pathname.startsWith("/paymentBalances/")) {
+    const id = url.pathname.split("/").at(-1).slice(1, -5);
+    publishedReads.push(id);
+    const valid = publishedBalanceMode !== "";
+    const revision = publishedBalanceMode === "mixed" ? id : "same";
+    request.respond({ status: valid ? 200 : 401, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" },
+      body: valid ? JSON.stringify(JSON.stringify({ revision, ...playerBalance(id) })) : "{}" });
   } else if (url.host === "registration.test") {
     const fields = Object.fromEntries(new URLSearchParams(request.postData()));
     calls.push(fields);
@@ -402,5 +411,24 @@ await page.waitForSelector("#pay-td-heading", { hidden: true });
 await page.goto(base + "/pay/", { waitUntil: "networkidle0" });
 !await page.$("#pay-td-heading") && !await page.evaluate(() => Boolean(window.testAuth))
   ? pass("TD controls require a signed-in session and an ID in the link") : fail("TD controls remained without the link or session");
+tdAuth = false;
+liveBalanceChanges = true;
+publishedBalanceMode = "same";
+await page.evaluate(saved => localStorage.setItem("lccc-register-players", JSON.stringify(saved)), saved);
+const beforeDirect = calls.length;
+const beforePublished = publishedReads.length;
+await page.goto(base + "/pay/", { waitUntil: "networkidle0" });
+await page.waitForFunction(() => document.querySelectorAll("#pay-balances section").length === 2);
+publishedReads.slice(beforePublished).sort().join(",") === "12345678,22222222"
+  && calls.slice(beforeDirect).every(call => call.action !== "paymentBalances")
+  ? pass("Pay reads only the two requested published Firebase balances")
+  : fail("Pay did not use the two requested Firebase balance views");
+publishedBalanceMode = "mixed";
+const beforeFallback = calls.length;
+await page.goto(base + "/pay/", { waitUntil: "networkidle0" });
+await page.waitForFunction(() => document.querySelectorAll("#pay-balances section").length === 2);
+calls.slice(beforeFallback).some(call => call.action === "paymentBalances" && call.ids === "12345678,22222222")
+  ? pass("Pay falls back to one authoritative lookup if published views have different revisions")
+  : fail("Pay accepted balances from different publications");
 await page.close();
 await done();

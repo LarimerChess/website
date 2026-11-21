@@ -7,6 +7,11 @@
     },
     "changes": {
       ".read": true
+    },
+    "paymentBalances": {
+      "$player": {
+        ".read": "$player.matches(/^p[0-9]{8}$/) && root.child('registrationData/paymentViewState/ready').val() === true && root.child('registrationData/paymentViewState/dirty').val() === false && root.child('registrationData/paymentViewState/maintenance').val() === false"
+      }
     }
   }
 }

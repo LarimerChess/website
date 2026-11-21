@@ -181,6 +181,31 @@ For an existing Firebase registration, use `--rebuild-lookup` in place of
 `--sheet-id SHEET_ID`. Preview first and keep the app paused during `--apply`.
 The live Apps Script keeps the private index current as it writes.
 
+### Publish direct Firebase balance views
+
+Pay can read individual US Chess IDs directly from Firebase. Each view
+contains the same player name, events, amounts, and status flags that Pay
+already displays. The registration tables and the payment lookup index stay
+private. Firebase rules allow public reads of individual views and deny
+public writes.
+
+1. Deploy the updated registration web app. With Firebase registration and
+   `PAYMENT_LOOKUP_VERSION=1` already active, set `PAYMENT_PUBLIC_VIEWS=1`.
+2. Run `python scripts/firebase_rules.py` to apply and verify the read rules.
+   Pause registration and payments from the TD desk.
+3. Run `python scripts/migrate_registration.py --rebuild-lookup --publish-balances`
+   to preview the views. Once in-flight writes have finished, rerun it with
+   `--apply`. It verifies the data before making it available.
+4. Resume registration and payments from the TD desk. Use that button for
+   later pauses so it also disables and enables direct reads. Check that
+   one and several saved players load on Pay.
+
+The app refreshes the views when registration or payment data changes. Pay
+uses the existing endpoint if a view is missing or being refreshed. Checkout
+continues to validate the current ledger. To take direct reads offline, set
+`registrationData/paymentViewState/ready` to `false` in Firebase before
+disabling the view writer.
+
 Build the webhook container from the website repository root with
 `docker build -f scripts/stripe-webhook.Dockerfile .`. Deploy it to an HTTPS
 service that forwards the original request body and `Stripe-Signature` header.
