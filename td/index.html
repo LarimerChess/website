@@ -675,6 +675,21 @@ section.td-table td { white-space: nowrap; }
 
 #pay-form select { max-width: 100%; }
 
+#pay-review, #pay-checkout {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 56px;
+  padding: 14px 28px;
+  border: 0;
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+@media (max-width: 600px) {
+  #pay-review, #pay-checkout { width: 100%; }
+}
 .pay-search-row { display: flex; align-items: center; gap: 8px; }
 .pay-search-row .td-combobox { flex: 1; min-width: 0; }
 .pay-search-row .button { white-space: nowrap; }
