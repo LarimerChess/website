@@ -1,36 +1,5 @@
 [
  {
-  "title": "Larimer County Open Classic 90+30",
-  "calendar": "club",
-  "organizer": "Larimer County Chess Club",
-  "tags": [
-   "tournament",
-   "all-ages",
-   "club",
-   "rated",
-   "reduced-youth",
-   "regular"
-  ],
-  "url": "",
-  "price": "16.50",
-  "pairing": "swiss",
-  "rounds": "3",
-  "page": "/events/larimer-county-open-classic-90-30/",
-  "start": "2026-11-21T10:00:00-07:00",
-  "end": "2026-11-21T23:00:00-07:00",
-  "allDay": false,
-  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-  "place": {
-   "name": "Peak Community Church",
-   "street": "500 Mathews St",
-   "city": "Fort Collins",
-   "region": "CO",
-   "zip": "80524"
-  },
-  "city": "Fort Collins",
-  "description": "Cost: $16.50, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $1.50. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/90;+30 (90 minutes per player, with a 30-second increment on each move). Regular rated.\n\nA monthly US Chess rated tournament with a long time control, for players who want time to think. In Old Town Fort Collins.\n\nFormat: 3-round Swiss.\n\nOnline registration stays open after play starts. Check in with the tournament director if you arrive after pairings have been posted.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 2:30 PM\n• Round 3: 7:00 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Clocks must support increment. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
- },
- {
   "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
   "calendar": "community",
   "organizer": "Chilson Senior Center",
@@ -4477,5 +4446,34 @@
   },
   "city": "Fort Collins",
   "description": "Cost: not published. Ask the organizer via the announcement below.\n\nWeekly chess on Thursdays from 8:30 PM to midnight. All skill levels are welcome. The organizer advertises drink prizes. Guests under 18 must be accompanied by a parent.\n\nRun by NOCO Kava Chess Club.\n\nDetails: https://www.reddit.com/r/FortCollins/comments/1y24ysf/fort_collins_chess_club/\n\nNOCO Kava\n122 W Laurel St, Fort Collins, CO 80524"
+ },
+ {
+  "title": "Drop-In Open Chess (ages 55+) at Chilson Senior Center",
+  "calendar": "community",
+  "organizer": "Chilson Senior Center",
+  "tags": [
+   "casual",
+   "senior",
+   "cost-unknown",
+   "weekly"
+  ],
+  "url": "https://www.lovgov.org/services/parks-recreation/chilson-senior-center",
+  "price": "",
+  "pairing": "",
+  "rounds": "",
+  "page": "",
+  "start": "2027-02-19T13:00:00-07:00",
+  "end": "2027-02-19T16:30:00-07:00",
+  "allDay": false,
+  "location": "Chilson Senior Center, 700 E 4th St, Loveland, CO 80537",
+  "place": {
+   "name": "Chilson Senior Center",
+   "street": "700 E 4th St",
+   "city": "Loveland",
+   "region": "CO",
+   "zip": "80537"
+  },
+  "city": "Loveland",
+  "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
  }
 ]
