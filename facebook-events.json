@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "calendarId": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
- "generatedAt": "2026-11-21T12:26:29.785301-07:00",
+ "generatedAt": "2026-11-21T17:53:43.657355-07:00",
  "events": [
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20261124T003000Z",
@@ -95,7 +95,7 @@
    "start": "2026-12-19T10:00:00-07:00",
    "end": "2026-12-19T23:00:00-07:00",
    "marker": "LCCC-0a15dcbc9fb888c9ccd7c990",
-   "fingerprint": "8c80e2756fdafff746808915fc951677e6f85a5dbc10d6cf407c83853c55e13f"
+   "fingerprint": "829052479f2674b2c4a0bb72c44598877a9948173dd56366e96c748fb81ab570"
   },
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20261222T003000Z",
@@ -200,7 +200,7 @@
    "start": "2027-01-16T10:00:00-07:00",
    "end": "2027-01-16T23:00:00-07:00",
    "marker": "LCCC-271a43289744996c97043ee2",
-   "fingerprint": "07fa5648029f2cd660321e07f4cf07291dd982dbcb1e3295d79a9f3e9d8bc91c"
+   "fingerprint": "69f1e706664238cfed43a67a73018a502d31cb4c6388a26d5deb0da4bda79db3"
   },
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20270119T003000Z",
