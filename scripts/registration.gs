@@ -895,7 +895,7 @@ function changes() {
 /** Checks the byes asked for, a list as byeList makes it, for the event with the key: against old, the entry's
  *  list before, and run (runOf), its tournament's rows once it has started. online is the player's own change,
  *  not the TD's. Returns { list }, as the Byes column keeps it, or { error }. */
-function checkByes(asked, old, key, event, run, online, id) {
+function checkByes(asked, old, key, event, run, online, id, registrationWarnings) {
   if (event.kind === "night") {
     return asked.length ? { error: "A single night has no byes; register for the whole month to miss a night." } : { list: [] };
   }
@@ -916,8 +916,17 @@ function checkByes(asked, old, key, event, run, online, id) {
     if (asked.some((n) => !/^\d+$/.test(n) || Number(n) < 1 || Number(n) > rounds)) return { error: "Not a round of this tournament." };
     list = [...new Set(asked.map(Number))].sort((a, b) => a - b).map(String);
   }
-  const locked = pairedChange(list, old, run, online);
+  const locked = pairedChange(list, old, run, online, registrationWarnings);
   if (locked) return { error: locked };
+  // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable;
+  // only the TD can cancel one, and then a win counts as a draw for prizes (22C5).
+  const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
+  const started = lines.some((r) => Number(r.Round) === 1 && r.Posted);
+  const newLastBye = started && list.includes(last) && !old.includes(last);
+  if (newLastBye && registrationWarnings) {
+    list.splice(list.indexOf(last), 1);
+    registrationWarnings.push("Your requested last-round half-point bye wasn't added. It must be requested before round 1 (22C4).");
+  }
   // A tournament date's rounds are its own; a month's are only known once it starts.
   const unoffered = !month && list.find((x) => !old.includes(x) && !offersHalfBye(event, Number(x), rounds));
   const policy = (warning) => online ? { error: warning } : { list, warning };
@@ -928,11 +937,7 @@ function checkByes(asked, old, key, event, run, online, id) {
     return policy(given.length ? `There's a half-point bye in ${roundName(info, Number(given[0].Round))} already, and the event allows one per player.`
       : "One half-point bye per player, as the event's page announces.");
   }
-  // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable;
-  // only the TD can cancel one, and then a win counts as a draw for prizes (22C5).
-  const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
-  const started = lines.some((r) => Number(r.Round) === 1 && r.Posted);
-  if (started && list.includes(last) && !old.includes(last)) {
+  if (newLastBye && !registrationWarnings) {
     return policy(online ? `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1, so it can't be added now (22C4).`
       : "The last-round bye was requested after round 1 was posted (22C4).");
   }
@@ -971,7 +976,7 @@ function checkPassword(password, device) {
 
 /** Checks the zero-point byes asked for, as checkByes does the half-point byes, half: any round or night not yet
  *  paired, and not one of the half-point byes. Returns { list } or { error }. */
-function checkZeroByes(asked, old, half, key, event, run, online) {
+function checkZeroByes(asked, old, half, key, event, run, online, registrationWarnings) {
   if (!asked.length && !old.length) return { list: [] };
   if (event.kind === "night") return { error: "A single night has no byes; register for the whole month to miss a night." };
   const format = run.info ? run.info.Format : event.format || "";
@@ -989,7 +994,7 @@ function checkZeroByes(asked, old, half, key, event, run, online) {
     list = [...new Set(asked.map(Number))].sort((a, b) => a - b).map(String);
   }
   if (list.some((x) => half.includes(x))) return { error: "A round can be a half-point bye or a zero-point bye, not both." };
-  const locked = pairedChange(list, old, run, online);
+  const locked = pairedChange(list, old, run, online, registrationWarnings);
   return locked ? { error: locked } : { list };
 }
 
@@ -1059,7 +1064,6 @@ function clubEvents() {
       event: key.split("/")[0], name: e.title.replace(/^Larimer County Chess Club\s*/, ""), page: e.page, kind,
       label, closes: e.start, first: out[key] ? out[key].first : e.start.slice(0, 10), last: e.start.slice(0, 10),
       closed: e.tags.includes("invitational"), format: e.pairing || "", rounds: e.rounds || "",
-      ...(e.capacity ? { capacity: e.capacity } : {}),
     };
   };
   for (const e of events.sort((a, b) => a.start.localeCompare(b.start))) {
@@ -1437,7 +1441,7 @@ function displayName(member) {
 function doGet(e) {
   if (e.parameter.tournaments === "current") return json({ tournaments: currentTournaments() });
   if (e.parameter.entries === "all") return json({ events: allEntries() });
-  if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false), capacity: registrationLimit(e.parameter.entries) });
+  if (e.parameter.entries) return json({ entries: entries(e.parameter.entries, false) });
   if (e.parameter.withdraw) return withdrawPage(e.parameter.withdraw);
   return ContentService.createTextOutput("Larimer County Chess Club registration. See " + SITE + "/events/");
 }
@@ -1499,8 +1503,7 @@ function doPost(e) {
       case "search": return json({ players: search(p.q) });
       case "register": return json(register(p, true, td));
       case "registrationMaintenance": return json(setRegistrationMaintenance_(p.enabled));
-      case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true), capacity: registrationLimit(`${p.event}/${p.date}`) });
-      case "registrationLimit": return json(setRegistrationLimit(p));
+      case "entries": return json({ entries: entries(`${p.event}/${p.date}`, true) });
       case "remove": return json({ message: withdraw(p.token) });
       case "paid": return json(markPaid(p.token, p.amount, p.by, p.donate === "1"));
       case "refund": return json(refund(p.token, p.amount, p.by, td));
@@ -2439,16 +2442,23 @@ function offersHalfBye(event, n, last) {
   return Boolean(event && event.page && !event.closed) || n <= Math.ceil(last / 2);
 }
 
-/** Why a change between old and list, byes as the Byes columns keep them, touches a round already paired, or "". */
-function pairedChange(list, old, run, online) {
+/** Why a change touches an already paired round. New public entries drop those bye requests with a warning. */
+function pairedChange(list, old, run, online, registrationWarnings) {
   const dates = roundDates(run.info);
   const paired = run.lines.reduce((m, r) => Math.max(m, Number(r.Round) || 0), 0);
   const locked = [...list.filter((x) => !old.includes(x)), ...old.filter((x) => !list.includes(x))]
     .filter((x) => byeRound(x, dates) && byeRound(x, dates) <= paired)
-    .sort((a, b) => byeRound(a, dates) - byeRound(b, dates))[0];
-  if (!locked) return "";
-  const what = /-/.test(locked) ? Utilities.formatDate(new Date(locked + "T12:00:00Z"), TZ, "MMMM d") : `Round ${locked}`;
-  return `${what} is already paired, so ${online ? "only the TD can change it" : "change it under Standings and byes, in Give a bye"}.`;
+    .sort((a, b) => byeRound(a, dates) - byeRound(b, dates));
+  const label = (x) => /-/.test(x) ? Utilities.formatDate(new Date(x + "T12:00:00Z"), TZ, "MMMM d") : `Round ${x}`;
+  if (!locked.length) return "";
+  if (registrationWarnings) {
+    for (const x of locked) {
+      list.splice(list.indexOf(x), 1);
+      registrationWarnings.push(`${label(x)} is already paired. Your requested bye for it wasn't added.`);
+    }
+    return "";
+  }
+  return `${label(locked[0])} is already paired, so ${online ? "only the TD can change it" : "change it under Standings and byes, in Give a bye"}.`;
 }
 
 /** The arena sections the desk sent, [{ name, timeControl, rated, pact }], or an error; with from, each carries the name it
@@ -3027,10 +3037,7 @@ function refund(token, amount, by, td) {
   }
 }
 
-/** Registers a player. Online, registration stays open through the event's last day, after play starts.
- *  From the TD desk (td), the ID was picked from a search, so no last
- *  name is checked, email is optional, registration stays open through the event, and the
- *  TD may set the category instead of taking it from US Chess. signedIn is the TD, when known. */
+/** Registers a player. The desk can supply a category and sign up players for invitationals. */
 function register(p, td, signedIn) {
   // Bots fill in every field; people never see this one.
   if (!td && p.website) return { ok: true, message: "Thanks." };
@@ -3039,8 +3046,6 @@ function register(p, td, signedIn) {
   const key = `${p.event}/${p.date}`;
   const event = clubEvents()[key];
   if (!event || (event.closed && !td)) return { error: "That event isn't open for registration." };
-  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
-  if (!td && Utilities.formatDate(new Date(event.closes), TZ, "yyyy-MM-dd") < today) return { error: "Online registration for this has closed." };
   const id = String(p.id || "").trim();
   if (!/^\d{8}$/.test(id)) return { error: "A US Chess ID is eight digits." };
   const email = String(p.email || "").trim();
@@ -3070,7 +3075,8 @@ function register(p, td, signedIn) {
   const lock = lockTournaments();
   let token;
   let credited = 0;
-  let byeWarning = "";
+  const byeWarnings = [];
+  const registrationWarnings = td ? undefined : byeWarnings;
   let byes = [];
   let zeros = [];
   try {
@@ -3079,19 +3085,13 @@ function register(p, td, signedIn) {
     if (mine.some((r) => r[col.Date] === p.date)) return { error: `${name} is already registered for ${event.label}.` };
     const month = mine.find((r) => r[col.Date] === p.date.slice(0, 7) && event.kind === "night");
     if (month) return { error: `${name} is already registered for the whole month.` };
-    const capacity = registrationLimit(key, event);
-    if (!td && capacity !== null) {
-      const count = new Set(rows.filter((r) => r[col.Event] === p.event && r[col.Date] === p.date
-        && active(r[col.Status])).map((r) => r[col["US Chess ID"]])).size;
-      if (count >= capacity) return { error: `Registration is limited to ${capacity} players and is full. Questions: president@larimerchess.org` };
-    }
     const asked = byeList(p.byes), zeroAsked = byeList(p.zeroByes);
     const run = asked.length || zeroAsked.length ? runOf(key) : null;
-    const checked = run ? checkByes(asked, [], key, event, run, !td, id) : { list: [] };
+    const checked = run ? checkByes(asked, [], key, event, run, !td, id, registrationWarnings) : { list: [] };
     if (checked.error) return checked;
-    byeWarning = checked.warning || "";
+    if (checked.warning) byeWarnings.push(checked.warning);
     byes = checked.list;
-    const zero = run ? checkZeroByes(zeroAsked, [], byes, key, event, run, !td) : { list: [] };
+    const zero = run ? checkZeroByes(zeroAsked, [], byes, key, event, run, !td, registrationWarnings) : { list: [] };
     if (zero.error) return zero;
     zeros = zero.list;
     token = Utilities.getUuid();
@@ -3110,8 +3110,8 @@ function register(p, td, signedIn) {
       const nights = mine.filter((r) => r[col.Date].startsWith(p.date + "-"));
       credited = moveToMonth(sheet, col, rows, nights, row, amount);
     }
-    // Sync never changes a player it has added, so one already in the tournament, as from a night of the month, gets them here.
-    if (run && run.info && setPlayerByes(key, id, byes, zeros, run.info)) clearTournamentCache(key);
+    const rosterKey = event.kind === "night" ? `${p.event}/${p.date.slice(0, 7)}` : key;
+    syncRegisteredPlayer(rosterKey, id, run ? { byes, zeros } : null);
     clearEntriesCache();
   } finally {
     lock.releaseLock();
@@ -3145,6 +3145,7 @@ function register(p, td, signedIn) {
         body: [
           `${name} (US Chess ID ${id}) is registered for ${event.name}, ${event.label}.`,
           asking && `${asking} ${change}`,
+          ...byeWarnings,
           due,
           `View balances and pay online: ${SITE}/pay/?uscfid=${encodeURIComponent(id)}`,
           lapsed && lapsed + " https://new.uschess.org/join-us-chess",
@@ -3159,7 +3160,7 @@ function register(p, td, signedIn) {
       sent = " The confirmation email could not be sent.";
     }
   }
-  return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}${byeWarning ? " Warning: " + byeWarning : ""}` };
+  return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}${byeWarnings.length ? " Warning: " + byeWarnings.join(" ") : ""}` };
 }
 
 function registrationInFirebase_() {
@@ -3168,12 +3169,6 @@ function registrationInFirebase_() {
 
 function registrationMaintenance_() {
   return PropertiesService.getScriptProperties().getProperty("REGISTRATION_MAINTENANCE") === "1";
-}
-
-/** The calendar default or the TD's saved public limit; null means no limit. */
-function registrationLimit(key, event) {
-  const saved = PropertiesService.getScriptProperties().getProperty(`publicLimit:${key}`);
-  return saved !== null ? Number(saved) : (event || clubEvents()[key])?.capacity ?? null;
 }
 
 function registrationRow_(values) {
@@ -3776,29 +3771,6 @@ function setQueue(key, list) {
   if (all[key]) changes[nodeOf(key)] = JSON.stringify(all[key]);
   if (Object.keys(changes).length) firebase_("PATCH", "queues", changes);
   databaseQueues = all;
-}
-
-/** A TD's per-date override. Blank restores the calendar default; zero closes public registration. */
-function setRegistrationLimit(p) {
-  const key = `${p.event}/${p.date}`;
-  const event = clubEvents()[key];
-  if (!event || event.closed || event.kind !== "entry") return { error: "Choose a tournament date with public registration." };
-  const value = String(p.limit ?? "").trim();
-  if (value && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))) {
-    return { error: "Enter a whole number of players, zero to close, or leave blank for the calendar default." };
-  }
-  const lock = lockTournaments();
-  try {
-    const properties = PropertiesService.getScriptProperties();
-    if (value) properties.setProperty(`publicLimit:${key}`, String(Number(value)));
-    else properties.deleteProperty(`publicLimit:${key}`);
-    touch("entries");
-    const capacity = registrationLimit(key, event);
-    return { ok: true, capacity, message: capacity === null ? "Public registration has no player limit for this date."
-      : `Public registration is limited to ${capacity} players for this date. TDs may add more.` };
-  } finally {
-    lock.releaseLock();
-  }
 }
 
 /** Changes how many rounds a Swiss plays: more, or as few as are paired, to stop early. Once it has an
@@ -4570,53 +4542,74 @@ function sum(rows, field) {
   return rows.reduce((n, x) => n + cents(x[field]), 0);
 }
 
-/** Adds registered entrants who aren't players yet, numbered after the others (28B), each in the
- *  section their rating puts them in, and in a Swiss with the byes they asked for and lateByes for the
- *  rounds already posted. */
 function syncPlayers(key) {
   const lock = lockTournaments();
   try {
     const info = table("Tournaments").rows.find((r) => r.Key === key);
-    const defs = info && info.Format !== "quad" ? sectionsOf(info).filter((s) => !s.extra) : [];
-    const swiss = info && !["quad", "arena"].includes(info.Format);
-    const t = table("Players");
-    const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
-    let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
-    // A month's entrants include each night's; entries() already leaves out the expelled and barred.
-    const entrants = entries(key, true).filter((e) => !e.out && !have.has(e.id));
-    entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
-    // Players added before the records were kept get them now.
-    const unrecorded = t.rows.filter((r) => r.Key === key && (r["Prior games"] === "" || !r.State));
-    const records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
-    const added = [];
-    for (const e of entrants) {
-      if (have.has(e.id)) continue;
-      have.add(e.id);
-      added.push({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
-        Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "",
-        Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "",
-        "Zero-point byes": swiss ? byeRounds(e.zeroByes || [], info).join(", ") : "", ...records[e.id] });
-    }
-    addRows(t, added);
-    // A player who entered single nights of a month didn't enter the rounds before them, so has no late bye.
-    const month = key.split("/")[1].length === 7;
-    const whole = new Set(entrants.filter((e) => !month || e.for === "Whole month").map((e) => e.id));
-    const missed = swiss ? added.filter((a) => whole.has(a["US Chess ID"]) && !ROUND_ROBINS.includes(formatOf(info, defs.find((d) => d.name === a.Section))))
-      .flatMap((a) => lateByes(key, info, a)) : [];
-    addRows(table("Rounds"), missed);
-    setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
-    if (added.length && defs.length) {
-      const tournaments = table("Tournaments");
-      const line = tournaments.rows.find((r) => r.Key === key);
-      saveSections(tournaments, key, line, sectionsOf(line));
-    }
-    clearTournamentCache(key);
-    const byes = missed.length ? " A late entrant has a half-point bye for the first round they missed that offers one (28K), under Byes"
-      + " and unplayed rounds, where it can be made unplayed instead." : "";
-    return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).${byes}` : "No new entrants." };
+    return syncPlayersLocked(key, info);
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Updates the running roster after saving an entry, under the registration lock. The desk can
+ *  reconcile any entry left over after a failed roster write. */
+function syncRegisteredPlayer(key, id, requested) {
+  try {
+    const info = table("Tournaments").rows.find((r) => r.Key === key);
+    if (!info || info.Status !== "running" || info.Format === "quad" || rated(key)) return;
+    if (requested && setPlayerByes(key, id, requested.byes, requested.zeros, info)) clearTournamentCache(key);
+    syncPlayersLocked(key, info, id);
+  } catch (err) {
+    console.error("Registration was saved, but the roster update failed.", err);
+  }
+}
+
+/** Adds entrants to the roster with their section and any Swiss byes. When an ID is supplied,
+ *  only that registration is processed. The caller holds the tournament lock. */
+function syncPlayersLocked(key, info, id) {
+  const defs = info && info.Format !== "quad" ? sectionsOf(info).filter((s) => !s.extra) : [];
+  const swiss = info && !["quad", "arena"].includes(info.Format);
+  const t = table("Players");
+  const have = new Set(t.rows.filter((r) => r.Key === key).map((r) => r["US Chess ID"]));
+  let number = t.rows.filter((r) => r.Key === key).reduce((m, r) => Math.max(m, Number(r["No."]) || 0), 0);
+  // A month's entrants include each night's; entries() already leaves out the expelled and barred.
+  const entrants = entries(key, true).filter((e) => !e.out && !have.has(e.id) && (!id || e.id === id));
+  entrants.sort((a, b) => (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0));
+  // Players added before the records were kept get them now.
+  const unrecorded = t.rows.filter((r) => !id && r.Key === key && (r["Prior games"] === "" || !r.State));
+  let records = {};
+  try {
+    records = priorRecords([...entrants.map((e) => e.id), ...unrecorded.map((r) => r["US Chess ID"])]);
+  } catch (err) {
+    console.error("Could not load prior player records.", err);
+  }
+  const added = [];
+  for (const e of entrants) {
+    if (have.has(e.id)) continue;
+    have.add(e.id);
+    added.push({ Key: key, "No.": String(++number), "US Chess ID": e.id, Name: e.name,
+      Rating: e.rating || "", "Out from round": "", Section: defs.length ? placeIn(defs, e.rating) : "",
+      Byes: swiss ? byeRounds(e.byes || [], info).join(", ") : "",
+      "Zero-point byes": swiss ? byeRounds(e.zeroByes || [], info).join(", ") : "", ...records[e.id] });
+  }
+  addRows(t, added);
+  // A player who entered single nights of a month didn't enter the rounds before them, so has no late bye.
+  const month = key.split("/")[1].length === 7;
+  const whole = new Set(entrants.filter((e) => !month || e.for === "Whole month").map((e) => e.id));
+  const missed = swiss ? added.filter((a) => whole.has(a["US Chess ID"]) && !ROUND_ROBINS.includes(formatOf(info, defs.find((d) => d.name === a.Section))))
+    .flatMap((a) => lateByes(key, info, a)) : [];
+  addRows(table("Rounds"), missed);
+  setCells(t, Object.fromEntries(unrecorded.filter((r) => records[r["US Chess ID"]]).map((r) => [r.row, records[r["US Chess ID"]]])));
+  if (added.length && defs.length) {
+    const tournaments = table("Tournaments");
+    const line = tournaments.rows.find((r) => r.Key === key);
+    saveSections(tournaments, key, line, sectionsOf(line));
+  }
+  if (!id || added.length) clearTournamentCache(key);
+  const byes = missed.length ? " A late entrant has a half-point bye for the first round they missed that offers one (28K), under Byes"
+    + " and unplayed rounds, where it can be made unplayed instead." : "";
+  return { ok: true, added: entrants.length, message: entrants.length ? `Added ${entrants.length} player(s).${byes}` : "No new entrants." };
 }
 
 /** A tab of running tournaments as rows keyed by heading, each with its row: a sheet row number, or
@@ -4706,15 +4699,13 @@ function testBalanceMode_() {
 
 /** Switches a whole month to one of its nights, p.date, crediting the night with all the month holds.
  *  From the Entries page (td null), the player is p.id with p.last and the month's p.email, and only
- *  while nothing has been paid on the month and the night is still open; from the TD desk, p.token. */
+ *  while nothing has been paid on the month; from the TD desk, p.token. */
 function toNight(p, td) {
   if (!td && !underLimit()) return { error: "Too many changes right now. Try again in a minute." };
   const key = `${p.event}/${p.date}`;
   const night = clubEvents()[key];
   if (!night || night.kind !== "night") return { error: "That isn't one of the month's nights." };
-  if (!td && (night.closed || new Date(night.closes) <= new Date())) {
-    return { error: "This night has started, so only the TD can change the registration now." };
-  }
+  if (!td && night.closed) return { error: "Only the TD can register players for this night." };
   const id = String(p.id || "").trim();
   if (!td) {
     const member = lookup(id);
@@ -4750,8 +4741,7 @@ function toNight(p, td) {
     // The month's tournament keeps the player for this night, without the month's byes, which would give them half
     // points for the others.
     const monthKey = `${p.event}/${p.date.slice(0, 7)}`;
-    const run = byeList(month[col.Byes]).length || byeList(month[col["Zero-point byes"]]).length ? runOf(monthKey) : null;
-    if (run && run.info && setPlayerByes(monthKey, month[col["US Chess ID"]], [], [], run.info)) clearTournamentCache(monthKey);
+    const hadByes = byeList(month[col.Byes]).length || byeList(month[col["Zero-point byes"]]).length;
     if (held.entry || held.rating) {
       addPayment_(book, month[col.Token], partyOf(month, col), { Type: "credit", "Entry fee": -held.entry, "Rating fee": -held.rating,
         Note: `To ${nightLabel(p.date)}, ${row.Token}` });
@@ -4761,6 +4751,7 @@ function toNight(p, td) {
     const kept = held.entry + held.rating;
     over = amount !== null && kept > cents(amount) ? money((kept - cents(amount)) / 100) : "";
     due = amount === null ? null : money(Math.max(0, cents(amount) - kept) / 100);
+    syncRegisteredPlayer(monthKey, row["US Chess ID"], hadByes ? { byes: [], zeros: [] } : null);
     clearEntriesCache();
   } finally {
     lock.releaseLock();

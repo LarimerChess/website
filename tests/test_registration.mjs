@@ -696,6 +696,10 @@ for (const store of STORES) {
     const t = gs.tournament("knightmare-arena-classical/2026-10-31", true);
     eq(t.sections, [{ name: "Classical", timeControl: "G/30;+30", rated: true }, { name: "Blood Pact", timeControl: "G/15;+15 against G/30;+30", rated: false, pact: true }]);
     eq([t.format, t.cutoff, t.timeControl, t.players.length, t.games, t.queue], ["arena", "17:30", "G/30;+30", 2, [], []]);
+    gs.MailApp = { sendEmail() {} };
+    const entry = gs.doPost({ parameter: { ...at, id: "66666666", last: "Ash", email: "ann@example.com" } });
+    assert.equal(entry.ok, true, JSON.stringify(entry));
+    assert.ok(gs.tournament(`${at.event}/${at.date}`, false).players.some((player) => player.id === "66666666"));
     // A Blood Pact game by hand needs one player halving their clock; the desk can change who.
     assert.match(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Blood Pact" }]) }).message, /Started 0 of 1 game\(s\).*nobody halves their clock/);
     assert.equal(gs.arenaPair({ ...at, games: JSON.stringify([{ white: "11111111", black: "22222222", section: "Blood Pact", blackPact: true }]) }).ok, true);
@@ -793,6 +797,9 @@ test("a player switches an unpaid whole month to one night from the Entries page
   assert.match(post({ last: "Birch" }).error, /last name doesn't match/);
   assert.match(post({ email: "other@example.com" }).error, /email doesn't match/);
   assert.match(post({ date: "2026-11-02" }).error, /isn't one of the month's nights/);
+  const events = gs.clubEvents();
+  events["monday-club-night-at-peak/2026-10-12"].closes = "2000-01-01T18:30:00Z";
+  gs.clubEvents = () => events;
   const switched = post({ email: "ANN@example.com" });
   assert.equal(switched.ok, true, JSON.stringify(switched));
   assert.match(switched.message, /Due when you arrive: \$7\.50/);
@@ -1461,107 +1468,52 @@ test("the registration form's phone is optional, kept as 970-555-0123, and goes 
   eq([gs.phoneNumber(""), gs.phoneNumber("9705550123"), gs.phoneNumber("=9705550123")], ["", "970-555-0123", null]);
 });
 
-test("online registration stays open all day on the event's last day, after play starts, and closes the next day", () => {
-  const { gs } = load({ Entries: [], Contacts: [["Name", "Email", "Phone", "Status", "US Chess ID", "ID"]] });
-  clubNights(gs);
-  gs.MailApp = { sendEmail: () => {} };
-  const events = gs.clubEvents();
-  for (const e of Object.values(events)) e.closes = `${e.last}T10:00:00-06:00`;
-  gs.clubEvents = () => events;
-  const plain = gs.Utilities.formatDate;
-  let today;
-  gs.Utilities.formatDate = (d, tz, f) => (f === "yyyy-MM-dd" && Math.abs(d - Date.now()) < 60000 ? today : plain(d, tz, f));
-  const register = (date, id) => gs.register({ event: "monday-club-night-at-peak", date, id, last: "Ash", category: "Adult", email: "ann@example.com" }, false);
-  today = "2026-10-12";
-  assert.equal(register("2026-10-12", "66666666").ok, true, "the night it is, though it has started");
-  today = "2026-10-13";
-  assert.equal(register("2026-10-12", "66666666").error, "Online registration for this has closed.");
-  assert.equal(register("2026-10", "66666666").error, undefined, "the month, through its last night");
-});
+for (const store of STORES) {
+  test(`public and TD late entries update the roster as soon as they are saved (${store})`, () => {
+    const { gs, rows } = load({ Entries: [], Tournaments: [], Players: [], Rounds: [] }, {}, store);
+    const event = "classic", date = "2026-10-12", key = `${event}/${date}`;
+    gs.clubEvents = () => ({ [key]: { event, name: "Classic", page: "/events/classic/", kind: "entry",
+      label: date, first: date, last: date, closes: `${date}T10:00:00-06:00`, capacity: 1 } });
+    const formatDate = gs.Utilities.formatDate;
+    gs.Utilities.formatDate = (d, zone, pattern) =>
+      pattern === "yyyy-MM-dd" ? "2026-10-13" : formatDate(d, zone, pattern);
+    gs.PropertiesService.getScriptProperties().setProperty(`publicLimit:${key}`, "0");
+    gs.noteContact = () => {};
+    gs.ageCategory = () => "Adult";
+    const mail = [];
+    gs.MailApp = { sendEmail: (message) => mail.push(message) };
 
-test("the public 50-player cap counts active entrants per date under the write lock; TDs can exceed it", () => {
-  const event = "larimer-county-open-classic-90-30", date = "2099-11-21";
-  const header = ["Event", "Date", "US Chess ID", "Name", "Status", "Token"];
-  const entrants = Array.from({ length: 49 }, (_, i) => [event, date, String(90000000 + i), `Player ${i}`, "registered", `p${i}`]);
-  const { gs, sheets } = load({ Entries: [header, ...entrants,
-    [event, date, "80000000", "Withdrawn", "withdrawn", "w"],
-    [event, "2099-12-19", "80000001", "Other date", "registered", "d"],
-    ["other", date, "80000002", "Other event", "registered", "e"]] });
-  gs.clubEvents = () => ({ [`${event}/${date}`]: { event, name: "Open", kind: "entry", label: date,
-    first: date, closes: `${date}T10:00:00-07:00`, capacity: 50, rounds: "3", format: "swiss" } });
-  let locked = false, mails = 0;
-  gs.lockTournaments = () => { locked = true; return { releaseLock() { locked = false; } }; };
-  const read = gs.readEntries_;
-  gs.readEntries_ = () => { assert.equal(locked, true, "capacity reads the current sheet under the lock"); return read(); };
-  gs.noteContact = () => {};
-  gs.ageCategory = () => "Adult";
-  gs.MailApp = { sendEmail: () => { mails++; } };
-  const register = (id, last, td = false) => gs.register({ event, date, id, last,
-    email: "player@example.com", category: "Adult", capacity: "999", td: "true" }, td);
-  assert.equal(register("66666666", "Ash").ok, true, "the 50th entrant is accepted");
-  const before = sheets.Entries.data.length;
-  assert.match(register("77777777", "Birch").error, /50 players.*full/i);
-  assert.equal(sheets.Entries.data.length, before);
-  assert.equal(mails, 1, "a refused entry sends no confirmation");
-  assert.equal(locked, false, "the refusal releases the lock");
-  assert.equal(register("77777777", "Birch", true).ok, true, "the authenticated TD may add entrant 51");
-  assert.equal(mails, 2);
-  sheets.Entries.data[1][4] = "withdrawn";
-  assert.match(register("55555555", "").error, /50 players.*full/i, "TD additions count toward capacity");
-  sheets.Entries.data[2][4] = "withdrawn";
-  assert.equal(register("55555555", "").ok, true, "a withdrawal reopens a place");
-});
+    const fields = { event, date, email: "player@example.com" };
+    assert.equal(gs.register({ ...fields, id: "11111111" }, true).ok, true);
+    assert.equal(gs.register({ ...fields, id: "22222222" }, true).ok, true);
+    assert.equal(gs.startTournament({ ...fields, format: "swiss", rounds: "3", coin: "white" }).ok, true);
+    const posted = gs.saveRound({ ...fields, number: "1", post: "yes", byes: "[]",
+      games: JSON.stringify([{ board: 1, white: "11111111", black: "22222222", result: "1-0" }]) });
+    assert.equal(posted.ok, true, JSON.stringify(posted));
 
-test("the calendar's capacity reaches registration choices", () => {
-  const { gs } = load({});
-  const event = { title: "Open", page: "/events/open/", start: "2099-11-21T10:00:00-07:00",
-    tags: ["rated", "tournament"], capacity: 50, pairing: "swiss", rounds: "3" };
-  const fetch = gs.UrlFetchApp.fetch;
-  gs.UrlFetchApp.fetch = (url, options) => url.endsWith("/events.json")
-    ? { getContentText: () => JSON.stringify([event, { ...event, page: "/events/unlimited/", capacity: undefined }]) }
-    : fetch(url, options);
-  const choices = gs.clubEvents();
-  assert.equal(choices["open/2099-11-21"].capacity, 50);
-  assert.equal(choices["unlimited/2099-11-21"].capacity, undefined);
-});
+    const board = rows("Rounds").find((r) => r.White === "11111111");
+    assert.ok(board.Posted);
+    const late = gs.doPost({ parameter: { ...fields, id: "66666666", last: "Ash", byes: "2, 3", zeroByes: "1" } });
+    assert.equal(late.ok, true, JSON.stringify(late));
+    assert.match(mail.at(-1).body, /last-round half-point bye wasn't added/);
+    assert.match(mail.at(-1).body, /Round 1 is already paired/);
+    const entrant = rows("Players").find((r) => r["US Chess ID"] === "66666666");
+    eq([entrant["No."], entrant.Byes, entrant["Zero-point byes"]], ["3", "2", ""]);
 
-test("only an authenticated TD can persist a per-date public limit, close it, or restore the calendar default", () => {
-  const { gs, post } = signIn({ TDs: TDS });
-  const event = "open", date = "2099-11-21", key = `${event}/${date}`;
-  gs.clubEvents = () => ({ [key]: { capacity: 50, kind: "entry" }, "open/2099-12-19": { capacity: 50, kind: "entry" } });
-  gs.entries = () => [];
-  const set = (limit, credentials = { idToken: idToken("ann") }) => post({ action: "registrationLimit", event, date, limit, ...credentials });
-  assert.equal(set("60", {}).login, true);
-  assert.equal(set("60", { idToken: idToken("player") }).login, true);
-  assert.equal(gs.doGet({ parameter: { entries: key } }).capacity, 50);
-  assert.equal(set("60").ok, true);
-  assert.equal(gs.doGet({ parameter: { entries: key } }).capacity, 60);
-  assert.equal(gs.registrationLimit("open/2099-12-19"), 50, "other dates retain their limit");
-  for (const invalid of ["-1", "1.5", "lots", "9007199254740992"]) assert.match(set(invalid).error, /whole number/);
-  assert.equal(gs.registrationLimit(key), 60, "invalid input changes nothing");
-  assert.equal(set("0").capacity, 0, "zero closes public registration");
-  assert.equal(set("").capacity, 50, "blank restores the calendar limit");
-  assert.equal(post({ action: "registrationLimit", idToken: idToken("ann"), event: "missing", date, limit: "60" }).ok, undefined);
-});
+    const desk = gs.doPost({ parameter: { action: "register", password: "sheet", ...fields, id: "77777777" } });
+    assert.equal(desk.ok, true, JSON.stringify(desk));
+    const deskEntrant = rows("Players").find((r) => r["US Chess ID"] === "77777777");
+    assert.equal(deskEntrant["No."], "4");
+    const lateBye = rows("Rounds").find((r) => r.White === "77777777");
+    eq([lateBye.Round, lateBye["Bye kind"]], ["1", "half"]);
+    eq(rows("Rounds").find((r) => r.White === "11111111"), board);
+    assert.equal(gs.syncPlayers(key).added, 0, "reconciliation does not add a duplicate");
 
-test("registration enforces a TD's new limit immediately, including zero", () => {
-  const { gs } = load({ Entries: [] });
-  const event = "open", date = "2099-11-21", key = `${event}/${date}`;
-  gs.clubEvents = () => ({ [key]: { event, name: "Open", kind: "entry", label: date,
-    first: date, closes: `${date}T10:00:00-07:00`, capacity: 50, rounds: "3" } });
-  gs.ageCategory = () => "Adult";
-  gs.noteContact = () => {};
-  gs.MailApp = { sendEmail() {} };
-  const fields = { event, date, id: "66666666", last: "Ash", email: "ann@example.com" };
-  gs.setRegistrationLimit({ event, date, limit: "0" });
-  assert.match(gs.register(fields, false).error, /0 players.*full/i);
-  gs.setRegistrationLimit({ event, date, limit: "1" });
-  assert.equal(gs.register(fields, false).ok, true);
-  const second = { ...fields, id: "77777777", last: "Birch" };
-  assert.match(gs.register(second, false).error, /1 players.*full/i);
-  gs.setRegistrationLimit({ event, date, limit: "2" });
-  assert.equal(gs.register(second, false).ok, true);
-});
+    gs.rated = () => true;
+    assert.equal(gs.doPost({ parameter: { action: "register", password: "sheet", ...fields, id: "55555555" } }).ok, true);
+    assert.equal(rows("Players").length, 4, "a rated tournament roster stays fixed");
+  });
+}
 
 // A running Swiss without the report columns: round 1 posted, round 2 saved but not posted.
 function reporting(cache, store) {
@@ -2185,9 +2137,9 @@ for (const store of STORES) {
     t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "1", post: "yes", byes: "[]",
       games: JSON.stringify([{ board: 1, white: "66666666", black: "77777777" }]) });
     for (const night of ["2099-10-19", "2099-10-26"]) {
-      t.sheets.Entries.data.push(["", "monday-club-night-at-peak", night, "44444444", "Dee", "", "registered", `t${night}`, "1300", ""]);
+      const entry = t.register({ event: "monday-club-night-at-peak", date: night, id: "44444444" }, true);
+      assert.equal(entry.ok, true, JSON.stringify(entry));
     }
-    t.gs.syncPlayers(month);
     eq(t.rows("Rounds").filter((r) => r.White === "44444444"), [], "no late bye");
     eq(t.gs.tournament(month, true).players.map((p) => p.nights), [undefined, undefined, undefined, [3, 4]], "the month is every night");
     assert.ok(t.gs.tournament(month, false).players.every((p) => !("nights" in p)), "the public copy has no nights");
@@ -2196,6 +2148,8 @@ for (const store of STORES) {
     eq(t.rows("Tournaments").map((r) => r["Round dates"]), [JSON.stringify(NIGHTS), ""], "a tournament date has none");
     assert.equal(start("open", "2026-11-21", "quad").ok, true);
     eq(players("open/2026-11-21"), [["Ann Ash", ""]], "a quad's missing player forfeits by the table");
+    assert.equal(t.register({ event: "open", date: "2026-11-21", id: "77777777", last: "Birch" }).ok, true);
+    eq(players("open/2026-11-21"), [["Ann Ash", ""]], "late entrants do not change a started quad");
   });
 }
 
