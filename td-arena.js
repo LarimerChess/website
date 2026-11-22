@@ -175,7 +175,7 @@ function renderArena() {
       : closed ? ` It's past ${t.cutoff}: no new games start. Games in progress finish and count.`
         : t.cutoff ? ` No new games after ${t.cutoff}.` : "");
   runArena.hidden = false;
-  for (const el of runArena.querySelectorAll(".run-arena-pair, .run-arena-sync, .run-arena-start, .run-arena-confirm")) el.hidden = !running;
+  for (const el of runArena.querySelectorAll(".run-arena-pair, .run-arena-start, .run-arena-confirm")) el.hidden = !running;
   arenaPairButton.disabled = closed;
   arenaStartForm.hidden = !running || closed;
   renderArenaSections(t);
@@ -362,5 +362,3 @@ arenaSectionsForm.addEventListener("submit", (event) => {
 });
 
 document.querySelector(".run-arena-refresh").addEventListener("click", loadRun);
-
-document.querySelector(".run-arena-sync").addEventListener("click", (e) => arenaCall("sync", {}, e.currentTarget));

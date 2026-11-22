@@ -27,6 +27,34 @@ for (const [label, nextLabel] of [["Resume", "Pause"], ["Pause", "Resume"]]) {
 maintenanceCalls.join(",") === "0,1"
   ? pass("A signed-in TD can resume registration from maintenance mode and pause it again")
   : fail(`TD maintenance actions: ${maintenanceCalls.join(",")}`);
+const defaults = await maintenancePage.evaluate(() => {
+  const event = (series, date, kind, first = date) => ({ key: series + "/" + date, name: series, label: date, kind, first });
+  const monday = event("mondays", "2026-11", "month", "2026-11-02");
+  const wednesday = event("wednesdays", "2026-11", "month", "2026-11-04");
+  const monthly = [wednesday, event("wednesdays", "2026-11-25", "night"), monday, event("mondays", "2026-11-23", "night"),
+    event("mondays", "2026-12", "month", "2026-12-07")];
+  const saturday = event("classic", "2026-11-21", "entry");
+  const sunday = event("open", "2026-11-22", "entry");
+  const pick = (date, events) => defaultTournament(events, new Date(date));
+  const cases = [
+    [pick("2026-11-24T03:00:00Z", [...monthly, event("extra", "2026-11-23", "entry")]), monday.key],
+    [pick("2026-11-20T19:00:00Z", [...monthly, sunday, saturday]), saturday.key],
+    [pick("2026-11-22T05:00:00Z", [...monthly, sunday, saturday]), saturday.key],
+    [pick("2026-11-22T19:00:00Z", [...monthly, sunday, saturday]), sunday.key],
+    [pick("2026-11-22T19:00:00Z", [...monthly, saturday]), saturday.key],
+    [pick("2026-11-21T19:00:00Z", [...monthly, event("next-week", "2026-11-28", "entry")]), monday.key],
+    [pick("2026-11-25T19:00:00Z", monthly), wednesday.key],
+    [pick("2027-01-01T19:00:00Z", [event("open", "2027-01-02", "entry"), event("old", "2026-12-26", "entry")]), "open/2027-01-02"],
+    [pick("2026-11-23T19:00:00Z", []), ""],
+  ];
+  fillChoices(monthly);
+  choice.value = wednesday.key;
+  fillChoices([...monthly, saturday]);
+  cases.push([choice.value, wednesday.key]);
+  return cases.filter(([actual, expected]) => actual !== expected);
+});
+defaults.length ? fail(`TD tournament defaults: ${JSON.stringify(defaults)}`)
+  : pass("TD desk selects the local Monday series or weekend tournament and preserves a manual selection");
 await maintenancePage.close();
 
 const draftShown = (tab) => tab.evaluate(() => ({

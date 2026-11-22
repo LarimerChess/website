@@ -171,23 +171,53 @@ for (const fieldset of document.querySelectorAll(".run-sections")) {
   });
 }
 
+let runRequest = 0;
 async function loadRun() {
+  const request = ++runRequest;
   const key = choice.value;
-  current = null;
-  draft = null;
-  startEdited = false;
-  if (!key) return;
+  if (!key) {
+    current = draft = null;
+    return;
+  }
+  runRound.inert = runArena.inert = true;
   runStatus.textContent = "Loading the tournament…";
   const [event, date] = keyParts();
   try {
-    const { tournament } = await call("tournament", { event, date });
-    if (choice.value !== key) return;
+    const fields = { event, date };
+    let { tournament } = await call("tournament", fields);
+    if (request !== runRequest || choice.value !== key) return;
+    if (tournament && tournament.status !== "rated" && tournament.format !== "quad") {
+      const { entries } = await call("entries", fields);
+      if (request !== runRequest || choice.value !== key) return;
+      const players = new Set(tournament.players.map((p) => p.id));
+      if (entries.some((entry) => !entry.out && !players.has(entry.id))) {
+        const synced = await call("sync", fields);
+        if (!synced.ok) throw new Error(synced.error);
+        ({ tournament } = await call("tournament", fields));
+        if (request !== runRequest || choice.value !== key) return;
+      }
+    }
+    const previous = current?.key === key && !runRound.hidden && !runCheckin.hidden
+      ? { number: workNumber, choices: new Map([...runAttendance.querySelectorAll(".run-this-round")]
+        .filter((s) => s.value !== s.dataset.start).map((s) => [JSON.stringify([s.dataset.section, s.dataset.id]), s.value])) } : null;
+    draft = null;
+    startEdited = false;
     current = tournament;
     renderRun();
+    if (previous?.number === workNumber && !runRound.hidden && !runCheckin.hidden) {
+      for (const s of runAttendance.querySelectorAll(".run-this-round")) {
+        const value = previous.choices.get(JSON.stringify([s.dataset.section, s.dataset.id]));
+        if ([...s.options].some((o) => o.value === value)) s.value = value;
+      }
+    }
     syncReport(key, current);
     document.dispatchEvent(new CustomEvent("td-tournament", { detail: current }));
   } catch {
+    if (request !== runRequest || choice.value !== key) return;
+    runRound.hidden = runArena.hidden = true;
     runStatus.textContent = "The tournament couldn't be loaded. Try again.";
+  } finally {
+    if (request === runRequest) runRound.inert = runArena.inert = false;
   }
 }
 
@@ -290,8 +320,6 @@ function renderCheckin(t, parts, next) {
       + (active.some((s) => s.extra) ? " In an extra games section, a player not here has the round unplayed." : "")
     : "Everyone starts as Present, or as the half-point or zero-point bye they asked for this round; change anyone who isn't here, or who asked and plays after all. Anyone else's round is unplayed, unless they asked for a half-point bye (22C) or a zero-point bye. A round can be reclassified later, under Standings."
       + (t.players.some((p) => p.nights) ? " A player who entered other nights of the month only starts as not here." : "");
-  // Quads are numbered once, at the start, so later entrants can't be added.
-  document.querySelector(".run-sync").hidden = quad;
   // Sections are set until round 1 is posted (a player plays in one section), and a late entrant moved until their first game.
   const editable = !quad && next === 1;
   runSectionsEdit.hidden = !editable;
@@ -335,8 +363,7 @@ function renderCheckin(t, parts, next) {
         row.insertCell().append(move);
       }
       const asked = !table && byes.includes(own);
-      const half = !table && !byeProblemsIn(s, next, [], [{ id: p.id, kind: "half" }]).length;
-      const start = noShow || elsewhere ? "absent" : asked && half ? "half" : !table && zeros.includes(own) ? "zero" : "play";
+      const start = noShow || elsewhere ? "absent" : asked ? "half" : !table && zeros.includes(own) ? "zero" : "play";
       const select = document.createElement("select");
       select.dataset.id = p.id;
       select.dataset.section = s.key;
@@ -345,7 +372,7 @@ function renderCheckin(t, parts, next) {
       select.setAttribute("aria-label", `${p.name} this round${several ? ` in ${s.name}` : ""}`);
       select.append(option("play", "Present", start === "play"),
         option("absent", table ? "Not here: loses by forfeit" : "Not here: unplayed", start === "absent"),
-        ...(table ? [] : [...(half ? [option("half", "Half-point bye (asked for)", start === "half")] : []), option("zero", "Zero-point bye (asked for)", start === "zero")]),
+        ...(table ? [] : [option("half", "Half-point bye", start === "half"), option("zero", "Zero-point bye (asked for)", start === "zero")]),
         option("withdraw", "Withdraw from the tournament", false));
       const lastRound = s.last ? s.last - s.first + 1 : t.plannedRounds;
       if (asked && own === lastRound) {
@@ -460,7 +487,7 @@ function draftProblems() {
       seen.add(id);
     }
     for (const id of active) if (!seen.has(id)) problems.push(`${nameOf(id)}${where} isn't paired yet: add a board for them, or choose a round without a game.`);
-    if (part) problems.push(...byeProblemsIn(part, draft.number, s.games, s.byes).map((text) => (several ? `${s.name}: ${text}` : text)));
+    if (part) problems.push(...byeProblemsIn(part, draft.number, s.games, s.byes.filter((b) => Pairing.byeKind(b) !== "half")).map((text) => (several ? `${s.name}: ${text}` : text)));
   }
   return [...new Set(problems)];
 }
@@ -586,7 +613,8 @@ function editSection(s, n, several) {
   }
   const part = Pairing.sections(forEngine(current)).find((x) => x.key === s.section && x.name === s.name);
   const byeNote = part && Pairing.fullByeNote(part, draft.number, s.games, s.byes);
-  const notes = [...(s.notes || []), ...(byeNote ? [`${byeNote} Posting gives it as chosen (29E7).`] : [])];
+  const halfNotes = part ? byeProblemsIn(part, draft.number, s.games, s.byes.filter((b) => Pairing.byeKind(b) === "half")) : [];
+  const notes = [...(s.notes || []), ...halfNotes.map((text) => `Warning: ${text}`), ...(byeNote ? [`${byeNote} Posting gives it as chosen (29E7).`] : [])];
   if (notes.length) {
     const list = document.createElement("ul");
     list.className = "run-notes";
@@ -1016,7 +1044,7 @@ function renderByesAll() {
         current.rounds[s.first + i - 1].byes.push({ id: b.id, points: b.points, kind: b.kind, section: s.key });
         delete b.missing;
       }
-      runStatus.textContent = `${nameOf(b.id)}, ${where}: ${BYE_LABELS[select.value]}.`;
+      runStatus.textContent = `${nameOf(b.id)}, ${where}: ${BYE_LABELS[select.value]}.${result.warning ? " Warning: " + result.warning : ""}`;
       renderStandings();
       renderGiveBye();
     });
@@ -1039,11 +1067,10 @@ function renderByesAll() {
 /** Why a player's posted round i of section s, which has no game for them, can't be the kind, or "".
  *  A half-point bye is at the TD's discretion; full-point byes keep their restrictions. */
 function postedByeProblem(s, i, id, kind) {
-  if (kind === "half" && current.rounds[s.first + i - 1].posted) return "";
-  if (!["bye", "half"].includes(kind)) return "";
+  if (kind !== "bye") return "";
   const r = s.rounds[i];
-  const others = kind === "bye" ? r.byes.filter((x) => x.id !== id && Pairing.byeKind(x) === "bye") : [];
-  return byeProblemsIn(s, s.first + i, kind === "bye" ? r.games : [], [...others, { id, kind }])[0] || "";
+  const others = r.byes.filter((x) => x.id !== id && Pairing.byeKind(x) === "bye");
+  return byeProblemsIn(s, s.first + i, r.games, [...others, { id, kind }])[0] || "";
 }
 
 const giveBye = document.querySelector(".run-give-bye");
@@ -1072,15 +1099,9 @@ function byeSlots(p) {
   });
 }
 
-/** Why the slot can't be the kind, or "": a posted round by its section's rules, a round to come as the half-point
- *  bye asked for, which before round 1 is posted may be the last round's (22C4). */
 function slotProblem(slot, id, kind) {
-  if (kind === slot.kind) return "";
-  if (slot.posted) return postedByeProblem(slot.s, slot.n - slot.s.first, id, kind);
-  if (kind !== "half") return "";
-  const asking = current.rounds[0]?.posted ? slot.s
-    : { ...slot.s, players: slot.s.players.map((x) => (x.id === id ? { ...x, byes: [...(x.byes || []), slot.n] } : x)) };
-  return byeProblemsIn(asking, slot.n, [], [{ id, kind }])[0] || "";
+  if (kind === slot.kind || !slot.posted) return "";
+  return postedByeProblem(slot.s, slot.n - slot.s.first, id, kind);
 }
 
 function slotName(slot) {
@@ -1112,7 +1133,14 @@ function renderGiveBye() {
     if (problem) refused.push(problem);
     return !problem;
   }).map(([value, text]) => option(value, text, value === slot.kind)));
-  document.getElementById("run-bye-why").textContent = refused.length ? `Not offered: ${[...new Set(refused)].join(" ")}` : "";
+  const part = slot.posted || current.rounds[0]?.posted ? slot.s : {
+    ...slot.s, players: slot.s.players.map((x) => x.id === p.id ? { ...x, byes: [...(x.byes || []), slot.n] } : x),
+  };
+  const warning = byeProblemsIn(part, slot.n, [], [{ id: p.id, kind: "half" }])[0];
+  document.getElementById("run-bye-why").textContent = [
+    refused.length ? `Not offered: ${[...new Set(refused)].join(" ")}` : "",
+    warning ? `Half-point bye warning: ${warning}` : "",
+  ].filter(Boolean).join(" ");
 }
 
 giveBye.elements.player.addEventListener("change", renderGiveBye);
@@ -1138,7 +1166,7 @@ giveBye.addEventListener("submit", async (event) => {
       const points = Pairing.BYE_KINDS[kind.value];
       if (slot.bye) Object.assign(slot.bye, { kind: kind.value, points });
       else current.rounds[slot.n - 1].byes.push({ id: p.id, points, kind: kind.value, section: slot.s.key });
-      runStatus.textContent = `${where}: ${BYE_LABELS[kind.value]}.`;
+      runStatus.textContent = `${where}: ${BYE_LABELS[kind.value]}.${result.warning ? " Warning: " + result.warning : ""}`;
     } else {
       // The entry keeps the byes asked for, and the script copies them to the player.
       const entry = deskEntries.key === current.key && deskEntries.entries.find((e) => e.id === p.id && e.date === date && e.token);
@@ -1153,7 +1181,7 @@ giveBye.addEventListener("submit", async (event) => {
       const rounds = (list, as) => [...(list || []).filter((n) => Number(n) !== slot.n), ...(kind.value === as ? [slot.n] : [])].sort((a, b) => a - b);
       Object.assign(p, { byes: rounds(p.byes, "half"), zeroByes: rounds(p.zeroByes, "zero") });
       const lastRound = slot.s.last ?? current.plannedRounds;
-      runStatus.textContent = `${where}: ${{ half: "half-point bye asked for", zero: "zero-point bye asked for" }[kind.value] || "plays"}.`
+      runStatus.textContent = `${where}: ${{ half: "half-point bye asked for", zero: "zero-point bye asked for" }[kind.value] || "plays"}.${result.warning ? " Warning: " + result.warning : ""}`
         + (kind.value === "play" && slot.kind === "half" && slot.n === lastRound && current.rounds[0]?.posted
           ? " They asked for this last-round bye before round 1, so a win counts as a draw for prizes (22C5)." : "");
       pending.add("entries");
@@ -1248,12 +1276,12 @@ function renderStandings() {
 
 /** Whether reloading the tournament would lose the TD's unsaved work: a changed draft, check-in
  *  choices, sections or a start being filled in, or a field in use. */
-function runBusy() {
+function runBusy(preserveCheckin = false) {
   const field = document.activeElement?.matches("input, select, textarea") && document.activeElement.closest(".run");
   const edited = draft && (draft.number > current.rounds.length || JSON.stringify(draft) !== JSON.stringify(draftFrom(draft.number)));
   const checkingIn = !runRound.hidden && !runCheckin.hidden
     && [...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value !== s.dataset.start);
-  return Boolean(withdrawalSaving || field || edited || checkingIn || runSectionsEdit.open || namesWrap.open || document.querySelector(".run-arena-sections-wrap").open
+  return Boolean(withdrawalSaving || field || edited || (checkingIn && !preserveCheckin) || runSectionsEdit.open || namesWrap.open || document.querySelector(".run-arena-sections-wrap").open
     || (!runStart.hidden && startEdited));
 }
 
@@ -1311,13 +1339,6 @@ document.querySelector(".run-sections-form").addEventListener("submit", async (e
   }
 });
 
-document.querySelector(".run-sync").addEventListener("click", async () => {
-  const [event, date] = keyParts();
-  const result = await call("sync", { event, date });
-  runStatus.textContent = result.message || result.error;
-  loadRun();
-});
-
 /** The check-in's choice for each player, after taking out those withdrawn from this round on. */
 async function checkIn(number) {
   const choicesMade = [...runAttendance.querySelectorAll(".run-this-round")].map((s) => [s.dataset.id, s.value, s.dataset.section]);
@@ -1337,7 +1358,7 @@ async function checkIn(number) {
 
 document.querySelector(".run-pair").addEventListener("click", async () => {
   const number = workNumber;
-  if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play")) {
+  if (![...runAttendance.querySelectorAll(".run-this-round")].some((s) => s.value === "play" || s.value === "half")) {
     return void refuse("Nobody is present to pair.", runStatus);
   }
   const checked = await checkIn(number);

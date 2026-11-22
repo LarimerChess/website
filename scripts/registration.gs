@@ -591,7 +591,7 @@ function arenaJoin(p, byPlayer) {
     const { info, error } = runningArena(key);
     if (error) return { error };
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
-    if (!player) return { error: byPlayer ? "You're not in this arena yet. See the TD." : "Not a player in this arena. Add new entrants first." };
+    if (!player) return { error: byPlayer ? "You're not in this arena yet. See the TD." : "Register this player for the arena first." };
     const defs = sectionsOf(info);
     const unknown = names.find((n) => !defs.some((s) => s.name === n) && !(n === "" && !defs.length));
     if (unknown !== undefined) return { error: `No section is named ${unknown}.` };
@@ -920,19 +920,21 @@ function checkByes(asked, old, key, event, run, online, id) {
   if (locked) return { error: locked };
   // A tournament date's rounds are its own; a month's are only known once it starts.
   const unoffered = !month && list.find((x) => !old.includes(x) && !offersHalfBye(event, Number(x), rounds));
-  if (unoffered) return { error: `The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round ${unoffered} isn't one.` };
+  const policy = (warning) => online ? { error: warning } : { list, warning };
+  if (unoffered) return policy(`The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round ${unoffered} isn't one.`);
   const given = lines.filter((r) => r.White === id && halfRow(r) && !extraNames(info).includes(r.Section)
     && !list.some((x) => byeRound(x, dates) === Number(r.Round)));
   if (list.length + new Set(given.map((r) => r.Round)).size > HALF_BYE_LIMIT) {
-    return { error: given.length ? `There's a half-point bye in ${roundName(info, Number(given[0].Round))} already, and the event allows one per player.`
-      : "One half-point bye per player, as the event's page announces." };
+    return policy(given.length ? `There's a half-point bye in ${roundName(info, Number(given[0].Round))} already, and the event allows one per player.`
+      : "One half-point bye per player, as the event's page announces.");
   }
   // 22C4: the last round's bye, a month's last night's, is asked for before round 1 and is then irrevocable;
   // only the TD can cancel one, and then a win counts as a draw for prizes (22C5).
   const last = month ? [...monthNights(key), ...dates].sort().at(-1) : String(rounds);
   const started = lines.some((r) => Number(r.Round) === 1 && r.Posted);
   if (started && list.includes(last) && !old.includes(last)) {
-    return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1, so it can't be added now (22C4).` };
+    return policy(online ? `A ${month ? "bye for the month's last night" : "last-round bye"} is asked for before round 1, so it can't be added now (22C4).`
+      : "The last-round bye was requested after round 1 was posted (22C4).");
   }
   if (started && online && old.includes(last) && !list.includes(last)) {
     return { error: `A ${month ? "bye for the month's last night" : "last-round bye"} asked for before round 1 can't be dropped after it (22C4); tell the TD.` };
@@ -1989,7 +1991,7 @@ function halfByeProblem(key, info, player, n, rows, asked) {
   if (others.length >= HALF_BYE_LIMIT) {
     return `${player.Name} already has or asked for a half-point bye, in ${roundName(info, others[0])}, and the event allows one per player.`;
   }
-  if (n === last && n > 1 && !asked.includes(n)) return `${player.Name} didn't ask for a last-round bye before round 1, so they can't have one (22C4).`;
+  if (n === last && n > 1 && !asked.includes(n)) return `${player.Name} didn't ask for a last-round bye before round 1 (22C4).`;
   return "";
 }
 
@@ -3068,6 +3070,7 @@ function register(p, td, signedIn) {
   const lock = lockTournaments();
   let token;
   let credited = 0;
+  let byeWarning = "";
   let byes = [];
   let zeros = [];
   try {
@@ -3086,6 +3089,7 @@ function register(p, td, signedIn) {
     const run = asked.length || zeroAsked.length ? runOf(key) : null;
     const checked = run ? checkByes(asked, [], key, event, run, !td, id) : { list: [] };
     if (checked.error) return checked;
+    byeWarning = checked.warning || "";
     byes = checked.list;
     const zero = run ? checkZeroByes(zeroAsked, [], byes, key, event, run, !td) : { list: [] };
     if (zero.error) return zero;
@@ -3155,7 +3159,7 @@ function register(p, td, signedIn) {
       sent = " The confirmation email could not be sent.";
     }
   }
-  return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}` };
+  return { ok: true, name, message: `${name} is registered for ${event.label}.${asking ? " " + asking : ""} ${due}${sent}${lapsed ? " " + lapsed : ""}${byeWarning ? " Warning: " + byeWarning : ""}` };
 }
 
 function registrationInFirebase_() {
@@ -3412,27 +3416,20 @@ function saveByeKind(p) {
     const player = table("Players").rows.find((r) => r.Key === key && r["US Chess ID"] === p.id);
     const info = table("Tournaments").rows.find((r) => r.Key === key);
     if (here.some((r) => r.Black && (r.White === p.id || r.Black === p.id))) return { error: "That player has a game that round, not a bye." };
-    // The TD can excuse any missed posted round; advance requests still follow the event's rules.
-    const excuse = p.kind === "half" && here.some((r) => r.Posted);
-    if (line && player && info) {
-      const problem = excuse ? "" : byeProblem(key, info, player, Number(p.number), line.Section, p.kind, t.rows);
-      if (problem) return { error: problem };
+    if (!here.length) return { error: "That round isn't paired yet." };
+    if (!line && !player) return { error: "Not a player in this tournament." };
+    const section = line ? line.Section : String(p.section || "");
+    const warning = player && info ? byeProblem(key, info, player, Number(p.number), section, p.kind, t.rows) : "";
+    if (warning && p.kind !== "half") return { error: warning };
+    const fields = { "Bye kind": p.kind, "Bye points": String(BYE_KINDS[p.kind]) };
+    if (line) {
+      setCells(t, { [line.row]: fields });
+    } else {
+      addRows(t, [{ Key: key, Round: String(p.number), Board: "", White: p.id, Black: "", Result: "",
+        Posted: (here.find((r) => r.Posted) || { Posted: "" }).Posted, Section: section, ...fields }]);
     }
-    if (!line) {
-      // A round with no row for the player, such as one a late entrant missed (28K), gets one.
-      if (!here.length) return { error: "That round isn't paired yet." };
-      if (here.some((r) => r.White === p.id || r.Black === p.id)) return { error: "That player has a game that round, not a bye." };
-      if (!player) return { error: "Not a player in this tournament." };
-      const problem = excuse ? "" : byeProblem(key, info, player, Number(p.number), String(p.section || ""), p.kind, t.rows);
-      if (problem) return { error: problem };
-      addRows(t, [{ Key: key, Round: String(p.number), Board: "", White: p.id, Black: "", Result: "", "Bye points": String(BYE_KINDS[p.kind]),
-        Posted: (here.find((r) => r.Posted) || { Posted: "" }).Posted, Section: String(p.section || ""), "Bye kind": p.kind }]);
-      clearTournamentCache(key);
-      return { ok: true };
-    }
-    setCells(t, { [line.row]: { "Bye kind": p.kind, "Bye points": String(BYE_KINDS[p.kind]) } });
     clearTournamentCache(key);
-    return { ok: true };
+    return { ok: true, warning };
   } finally {
     lock.releaseLock();
   }
@@ -3541,6 +3538,7 @@ function saveRound(p) {
     }
     const players = table("Players").rows.filter((r) => r.Key === key);
     const others = t.rows.filter((r) => r.Key === key && !replaces(r));
+    const warnings = [];
     for (const b of byes) {
       const player = players.find((r) => r["US Chess ID"] === b.id);
       if (!info || !player || BYE_KINDS[b.kind] === undefined) continue;
@@ -3548,7 +3546,8 @@ function saveRound(p) {
       const rows = [...others, ...byes.filter((x) => x !== b && x.kind === "bye" && String(x.section || "") === section)
         .map((x) => ({ Key: key, Round: String(round), White: x.id, Black: "", "Bye kind": "bye", Section: section }))];
       const problem = byeProblem(key, info, player, round, section, b.kind, rows);
-      if (problem) return { error: problem };
+      if (problem && b.kind === "half") warnings.push(problem);
+      else if (problem) return { error: problem };
     }
     deleteRows(t, old);
     const posted = p.post === "yes" ? Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm") : "";
@@ -3561,7 +3560,8 @@ function saveRound(p) {
         "Bye kind": BYE_KINDS[b.kind] !== undefined ? b.kind : "" })),
     ]);
     clearTournamentCache(key);
-    return { ok: true, message: posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.` };
+    const message = posted ? `Round ${round} is posted.` : `Round ${round} is saved, not posted.`;
+    return { ok: true, message: warnings.length ? `${message} Warning: ${warnings.join(" ")}` : message };
   } finally {
     lock.releaseLock();
   }
@@ -3707,7 +3707,7 @@ function setByes(p, td) {
     if (run.info) setPlayerByes(key, r[col["US Chess ID"]], checked.list, zero.list, run.info);
     clearEntriesCache();
     if (run.info) clearTournamentCache(key);
-    return { ok: true, message: `${r[col.Name]}'s byes: ${byesText(checked.list, zero.list)}.` };
+    return { ok: true, warning: checked.warning, message: `${r[col.Name]}'s byes: ${byesText(checked.list, zero.list)}.${checked.warning ? " Warning: " + checked.warning : ""}` };
   } finally {
     lock.releaseLock();
   }

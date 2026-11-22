@@ -409,7 +409,7 @@
    * tournament's { limit, everyRound }. Half-point byes (22C): in a Swiss section that isn't an extra games one, in
    * a round that offers them, up to the limit with those asked for, and in the last round only when asked for before
    * round 1 (22C4). Full-point byes (28L): only the odd player's, one per player (28L3), and none in a round robin or
-   * an extra games section (28M4). registration.gs refuses the same. Who has it by the scores is the director's choice
+   * an extra games section (28M4). The desk treats half-point bye rules as warnings. Who has it by the scores is the director's choice
    * (29E7), which fullByeNote checks.
    */
   function byeProblems(s, number, games, byes, last, halfByes) {
@@ -431,7 +431,7 @@
       } else if (others.length >= (halfByes?.limit ?? 1)) {
         problems.push(`${name(b.id)} already has or asked for a half-point bye, in round ${others[0]}, and the event allows one per player.`);
       } else if (number === last && number > 1 && !asked.includes(number)) {
-        problems.push(`${name(b.id)} didn't ask for a last-round bye before round 1, so they can't have one (22C4).`);
+        problems.push(`${name(b.id)} didn't ask for a last-round bye before round 1 (22C4).`);
       }
     }
     const full = byes.filter((x) => byeKind(x) === "bye");

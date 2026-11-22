@@ -528,7 +528,7 @@ test("byeProblems: a round's byes by the rules, half-point (22C) and full-point 
   const asked = swiss([...five.slice(0, 4), p("E", 1600, { byes: [3] })], [{ games: [g("A", "C", "1-0"), g("B", "D", "1-0")], byes: [full("E")] }]);
   assert.deepEqual(check(asked, 3, [], [half("E")]), []);
   assert.equal(check(asked, 2, [], [half("E")])[0], "E already has or asked for a half-point bye, in round 3, and the event allows one per player.");
-  assert.equal(check(asked, 4, [], [half("A")])[0], "A didn't ask for a last-round bye before round 1, so they can't have one (22C4).");
+  assert.equal(check(asked, 4, [], [half("A")])[0], "A didn't ask for a last-round bye before round 1 (22C4).");
   assert.match(check(asked, 3, [], [half("E")], { limit: 1, everyRound: false })[0], /\(22C1\), and round 3 isn't one\.$/);
   assert.deepEqual(check(asked, 2, [], [half("A")], { limit: 1, everyRound: false }), [], "round 2 of 4 is in the first half");
   // After round 1, E has had the full point (28L3 forbids a second); A and B lead.

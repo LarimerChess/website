@@ -1938,7 +1938,7 @@ test("byes asked for when registering: one, online or on the desk, a month's by 
   const { gs, sheets, mail, register, events } = byes();
   const refused = (fields, td) => register(fields, td).error;
   assert.equal(refused({ byes: "2, 4" }), "One half-point bye per player, as the event's page announces.");
-  assert.equal(refused({ byes: "2, 4" }, true), "One half-point bye per player, as the event's page announces.", "the desk too");
+  assert.match(byes().register({ byes: "2, 4" }, true).message, /Warning: One half-point bye per player/);
   // Without a page announcing them, only the first half's rounds offer byes (22C1).
   delete events["classic/2026-11-07"].page;
   assert.equal(refused({ byes: "3" }), "The event's page offers no half-point byes, so only the first half's rounds have them (22C1), and round 3 isn't one.");
@@ -1962,8 +1962,6 @@ test("byes asked for when registering: one, online or on the desk, a month's by 
   assert.match(desk.message, /^Ben Birch is registered for Saturday, November 7, 2026\. Byes asked for: round 4\. /);
   assert.equal(mail[1].body.split("\n\n")[1], "Byes asked for: round 4. To change them, email president@larimerchess.org.",
     "a player the TD registered has no device that saved them");
-  assert.equal(refused({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26, 2099-10-19" }, true),
-    "One half-point bye per player, as the event's page announces.", "a month's too, as its page announces");
   const month = register({ event: "monday-club-night-at-peak", date: "2099-10", byes: "2099-10-26" }, true);
   assert.match(month.message, /^Ann Ash is registered for all Mondays in October 2099\. Nights you'll miss: Monday, October 26\. /);
   assert.equal(mail[2].body.split("\n\n")[1], "Nights you'll miss: Monday, October 26. To change them, email"
@@ -1998,7 +1996,7 @@ function classicRunning(store) {
 }
 
 for (const store of STORES) {
-  test(`TD half-point byes excuse missed posted rounds but preserve games and future restrictions (${store})`, () => {
+  test(`TD half-point byes excuse missed rounds, warn on exceptions, and preserve games (${store})`, () => {
     const { gs, rows, desk } = classicRunning(store);
     const key = "classic/2026-11-07";
     const p = { event: "classic", date: "2026-11-07", section: "" };
@@ -2021,7 +2019,7 @@ for (const store of STORES) {
     }
     assert.equal(give(5).error, "That round isn't paired yet.");
     assert.equal(round(2, "no", [{ id: "77777777", kind: "unplayed" }]).ok, true);
-    assert.match(give(2).error, /already has or asked for a half-point bye/, "an unposted round keeps the normal rules");
+    assert.match(give(2).warning, /already has or asked for a half-point bye/, "an unposted round warns about the usual limit");
   });
 
   test(`zero-point byes: any rounds not yet paired, the last too, never one that's also a half-point bye, kept apart and shown with them (${store})`, () => {
@@ -2081,34 +2079,37 @@ for (const store of STORES) {
 }
 
 for (const store of STORES) {
-  test(`the TD changes an entry's byes by its token, one per player, a last-round one asked for before round 1 and only the TD can cancel, but not a round paired, nor once rated (${store})`, () => {
+  test(`the TD changes an entry's byes by its token, with warnings for extra and late byes, but not a round paired, nor once rated (${store})`, () => {
     const { gs, post, desk, pair, playerByes, ratings, cache } = classicRunning(store);
     assert.equal(desk({ token: "t1", byes: "4" }).message, "Ann Ash's byes: round 4.");
     pair(1, true);
-    assert.equal(desk({ token: "t3", byes: "4, 3, 3" }).error, "One half-point bye per player, as the event's page announces.");
+    assert.equal(desk({ token: "t3", byes: "4, 3, 3" }).warning, "One half-point bye per player, as the event's page announces.");
     assert.equal(desk({ token: "t3", byes: "3" }).message, "Cal's byes: round 3.");
     assert.equal(desk({ token: "t3", byes: "1, 3" }).error, "Round 1 is already paired, so change it under Standings and byes, in Give a bye.");
-    assert.equal(desk({ token: "t2", byes: "4" }).error, "A last-round bye is asked for before round 1, so it can't be added now (22C4).");
+    assert.equal(desk({ token: "t2", byes: "4" }).warning, "The last-round bye was requested after round 1 was posted (22C4).");
     assert.match(post({ byes: "" }).error, /\(22C4\); tell the TD/, "which the player can't drop online");
     assert.equal(desk({ token: "t1", byes: "" }).message, "Ann Ash's byes: none.", "the TD can cancel it (22C5)");
     assert.equal(desk({ token: "gone", byes: "3" }).error, "No registration matches.");
     // A half-point bye given at check-in counts toward the one a player may have, and the last round's needs asking for before round 1.
     const round = (number, byes) => gs.saveRound({ event: "classic", date: "2026-11-07", number: String(number), post: "yes",
       games: "[]", byes: JSON.stringify(byes) });
-    assert.equal(round(2, [{ id: "33333333", points: 0.5, kind: "half" }]).error,
-      "Cal already has or asked for a half-point bye, in round 3, and the event allows one per player.");
+    assert.equal(round(2, [{ id: "33333333", points: 0.5, kind: "half" }]).message,
+      "Round 2 is posted. Warning: Cal already has or asked for a half-point bye, in round 3, and the event allows one per player.");
     assert.equal(round(2, [{ id: "44444444", points: 0.5, kind: "half" }]).ok, true);
-    assert.equal(desk({ token: "t4", byes: "3" }).error, "There's a half-point bye in round 2 already, and the event allows one per player.");
-    assert.equal(round(4, [{ id: "66666666", points: 0.5, kind: "half" }]).error,
-      "Ann Ash didn't ask for a last-round bye before round 1, so they can't have one (22C4).");
-    eq(playerByes(), ["", "", "3", ""]);
+    assert.equal(desk({ token: "t4", byes: "3" }).warning, "There's a half-point bye in round 2 already, and the event allows one per player.");
+    const lastBye = round(4, [{ id: "66666666", points: 0.5, kind: "half" }]);
+    assert.equal(lastBye.ok, true);
+    assert.match(lastBye.message, /Warning: Ann Ash didn't ask for a last-round bye before round 1 \(22C4\)/);
+    const saved = gs.tournament("classic/2026-11-07", true).rounds[3].byes;
+    assert.ok(saved.some((b) => b.id === "66666666" && b.kind === "half" && b.points === 0.5));
+    eq(playerByes(), ["", "4", "3", "3"]);
     ratings["classic/2026-11-07"] = "202611070123";
     delete cache.rated;
     assert.equal(desk({ token: "t3", byes: "3" }).error, "US Chess has rated this tournament, so its byes can't change.");
     assert.equal(desk({ token: "t3", event: "classic", date: "2026-11-07", byes: "3" }).error,
       "US Chess has rated this tournament, so it can't change on the desk.");
     assert.equal(post({ byes: "2, 3, 4" }).error, "US Chess has rated this tournament, so its byes can't change.");
-    eq(playerByes(), ["", "", "3", ""]);
+    eq(playerByes(), ["", "4", "3", "3"]);
   });
 }
 
@@ -2126,7 +2127,7 @@ for (const store of STORES) {
     assert.equal(post("2099-10-19").message, "Ann Ash's byes: October 19.");
     eq(t.playerByes(), ["3"]);
     assert.equal(post("2099-10-26, 2099-10-12").error, "One half-point bye per player, as the event's page announces.");
-    assert.equal(t.desk({ token: "t1", byes: "2099-10-26, 2099-10-12" }).error, "One half-point bye per player, as the event's page announces.",
+    assert.equal(t.desk({ token: "t1", byes: "2099-10-26, 2099-10-12" }).warning, "One half-point bye per player, as the event's page announces.",
       "on the desk too");
     assert.equal(t.desk({ token: "t1", byes: "2099-10-12" }).ok, true);
     eq([t.entryByes(), t.playerByes()], [["2099-10-12"], ["2"]]);
@@ -2142,7 +2143,7 @@ for (const store of STORES) {
     // 22C4: once round 1 is posted, the month's last night's bye is fixed.
     t.gs.saveRound({ event: "monday-club-night-at-peak", date: "2099-10", number: "1", post: "yes", games: "[]",
       byes: JSON.stringify([{ id: "66666666", points: 0, kind: "unplayed" }]) });
-    assert.equal(t.desk({ token: "t1", byes: `2099-10-12, ${NIGHTS.at(-1)}` }).error, "One half-point bye per player, as the event's page announces.");
+    assert.equal(t.desk({ token: "t1", byes: `2099-10-12, ${NIGHTS.at(-1)}` }).warning, "One half-point bye per player, as the event's page announces.");
     // Switched to just one night, she plays no other, so asks for no byes on them.
     const switched = t.gs.doPost({ parameter: { action: "toNight", event: "monday-club-night-at-peak", date: "2099-10-19", id: "66666666",
       last: "Ash", email: "ann@example.com" } });
@@ -2377,8 +2378,8 @@ for (const store of STORES) {
     assert.match(gs.setRounds({ ...p, section: "Open", rounds: "4" }).error, /plays everyone/);
     // No byes in a round robin: its table pairs everyone.
     assert.equal(gs.saveRound({ ...p, number: "2", post: "no", games: "[]",
-      byes: JSON.stringify([{ id: "66666666", kind: "half", points: 0.5, section: "Under 1400" }]) }).error,
-      "A round robin has no half-point byes; make the round unplayed.");
+      byes: JSON.stringify([{ id: "66666666", kind: "half", points: 0.5, section: "Under 1400" }]) }).message,
+      "Round 2 is saved, not posted. Warning: A round robin has no half-point byes; make the round unplayed.");
   });
 }
 

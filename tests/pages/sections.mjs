@@ -372,11 +372,12 @@ await quadStandingsPage.close();
 // Starting a Swiss in two sections on the TD desk, on a phone: the TD adds a section, moves a
 // player up, pairs round one in each section, posts it, and enters a result.
 let sectioned = null;
+let halRegistered = false;
 const sectionCalls = [];
 const sectionDesk = await mocked("/td/ running a Swiss in two sections", (p) => {
   sectionCalls.push(p);
   if (p.action === "choices") return { choices: [{ key: "classic/2026-11-07", name: "Classic", label: "Saturday, November 7, 2026", kind: "entry", first: "2026-11-07" }] };
-  if (p.action === "entries") return { entries: [] };
+  if (p.action === "entries") return { entries: halRegistered ? [{ id: "88888888", name: "Hal" }] : [] };
   if (p.action === "incidents") return { incidents: [] };
   if (p.action === "tournament") return { tournament: sectioned };
   if (p.action === "start") {
@@ -483,12 +484,15 @@ await fitsPhone(sectionDesk, "TD desk entering results in two sections");
 await sectionDesk.select('select[aria-label="Open board 1 result"]', "1-0");
 await sectionDesk.select('select[aria-label="Open board 2 result"]', "0-1");
 await sectionDesk.waitForSelector(".run-checkin:not([hidden])");
-await press(sectionDesk, ".run-sync");
+await sectionDesk.select('select[aria-label="Ann this round in Open"]', "absent");
+halRegistered = true;
+await sectionDesk.evaluate(() => { pending.add("run"); applyChanges(); });
 await sectionDesk.waitForFunction(() => document.querySelector('select[aria-label="Hal\'s section"]'));
 const late = await sectionDesk.evaluate(() => ({
   menus: [...document.querySelectorAll('.run-attendance select[aria-label$="\'s section"]')].map((m) => [m.getAttribute("aria-label"), [...m.options].map((o) => o.value)]),
   bye: document.querySelector('.run-byes-all select[aria-label="Hal (1100), round 1"]')?.value }));
-JSON.stringify(late) === JSON.stringify({ menus: [["Hal's section", ["Open", "Under 1400"]]], bye: "half" })
+await sectionDesk.$eval('select[aria-label="Ann this round in Open"]', (s) => s.value) === "absent"
+  && JSON.stringify(late) === JSON.stringify({ menus: [["Hal's section", ["Open", "Under 1400"]]], bye: "half" })
   ? pass("TD desk offers a section only to a late entrant who hasn't played, whose missed round is a half-point bye")
   : fail(`TD desk late entrant: ${JSON.stringify(late)}`);
 await sectionDesk.select('select[aria-label="Hal\'s section"]', "Open");

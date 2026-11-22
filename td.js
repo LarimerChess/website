@@ -158,6 +158,7 @@ function signOut(message = "") {
   password = "";
   remember("");
   signedIn = false;
+  choice.selectedIndex = -1;
   td = null;
   maintenancePanel.hidden = true;
   if (firebase?.auth.currentUser) networkActivity("Signing out…", () => firebase.signOut(firebase.auth)).catch(() => {});
@@ -230,7 +231,40 @@ maintenanceToggle.addEventListener("click", async () => {
   }
 });
 
+function defaultTournament(list, now = new Date()) {
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Denver" }).format(now);
+  const month = today.slice(0, 7);
+  const dayNumber = (date) => Date.parse(date + "T00:00:00Z") / 86400000;
+  const day = dayNumber(today);
+  const weekday = new Date(day * 86400000).getUTCDay();
+  const weekend = weekday === 0 || weekday >= 5;
+  const friday = day - (weekday + 2) % 7;
+
+  // When several events fit, prefer today, then the next scheduled date, then the most recent.
+  const dateOrder = (a, b) => Number(a < today) - Number(b < today)
+    || (a < today ? b.localeCompare(a) : a.localeCompare(b));
+  const nights = new Map();
+  for (const c of list.filter((item) => item.kind === "night")) {
+    const key = c.key.slice(0, -3);
+    if (!nights.has(key) || dateOrder(c.first, nights.get(key)) < 0) nights.set(key, c.first);
+  }
+  function priority(c) {
+    const date = dayNumber(c.first);
+    if (weekend && c.kind === "entry" && date >= friday && date <= friday + 2) return 0;
+    if (!weekend && weekday !== 1 && c.kind === "entry" && c.first === today) return 0;
+    if (c.kind === "month" && c.key.endsWith("/" + month)) return 1;
+    if (c.kind === "entry" && c.first === today) return 2;
+    if (c.kind === "month" && c.first >= today) return 3;
+    if (c.kind !== "night" && c.first >= today) return 4;
+    return 5;
+  }
+  return [...list].sort((a, b) => priority(a) - priority(b)
+    || dateOrder(nights.get(a.key) || a.first, nights.get(b.key) || b.first)
+    || a.key.localeCompare(b.key))[0]?.key || "";
+}
+
 function fillChoices(list) {
+  const selected = choice.value;
   choices = list || [];
   const groups = new Map();
   for (const c of choices) {
@@ -243,6 +277,7 @@ function fillChoices(list) {
     for (const c of items) group.append(new Option(`${c.name}, ${c.label}`, c.key));
     return group;
   }));
+  choice.value = choices.some((c) => c.key === selected) ? selected : defaultTournament(choices);
 }
 
 // The sign-in never leaves the page, so the browser may not notice it succeeded; handing it the
@@ -965,7 +1000,7 @@ function applyChanges() {
     pending.delete("entries");
     showDeskEntries(true);
   }
-  if (pending.has("run") && !runBusy()) {
+  if (pending.has("run") && !runBusy(true)) {
     pending.delete("run");
     loadRun();
   }

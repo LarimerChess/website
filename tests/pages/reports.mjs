@@ -257,9 +257,9 @@ quadShown.quadHead.join("|") === "Place|Name|Rating|Score|Round 1|Round 2|Round 
   && quadShown.quadTop.join("|") === "1|Q3|1900|2|L3 b|W2 w|W4 w|3|"
   ? pass("TD desk quad standings show each round and head-to-head, as the Standings page does")
   : fail(`TD desk quad standings: ${JSON.stringify([quadShown.quadHead, quadShown.quadTop])}`);
-JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "zero", "withdraw"])
+JSON.stringify(quadShown.options) === JSON.stringify(["play", "absent", "half", "zero", "withdraw"])
   && quadShown.standings.join() === "Sonneborn-Berger,Sonneborn-Berger,Median" && quadShown.planned.join() === "Extra games" && quadShown.plannedShown
-  ? pass("TD desk runs quads' extra games section as a Swiss without half-point byes, and changes only its rounds")
+  ? pass("TD desk runs quads' extra games section as a Swiss with a TD half-point bye option, and changes only its rounds")
   : fail(`TD desk quads with an extra games section: ${JSON.stringify(quadShown)}`);
 await quadExtra.close();
 
@@ -348,10 +348,24 @@ noShow.value === "absent" && noShow.name.includes("28P") && lateBye.id === "6666
 await axeBoth(byePage, "TD desk refusing a full-point bye");
 await byePage.close();
 
-// Give a bye, under the standings, offers only the byes the rules allow: Fay's missed round 1 can't be a second
-// full-point bye (28L1), a round to come is saved as the half-point bye she asks for through her entry, and then
-// she has her one (22C), which check-in starts her on; Ann can't add a last-round half-point bye once round 1 is posted
-// (22C4), but can have a zero-point bye in any round to come, which check-in starts her on too.
+// A last-round half-point bye chosen at check-in stays advisory in the draft and posts with half a point.
+const finalDesk = deskState(byeRules.held.rounds.slice(0, 1));
+finalDesk.held.plannedRounds = 2;
+finalDesk.held.players = sixPlayers;
+const finalPage = await mocked("/td/ late last-round bye", finalDesk.answer);
+await signIn(finalPage);
+await finalPage.waitForSelector('.run-this-round[data-id="33333333"]');
+await finalPage.select('.run-this-round[data-id="33333333"]', "half");
+await press(finalPage, ".run-pair");
+await finalPage.waitForFunction(() => document.querySelector(".run-notes")?.textContent.includes("22C4"));
+await press(finalPage, ".run-post");
+await finalPage.waitForFunction(() => document.querySelector(".run-round-title").textContent.includes("results"));
+const finalPost = finalDesk.calls.find((c) => c.action === "round" && c.post === "yes");
+JSON.parse(finalPost?.byes || "[]").some((b) => b.id === "33333333" && b.kind === "half" && b.points === 0.5)
+  ? pass("TD can post a last-round half-point bye after seeing the 22C4 warning")
+  : fail("The last-round half-point bye did not reach the posting service");
+await finalPage.close();
+
 const giveRules = deskState(JSON.parse(JSON.stringify(byeRules.held.rounds.slice(0, 1))));
 giveRules.held.players = sixPlayers;
 const giveAnswer = giveRules.answer;
@@ -398,10 +412,10 @@ const annCheckin = await givePage.waitForFunction(() => document.querySelector('
 JSON.stringify(fayRound1.rounds) === JSON.stringify(["Round 1, unplayed (0)", "Round 2, to come", "Round 3, to come"])
   && fayRound1.kinds.join() === "half,zero,unplayed" && fayRound1.why.includes("28L1")
   && asked.token === "t-66666666" && asked.byes === "2" && asked.zeroByes === ""
-  && fayRound3.rounds[1] === "Round 2, half-point bye asked for" && fayRound3.kinds.join() === "play,zero" && fayRound3.why.includes("allows one per player")
-  && annRound3.kinds.join() === "play,zero" && annRound3.why.includes("22C4") && checkinStart === "half"
+  && fayRound3.rounds[1] === "Round 2, half-point bye asked for" && fayRound3.kinds.join() === "play,half,zero" && fayRound3.why.includes("allows one per player")
+  && annRound3.kinds.join() === "play,half,zero" && annRound3.why.includes("22C4") && checkinStart === "half"
   && annAsked?.token === "t-11111111" && annAsked.byes === "" && annAsked.zeroByes === "2" && annCheckin === "zero"
-  ? pass("TD desk's Give a bye offers only the byes the rules allow, in rounds played and to come, saves one to come with the entry, half-point or zero-point, and check-in starts the player on it")
+  ? pass("TD desk's Give a bye offers half-point byes with warnings, in rounds played and to come, saves one to come with the entry, half-point or zero-point, and check-in starts the player on it")
   : fail(`TD desk Give a bye: ${JSON.stringify({ fayRound1, asked, fayRound3, annRound3, checkinStart, annAsked, annCheckin })}`);
 await givePage.setViewport(PHONE);
 await fitsPhone(givePage, "TD desk giving a bye");
