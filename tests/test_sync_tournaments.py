@@ -322,5 +322,73 @@ class AutomaticConflicts(unittest.TestCase):
         self.assertEqual(fake.data["classic-mar"]["status"], "confirmed")
 
 
+class HolidayConflicts(unittest.TestCase):
+    def marker(self, start="2026-12-05", end="2026-12-06", **overrides):
+        return {"id": "holiday", "summary": "Holiday: Test day", "visibility": "private",
+                "start": {"date": start}, "end": {"date": end}, **overrides}
+
+    def test_same_marker_controls_both_calendars_and_its_removal_restores_their_own_dates(self):
+        # Event IDs are local to each calendar. Use the same ID to check that receipts stay separate.
+        casual = club()
+        casual["extendedProperties"]["private"].update(organizer="Outside organizer", format="casual")
+        club_calendar = FakeCalendar([self.marker(), club()])
+        community_calendar = FakeCalendar([casual])
+        service = Mock()
+        for method in ("list", "get", "insert", "patch"):
+            def route(calendarId, operation=method, **kwargs):
+                fake = club_calendar if calendarId == calendar.CALENDARS["club"] else community_calendar
+                return getattr(fake.api, operation)(calendarId=calendarId, **kwargs)
+
+            getattr(service.events.return_value, method).side_effect = route
+
+        self.assertEqual(conflicts.sync_calendar_conflicts(service, [], now=NOW), 2)
+        self.assertEqual(club_calendar.data["classic-dec"]["status"], "cancelled")
+        self.assertEqual(community_calendar.data["classic-dec"]["status"], "cancelled")
+        self.assertEqual(conflicts.sync_calendar_conflicts(service, [], now=NOW), 0)
+        del club_calendar.data["holiday"]
+        self.assertEqual(conflicts.sync_calendar_conflicts(service, [], now=NOW), 2)
+        self.assertEqual(club_calendar.data["classic-dec"]["extendedProperties"], club()["extendedProperties"])
+        self.assertEqual(community_calendar.data["classic-dec"]["extendedProperties"], casual["extendedProperties"])
+        self.assertEqual(club_calendar.data["classic-dec"]["status"], "confirmed")
+        self.assertEqual(community_calendar.data["classic-dec"]["status"], "confirmed")
+
+    def test_holiday_and_weekend_conflicts_share_cancellation_ownership(self):
+        fake = FakeCalendar([club()])
+        holiday = {date(2026, 12, 5)}
+        self.assertEqual(conflicts.sync_conflicts(fake.service, [winter()], now=NOW), 1)
+        self.assertEqual(conflicts.sync_conflicts(fake.service, [], now=NOW, holidays=holiday), 0)
+        self.assertEqual(conflicts.sync_conflicts(fake.service, [winter()], now=NOW), 0)
+        self.assertEqual(fake.data["classic-dec"]["status"], "cancelled")
+        self.assertEqual(conflicts.sync_conflicts(fake.service, [], now=NOW), 1)
+
+    def test_manually_cancelled_and_specifically_scheduled_events_are_untouched(self):
+        manual = {**club("manual"), "status": "cancelled"}
+        one_off = club("one-off")
+        del one_off["recurringEventId"]
+        venue_confirmed = club("venue-confirmed")
+        venue_confirmed["extendedProperties"]["private"]["source"] = "grandslam"
+        missing_metadata = club("missing-metadata")
+        del missing_metadata["extendedProperties"]
+        midnight = club("midnight", "2026-12-04T20:30:00-07:00", "2026-12-05T00:00:00-07:00")
+        overlaps = club("overlaps", "2026-12-04T20:30:00-07:00", "2026-12-05T00:30:00-07:00")
+        untouched = [manual, one_off, venue_confirmed, missing_metadata, midnight]
+        fake = FakeCalendar([*untouched, overlaps])
+        self.assertEqual(conflicts.sync_conflicts(fake.service, [], now=NOW, holidays={date(2026, 12, 5)}), 1)
+        self.assertEqual(fake.data["overlaps"]["status"], "cancelled")
+        conflicts.sync_conflicts(fake.service, [], now=NOW)
+        for event in untouched:
+            self.assertEqual(fake.data[event["id"]], event)
+
+    def test_invalid_marker_fails_before_calendar_writes(self):
+        for marker in (self.marker(visibility="public"), self.marker(end="2026-12-07"),
+                       {**self.marker(), "start": {"dateTime": "2026-12-05T12:00:00-07:00"}}):
+            with self.subTest(marker=marker):
+                fake = FakeCalendar([marker, club()])
+                with self.assertRaisesRegex(ValueError, "all-day holiday marker"):
+                    conflicts.sync_calendar_conflicts(fake.service, [winter()], now=NOW)
+                fake.api.patch.assert_not_called()
+                fake.api.insert.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

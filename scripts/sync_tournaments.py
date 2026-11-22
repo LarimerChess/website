@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from googleapiclient.discovery import build
 
 from update_calendar import CALENDARS
-from sync_tournament_conflicts import sync_conflicts
+from sync_tournament_conflicts import sync_calendar_conflicts
 from google_auth import credentials
 from sync_chessmates import fetch
 
@@ -337,7 +337,7 @@ def main():
             sys.exit(f"Two events on the club calendar have source={SOURCE} key={key}; delete one by hand.")
         existing[key] = e
 
-    sync_conflicts(cal, list(wanted.values()), dry_run=args.dry_run)
+    sync_calendar_conflicts(cal, list(wanted.values()), dry_run=args.dry_run)
 
     changes = 0
 

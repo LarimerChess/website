@@ -42,7 +42,7 @@ jobs:
         run: python scripts/sync_event_descriptions.py
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
-      - name: Sync outside tournaments and reconcile club weekend conflicts
+      - name: Sync outside tournaments and reconcile weekend and holiday conflicts
         run: python scripts/sync_tournaments.py
         env:
           LCCC_GOOGLE_TOKEN: ${{ secrets.LCCC_GOOGLE_CALENDAR_TOKEN }}
