@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "calendarId": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
- "generatedAt": "2026-11-22T09:23:10.981418-07:00",
+ "generatedAt": "2026-11-23T07:52:15.943156-07:00",
  "events": [
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20261124T003000Z",
@@ -333,6 +333,17 @@
    "end": "2027-02-15T21:30:00-07:00",
    "marker": "LCCC-b1f3b459b9916af966fffe8d",
    "fingerprint": "9fa260c90418a4600a4f5dd855c4022f3a680f64e687b012785638578d085f46"
+  },
+  {
+   "id": "20ioosbdu3gj7qtudlan91rirj_20270220T170000Z",
+   "status": "active",
+   "title": "Larimer County Open Classic 90+30",
+   "description": "Cost: $16.50, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $1.50. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/90;+30 (90 minutes per player, with a 30-second increment on each move). Regular rated.\n\nA monthly US Chess rated tournament with a long time control, for players who want time to think. In Old Town Fort Collins.\n\nFormat: 3-round Swiss.\n\nOnline registration stays open after play starts. Check in with the tournament director if you arrive after pairings have been posted.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 2:30 PM\n• Round 3: 7:00 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Clocks must support increment. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
+   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+   "start": "2027-02-20T10:00:00-07:00",
+   "end": "2027-02-20T23:00:00-07:00",
+   "marker": "LCCC-b47891b26aed9093e43ec1a4",
+   "fingerprint": "0a2fec964616c844ad3d1e76a55680b72d5f3331528413053ac096bc41b819d5"
   }
  ]
 }

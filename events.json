@@ -4475,5 +4475,64 @@
   },
   "city": "Loveland",
   "description": "Cost: not published; ask the center at 970-962-2783 or chilson@cityofloveland.org.\n\nDrop-In Open Chess Challenge for adults 55 and over, Mondays, Wednesdays, and Fridays, 1:00 – 4:30 PM, in the senior lobby of the Chilson Senior Center. Bring a chessboard. No chess on days the center is closed.\n\nRun by the City of Loveland's Chilson Senior Center. Not organized by the Larimer County Chess Club.\n\nDetails: https://www.lovgov.org/services/parks-recreation/chilson-senior-center\n\nChilson Senior Center\n700 E 4th St, Loveland, CO 80537"
+ },
+ {
+  "title": "Chessmates Scholastic Tournament (K–12)",
+  "calendar": "community",
+  "organizer": "Chessmates",
+  "tags": [
+   "tournament",
+   "youth",
+   "rated"
+  ],
+  "url": "https://chessmatesfc.com/tournaments/",
+  "price": "",
+  "pairing": "",
+  "rounds": "",
+  "page": "",
+  "start": "2027-02-20T08:15:00-07:00",
+  "end": "2027-02-20T14:00:00-07:00",
+  "allDay": false,
+  "location": "CEC High School, 4424 Innovation Dr, Fort Collins, CO 80525",
+  "place": {
+   "name": "CEC High School",
+   "street": "4424 Innovation Dr",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80525"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: $30 entry (fall or spring bundles available).\n\nChessmates scholastic tournament for students in kindergarten through 12th grade. Five rounds of about an hour each, in sections by grade level or US Chess rating (800+). Check-in from 8:15 AM; round 1 starts at 9:00 AM sharp; done by about 2:00 PM, with an optional awards ceremony.\n\nThe section for players rated 800 and above is US Chess rated and needs a current US Chess ID; grade-level sections don't need a US Chess membership.\n\nRegister by the Friday before; day-of registration closes at 8:30 AM and may start with a round-one bye.\n\nRun by Chessmates. Not organized by the Larimer County Chess Club.\n\nDetails and registration: https://chessmatesfc.com/tournaments/\n\nCEC High School\n4424 Innovation Dr, Fort Collins, CO 80525"
+ },
+ {
+  "title": "Larimer County Open Classic 90+30",
+  "calendar": "club",
+  "organizer": "Larimer County Chess Club",
+  "tags": [
+   "tournament",
+   "all-ages",
+   "club",
+   "rated",
+   "reduced-youth",
+   "regular"
+  ],
+  "url": "",
+  "price": "16.50",
+  "pairing": "swiss",
+  "rounds": "3",
+  "page": "/events/larimer-county-open-classic-90-30/",
+  "start": "2027-02-20T10:00:00-07:00",
+  "end": "2027-02-20T23:00:00-07:00",
+  "allDay": false,
+  "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
+  "place": {
+   "name": "Peak Community Church",
+   "street": "500 Mathews St",
+   "city": "Fort Collins",
+   "region": "CO",
+   "zip": "80524"
+  },
+  "city": "Fort Collins",
+  "description": "Cost: $16.50, the $15 entry plus $0.50 a round for US Chess rating. Players under 18 pay the reduced rate, $1.50. Paying by card adds 2.5% + $0.50. If the fee is a hardship, pay what you can; no US Chess member is turned away.\nTime control: G/90;+30 (90 minutes per player, with a 30-second increment on each move). Regular rated.\n\nA monthly US Chess rated tournament with a long time control, for players who want time to think. In Old Town Fort Collins.\n\nFormat: 3-round Swiss.\n\nOnline registration stays open after play starts. Check in with the tournament director if you arrive after pairings have been posted.\n\nRound times\n• Round 1: 10:00 AM\n• Round 2: 2:30 PM\n• Round 3: 7:00 PM\n\nIf a round runs long, the next one starts as soon as it finishes.\n\nA current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers of every strength welcome. Bring a board and clock if you have one. Clocks must support increment. Coffee and water are provided.\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nMeet on the main floor at Peak Community Church in Old Town Fort Collins.\n\nQuestions: president@larimerchess.org\nlarimerchess.org"
  }
 ]
