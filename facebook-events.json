@@ -1,25 +1,8 @@
 {
  "schema": 1,
  "calendarId": "c_69fbe5a4899819d06515e28a5d5161b3508e9cabad74961ce27e36cc94d66f67@group.calendar.google.com",
- "generatedAt": "2026-11-23T07:52:15.943156-07:00",
+ "generatedAt": "2026-11-23T19:18:31.966359-07:00",
  "events": [
-  {
-   "id": "gbef7h5591kbj1jo99l98bfqrk_20261124T003000Z",
-   "status": "cancelled",
-   "start": "2026-11-23T17:30:00-07:00",
-   "end": "2026-11-23T18:30:00-07:00"
-  },
-  {
-   "id": "5ok4vomkgvb6fui6csb1uignvi_20261124T013000Z",
-   "status": "active",
-   "title": "Monday Club Night at Peak",
-   "description": "Cost:\n• Adults: $17.50 for the whole month including rating, or $8 a night plus the rating fee\n• Seniors (65+): $12.50 for the whole month including rating, or $6 a night plus the rating fee\n• Under 18: the reduced rate, the rating fee only\nAdult and senior monthly prices include the rating fee. Players under 18 pay only the rating fee: $0.50 per night, or $0.50 for each scheduled Monday in a whole-month registration. Paying by card adds 2.5% + $0.50.\nTime control: G/60;+30 (60 minutes per player, with a 30-second increment on each move). Regular rated.\n\nWeekly club night of the Larimer County Chess Club, Mondays from 6:30 PM until the last game ends, at Peak Community Church in Old Town Fort Collins. Players of every age and strength welcome. Just show up. Coffee and water are provided.\n\nNew to chess? Chess for Beginners, a free hour on the rules of chess, meets at 5:30 PM, the hour before club night.\n\nClub games are US Chess events. A current US Chess membership is required. Join or renew at https://new.uschess.org/join-us-chess#:~:text=Individual%20Membership%20Options\n\nPlayers under 18 may come on their own. Parents remain responsible for them; the club doesn't supervise minors.\n\nQuestions: president@larimerchess.org\nlarimerchess.org",
-   "location": "Peak Community Church, 500 Mathews St, Fort Collins, CO 80524, USA",
-   "start": "2026-11-23T18:30:00-07:00",
-   "end": "2026-11-23T21:30:00-07:00",
-   "marker": "LCCC-a116f31078138355a1d3a37b",
-   "fingerprint": "f924a17b27fd32508c63e4ecf71e6dabc155a7d616b52df63237a0b343b5dfc1"
-  },
   {
    "id": "gbef7h5591kbj1jo99l98bfqrk_20261201T003000Z",
    "status": "active",
